@@ -79,6 +79,15 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 #override-row,#base-override-row,.override-row{display:none!important}
 .rbtn{width:100%;background:transparent;color:var(--mt);border:1px solid var(--bv);border-radius:7px;padding:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:2px}
 .rbtn:hover{border-color:var(--t);color:var(--t)}
+/* SAVE QUOTE button — dedicated styling; deliberately does NOT alter .sbtn so TEXT QUOTE (orange) etc. are untouched */
+.sbtn.save-quote-btn{position:relative;background:#15243a;color:#fff;border:1px solid rgba(96,150,214,.5);border-radius:10px}
+.sbtn.save-quote-btn:hover{background:#15243a;animation:sqTextPulse .9s ease-in-out infinite}
+@keyframes sqTextPulse{0%,100%{color:#00d9d9;text-shadow:0 0 8px rgba(0,217,217,.55)}50%{color:#c4f7f7;text-shadow:0 0 16px rgba(0,217,217,.95)}}
+.sbtn.save-quote-btn.is-saved,.sbtn.save-quote-btn.is-saved:hover{background:#15243a;color:#00d9d9;text-shadow:0 0 12px rgba(0,217,217,.85);animation:none}
+.sq-palm{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);font-size:22px;line-height:1;pointer-events:none;opacity:0}
+.sq-palm.go{animation:sqPalmPop 1.2s ease-out forwards}
+@keyframes sqPalmPop{0%{opacity:0;transform:translate(-50%,4px) scale(.4)}25%{opacity:1;transform:translate(-50%,-6px) scale(1.15)}100%{opacity:0;transform:translate(-50%,-44px) scale(1)}}
+@media(prefers-reduced-motion:reduce){.sbtn.save-quote-btn:hover{animation:none;color:#00d9d9;text-shadow:0 0 10px rgba(0,217,217,.7)}.sq-palm.go{animation-duration:.01s}}
 .toast{position:fixed;bottom:20px;right:20px;background:#065f46;color:#fff;padding:11px 17px;border-radius:8px;font-size:15px;font-weight:700;display:none;z-index:9999}
 .toast.show{display:block}.toast.err{background:#7f1d1d}
 .summary-toggle{display:none;width:100%;background:#00d9d9;color:#080f14;border:none;padding:13px;font-size:14px;font-weight:700;cursor:pointer;border-radius:0;letter-spacing:.3px;position:sticky;top:0;z-index:100;align-items:center;justify-content:space-between}
@@ -714,7 +723,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <button class="sbtn" type="button" onclick="printQuote()" style="background:#9fc839;color:#080f14">SAVE / PRINT PDF</button>
     <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
-    <button class="sbtn" type="button" onclick="saveQuote()">SAVE QUOTE</button>
+    <button class="sbtn save-quote-btn" type="button" onclick="ssSaveQuote(this)"><span class="sq-label">SAVE QUOTE</span></button>
     <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
   </div>
 </div>
@@ -6044,6 +6053,38 @@ function saveQuote(){
   }, 600);
 
   toast('✓ Quote saved: '+filename, 'ok');
+}
+
+// ── SAVE QUOTE button feedback (additive — does NOT change saveQuote's logic) ──
+// Runs the real saveQuote(); celebrates only on a genuine success, detected by
+// briefly wrapping the global toast (saveQuote fires an 'ok' toast synchronously
+// on success and returns early with an 'err'/no toast on failure).
+function ssSaveQuote(btn){
+  var origToast = window.toast, ok = false;
+  window.toast = function(m,t){ if(t==='ok') ok = true; return origToast.apply(this, arguments); };
+  try { saveQuote(); }
+  finally { window.toast = origToast; }
+  if(ok) ssSaveSuccessFx(btn);
+}
+function ssSaveSuccessFx(btn){
+  if(!btn) return;
+  var label = btn.querySelector('.sq-label'); if(!label) return;
+  if(btn._sqTimer) clearTimeout(btn._sqTimer);
+  var prev = btn.querySelector('.sq-palm'); if(prev) prev.parentNode.removeChild(prev);
+  btn.classList.add('is-saved');
+  label.textContent = 'SAVED ✓';                 // SAVED ✓
+  var palm = document.createElement('span');
+  palm.className = 'sq-palm';
+  palm.textContent = '🌴';                  // 🌴
+  btn.appendChild(palm);
+  void palm.offsetWidth;                              // reflow so it animates from the start
+  palm.classList.add('go');
+  btn._sqTimer = setTimeout(function(){
+    btn.classList.remove('is-saved');
+    label.textContent = 'SAVE QUOTE';
+    if(palm.parentNode) palm.parentNode.removeChild(palm);
+    btn._sqTimer = null;
+  }, 1200);
 }
 
 function loadQuote(input){
