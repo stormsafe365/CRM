@@ -161,7 +161,10 @@ export default function QuotesTab({ clientId, client, clientBuildingSize }) {
         </div>
       )}
 
-      {loading ? (
+      {/* While the builder modal is open, don't render the deck/list at all —
+          it prevents the saved-quote card from showing through the modal and
+          unmounts the deck's global arrow-key listener so keys don't leak. */}
+      {building ? null : loading ? (
         <div className="muted" style={{padding: '8px 0'}}>Loading quotes…</div>
       ) : quotes.length === 0 && !adding ? (
         <div className="muted" style={{padding: '12px 0'}}>No quotes yet.</div>

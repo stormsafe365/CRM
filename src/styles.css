@@ -1712,7 +1712,8 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .qb-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Above the quote deck, whose cards hardcode z-index up to 200. */
+  z-index: 1000;
   background: rgba(4, 7, 11, .72);
   backdrop-filter: blur(3px);
   display: flex;
