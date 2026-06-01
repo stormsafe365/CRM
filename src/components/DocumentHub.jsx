@@ -7,9 +7,12 @@ import { useEffect, useRef, useState } from 'react'
 import { uploadClientDoc, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
 
 const SECTIONS = [
-  { key: 'quote',     label: 'Quotes',     accept: 'application/pdf',         hint: 'PDF' },
-  { key: 'contract',  label: 'Contract',   accept: 'application/pdf',         hint: 'PDF' },
-  { key: 'rendering', label: 'Renderings', accept: 'image/*,application/pdf', hint: 'Image or PDF' },
+  { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
+  { key: 'contract',    label: 'Contracts',   accept: 'application/pdf',         hint: 'PDF' },
+  { key: 'rendering',   label: 'Renderings',  accept: 'image/*,application/pdf', hint: 'Image or PDF' },
+  { key: 'permit',      label: 'Permits',     accept: 'application/pdf',         hint: 'PDF' },
+  { key: 'engineering', label: 'Engineering', accept: 'application/pdf',         hint: 'PDF' },
+  { key: 'photo',       label: 'Photos',      accept: 'image/*',                 hint: 'Image' },
 ]
 
 export default function DocumentHub({ clientId }) {

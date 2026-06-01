@@ -5,14 +5,16 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { isoToday } from '../lib/followups'
 import ClientForm from '../components/ClientForm'
 
 export default function ClientNew() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
-  // Today in YYYY-MM-DD format (matches <input type="date">).
-  const today = new Date().toISOString().slice(0, 10)
+  // Today in YYYY-MM-DD format (matches <input type="date">). Local calendar
+  // date, not UTC, so an evening entry doesn't default to tomorrow.
+  const today = isoToday()
 
   const initial = {
     primary_rep: user?.id,

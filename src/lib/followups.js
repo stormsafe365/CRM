@@ -47,6 +47,16 @@ export function fmtLong(iso) {
   return `${m}/${d}/${y}`
 }
 
+// 'HH:MM' or 'HH:MM:SS' (Postgres `time`) → '2:00 PM'. Empty when no time set.
+export function fmtTime(t) {
+  if (!t) return ''
+  const [hStr, m] = t.split(':')
+  let h = Number(hStr)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${h}:${m} ${ampm}`
+}
+
 // Calm, human "how long ago" — no counts that feel like a scoreboard.
 export function agoLabel(iso) {
   if (!iso) return 'no contact yet'
@@ -62,6 +72,7 @@ export function agoLabel(iso) {
 
 // The presets Jenna asked for. Each computes the next date from today.
 export const FOLLOWUP_PRESETS = [
+  { key: 'today', label: 'Today', apply: () => isoToday() },
   { key: '3d', label: '+3 days', apply: () => addDays(isoToday(), 3) },
   { key: '2w', label: '+2 weeks', apply: () => addDays(isoToday(), 14) },
   { key: '1mo', label: '+1 month', apply: () => addMonths(isoToday(), 1) },

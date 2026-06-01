@@ -28,6 +28,7 @@ export default function ActivityComposer({
   const [audience, setAudience] = useState(defaultAudience)
   const [body, setBody] = useState('')
   const [nextDate, setNextDate] = useState(null)
+  const [nextTime, setNextTime] = useState(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -55,12 +56,13 @@ export default function ActivityComposer({
         // DB trigger — so we deliberately do NOT insert one here (no duplicates).
         const { error } = await supabase
           .from('clients')
-          .update({ follow_up_date: nextDate })
+          .update({ follow_up_date: nextDate, follow_up_time: nextTime })
           .eq('id', client.id)
         if (error) throw error
       }
       setBody('')
       setNextDate(null)
+      setNextTime(null)
       onLogged?.({ nextDate })
     } catch (e2) {
       setErr(e2.message || 'Could not save.')
@@ -125,7 +127,8 @@ export default function ActivityComposer({
           baseDate={client.follow_up_date}
           coolingOff={!!client.cooling_off}
           selected={nextDate}
-          onPick={setNextDate}
+          selectedTime={nextTime}
+          onPick={(d, t) => { setNextDate(d); setNextTime(t) }}
         />
       </div>
 

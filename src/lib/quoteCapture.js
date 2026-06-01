@@ -82,8 +82,18 @@ export async function htmlToPdfBlob(fullHtml) {
   if (!fullHtml) throw new Error('No quote document to render.')
   const doc = new DOMParser().parseFromString(fullHtml, 'text/html')
 
+  // The branded quote's .qpg is min-width:900px, so the capture surface must be
+  // at least that wide or html2canvas clips the right edge.
+  const CAPTURE_WIDTH = 960
+
   const container = document.createElement('div')
-  container.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;background:#fff'
+  // IMPORTANT: do NOT park this with `position:fixed; left:-10000px`. html2canvas
+  // renders fixed / off-viewport elements as an empty canvas — that produced a
+  // blank PDF. Render it in normal flow at real (0,0) coordinates, sent to the
+  // back (negative z-index) and made non-interactive, then removed after capture.
+  container.style.cssText =
+    `position:absolute;left:0;top:0;width:${CAPTURE_WIDTH}px;` +
+    'z-index:-2147483647;pointer-events:none;background:#fff'
   doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => container.appendChild(el.cloneNode(true)))
   const body = document.createElement('div')
   body.innerHTML = doc.body ? doc.body.innerHTML : fullHtml
@@ -98,7 +108,19 @@ export async function htmlToPdfBlob(fullHtml) {
       .set({
         margin: [12, 12, 12, 12],
         image: { type: 'jpeg', quality: 0.96 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        // Pin the capture viewport to the container so the full quote width is
+        // rasterized from the top-left, not the live (scrolled) window.
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          width: CAPTURE_WIDTH,
+          windowWidth: CAPTURE_WIDTH,
+          scrollX: 0,
+          scrollY: 0,
+          x: 0,
+          y: 0,
+        },
         jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
       })

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PROJECT_STAGES, projectStageColor } from '../lib/constants'
-import { STALE_ORDER_DAYS, agoLabel, daysSince, fmtLong } from '../lib/followups'
+import { STALE_ORDER_DAYS, agoLabel, daysSince, fmtLong, fmtTime } from '../lib/followups'
 import ActivityComposer from '../components/ActivityComposer'
 
 export default function ActiveOrders() {
@@ -91,7 +91,7 @@ export default function ActiveOrders() {
                       </div>
                       <div className="order-meta">
                         <span>Last update <b>{last ? agoLabel(last.slice(0, 10)) : 'none yet'}</b></span>
-                        <span>Follow-up <b>{o.follow_up_date ? fmtLong(o.follow_up_date) : '—'}</b></span>
+                        <span>Follow-up <b>{o.follow_up_date ? fmtLong(o.follow_up_date) + (o.follow_up_time ? ` · ${fmtTime(o.follow_up_time)}` : '') : '—'}</b></span>
                       </div>
                       {stale && <span className="needs-update">needs an update</span>}
                       <div className="order-actions">

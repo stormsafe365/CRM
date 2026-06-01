@@ -13,11 +13,11 @@ import {
 } from '../lib/constants'
 import { useAuth } from '../context/AuthContext'
 import { useCountUp } from '../lib/useCountUp'
+import { isoToday, fmtTime } from '../lib/followups'
 import Sparkline from '../components/Sparkline'
 import { AreaChart, Donut, Gauge } from '../components/charts'
 
 const DAY = 86400000
-const isoDay = (d) => new Date(d).toISOString().slice(0, 10)
 const moneyShort = (n) =>
   n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'K' : '$' + Math.round(n)
 
@@ -53,7 +53,10 @@ export default function Dashboard() {
     return () => { cancelled = true; supabase.removeChannel(channel) }
   }, [])
 
-  const today = isoDay(Date.now())
+  // Local calendar date (not UTC) so "due today" matches how follow_up_date is
+  // stored and what the Today page / nav badge use. A UTC date here made evening
+  // follow-ups silently drop off the Dashboard for US-timezone users.
+  const today = isoToday()
   const weekAgoISO = new Date(Date.now() - 7 * DAY).toISOString()
   const monthStartISO = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString() })()
 
@@ -155,7 +158,7 @@ export default function Dashboard() {
         <KpiCard i={3} label="Due Today" value={dueToday.length}
           accent={dueToday.length > 0 ? 'amber' : null}
           sparkColor={dueToday.length > 0 ? 'var(--amber)' : 'var(--cyan)'}
-          sub="Follow-ups scheduled" spark={[0, 1, 0, 2, 1, 1, dueToday.length]} />
+          sub="Follow-ups scheduled" spark={[0, 1, 0, 2, 1, 1, dueToday.length]} to="/followups" />
       </section>
 
       {/* Charts row */}
@@ -245,7 +248,7 @@ export default function Dashboard() {
             <div className="fu">
               {dueToday.map(c => (
                 <Link key={c.id} to={`/clients/${c.id}`} className="fu-item">
-                  <span className="fu-date">{fmtDate(c.follow_up_date)}</span>
+                  <span className="fu-date">{fmtDate(c.follow_up_date)}{c.follow_up_time ? ` · ${fmtTime(c.follow_up_time)}` : ''}</span>
                   <span className="fu-name">{c.name}</span>
                   <span className="fu-status">{statusLabel(c.status)}</span>
                 </Link>

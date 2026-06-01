@@ -12,6 +12,7 @@ import ClientNew from './pages/ClientNew'
 import ClientDetail from './pages/ClientDetail'
 import Today from './pages/Today'
 import ActiveOrders from './pages/ActiveOrders'
+import AllQuotes from './pages/AllQuotes'
 import ComingSoon from './pages/ComingSoon'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
@@ -37,7 +38,8 @@ export default function App() {
         <Route path="/pipeline"  element={<Protected><ComingSoon title="Sales Pipeline" blurb="A drag-and-drop kanban to move deals from New Lead through Won." /></Protected>} />
         <Route path="/projects"  element={<Protected><ActiveOrders /></Protected>} />
         <Route path="/followups" element={<Protected><Today /></Protected>} />
-        <Route path="/documents" element={<Protected><ComingSoon title="Documents" blurb="Quotes, contracts, renderings and layouts in one place." /></Protected>} />
+        <Route path="/quotes"    element={<Protected><AllQuotes /></Protected>} />
+        <Route path="/documents" element={<Protected><AllQuotes /></Protected>} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

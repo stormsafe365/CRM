@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { statusLabel, statusColor, DEAD_STATUSES } from '../lib/constants'
-import { isoToday, agoLabel, daysSince } from '../lib/followups'
+import { isoToday, agoLabel, daysSince, fmtTime } from '../lib/followups'
 import FollowUpControls from '../components/FollowUpControls'
 import ActivityComposer from '../components/ActivityComposer'
 
@@ -16,6 +16,7 @@ export default function Today() {
   const [acts, setActs] = useState({}) // client_id -> { last, lastBody }
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
+  const [confirmDeadId, setConfirmDeadId] = useState(null)
   const today = isoToday()
 
   async function load() {
@@ -61,9 +62,22 @@ export default function Today() {
     return () => supabase.removeChannel(ch)
   }, [])
 
-  async function setFollowUp(client, iso) {
-    await supabase.from('clients').update({ follow_up_date: iso }).eq('id', client.id)
+  async function setFollowUp(client, iso, time = null) {
+    await supabase.from('clients').update({ follow_up_date: iso, follow_up_time: time }).eq('id', client.id)
     // Realtime reload drops it off the list once pushed to a future date.
+  }
+
+  // Done = follow-up handled. Clearing the date auto-logs a 'follow_up_completed'
+  // activity via DB trigger; realtime reload then drops the card off the list.
+  async function markDone(client) {
+    await supabase.from('clients').update({ follow_up_date: null, follow_up_time: null }).eq('id', client.id)
+  }
+
+  // Dead = lead not moving forward. Dead statuses are filtered out of the due
+  // list, so the card disappears on the realtime reload.
+  async function markDead(client) {
+    await supabase.from('clients').update({ status: 'dead' }).eq('id', client.id)
+    setConfirmDeadId(null)
   }
 
   return (
@@ -93,7 +107,7 @@ export default function Today() {
                       {statusLabel(c.status)}
                     </span>
                     {c.cooling_off && <span className="cool-badge">cooling off</span>}
-                    <span className="today-due">{n <= 0 ? 'due today' : `${n} day${n === 1 ? '' : 's'} ago`}</span>
+                    <span className="today-due">{n <= 0 ? 'due today' : `${n} day${n === 1 ? '' : 's'} ago`}{c.follow_up_time ? ` · ${fmtTime(c.follow_up_time)}` : ''}</span>
                   </div>
                   <div className="today-discussed">
                     {a?.lastBody
@@ -103,10 +117,24 @@ export default function Today() {
                   <div className="today-sub muted">Last contact {a?.last ? agoLabel(a.last.slice(0, 10)) : 'not yet'}</div>
                 </div>
                 <div className="today-actions">
-                  <FollowUpControls baseDate={c.follow_up_date} coolingOff={!!c.cooling_off} onPick={iso => setFollowUp(c, iso)} size="sm" />
+                  <FollowUpControls baseDate={c.follow_up_date} coolingOff={!!c.cooling_off} selectedTime={c.follow_up_time} onPick={(iso, t) => setFollowUp(c, iso, t)} size="sm" />
                   <button type="button" className="link-btn" onClick={() => setOpenId(openId === c.id ? null : c.id)}>
                     {openId === c.id ? 'Close' : 'Log touch'}
                   </button>
+                  <button type="button" className="link-btn today-done" onClick={() => markDone(c)} title="Mark this follow-up handled">
+                    ✓ Done
+                  </button>
+                  {confirmDeadId === c.id ? (
+                    <span className="today-dead-confirm">
+                      Mark dead?
+                      <button type="button" className="link-btn link-btn-danger" onClick={() => markDead(c)}>Yes</button>
+                      <button type="button" className="link-btn" onClick={() => setConfirmDeadId(null)}>No</button>
+                    </span>
+                  ) : (
+                    <button type="button" className="link-btn" onClick={() => setConfirmDeadId(c.id)}>
+                      Mark dead
+                    </button>
+                  )}
                 </div>
                 {openId === c.id && (
                   <ActivityComposer client={c} compact onLogged={() => setOpenId(null)} />

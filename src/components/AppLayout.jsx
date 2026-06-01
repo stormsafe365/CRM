@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useDueFollowups } from '../lib/useDueFollowups'
+import { useTimedReminders } from '../lib/useTimedReminders'
 import { isoToday } from '../lib/followups'
 
 const navItems = [
@@ -30,7 +31,7 @@ const navItems = [
     icon: <><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0111 0M16 6.5a3 3 0 010 5.6M19 19a4.8 4.8 0 00-3-4.4"/></>,
   },
   {
-    to: '/documents', title: 'Documents',
+    to: '/quotes', title: 'All Quotes',
     icon: <><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 13h6M10 17h6"/></>,
   },
 ]
@@ -41,6 +42,10 @@ export default function AppLayout({ children }) {
   const { count: dueCount, clients: dueClients } = useDueFollowups()
   const notifSupported = typeof window !== 'undefined' && 'Notification' in window
   const [notifPerm, setNotifPerm] = useState(notifSupported ? Notification.permission : 'unsupported')
+
+  // Clock-triggered pings for follow-ups that have a specific time set today.
+  // Open-app coverage; the daily email handles closed-app.
+  useTimedReminders(notifPerm === 'granted')
 
   // Tab title carries the due count even when the tab is in the background.
   useEffect(() => {
