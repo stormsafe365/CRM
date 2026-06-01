@@ -60,3 +60,37 @@ plus a shared **Supabase** cloud project.
   key is safe to reuse; it's meant to ship in the browser).
 - Client/quote data lives in Supabase cloud, so it's identical on every machine
   the moment you log in.
+- **Claude Code's own chat history and memory do NOT sync between machines** —
+  they're local to whichever laptop/desktop you were on. The durable knowledge
+  lives in this file and the repo. When starting Claude Code on another machine,
+  say: *"Read CLAUDE.md and continue work on the StormSafe CRM."*
+
+## Recent work & open items (handoff — last updated 2026-06-01)
+
+Everything below is committed on `main`. Built across recent sessions:
+- **Quote builder capture** — embedded builder read-only → `quotes` row + branded
+  PDF in the `quote-pdfs` bucket. Pricing engine untouched; totals match the
+  builder to the dollar. (`QuoteBuilderModal.jsx`, `lib/quoteCapture.js`.)
+- **Builder cosmetics** — SAVE QUOTE button restyle (navy + hover text-pulse +
+  "SAVED ✓" / palm pop) and a GENERATE CONTRACT fireworks burst. Cosmetic only,
+  inside `public/quote-builder.html`; pricing/`saveQuote` logic untouched.
+- **Follow-up engine** — activity timeline + composer, `Today` page (`/followups`),
+  presets/snooze, cooling-off flag.
+- **Active Orders** — `/projects`, ordered clients grouped by stage; client +
+  factory check-ins share one timeline.
+- **In-app notifications** — nav count badge, tab-title count, desktop bell.
+- **Daily follow-up email** — Supabase Edge Function (`supabase/functions/daily-followups/`)
+  using Resend. Emails each rep (their `users.email`) only their own due clients.
+
+**Open items / TODO:**
+1. **Run `db/migrations/007_cooling_off.sql`** in the Supabase SQL Editor — enables
+   the cooling-off toggle (UI hides it until the column exists).
+2. **Deploy the email function** — needs a Resend account + API key, function
+   secrets, and a daily schedule. Steps in
+   `supabase/functions/daily-followups/SETUP.md`. Not deployed yet.
+3. **SMS reminders (Twilio)** — deferred (needs Twilio account + A2P 10DLC reg).
+4. **Per-machine artifacts to recreate** — `.env.local`, and the offline
+   "StormSafe Quote Tool" desktop shortcut + logo `.ico` (laptop-only).
+5. **Verify** — a report that a James Woods follow-up wasn't on the Dashboard;
+   expected if it's future-dated (Dashboard shows only due-today/overdue; future
+   ones appear on the `Today` page when due). Confirm it saved on the client.
