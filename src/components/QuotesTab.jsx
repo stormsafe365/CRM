@@ -8,14 +8,16 @@ import { getQuotePdfSignedUrl, deleteQuotePdf } from '../lib/storage'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import QuoteDeck from './QuoteDeck'
+import QuoteBuilderModal from './QuoteBuilderModal'
 
-export default function QuotesTab({ clientId, clientBuildingSize }) {
+export default function QuotesTab({ clientId, client, clientBuildingSize }) {
   const { user } = useAuth()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const [adding, setAdding] = useState(false)
+  const [building, setBuilding] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'list'
@@ -59,6 +61,13 @@ export default function QuotesTab({ clientId, clientBuildingSize }) {
       .insert({ ...payload, client_id: clientId, created_by: user.id })
     if (error) throw error
     setAdding(false)
+  }
+
+  // Save from the embedded quote builder. Reuses the same insert path; on
+  // failure handleCreate throws so the modal surfaces the error and stays open.
+  async function handleBuildSave(payload) {
+    await handleCreate(payload)
+    setBuilding(false)
   }
 
   async function handleUpdate(id, payload) {
@@ -122,12 +131,23 @@ export default function QuotesTab({ clientId, clientBuildingSize }) {
             </div>
           )}
           {!adding && !editingId && (
-            <button onClick={() => setAdding(true)} className="btn-primary">+ Add Quote</button>
+            <>
+              <button onClick={() => setBuilding(true)} className="btn-primary">Build Quote</button>
+              <button onClick={() => setAdding(true)} className="btn-secondary">Add Manually</button>
+            </>
           )}
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+
+      {building && (
+        <QuoteBuilderModal
+          client={client ?? { id: clientId }}
+          onSave={handleBuildSave}
+          onClose={() => setBuilding(false)}
+        />
+      )}
 
       {adding && (
         <div className="quote-form-wrap">

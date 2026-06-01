@@ -195,6 +195,7 @@ export default function ClientDetail() {
       <div className="detail-card detail-card-full" style={{marginTop: 16}}>
         <QuotesTab
           clientId={client.id}
+          client={client}
           clientBuildingSize={client.building_size}
         />
       </div>

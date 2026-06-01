@@ -26,6 +26,19 @@ export async function uploadQuotePdf(clientId, file) {
   return path
 }
 
+// Uploads a generated PDF Blob (from the embedded quote builder). Same path
+// convention as uploadQuotePdf. Returns the storage path.
+export async function uploadQuotePdfBlob(clientId, blob, filename) {
+  if (!blob) return null
+  const safeName = (filename || 'quote.pdf').replace(/[^a-zA-Z0-9.-]/g, '_')
+  const path = `${clientId}/${Date.now()}-${safeName}`
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'application/pdf' })
+  if (error) throw error
+  return path
+}
+
 // Generates a temporary signed URL (60 min) for viewing a PDF.
 // We don't store signed URLs — they expire. We store the storage path
 // and generate a fresh signed URL each time the user clicks "View PDF."

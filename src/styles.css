@@ -1707,3 +1707,66 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
   .detail-row { flex-direction: column; align-items: flex-start; gap: 2px; }
   .detail-row-value { text-align: left; }
 }
+
+/* ===== Quote Builder modal (embedded configurator) ===== */
+.qb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(4, 7, 11, .72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  padding: 18px;
+}
+.qb-modal {
+  margin: auto;
+  width: min(1280px, 100%);
+  height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+.qb-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line-2);
+  flex: 0 0 auto;
+}
+.qb-bar-title {
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  font-size: 14px;
+  color: var(--txt);
+}
+.qb-bar-client { color: var(--cyan); font-weight: 500; text-transform: none; }
+.qb-bar-error {
+  color: var(--amber-soft);
+  font-size: 13px;
+  flex: 1 1 auto;
+}
+.qb-bar-status {
+  color: var(--cyan);
+  font-size: 13px;
+  flex: 1 1 auto;
+}
+.qb-bar-actions { margin-left: auto; display: flex; gap: 8px; }
+.qb-iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+@media (max-width: 720px) {
+  .qb-overlay { padding: 0; }
+  .qb-modal { height: 100vh; border-radius: 0; border: 0; }
+  .qb-bar { flex-wrap: wrap; }
+}
