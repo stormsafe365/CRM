@@ -88,6 +88,13 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 .sq-palm.go{animation:sqPalmPop 1.2s ease-out forwards}
 @keyframes sqPalmPop{0%{opacity:0;transform:translate(-50%,4px) scale(.4)}25%{opacity:1;transform:translate(-50%,-6px) scale(1.15)}100%{opacity:0;transform:translate(-50%,-44px) scale(1)}}
 @media(prefers-reduced-motion:reduce){.sbtn.save-quote-btn:hover{animation:none;color:#00d9d9;text-shadow:0 0 10px rgba(0,217,217,.7)}.sq-palm.go{animation-duration:.01s}}
+/* GENERATE CONTRACT fireworks — additive FX, does not change the button's cyan color */
+.gc-btn{position:relative}
+.gc-fx{position:absolute;left:50%;bottom:100%;width:0;height:0;pointer-events:none}
+.gc-spark{position:absolute;left:0;top:0;width:6px;height:6px;border-radius:50%;opacity:0;transform:translate(-50%,-50%);box-shadow:0 0 6px currentColor}
+.gc-spark.go{animation:gcBurst .9s ease-out forwards}
+@keyframes gcBurst{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.3)}}
+@media(prefers-reduced-motion:reduce){.gc-spark.go{animation-duration:.01s}}
 .toast{position:fixed;bottom:20px;right:20px;background:#065f46;color:#fff;padding:11px 17px;border-radius:8px;font-size:15px;font-weight:700;display:none;z-index:9999}
 .toast.show{display:block}.toast.err{background:#7f1d1d}
 .summary-toggle{display:none;width:100%;background:#00d9d9;color:#080f14;border:none;padding:13px;font-size:14px;font-weight:700;cursor:pointer;border-radius:0;letter-spacing:.3px;position:sticky;top:0;z-index:100;align-items:center;justify-content:space-between}
@@ -721,7 +728,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 
   <div style="margin-top:10px" class="desktop-btns">
     <button class="sbtn" type="button" onclick="printQuote()" style="background:#9fc839;color:#080f14">SAVE / PRINT PDF</button>
-    <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
+    <button class="sbtn gc-btn" type="button" onclick="ssGenerateContract(this)" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
     <button class="sbtn save-quote-btn" type="button" onclick="ssSaveQuote(this)"><span class="sq-label">SAVE QUOTE</span></button>
     <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
@@ -6085,6 +6092,43 @@ function ssSaveSuccessFx(btn){
     if(palm.parentNode) palm.parentNode.removeChild(palm);
     btn._sqTimer = null;
   }, 1200);
+}
+
+// ── GENERATE CONTRACT fireworks (additive — printContract logic untouched) ──
+// Wraps printContract(); fires only on a real generation (no 'err' toast — i.e.
+// dimensions were set and it passed the guard).
+function ssGenerateContract(btn){
+  var origToast = window.toast, errored = false;
+  window.toast = function(m,t){ if(t==='err') errored = true; return origToast.apply(this, arguments); };
+  try { printContract(); }
+  finally { window.toast = origToast; }
+  if(!errored) ssFireworks(btn);
+}
+function ssFireworks(btn){
+  if(!btn) return;
+  var COLORS=['#00d9d9','#c4f7f7','#9fc839','#ffd166','#ff7a45','#ffffff'];
+  function burst(){
+    var fx=document.createElement('span');
+    fx.className='gc-fx';
+    btn.appendChild(fx);
+    var n=14;
+    for(var i=0;i<n;i++){
+      var ang=(Math.PI*2*i/n)+(Math.random()*0.4-0.2);
+      var dist=26+Math.random()*22;
+      var s=document.createElement('span');
+      s.className='gc-spark';
+      var col=COLORS[i%COLORS.length];
+      s.style.background=col; s.style.color=col;
+      s.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(1)+'px');
+      s.style.setProperty('--dy',(Math.sin(ang)*dist-10).toFixed(1)+'px'); // bias upward — "coming up"
+      fx.appendChild(s);
+      void s.offsetWidth;
+      s.classList.add('go');
+    }
+    setTimeout(function(){ if(fx.parentNode) fx.parentNode.removeChild(fx); }, 1100);
+  }
+  burst();
+  setTimeout(burst, 220); // second staggered pop
 }
 
 function loadQuote(input){
