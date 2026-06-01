@@ -1771,3 +1771,116 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
   .qb-modal { height: 100vh; border-radius: 0; border: 0; }
   .qb-bar { flex-wrap: wrap; }
 }
+
+/* ===== Follow-up engine + Active Orders (calm, no red) ===== */
+
+/* Quick follow-up preset cluster */
+.fuc { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fuc-chip {
+  background: var(--panel-2); color: var(--txt-2);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast);
+}
+.fuc-chip:hover { border-color: var(--cyan); color: var(--cyan); }
+.fuc-snooze { color: var(--txt-3); }
+.fuc-date {
+  background: var(--panel-2); color: var(--txt); border: 1px solid var(--line);
+  border-radius: 7px; padding: 4px 8px; font-size: 12px;
+}
+.fuc-selected { color: var(--cyan); font-size: 12px; font-weight: 600; }
+.fuc-sm .fuc-chip { padding: 4px 8px; font-size: 11px; }
+.fu-inline { margin-top: 10px; }
+
+/* Cooling-off toggle */
+.cooling-toggle {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  font-size: 13px; color: var(--txt-2); cursor: pointer;
+}
+.cooling-toggle input { accent-color: var(--cyan); }
+
+/* Activity composer */
+.composer {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px; margin-bottom: 16px;
+}
+.composer-compact { padding: 10px; margin-top: 10px; }
+.composer-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.chip-group { display: inline-flex; gap: 4px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+.chip {
+  background: transparent; color: var(--txt-3); border: 0; border-radius: 6px;
+  padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.chip.on { background: var(--panel); color: var(--cyan); }
+.composer-body {
+  width: 100%; resize: vertical; background: var(--bg-2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  font: inherit; font-size: 14px; line-height: 1.5;
+}
+.composer-body:focus { outline: none; border-color: var(--line-2); }
+.composer-template { max-width: 280px; }
+.composer-followup { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.composer-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--txt-3); }
+.composer-err { color: var(--amber-soft); font-size: 13px; }
+.composer-actions { display: flex; justify-content: flex-end; }
+
+/* Activity timeline */
+.timeline-card { margin-top: 16px; }
+.timeline { display: flex; flex-direction: column; }
+.tl-item { display: flex; gap: 12px; padding: 12px 2px; border-top: 1px solid var(--line); }
+.tl-item:first-child { border-top: 0; }
+.tl-icon { font-size: 16px; line-height: 1.4; width: 22px; text-align: center; flex: 0 0 auto; }
+.tl-main { flex: 1 1 auto; min-width: 0; }
+.tl-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.tl-type { font-size: 13px; font-weight: 600; color: var(--txt); }
+.tl-aud { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--st-new); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px; }
+.tl-aud.factory { color: var(--teal); }
+.tl-when { font-size: 12px; color: var(--txt-3); margin-left: auto; }
+.tl-body { font-size: 14px; color: var(--txt-2); margin-top: 3px; white-space: pre-wrap; }
+.tl-by { font-size: 11px; margin-top: 3px; }
+
+/* Today list */
+.today-list { display: flex; flex-direction: column; gap: 10px; }
+.today-card {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  transition: border-color var(--dur-fast);
+}
+.today-card:hover { border-color: var(--line-2); }
+.today-card > .composer { flex-basis: 100%; margin-bottom: 0; margin-top: 4px; }
+.today-main { flex: 1 1 320px; min-width: 0; }
+.today-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.today-name { font-size: 15px; font-weight: 600; color: var(--txt); text-decoration: none; }
+.today-name:hover { color: var(--cyan); }
+.today-due { font-size: 12px; color: var(--txt-3); margin-left: auto; }
+.today-discussed { font-size: 14px; color: var(--txt-2); margin-top: 6px; }
+.today-sub { font-size: 12px; margin-top: 4px; }
+.today-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex: 0 0 auto; }
+.today-clear { color: var(--st-money); }
+.cool-badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--st-new); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 6px;
+}
+
+/* Active Orders board */
+.orders-stage { margin-bottom: 22px; }
+.orders-stage-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.orders-stage-head h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--txt-2); margin: 0; }
+.orders-stage-count { font-size: 12px; color: var(--txt-3); }
+.orders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.order-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px; transition: border-color var(--dur-fast);
+}
+.order-card:hover { border-color: var(--line-2); }
+.order-card.stale { border-color: rgba(241, 94, 48, .4); }
+.order-top { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.order-name { font-size: 15px; font-weight: 600; color: var(--txt); text-decoration: none; }
+.order-name:hover { color: var(--cyan); }
+.order-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--txt-3); }
+.order-meta b { color: var(--txt-2); font-weight: 600; }
+.needs-update { font-size: 11px; color: var(--amber-soft); display: inline-flex; align-items: center; gap: 5px; }
+.needs-update::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+.order-actions { display: flex; gap: 10px; align-items: center; margin-top: 2px; }
+.order-card > .composer { margin-bottom: 0; }

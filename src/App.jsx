@@ -10,6 +10,8 @@ import Dashboard from './pages/Dashboard'
 import ClientsList from './pages/ClientsList'
 import ClientNew from './pages/ClientNew'
 import ClientDetail from './pages/ClientDetail'
+import Today from './pages/Today'
+import ActiveOrders from './pages/ActiveOrders'
 import ComingSoon from './pages/ComingSoon'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
@@ -33,8 +35,8 @@ export default function App() {
         <Route path="/clients/:id"   element={<Protected><ClientDetail /></Protected>} />
 
         <Route path="/pipeline"  element={<Protected><ComingSoon title="Sales Pipeline" blurb="A drag-and-drop kanban to move deals from New Lead through Won." /></Protected>} />
-        <Route path="/projects"  element={<Protected><ComingSoon title="Projects" blurb="The fulfillment board — won deals from deposit through install." /></Protected>} />
-        <Route path="/followups" element={<Protected><ComingSoon title="Follow-up Queue" blurb="A cadence-driven list of who to contact next, and when." /></Protected>} />
+        <Route path="/projects"  element={<Protected><ActiveOrders /></Protected>} />
+        <Route path="/followups" element={<Protected><Today /></Protected>} />
         <Route path="/documents" element={<Protected><ComingSoon title="Documents" blurb="Quotes, contracts, renderings and layouts in one place." /></Protected>} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

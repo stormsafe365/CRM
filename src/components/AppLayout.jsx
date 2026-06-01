@@ -15,11 +15,11 @@ const navItems = [
     icon: <><path d="M4 6h16M4 12h10M4 18h6"/></>,
   },
   {
-    to: '/projects', title: 'Projects / Fulfillment',
+    to: '/projects', title: 'Active Orders',
     icon: <><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/></>,
   },
   {
-    to: '/followups', title: 'Follow-ups',
+    to: '/followups', title: 'Today — Follow-ups',
     icon: <><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></>,
   },
   {

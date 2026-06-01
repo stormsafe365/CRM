@@ -12,6 +12,8 @@ import StatusPill from '../components/StatusPill'
 import ClientForm from '../components/ClientForm'
 import QuotesTab from '../components/QuotesTab'
 import DocumentHub from '../components/DocumentHub'
+import FollowUpControls from '../components/FollowUpControls'
+import ActivityTimeline from '../components/ActivityTimeline'
 
 export default function ClientDetail() {
   const { id } = useParams()
@@ -60,6 +62,19 @@ export default function ClientDetail() {
       .eq('id', id)
     if (error) throw error
     setEditing(false)
+  }
+
+  // Inline follow-up set/snooze from the detail view (no full edit needed).
+  // The DB trigger auto-logs the follow_up_set activity when this column changes.
+  async function setFollowUp(iso) {
+    const { error } = await supabase.from('clients').update({ follow_up_date: iso }).eq('id', id)
+    if (!error) setClient(c => ({ ...c, follow_up_date: iso }))
+  }
+
+  async function toggleCooling() {
+    const next = !client.cooling_off
+    const { error } = await supabase.from('clients').update({ cooling_off: next }).eq('id', id)
+    if (!error) setClient(c => ({ ...c, cooling_off: next }))
   }
 
   async function handleDelete() {
@@ -182,6 +197,15 @@ export default function ClientDetail() {
           <DetailRow label="Primary Rep" value={userLabel(users, client.primary_rep)} />
           <DetailRow label="Secondary Rep" value={client.secondary_rep ? userLabel(users, client.secondary_rep) : null} />
           <DetailRow label="Follow-Up Date" value={client.follow_up_date ? formatDate(client.follow_up_date) : null} />
+          <div className="fu-inline">
+            <FollowUpControls baseDate={client.follow_up_date} coolingOff={!!client.cooling_off} onPick={setFollowUp} />
+          </div>
+          {'cooling_off' in client && (
+            <label className="cooling-toggle">
+              <input type="checkbox" checked={!!client.cooling_off} onChange={toggleCooling} />
+              <span>Cooling off — use a longer check-in cadence</span>
+            </label>
+          )}
         </DetailCard>
       </div>
 
@@ -202,9 +226,8 @@ export default function ClientDetail() {
 
       <DocumentHub clientId={client.id} />
 
-      <div className="placeholder-card">
-        <div className="detail-card-title">Activity</div>
-        <p className="muted">Activity timeline (notes, status changes, quote events) will appear here in the next build step.</p>
+      <div style={{ marginTop: 16 }}>
+        <ActivityTimeline client={client} showAudience={client.status === 'ordered'} />
       </div>
     </div>
   )
