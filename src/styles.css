@@ -1884,3 +1884,17 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .needs-update::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
 .order-actions { display: flex; gap: 10px; align-items: center; margin-top: 2px; }
 .order-card > .composer { margin-bottom: 0; }
+
+/* Notifications: nav count badge + reminder bell */
+.nav-badge {
+  position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px;
+  padding: 0 4px; box-sizing: border-box; border-radius: 8px;
+  background: var(--cyan); color: #04181a; font-size: 10px; font-weight: 700;
+  line-height: 16px; text-align: center; pointer-events: none;
+}
+.icon-btn.bell { position: relative; }
+.icon-btn.bell.on { color: var(--cyan); }
+.bell-dot {
+  position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--amber); pointer-events: none;
+}

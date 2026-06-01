@@ -2,8 +2,11 @@
 // Nav mirrors the prototype's six destinations; screens not yet built route
 // to a styled "coming soon" placeholder so the nav always looks complete.
 
+import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useDueFollowups } from '../lib/useDueFollowups'
+import { isoToday } from '../lib/followups'
 
 const navItems = [
   {
@@ -35,6 +38,41 @@ const navItems = [
 export default function AppLayout({ children }) {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const { count: dueCount, clients: dueClients } = useDueFollowups()
+  const notifSupported = typeof window !== 'undefined' && 'Notification' in window
+  const [notifPerm, setNotifPerm] = useState(notifSupported ? Notification.permission : 'unsupported')
+
+  // Tab title carries the due count even when the tab is in the background.
+  useEffect(() => {
+    document.title = dueCount > 0 ? `(${dueCount}) StormSafe CRM` : 'StormSafe CRM'
+  }, [dueCount])
+
+  // One calm desktop reminder per day, only if the rep opted in.
+  useEffect(() => {
+    if (!notifSupported || notifPerm !== 'granted' || dueCount < 1) return
+    const today = isoToday()
+    if (localStorage.getItem('ss_lastNotified') === today) return
+    localStorage.setItem('ss_lastNotified', today)
+    const names = dueClients.slice(0, 4).map(c => c.name).join(', ')
+    const note = new Notification(`${dueCount} follow-up${dueCount === 1 ? '' : 's'} to check in on`, {
+      body: names + (dueClients.length > 4 ? `, +${dueClients.length - 4} more` : ''),
+      icon: '/logo.png',
+    })
+    note.onclick = () => { window.focus(); navigate('/followups'); note.close() }
+  }, [notifSupported, notifPerm, dueCount, dueClients, navigate])
+
+  function enableReminders() {
+    if (!notifSupported || Notification.permission !== 'default') return
+    Notification.requestPermission().then(p => {
+      setNotifPerm(p)
+      localStorage.removeItem('ss_lastNotified') // allow today's reminder right after opting in
+    })
+  }
+
+  const bellTitle = notifPerm === 'granted' ? 'Follow-up reminders are on'
+    : notifPerm === 'denied' ? 'Reminders blocked — turn on notifications for this site in your browser'
+    : notifPerm === 'unsupported' ? 'Reminders not supported in this browser'
+    : 'Enable daily follow-up reminders'
 
   async function handleSignOut() {
     await signOut()
@@ -69,6 +107,9 @@ export default function AppLayout({ children }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 {item.icon}
               </svg>
+              {item.to === '/followups' && dueCount > 0 && (
+                <span className="nav-badge">{dueCount > 9 ? '9+' : dueCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -92,6 +133,19 @@ export default function AppLayout({ children }) {
             <input placeholder="Search clients, counties…" onKeyDown={onSearch} />
           </div>
           <div className="top-actions">
+            {notifPerm !== 'unsupported' && (
+              <button
+                onClick={enableReminders}
+                className={`icon-btn bell ${notifPerm === 'granted' ? 'on' : ''}`}
+                title={bellTitle}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.7 21a2 2 0 01-3.4 0"/>
+                </svg>
+                {dueCount > 0 && <span className="bell-dot" />}
+              </button>
+            )}
             <Link to="/clients/new" className="icon-btn" title="New client">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
                 <path d="M12 5v14M5 12h14"/>
