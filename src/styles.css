@@ -45,24 +45,54 @@
   --st-money:   #43ffd2;
   --st-done:    #34d399;
   --st-bad:     #f87171;
+
+  /* ── Theme re-skin tokens (premium-gray base · restrained cyan) ── */
+  --card:      #0f1620;            /* card surface */
+  --card-2:    #141c28;            /* nested surface (tiles, quote cards, notes) */
+  --inset:     #080c13;            /* recessed (search, gauge track, segmented) */
+  --bd:        rgba(255,255,255,.08);   /* hairline border */
+  --bd2:       rgba(255,255,255,.14);   /* hover / emphasis */
+  --t1:        #eef3f7;            /* headings */
+  --t2:        #b4bdc7;            /* body */
+  --t3:        #7f8a96;            /* labels, muted */
+  --t4:        #55606c;            /* faint / placeholder */
+  --acc:       #1fd3d0;            /* THE accent — used sparingly */
+  --acc-br:    #4cebe6;            /* totals / hover */
+  --acc-bg:    rgba(31,211,208,.18);
+  --acc-bd:    rgba(31,211,208,.46);
+  --acc-glow:  rgba(31,211,208,.65);    /* glow — ONLY temp knob + active step */
+  --sage:      #8fbf86;  --sage-bg: rgba(143,191,134,.13);
+  --sand:      #d9a24a;  --sand-bg: rgba(217,162,74,.13);
+  --clay:      #d27a63;
+  --violet:    #9b8fd1;
+  --r:         10px;              /* cards */
+  --r2:        8px;               /* controls */
+  --el:        0 6px 26px rgba(0,0,0,.32);  /* the ONLY shadow — lead header */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 
 body {
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-family: 'Geist', system-ui, sans-serif;
   background: var(--bg);
-  color: var(--txt);
+  color: var(--t2);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   font-size: 14px;
+  letter-spacing: -.005em;
 }
 
-.num, .display {
-  font-family: 'Chakra Petch', 'Oxanium', sans-serif;
-  font-feature-settings: "tnum";
-  letter-spacing: .01em;
+.num, .display, .mono {
+  font-family: 'Geist Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+
+/* section label — uppercase, tracked, muted gray (NOT cyan) */
+.lab {
+  font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--t3); font-weight: 600;
 }
 
 /* ===== Ambient background ===== */
@@ -1880,51 +1910,50 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 /* ===== Customer Summary (lead detail header) ===== */
 .cust-summary {
   display: grid; grid-template-columns: 1.25fr 1fr 1fr 1.15fr;
-  background: linear-gradient(160deg, var(--panel), var(--bg-2));
-  border: 1px solid rgba(0, 217, 217, .18); border-radius: 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 12px 30px rgba(0, 0, 0, .35);
+  background: var(--card);
+  border: 1px solid var(--bd); border-radius: var(--r);
+  box-shadow: var(--el);            /* the ONLY shadow in the app — lead header */
   overflow: hidden; margin-bottom: 8px;
 }
-.cs-panel { padding: 18px 20px; border-left: 1px solid var(--line); min-width: 0; }
+.cs-panel { padding: 20px 22px; border-left: 1px solid var(--bd); min-width: 0; }
 .cs-panel:first-child { border-left: 0; }
 .cs-eyebrow {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--cyan-dim, #1ab5ab); font-family: 'Chakra Petch', sans-serif; margin-bottom: 12px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .13em;
+  color: var(--t3); font-weight: 600; margin-bottom: 12px;
 }
 .cs-cust-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .cs-avatar {
   width: 46px; height: 46px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 700; font-size: 15px; font-family: 'Chakra Petch', sans-serif;
-  background: linear-gradient(145deg, #27e0b3, #0e7d6b); color: #042018;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, .35), 0 4px 10px rgba(0, 0, 0, .4);
+  font-weight: 600; font-size: 15px; font-family: 'Geist Mono', monospace;
+  background: var(--acc-bg); color: var(--acc); border: 1px solid var(--acc-bd);
 }
 .cs-name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.cs-name { font-size: 22px; margin: 0; line-height: 1.15; overflow-wrap: anywhere; }
-.cs-edit { background: transparent; border: 0; color: var(--txt-3); cursor: pointer; font-size: 15px; padding: 2px; }
-.cs-edit:hover { color: var(--cyan); }
+.cs-name { font-size: 22px; font-weight: 600; margin: 0; line-height: 1.15; color: var(--t1); overflow-wrap: anywhere; }
+.cs-edit { background: transparent; border: 0; color: var(--t3); cursor: pointer; font-size: 15px; padding: 2px; }
+.cs-edit:hover { color: var(--acc); }
 .cs-lines { display: flex; flex-direction: column; gap: 6px; }
-.cs-line { font-size: 13px; color: var(--txt-2); overflow-wrap: anywhere; }
+.cs-line { font-size: 13px; color: var(--t2); overflow-wrap: anywhere; }
 .cs-source {
-  display: inline-block; margin-top: 11px; font-size: 11px; color: var(--txt-3);
-  border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
+  display: inline-block; margin-top: 11px; font-size: 11px; color: var(--t3);
+  border: 1px solid var(--bd); border-radius: 6px; padding: 3px 9px;
 }
-.cs-headline { font-size: 18px; font-weight: 700; font-family: 'Chakra Petch', sans-serif; color: var(--txt); margin-bottom: 12px; }
+.cs-headline { font-size: 18px; font-weight: 600; font-family: 'Geist Mono', monospace; font-variant-numeric: tabular-nums; color: var(--t1); margin-bottom: 12px; }
 .cs-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; padding: 4px 0; }
-.cs-kv > span { color: var(--txt-3); }
-.cs-kv > b { color: var(--txt-2); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
-.cs-quote { color: var(--cyan) !important; font-family: 'Chakra Petch', sans-serif; font-size: 15px; }
+.cs-kv > span { color: var(--t3); }
+.cs-kv > b { color: var(--t2); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+.cs-quote { color: var(--acc-br) !important; font-family: 'Geist Mono', monospace; font-variant-numeric: tabular-nums; font-size: 15px; }
 .cs-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .cs-actions { display: flex; justify-content: flex-end; margin: 0 0 16px; }
 
 @media (max-width: 1000px) {
   .cust-summary { grid-template-columns: 1fr 1fr; }
   .cs-panel:nth-child(3) { border-left: 0; }
-  .cs-panel:nth-child(3), .cs-panel:nth-child(4) { border-top: 1px solid var(--line); }
+  .cs-panel:nth-child(3), .cs-panel:nth-child(4) { border-top: 1px solid var(--bd); }
 }
 @media (max-width: 600px) {
   .cust-summary { grid-template-columns: 1fr; }
   .cs-panel { border-left: 0; }
-  .cs-panel + .cs-panel { border-top: 1px solid var(--line); }
+  .cs-panel + .cs-panel { border-top: 1px solid var(--bd); }
 }
 
 /* Activity & Progress + Upcoming Follow-Ups row */
@@ -1993,7 +2022,7 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 /* ===== Motion + industrial neumorphism pass ===== */
 
 /* Steel-glint sheen + hover glow/lift on the lead-detail cards (matches .panel) */
-.cust-summary, .ap-card, .fuc-card {
+.ap-card, .fuc-card {
   position: relative; overflow: hidden;
   transition: border-color var(--dur-base) var(--ease-standard),
               box-shadow var(--dur-base) var(--ease-standard),
@@ -2002,13 +2031,12 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .ap-card:hover, .fuc-card:hover {
   border-color: rgba(0, 217, 217, .34); box-shadow: 0 0 22px rgba(0, 217, 217, .09); transform: translateY(-2px);
 }
-.cust-summary:hover { border-color: rgba(0, 217, 217, .34); box-shadow: 0 0 26px rgba(0, 217, 217, .08); }
-.cust-summary::after, .ap-card::after, .fuc-card::after {
+.ap-card::after, .fuc-card::after {
   content: ""; position: absolute; top: 0; left: 0; width: 55%; height: 100%; pointer-events: none;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .05) 45%, rgba(0, 217, 217, .05) 55%, transparent);
   transform: translateX(-180%) skewX(-16deg); transition: transform .9s var(--ease-standard);
 }
-.cust-summary:hover::after, .ap-card:hover::after, .fuc-card:hover::after { transform: translateX(260%) skewX(-16deg); }
+.ap-card:hover::after, .fuc-card:hover::after { transform: translateX(260%) skewX(-16deg); }
 
 /* Industrial neumorphism on controls — subtle raised face, tactile press */
 .btn-primary, .btn-secondary, .btn-danger, .btn-danger-ghost, .fuc-add {
