@@ -94,7 +94,7 @@ export default function NotesSection({ clientId }) {
           {notes.map(n => {
             const m = catMeta(n.category)
             return (
-              <div key={n.id} className="note-card">
+              <div key={n.id} className={`note-card cat-${n.category}`}>
                 <div className="note-card-head">
                   <span className={`note-badge note-${n.category}`}>{m.icon} {m.l}</span>
                   <div className="note-card-actions">

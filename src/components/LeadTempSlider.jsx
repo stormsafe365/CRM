@@ -1,25 +1,27 @@
-// LeadTempSlider: an interactive thermometer for lead temperature.
-// Drag the glowing knob (or click a level / use arrow keys) to set
-// Cold → Warm → Hot → Ready to Close. Neumorphic groove + raised knob,
-// color + glow track the active level, and the knob animates between stops.
+// LeadTempSlider: the lead-temperature gauge in the lead header.
+// Skinned to the mockup (.temp-track gradient + draggable .temp-knob, 6-stop
+// scale). Drag the knob, click the track, or use arrow keys to set the stage.
 // Presentational: calls onChange(levelKey); parent persists + stamps who/when.
 
 import { useRef, useState } from 'react'
 import { fmtLong } from '../lib/followups'
 
+// Six stops, matching the mockup gauge (labels per StormSafe spec).
 const TEMP_LEVELS = [
-  { key: 'cold',  label: 'Cold',           color: '#38bdf8' },
-  { key: 'warm',  label: 'Warm',           color: '#6ee7a8' },
-  { key: 'hot',   label: 'Hot',            color: '#fb7a3c' },
-  { key: 'ready', label: 'Ready to Close', color: '#f87171' },
+  { key: 'cold',            label: 'Cold',            color: '#6FC9E8' },
+  { key: 'warm',            label: 'Warm',            color: '#5FD98F' },
+  { key: 'hot',             label: 'Hot',             color: '#8FD14F' },
+  { key: 'ready',           label: 'Ready to Close',  color: '#FFB547' },
+  { key: 'pending_deposit', label: 'Pending Deposit', color: '#FF5C5C' },
+  { key: 'ordered',         label: 'Ordered',         color: '#22C55E' },
 ]
-
 const LAST = TEMP_LEVELS.length - 1
 
 export default function LeadTempSlider({ value, updatedAt, updatedByName, onChange }) {
   const trackRef = useRef(null)
   const [dragFrac, setDragFrac] = useState(null) // 0..1 while actively dragging
 
+  // Legacy 4-stop value 'ready' still maps cleanly to index 3.
   const setIdx = TEMP_LEVELS.findIndex(l => l.key === value)
   const hasValue = setIdx >= 0
   const baseFrac = hasValue ? setIdx / LAST : 0
@@ -60,11 +62,13 @@ export default function LeadTempSlider({ value, updatedAt, updatedByName, onChan
   }
 
   return (
-    <div className="lts">
-      <div className="lts-row">
-        <span className="lts-thermo" aria-hidden style={{ color: hasValue ? active.color : 'var(--txt-3)' }}>🌡</span>
+    <div className="temp-wrap">
+      <svg className="thermo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+      </svg>
+      <div className="temp-body">
         <div
-          className="lts-track"
+          className="temp-track"
           ref={trackRef}
           role="slider"
           tabIndex={0}
@@ -73,43 +77,25 @@ export default function LeadTempSlider({ value, updatedAt, updatedByName, onChan
           aria-valuemin={0} aria-valuemax={LAST} aria-valuenow={hasValue ? setIdx : 0}
           onPointerDown={startDrag}
           onKeyDown={onKeyDown}
+          style={{ cursor: 'pointer' }}
         >
-          {TEMP_LEVELS.map((l, i) => (
-            <button
-              key={l.key}
-              type="button"
-              className={`lts-stop${i <= liveIdx && hasValue ? ' passed' : ''}`}
-              style={{ left: `${(i / LAST) * 100}%` }}
-              onClick={(e) => { e.stopPropagation(); commit(i) }}
-              aria-label={l.label}
-              tabIndex={-1}
-            />
-          ))}
           <div
-            className={`lts-knob${dragging ? ' dragging' : ''}${hasValue ? '' : ' unset'}`}
-            style={{ left: `${frac * 100}%`, '--knob': active.color }}
+            className={`temp-knob${dragging ? ' dragging' : ''}`}
+            style={{ left: `${frac * 100}%`, borderColor: hasValue ? active.color : undefined }}
           />
         </div>
-      </div>
-
-      <div className="lts-labels">
-        {TEMP_LEVELS.map((l, i) => (
-          <button
-            key={l.key}
-            type="button"
-            className={`lts-label${hasValue && i === setIdx ? ' on' : ''}`}
-            style={hasValue && i === setIdx ? { color: l.color } : undefined}
-            onClick={() => commit(i)}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="lts-meta">
-        <span>Current Status: <b style={{ color: hasValue ? active.color : 'var(--txt-3)' }}>{hasValue ? active.label : 'Not set'}</b></span>
-        {updatedAt && <span className="lts-meta-sub">Last Updated: {fmtLong(updatedAt.slice(0, 10))}</span>}
-        {updatedByName && updatedByName !== '—' && <span className="lts-meta-sub">Updated By: {updatedByName}</span>}
+        <div className="temp-scale six">
+          {TEMP_LEVELS.map(l => <span key={l.key}>{l.label}</span>)}
+        </div>
+        <div className="temp-meta">
+          <div className="tm-row">
+            <span>Current Status: <b style={{ color: hasValue ? active.color : 'var(--fg-3)' }}>{hasValue ? active.label : 'Not set'}</b></span>
+            {updatedAt && <span>Last Updated: <b className="num">{fmtLong(updatedAt.slice(0, 10))}</b></span>}
+          </div>
+          {updatedByName && updatedByName !== '—' && (
+            <div className="tm-row"><span>Updated By: <b>{updatedByName}</b></span></div>
+          )}
+        </div>
       </div>
     </div>
   )

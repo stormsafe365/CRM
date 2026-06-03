@@ -1,6 +1,6 @@
-// AppLayout: vertical icon sidebar + top bar. Matches the prototype shell.
-// Nav mirrors the prototype's six destinations; screens not yet built route
-// to a styled "coming soon" placeholder so the nav always looks complete.
+// AppLayout: the app shell — 232px sidebar + sticky topbar + scroll canvas.
+// Skinned to the StormSafe "premium industrial" design system (theme.css).
+// All behavior (auth, due-follow-up badge, desktop reminders, search) is unchanged.
 
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
@@ -8,51 +8,53 @@ import { useAuth } from '../context/AuthContext'
 import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
 import { isoToday } from '../lib/followups'
+import { useUsers, userLabel } from '../lib/useUsers'
 
+// Lucide-style 2px-stroke icons, matched to the mockup sidebar.
 const navItems = [
   {
-    to: '/dashboard', title: 'Dashboard',
-    icon: <><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></>,
+    to: '/dashboard', label: 'Dashboard',
+    icon: <><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></>,
   },
   {
-    to: '/pipeline', title: 'Sales Pipeline',
-    icon: <><path d="M4 6h16M4 12h10M4 18h6"/></>,
+    to: '/clients', label: 'Leads',
+    icon: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
   },
   {
-    to: '/projects', title: 'Active Orders',
-    icon: <><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/></>,
+    to: '/projects', label: 'Projects',
+    icon: <><path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /></>,
   },
   {
-    to: '/followups', title: 'Today — Follow-ups',
-    icon: <><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></>,
+    to: '/followups', label: 'Follow-Ups',
+    icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   },
   {
-    to: '/clients', title: 'Customers',
-    icon: <><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0111 0M16 6.5a3 3 0 010 5.6M19 19a4.8 4.8 0 00-3-4.4"/></>,
+    to: '/pipeline', label: 'Pipeline',
+    icon: <><path d="M3 4h18l-7 8v6l-4 2v-8z" /></>,
   },
   {
-    to: '/quotes', title: 'All Quotes',
-    icon: <><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 13h6M10 17h6"/></>,
+    to: '/quotes', label: 'Quotes',
+    icon: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
   },
 ]
 
 export default function AppLayout({ children }) {
   const { user, signOut } = useAuth()
+  const { users } = useUsers()
   const navigate = useNavigate()
   const { count: dueCount, clients: dueClients } = useDueFollowups()
   const notifSupported = typeof window !== 'undefined' && 'Notification' in window
   const [notifPerm, setNotifPerm] = useState(notifSupported ? Notification.permission : 'unsupported')
 
-  // Clock-triggered pings for follow-ups that have a specific time set today.
-  // Open-app coverage; the daily email handles closed-app.
+  // Clock-triggered pings for follow-ups with a specific time set today.
   useTimedReminders(notifPerm === 'granted')
 
-  // Tab title carries the due count even when the tab is in the background.
+  // Tab title carries the due count even when the tab is backgrounded.
   useEffect(() => {
     document.title = dueCount > 0 ? `(${dueCount}) StormSafe CRM` : 'StormSafe CRM'
   }, [dueCount])
 
-  // One calm desktop reminder per day, only if the rep opted in.
+  // One calm desktop reminder per day, if the rep opted in.
   useEffect(() => {
     if (!notifSupported || notifPerm !== 'granted' || dueCount < 1) return
     const today = isoToday()
@@ -70,7 +72,7 @@ export default function AppLayout({ children }) {
     if (!notifSupported || Notification.permission !== 'default') return
     Notification.requestPermission().then(p => {
       setNotifPerm(p)
-      localStorage.removeItem('ss_lastNotified') // allow today's reminder right after opting in
+      localStorage.removeItem('ss_lastNotified')
     })
   }
 
@@ -84,9 +86,10 @@ export default function AppLayout({ children }) {
     navigate('/login')
   }
 
-  const initials = user?.email
-    ? user.email.split('@')[0].slice(0, 2).toUpperCase()
-    : '··'
+  const displayName = userLabel(users, user?.id) !== '—'
+    ? userLabel(users, user?.id)
+    : (user?.email?.split('@')[0] ?? 'User')
+  const initials = displayName.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '··'
 
   function onSearch(e) {
     if (e.key === 'Enter') {
@@ -97,75 +100,82 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="app">
-      <aside className="side">
-        <Link to="/dashboard" className="brand-mark" title="StormSafe Steel">
-          <img className="brand-logo" src="/logo.png" alt="StormSafe Steel" />
+      {/* ============================ SIDEBAR ============================ */}
+      <aside className="sidebar">
+        <Link to="/dashboard" className="brand" title="StormSafe Steel" style={{ textDecoration: 'none' }}>
+          <img className="brand-mark" src="/logo.png" alt="StormSafe Steel" />
+          <div>
+            <div className="brand-name">STORM<b>SAFE</b></div>
+            <div className="brand-sub">STEEL</div>
+          </div>
         </Link>
+
         <nav className="nav">
           {navItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
-              title={item.title}
-              className={({ isActive }) => isActive ? 'nav-btn active' : 'nav-btn'}
+              title={item.label}
+              className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
                 {item.icon}
               </svg>
+              {item.label}
               {item.to === '/followups' && dueCount > 0 && (
-                <span className="nav-badge">{dueCount > 9 ? '9+' : dueCount}</span>
+                <span className="badge-count" style={{ position: 'static', marginLeft: 'auto', border: 'none' }}>
+                  {dueCount > 9 ? '9+' : dueCount}
+                </span>
               )}
             </NavLink>
           ))}
         </nav>
-        <div className="side-foot">
-          <button className="avatar" onClick={handleSignOut} title={`${user?.email ?? ''} — click to sign out`}>
-            {initials}
+
+        <div className="sidebar-foot">
+          <button className="user-pill" onClick={handleSignOut} title="Click to sign out"
+            style={{ width: '100%', textAlign: 'left', font: 'inherit' }}>
+            <div className="avatar md">{initials}</div>
+            <div className="user-meta">
+              <div className="nm">{displayName}</div>
+              <div className="rl">Sales Rep</div>
+            </div>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6B7E92" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
           </button>
+          <div className="online"><span className="dot" />Online</div>
         </div>
       </aside>
 
-      <main className="main">
-        <div className="topbar">
-          <Link to="/dashboard" className="wordmark">
-            <span className="s">STORM</span>SAFE STEEL
-          </Link>
-          <div className="mfr-badge">Mfr split &nbsp;<b>CA / CCI</b></div>
+      {/* ============================ MAIN ============================ */}
+      <div className="main">
+        <header className="topbar">
+          <div style={{ width: 120 }} />
           <div className="search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>
-            </svg>
-            <input placeholder="Search clients, counties…" onKeyDown={onSearch} />
+            <svg className="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <input type="text" placeholder="Search clients, counties, projects…" onKeyDown={onSearch} />
+            <span className="kbd">⌘ K</span>
           </div>
           <div className="top-actions">
             {notifPerm !== 'unsupported' && (
-              <button
-                onClick={enableReminders}
-                className={`icon-btn bell ${notifPerm === 'granted' ? 'on' : ''}`}
-                title={bellTitle}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.7 21a2 2 0 01-3.4 0"/>
-                </svg>
-                {dueCount > 0 && <span className="bell-dot" />}
+              <button className="icon-btn" onClick={enableReminders} title={bellTitle}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+                {dueCount > 0 && <span className="badge-count">{dueCount > 9 ? '9+' : dueCount}</span>}
               </button>
             )}
             <Link to="/clients/new" className="icon-btn" title="New client">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             </Link>
-            <button onClick={handleSignOut} className="icon-btn" title="Sign out">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M15 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4M10 17l-5-5 5-5M5 12h12"/>
-              </svg>
+            <button className="icon-btn" onClick={handleSignOut} title="Sign out">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg>
             </button>
           </div>
-        </div>
+        </header>
 
-        {children}
-      </main>
+        <div className="scroll">
+          <div className="canvas">
+            {children}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
