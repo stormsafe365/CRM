@@ -58,6 +58,7 @@ export default function ActiveOrders() {
     <div>
       <div className="page-header">
         <div>
+          <div className="eyebrow-lime">Fulfillment</div>
           <h1>Active Orders</h1>
           <div className="muted">Every ordered build, by stage — keep the customer and the factory in the loop.</div>
         </div>

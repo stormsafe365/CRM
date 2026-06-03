@@ -84,6 +84,7 @@ export default function Today() {
     <div>
       <div className="page-header">
         <div>
+          <div className="eyebrow-lime">Follow-Ups</div>
           <h1>Today</h1>
           <div className="muted">Who to gently check in with — today, plus anything that slipped by.</div>
         </div>

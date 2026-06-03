@@ -13,6 +13,8 @@ import ClientDetail from './pages/ClientDetail'
 import Today from './pages/Today'
 import ActiveOrders from './pages/ActiveOrders'
 import AllQuotes from './pages/AllQuotes'
+import Renderings from './pages/Renderings'
+import LayoutTool from './pages/LayoutTool'
 import ComingSoon from './pages/ComingSoon'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
@@ -39,6 +41,8 @@ export default function App() {
         <Route path="/projects"  element={<Protected><ActiveOrders /></Protected>} />
         <Route path="/followups" element={<Protected><Today /></Protected>} />
         <Route path="/quotes"    element={<Protected><AllQuotes /></Protected>} />
+        <Route path="/renderings" element={<Protected><Renderings /></Protected>} />
+        <Route path="/layout"    element={<Protected><LayoutTool /></Protected>} />
         <Route path="/documents" element={<Protected><AllQuotes /></Protected>} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

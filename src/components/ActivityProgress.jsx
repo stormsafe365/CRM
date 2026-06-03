@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { agoLabel, fmtLong, fmtTime } from '../lib/followups'
 import ActivityComposer from './ActivityComposer'
+import { toast } from '../lib/uiFx'
 
 const TYPE_META = {
   call: { icon: '📞', label: 'Call' },
@@ -81,42 +82,82 @@ export default function ActivityProgress({ client, showAudience = false }) {
     ? `Follow up ${fmtLong(client.follow_up_date)}${client.follow_up_time ? ` · ${fmtTime(client.follow_up_time)}` : ''}`
     : 'No follow-up scheduled'
 
-  return (
-    <div className="detail-card detail-card-full ap-card" style={{ marginTop: 16 }}>
-      <button type="button" className="ap-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-        <span className="detail-card-title" style={{ margin: 0 }}>Activity &amp; Progress</span>
-        <span className="ap-toggle">{open ? 'Collapse ▲' : 'Expand Activity ▼'}</span>
-      </button>
+  // Clicking a step advances the client to that milestone. Maps the design's
+  // linear stepper onto the app's real status / project_stage fields. The
+  // 'Lead Created' step is fixed (always done), so it isn't clickable.
+  const STEP_PATCH = [
+    null,                                                 // 0 Lead Created (fixed)
+    { status: 'working' },                                // 1 Quote Sent
+    { status: 'contract_sent' },                          // 2 Contract Sent
+    { status: 'ordered' },                                // 3 Contract Signed
+    { status: 'ordered', payment_cleared: true },         // 4 Deposit Received
+    { status: 'ordered', project_stage: 'engineering' },  // 5 Engineering
+    { status: 'ordered', project_stage: 'permitting' },   // 6 Permitting
+    { status: 'ordered', project_stage: 'scheduling' },   // 7 Scheduling
+    { status: 'ordered', project_stage: 'installed' },    // 8 Installed
+  ]
+  async function setMilestone(i) {
+    const patch = STEP_PATCH[i]
+    if (!patch) return
+    const { error } = await supabase.from('clients').update(patch).eq('id', client.id)
+    if (error) {
+      const m = (error.message || '').toLowerCase()
+      toast(m.includes('project_stage') || m.includes('payment_cleared') || m.includes('schema cache')
+        ? 'That stage needs the one-time database update before it will save.'
+        : error.message)
+      return
+    }
+    toast(`Stage updated to "${milestones[i].label}"`, 'success')
+  }
 
-      {/* Progress tracker — always visible */}
-      <div className="ap-track">
+  return (
+    <section className="card card-pad ap-card">
+      <div className="section-head"><h3>Activity &amp; Progress</h3></div>
+
+      {/* Progress stepper — always visible (design 10-node style) */}
+      <div className="stepper">
         {milestones.map((m, i) => (
-          <div key={m.label} className={`ap-step${m.done ? ' done' : ''}${i === currentIdx ? ' current' : ''}`}>
-            <span className="ap-dot">{m.done ? '✓' : i === currentIdx ? '◉' : ''}</span>
-            <span className="ap-step-label">{m.label}</span>
+          <div key={m.label} className={`step${m.done ? ' done' : ''}${i === currentIdx ? ' current' : ''}`}
+            onClick={() => setMilestone(i)} role={i === 0 ? undefined : 'button'}
+            title={i === 0 ? undefined : `Set stage to “${m.label}”`}
+            style={{ cursor: i === 0 ? 'default' : 'pointer' }}>
+            <div className="step-node">
+              {m.done
+                ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                : (i + 1)}
+            </div>
+            <div className="step-label">{m.label}</div>
           </div>
         ))}
       </div>
 
       {/* Compact summary — always visible */}
-      <div className="ap-summary">
-        <div>
-          <div className="ap-summary-label">Last Activity</div>
-          <div className="ap-summary-val">
+      <div className="activity-foot">
+        <div className="act-block">
+          <div className="lab">Last Activity</div>
+          <div className="val">
+            <span className="dot" />
             {loading ? '…' : last
-              ? `${(TYPE_META[last.type]?.label) || last.type}${last.body ? ` — ${last.body.length > 80 ? last.body.slice(0, 80) + '…' : last.body}` : ''} · ${agoLabel(last.created_at.slice(0, 10))}`
+              ? `${(TYPE_META[last.type]?.label) || last.type}${last.body ? ` — ${last.body.length > 60 ? last.body.slice(0, 60) + '…' : last.body}` : ''} · ${agoLabel(last.created_at.slice(0, 10))}`
               : 'No activity yet'}
           </div>
         </div>
-        <div>
-          <div className="ap-summary-label">Next Action</div>
-          <div className="ap-summary-val">{nextAction}</div>
+        <div className="act-block">
+          <div className="lab">Next Action</div>
+          <div className="val">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>
+            {nextAction}
+          </div>
         </div>
+        <button type="button" className="expand-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+          {open ? 'Collapse' : 'Expand Activity'}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="M6 9l6 6 6-6" /></svg>
+        </button>
       </div>
 
       {/* Expanded: composer + full timeline */}
       {open && (
-        <div className="ap-expanded">
+        <div className="ap-expanded" style={{ marginTop: 20 }}>
           <ActivityComposer client={client} showAudience={showAudience} />
           <div className="timeline">
             {loading ? (
@@ -129,7 +170,7 @@ export default function ActivityProgress({ client, showAudience = false }) {
           </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 

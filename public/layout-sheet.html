@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building Approval Sheet | StormSafe Steel</title>
+<meta name="description" content="StormSafe Steel building layout approval sheet — place and dimension walk doors, windows, roll-up doors and framed openings, then save and email as a PDF for customer sign-off.">
+<meta name="theme-color" content="#08121d">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --teal:#09d6dc;--teal-dim:#07bcc1;--teal-glow:rgba(9,214,220,.10);
+  --dark:#08121d;--dark-2:#111827;--dark-3:#1a2436;--dark-4:#1f2d42;
+  --border:#1e2d42;--border-vis:#2a3d55;
+  --text:#e2e8f0;--sub:#94a3b8;--muted:#64748b;
+  --h:"Orbitron",system-ui,sans-serif;--b:"Inter",system-ui,sans-serif;
+
+  /* Component colors — used in both app chrome and the printed sheet */
+  --c-rollup:#2563eb;   /* roll-up door  */
+  --c-walk:#0e9488;     /* walk door     */
+  --c-window:#f59e0b;   /* window        */
+  --c-framed:#7c3aed;   /* framed opening*/
+
+  /* Printed sheet (light, engineering-drawing style) */
+  --ink:#0f1b2d;--ink-2:#3c4a5e;--paper:#ffffff;--paper-2:#f4f7fa;
+  --line:#c9d4e0;--line-2:#e4eaf1;--acc:#0b8f95;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--dark);color:var(--text);font-family:var(--b);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit;color:inherit}
+input,select,textarea{font-size:14px}
+
+/* ─── APP HEADER ─── */
+.app-header{position:sticky;top:0;z-index:50;background:rgba(8,18,29,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border-vis);height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:16px}
+.app-logo{font-family:var(--h);font-weight:800;font-size:14px;letter-spacing:.05em;text-transform:uppercase}
+.app-logo span{color:var(--teal)}
+.app-logo small{display:block;font-family:var(--b);font-weight:500;font-size:10px;letter-spacing:.18em;color:var(--sub);text-transform:uppercase;margin-top:2px}
+.app-actions{display:flex;gap:10px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:11px 16px;cursor:pointer;border:1px solid var(--border-vis);background:var(--dark-3);color:var(--text);transition:all .18s;border-radius:6px}
+.btn:hover{border-color:var(--teal);color:var(--teal)}
+.btn-primary{background:var(--teal);color:#08121d;border-color:var(--teal)}
+.btn-primary:hover{background:var(--teal-dim);color:#08121d}
+
+/* ─── LAYOUT ─── */
+.shell{display:flex;align-items:flex-start;gap:0;min-height:calc(100vh - 58px)}
+.panel{width:336px;flex-shrink:0;background:var(--dark-2);border-right:1px solid var(--border-vis);padding:18px 16px 60px;position:sticky;top:58px;max-height:calc(100vh - 58px);overflow-y:auto}
+.stage{flex:1;padding:26px;display:flex;justify-content:center;background:
+  radial-gradient(ellipse 900px 500px at 50% -10%, rgba(9,214,220,.06), transparent 60%),var(--dark)}
+
+/* ─── CONTROL PANEL ─── */
+.panel h2{font-family:var(--h);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin:22px 0 12px;display:flex;align-items:center;gap:8px}
+.panel h2:first-child{margin-top:0}
+.panel h2::before{content:"";width:18px;height:1px;background:var(--teal)}
+.field{margin-bottom:11px}
+.field label{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);margin-bottom:5px;font-weight:600}
+.field input,.field select,.field textarea{width:100%;background:var(--dark-3);border:1px solid var(--border-vis);color:var(--text);padding:9px 10px;border-radius:6px;outline:none;transition:border-color .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--teal)}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+.add-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.add-btn{display:flex;align-items:center;gap:9px;background:var(--dark-3);border:1px solid var(--border-vis);border-left-width:4px;padding:11px 10px;border-radius:6px;cursor:pointer;text-align:left;transition:all .15s}
+.add-btn:hover{background:var(--dark-4);transform:translateY(-1px)}
+.add-btn .sw{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.add-btn b{display:block;font-size:12px;font-weight:700;line-height:1.2}
+.add-btn small{font-size:10px;color:var(--sub)}
+
+.olist{display:flex;flex-direction:column;gap:7px}
+.oitem{display:flex;align-items:center;gap:10px;background:var(--dark-3);border:1px solid var(--border-vis);border-left-width:4px;border-radius:6px;padding:9px 10px;cursor:pointer;transition:all .15s}
+.oitem:hover{border-color:var(--teal)}
+.oitem.sel{border-color:var(--teal);background:var(--teal-glow);box-shadow:0 0 0 1px var(--teal) inset}
+.oitem .tag{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#fff;flex-shrink:0}
+.oitem .meta{flex:1;min-width:0}
+.oitem .meta b{font-size:12px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oitem .meta small{font-size:10px;color:var(--sub)}
+.empty{color:var(--muted);font-size:12px;padding:14px 4px;text-align:center;border:1px dashed var(--border-vis);border-radius:6px}
+
+/* Inspector */
+.inspector{background:var(--dark-3);border:1px solid var(--border-vis);border-radius:8px;padding:13px;margin-top:4px}
+.inspector .ins-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.inspector .ins-head b{font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.del-btn{background:none;border:1px solid var(--border-vis);color:var(--sub);font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:6px 9px;border-radius:5px;cursor:pointer}
+.del-btn:hover{border-color:#f87171;color:#f87171}
+.hint{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.45}
+
+/* ─── THE SHEET (printable) ─── */
+.sheet{background:var(--paper);color:var(--ink);width:850px;max-width:100%;border-radius:4px;box-shadow:0 24px 60px rgba(0,0,0,.45);overflow:hidden}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;padding:22px 30px;background:var(--dark);color:#fff;border-bottom:4px solid var(--teal)}
+.sheet-head .brand{font-family:var(--h);font-weight:800;font-size:22px;letter-spacing:.04em;text-transform:uppercase}
+.sheet-head .brand span{color:var(--teal)}
+.sheet-head .brand small{display:block;font-family:var(--b);font-weight:500;font-size:10px;letter-spacing:.22em;color:#9fb3c4;margin-top:3px}
+.sheet-head .doc{text-align:right}
+.sheet-head .doc .t{font-family:var(--h);font-weight:700;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+.sheet-head .doc .c{font-size:11px;color:#9fb3c4;margin-top:4px;line-height:1.5}
+
+.sheet-body{padding:24px 30px 30px}
+
+/* info grid */
+.info{display:grid;grid-template-columns:repeat(4,1fr);gap:0 22px;border:1px solid var(--line);border-radius:6px;padding:14px 18px;margin-bottom:20px}
+.info .cell{padding:5px 0}
+.info .cell.wide{grid-column:span 2}
+.info label{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);font-weight:700;margin-bottom:2px}
+.info input,.info select{width:100%;border:none;border-bottom:1px solid var(--line);background:transparent;padding:3px 0;font-size:13px;font-weight:600;color:var(--ink);outline:none}
+.info input:focus,.info select:focus{border-bottom-color:var(--acc)}
+
+.sheet h3{font-family:var(--h);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);margin:0 0 12px;padding-bottom:7px;border-bottom:2px solid var(--ink);display:flex;align-items:center;justify-content:space-between}
+.sheet h3 .spec-pill{font-family:var(--b);font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:none;color:var(--ink-2)}
+
+/* diagram */
+.diagram-wrap{border:1px solid var(--line);border-radius:6px;padding:10px;background:#fbfdff;margin-bottom:14px}
+.diagram-wrap svg{display:block;width:100%;height:auto;touch-action:none}
+.diagram-wrap svg .otile{cursor:grab}
+.diagram-wrap svg .otile.dragging{cursor:grabbing}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:22px;font-size:11px;color:var(--ink-2)}
+.legend .li{display:flex;align-items:center;gap:6px}
+.legend .li .sw{width:13px;height:13px;border-radius:3px}
+
+/* schedule table */
+table.sched{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px}
+table.sched th{background:var(--dark);color:#fff;font-family:var(--b);font-weight:700;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:8px 9px;text-align:left}
+table.sched td{padding:8px 9px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+table.sched tr:nth-child(even) td{background:var(--paper-2)}
+table.sched .tagcell{width:30px}
+table.sched .tag{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#fff}
+table.sched .typecell{font-weight:700}
+.sched-empty td{color:var(--ink-2);text-align:center;padding:18px;font-style:italic}
+
+/* notes + signature */
+.notes-row{display:grid;grid-template-columns:1.3fr 1fr;gap:26px;margin-top:24px}
+.notes-box label,.approval label{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);font-weight:700;margin-bottom:6px}
+.notes-box textarea{width:100%;min-height:96px;border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:12px;color:var(--ink);resize:vertical;outline:none;line-height:1.55}
+.notes-box textarea:focus{border-color:var(--acc)}
+
+.approval{background:var(--paper-2);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.sig-line{margin-top:18px}
+.sig-line:first-child{margin-top:6px}
+.sig-line .ln{border-bottom:1.5px solid var(--ink);height:30px}
+.sig-line .lab{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-weight:700;margin-top:4px}
+
+.disclaimer{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:10px;color:var(--ink-2);line-height:1.6}
+.disclaimer b{color:var(--ink)}
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:1024px){
+  .shell{flex-direction:column}
+  .panel{width:100%;position:static;max-height:none;border-right:none;border-bottom:1px solid var(--border-vis)}
+  .stage{padding:18px 10px}
+}
+
+/* ─── PRINT ─── */
+@page{size:Letter;margin:0.45in}
+@media print{
+  body{background:#fff}
+  .app-header,.panel,.no-print{display:none!important}
+  .shell{display:block}
+  .stage{padding:0;background:#fff}
+  .sheet{width:100%;max-width:100%;box-shadow:none;border-radius:0}
+  .sheet-head{padding:14px 18px}
+  .sheet-body{padding:16px 4px 0}
+  .diagram-wrap svg .otile{cursor:default}
+  .approval{break-inside:avoid}
+  .notes-row{break-inside:avoid}
+  input,select,textarea{color:var(--ink)!important}
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-logo">Storm<span>Safe</span> Steel<small>Layout Approval Tool</small></div>
+  <div class="app-actions">
+    <button class="btn" id="resetBtn">Reset</button>
+    <button class="btn btn-primary" id="printBtn">↧ Save / Email PDF</button>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- CONTROL PANEL (screen only) -->
+  <aside class="panel no-print">
+    <h2>Building Size</h2>
+    <div class="row3">
+      <div class="field"><label>Width (ft)</label><input type="number" id="bWidth" value="40" min="8" max="120"></div>
+      <div class="field"><label>Length (ft)</label><input type="number" id="bLength" value="50" min="8" max="200"></div>
+      <div class="field"><label>Height (ft)</label><input type="number" id="bHeight" value="16" min="6" max="30"></div>
+    </div>
+
+    <h2>Add Opening</h2>
+    <div class="field">
+      <label>Place on wall</label>
+      <select id="addWall">
+        <option value="front">Front wall</option>
+        <option value="back">Back wall</option>
+        <option value="left">Left wall</option>
+        <option value="right">Right wall</option>
+      </select>
+    </div>
+    <div class="add-grid">
+      <button class="add-btn" data-add="rollup" style="border-left-color:var(--c-rollup)"><span class="sw" style="background:var(--c-rollup)"></span><span><b>Roll-up</b><small>10' × 10'</small></span></button>
+      <button class="add-btn" data-add="walk" style="border-left-color:var(--c-walk)"><span class="sw" style="background:var(--c-walk)"></span><span><b>Walk Door</b><small>3' × 7'</small></span></button>
+      <button class="add-btn" data-add="window" style="border-left-color:var(--c-window)"><span class="sw" style="background:var(--c-window)"></span><span><b>Window</b><small>3' × 4'</small></span></button>
+      <button class="add-btn" data-add="framed" style="border-left-color:var(--c-framed)"><span class="sw" style="background:var(--c-framed)"></span><span><b>Framed Op.</b><small>12' × 12'</small></span></button>
+    </div>
+
+    <h2>Openings <span id="oCount" style="color:var(--sub);font-weight:500;letter-spacing:0;text-transform:none;font-size:11px"></span></h2>
+    <div class="olist" id="olist"></div>
+
+    <div id="inspectorWrap"></div>
+  </aside>
+
+  <!-- THE SHEET -->
+  <main class="stage">
+    <div class="sheet" id="sheet">
+      <div class="sheet-head">
+        <div class="brand">Storm<span>Safe</span> Steel<small>Hurricane-Rated Steel Buildings</small></div>
+        <div class="doc">
+          <div class="t">Building Approval Sheet</div>
+          <div class="c">West Palm Beach, FL · 561-771-5555<br>stormsafesteel.com</div>
+        </div>
+      </div>
+
+      <div class="sheet-body">
+        <!-- project / customer info -->
+        <div class="info">
+          <div class="cell wide"><label>Customer</label><input type="text" id="iCustomer" placeholder="Full name"></div>
+          <div class="cell"><label>Quote #</label><input type="text" id="iQuote" placeholder="SS-0000"></div>
+          <div class="cell"><label>Date</label><input type="text" id="iDate" placeholder="MM/DD/YYYY"></div>
+          <div class="cell wide"><label>Job Site Address</label><input type="text" id="iAddress" placeholder="Street, City, County"></div>
+          <div class="cell"><label>Phone</label><input type="text" id="iPhone" placeholder="(000) 000-0000"></div>
+          <div class="cell"><label>Sales Rep</label><input type="text" id="iRep" placeholder="Name"></div>
+        </div>
+
+        <!-- diagram -->
+        <h3>Building Layout — Opening Plan
+          <span class="spec-pill" id="specPill"></span>
+        </h3>
+        <div class="diagram-wrap"><div id="svgHost"></div></div>
+        <div class="legend">
+          <div class="li"><span class="sw" style="background:var(--c-rollup)"></span> Roll-up Door</div>
+          <div class="li"><span class="sw" style="background:var(--c-walk)"></span> Walk Door</div>
+          <div class="li"><span class="sw" style="background:var(--c-window)"></span> Window</div>
+          <div class="li"><span class="sw" style="background:var(--c-framed)"></span> Framed Opening</div>
+          <div class="li" style="color:var(--ink-2)">Numbers ① ② ③ match the schedule below · positions are to the nearest opening edge</div>
+        </div>
+
+        <!-- specs -->
+        <div class="info" style="margin-bottom:20px">
+          <div class="cell"><label>Frame Gauge</label>
+            <select id="iGauge"><option>14-gauge</option><option>12-gauge</option></select></div>
+          <div class="cell"><label>Wind Rating</label>
+            <select id="iWind"><option>170 mph</option><option>180 mph</option><option>150 mph</option></select></div>
+          <div class="cell"><label>Roof Color</label><input type="text" id="iRoof" placeholder="e.g. Galvalume"></div>
+          <div class="cell"><label>Wall / Trim Color</label><input type="text" id="iWall" placeholder="e.g. Burnished Slate"></div>
+        </div>
+
+        <!-- schedule -->
+        <h3>Opening Schedule</h3>
+        <table class="sched">
+          <thead>
+            <tr>
+              <th class="tagcell">#</th><th>Type</th><th>Wall</th>
+              <th>Width</th><th>Height</th><th>Position</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="schedBody"></tbody>
+        </table>
+
+        <!-- notes + sign-off -->
+        <div class="notes-row">
+          <div class="notes-box">
+            <label>Additional Notes</label>
+            <textarea id="iNotes" placeholder="Door swing direction, wainscot, insulation, concrete notes, special requests…"></textarea>
+          </div>
+          <div class="approval">
+            <label>Customer Approval</label>
+            <div style="font-size:11px;color:var(--ink-2);line-height:1.5">I have reviewed the opening locations, sizes, and building specifications above and approve this layout for production.</div>
+            <div class="sig-line"><div class="ln"></div><div class="lab">Customer Signature</div></div>
+            <div class="sig-line"><div class="ln"></div><div class="lab">Print Name &nbsp; / &nbsp; Date</div></div>
+          </div>
+        </div>
+
+        <div class="disclaimer">
+          <b>Please verify every opening before signing.</b> Once approved, openings are framed to these locations and changes after production begins may incur additional cost and lead time. Positions are measured to the nearest edge of each opening from the noted reference corner. Prices subject to change based on steel market conditions and local engineering requirements.
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+const SVGNS = "http://www.w3.org/2000/svg";
+const TYPES = {
+  rollup: {label:"Roll-up Door", short:"Roll-up", color:"var(--c-rollup)", hex:"#2563eb", w:10, h:10},
+  walk:   {label:"Walk Door",    short:"Walk",    color:"var(--c-walk)",   hex:"#0e9488", w:3,  h:7},
+  window: {label:"Window",       short:"Window",  color:"var(--c-window)", hex:"#f59e0b", w:3,  h:4},
+  framed: {label:"Framed Opening",short:"Framed", color:"var(--c-framed)", hex:"#7c3aed", w:12, h:12},
+};
+const WALLS = {
+  front: {label:"Front", ref:"left"},
+  back:  {label:"Back",  ref:"left"},
+  left:  {label:"Left",  ref:"front"},
+  right: {label:"Right", ref:"front"},
+};
+
+let state = {
+  width:40, length:50, height:16,
+  openings:[],
+  selId:null,
+};
+let nextId = 1;
+let GEO = null;   // last-computed diagram geometry, shared with drag
+
+/* pixel rect for an opening tile, from current GEO */
+function tileRect(op){
+  const {oX,oY,fl,fw,scale,BAND,GAP} = GEO;
+  const len = op.w*scale, inset = 7;
+  if(op.wall==="back")  return {x:oX+op.o*scale, y:oY-GAP-BAND+inset, w:len, h:BAND-inset*2, horiz:true};
+  if(op.wall==="front") return {x:oX+op.o*scale, y:oY+fl+GAP+inset, w:len, h:BAND-inset*2, horiz:true};
+  if(op.wall==="left")  return {x:oX-GAP-BAND+inset, y:oY+fl-(op.o+op.w)*scale, w:BAND-inset*2, h:len, horiz:false};
+  /* right */            return {x:oX+fw+GAP+inset, y:oY+fl-(op.o+op.w)*scale, w:BAND-inset*2, h:len, horiz:false};
+}
+
+/* default example layout (matches the kind of plan the team works from) */
+function seed(){
+  state.openings = [];
+  nextId = 1;
+  add("rollup","front",6.7);
+  add("rollup","front",23.3);
+  add("walk","front",18);
+  add("walk","right",4);
+  add("window","back",8);
+  add("window","back",29);
+  state.selId = null;
+}
+function add(type,wall,offset){
+  const t = TYPES[type];
+  const wl = wallLen(wall);
+  const w = Math.min(t.w, wl);
+  const o = clamp(offset==null?0:offset, 0, wl - w);
+  const op = {id:nextId++, type, wall, w, h:t.h, o};
+  state.openings.push(op);
+  return op;
+}
+
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const round = (v,step)=>Math.round(v/step)*step;
+const ft = v => {
+  // pretty foot-inch label: 6.5 -> 6'6"
+  const f = Math.floor(v);
+  const inches = Math.round((v - f)*12);
+  if(inches===0) return f+"'";
+  if(inches===12) return (f+1)+"'";
+  return f+"'"+inches+'"';
+};
+function wallLen(wall){ return (wall==="front"||wall==="back") ? state.width : state.length; }
+
+/* ─── DIAGRAM ─── */
+function buildSVG(){
+  const host = document.getElementById("svgHost");
+  const W = state.width, L = state.length;
+  const PAD = 78, BAND = 56, GAP = 9;
+  const scale = clamp(Math.min(440/W, 440/L), 4, 16);
+  const fw = W*scale, fl = L*scale;
+  const oX = PAD + BAND + GAP, oY = PAD + BAND + GAP;
+  const totW = oX + fw + GAP + BAND + PAD;
+  const totH = oY + fl + GAP + BAND + PAD;
+  GEO = {oX,oY,fw,fl,scale,BAND,GAP};
+
+  const svg = document.createElementNS(SVGNS,"svg");
+  svg.setAttribute("viewBox", `0 0 ${totW} ${totH}`);
+  svg.setAttribute("role","img");
+  svg.setAttribute("aria-label","Building opening layout diagram");
+
+  // grid pattern
+  svg.innerHTML = `<defs>
+    <pattern id="grid" width="${scale}" height="${scale}" patternUnits="userSpaceOnUse">
+      <path d="M ${scale} 0 L 0 0 0 ${scale}" fill="none" stroke="#e9eef5" stroke-width="1"/>
+    </pattern>
+  </defs>`;
+
+  const el = (name,attrs,text)=>{
+    const e = document.createElementNS(SVGNS,name);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    if(text!=null) e.textContent = text;
+    svg.appendChild(e);
+    return e;
+  };
+
+  // footprint
+  el("rect",{x:oX,y:oY,width:fw,height:fl,fill:"url(#grid)",stroke:"#9fb0c4","stroke-width":1});
+  // outer building outline (heavy)
+  el("rect",{x:oX,y:oY,width:fw,height:fl,fill:"none",stroke:"#0f1b2d","stroke-width":3});
+
+  // center building label
+  el("text",{x:oX+fw/2,y:oY+fl/2-6,"text-anchor":"middle","font-family":"Inter,sans-serif","font-weight":700,"font-size":15,fill:"#0f1b2d"},
+     `${W}' W  ×  ${L}' L  ×  ${state.height}' H`);
+  el("text",{x:oX+fw/2,y:oY+fl/2+14,"text-anchor":"middle","font-family":"Inter,sans-serif","font-size":11,fill:"#3c4a5e"},
+     "Plan view · walls shown folded out");
+
+  // overall dimension labels on each side
+  const dimText = (x,y,t,rot)=>el("text",{x,y,"text-anchor":"middle","font-family":"Orbitron,sans-serif","font-weight":700,"font-size":12,"letter-spacing":"1.5",fill:"#0f1b2d",transform:rot?`rotate(${rot} ${x} ${y})`:""},t);
+  dimText(oX+fw/2, oY-GAP-BAND-12, `BACK  ${ft(W)}`);
+  dimText(oX+fw/2, oY+fl+GAP+BAND+22, `FRONT  ${ft(W)}`);
+  dimText(oX-GAP-BAND-14, oY+fl/2, `LEFT  ${ft(L)}`, -90);
+  dimText(oX+fw+GAP+BAND+18, oY+fl/2, `RIGHT  ${ft(L)}`, 90);
+
+  // wall bands (subtle)
+  const band = (x,y,w,h)=>el("rect",{x,y,width:w,height:h,fill:"#f4f7fa",stroke:"#d3dde8","stroke-width":1});
+  band(oX, oY-GAP-BAND, fw, BAND);              // back (top)
+  band(oX, oY+fl+GAP, fw, BAND);                // front (bottom)
+  band(oX-GAP-BAND, oY, BAND, fl);              // left
+  band(oX+fw+GAP, oY, BAND, fl);                // right
+
+  // draw openings
+  state.openings.forEach((op,i)=>{
+    const t = TYPES[op.type];
+    const r = tileRect(op);
+    const g = document.createElementNS(SVGNS,"g");
+    g.setAttribute("class","otile"+(op.id===state.selId?" sel":""));
+    g.dataset.id = op.id;
+    const sel = op.id===state.selId;
+
+    const rect = document.createElementNS(SVGNS,"rect");
+    rect.setAttribute("x",r.x); rect.setAttribute("y",r.y);
+    rect.setAttribute("width",r.w); rect.setAttribute("height",r.h);
+    rect.setAttribute("rx",2);
+    rect.setAttribute("fill", op.type==="framed" ? "rgba(124,58,237,.12)" : t.hex);
+    rect.setAttribute("fill-opacity", op.type==="framed" ? 1 : .85);
+    rect.setAttribute("stroke", t.hex);
+    rect.setAttribute("stroke-width", sel?3:2);
+    if(op.type==="framed") rect.setAttribute("stroke-dasharray","5 3");
+    g.appendChild(rect);
+
+    // tag circle at tile center
+    const cx = r.x + r.w/2, cy = r.y + r.h/2;
+    const circ = document.createElementNS(SVGNS,"circle");
+    circ.setAttribute("cx",cx); circ.setAttribute("cy",cy); circ.setAttribute("r",10);
+    circ.setAttribute("fill","#fff"); circ.setAttribute("stroke",t.hex); circ.setAttribute("stroke-width",2);
+    g.appendChild(circ);
+    const num = document.createElementNS(SVGNS,"text");
+    num.setAttribute("class","tnum");
+    num.setAttribute("x",cx); num.setAttribute("y",cy+4); num.setAttribute("text-anchor","middle");
+    num.setAttribute("font-family","Inter,sans-serif"); num.setAttribute("font-weight",800);
+    num.setAttribute("font-size",12); num.setAttribute("fill",t.hex);
+    num.textContent = i+1;
+    g.appendChild(num);
+
+    // size label just outside the band
+    const lbl = document.createElementNS(SVGNS,"text");
+    lbl.setAttribute("class","tlbl");
+    lbl.setAttribute("font-family","Inter,sans-serif"); lbl.setAttribute("font-weight",600);
+    lbl.setAttribute("font-size",10.5); lbl.setAttribute("fill","#0f1b2d");
+    lbl.textContent = `${ft(op.w)}×${ft(op.h)}`;
+    if(r.horiz){
+      lbl.setAttribute("x",cx); lbl.setAttribute("text-anchor","middle");
+      lbl.setAttribute("y", op.wall==="back" ? r.y-5 : r.y+r.h+13);
+    }else{
+      lbl.setAttribute("x", op.wall==="left" ? r.x-5 : r.x+r.w+5);
+      lbl.setAttribute("y", cy+4);
+      lbl.setAttribute("text-anchor", op.wall==="left" ? "end":"start");
+    }
+    g.appendChild(lbl);
+
+    svg.appendChild(g);
+  });
+
+  host.innerHTML = "";
+  host.appendChild(svg);
+  attachDrag(svg);
+}
+
+/* reposition one tile group in place (no full rebuild) */
+function positionTile(g, op){
+  const r = tileRect(op);
+  const rect = g.querySelector("rect");
+  rect.setAttribute("x",r.x); rect.setAttribute("y",r.y);
+  rect.setAttribute("width",r.w); rect.setAttribute("height",r.h);
+  const cx = r.x + r.w/2, cy = r.y + r.h/2;
+  const circ = g.querySelector("circle");
+  circ.setAttribute("cx",cx); circ.setAttribute("cy",cy);
+  const num = g.querySelector(".tnum");
+  num.setAttribute("x",cx); num.setAttribute("y",cy+4);
+  const lbl = g.querySelector(".tlbl");
+  lbl.textContent = `${ft(op.w)}×${ft(op.h)}`;
+  if(r.horiz){
+    lbl.setAttribute("x",cx); lbl.setAttribute("text-anchor","middle");
+    lbl.setAttribute("y", op.wall==="back" ? r.y-5 : r.y+r.h+13);
+  }else{
+    lbl.setAttribute("x", op.wall==="left" ? r.x-5 : r.x+r.w+5);
+    lbl.setAttribute("y", cy+4);
+    lbl.setAttribute("text-anchor", op.wall==="left" ? "end":"start");
+  }
+}
+
+/* highlight selection without rebuilding the SVG (keeps drag alive) */
+function highlightSelection(){
+  document.querySelectorAll("#svgHost .otile").forEach(g=>{
+    const on = (+g.dataset.id)===state.selId;
+    g.classList.toggle("sel", on);
+    g.querySelector("rect").setAttribute("stroke-width", on?3:2);
+  });
+}
+
+/* drag along the wall — updates the tile in place so the live SVG node survives */
+function attachDrag(svg){
+  let drag = null;
+  const toUser = (evt)=>{
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  };
+  svg.addEventListener("pointerdown",(e)=>{
+    const g = e.target.closest(".otile");
+    if(!g) return;
+    const id = +g.dataset.id;
+    const op = state.openings.find(o=>o.id===id);
+    state.selId = id;
+    highlightSelection();
+    buildPanel();           // refresh inspector — does not touch the SVG
+    drag = {op, g, moved:false};
+    g.classList.add("dragging");
+    try{ svg.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  svg.addEventListener("pointermove",(e)=>{
+    if(!drag) return;
+    const p = toUser(e);
+    const op = drag.op, wl = wallLen(op.wall);
+    let o = (op.wall==="front"||op.wall==="back")
+      ? (p.x - GEO.oX)/GEO.scale - op.w/2
+      : (GEO.oY + GEO.fl - p.y)/GEO.scale - op.w/2;
+    o = clamp(round(o, 0.5), 0, wl - op.w);
+    if(o!==op.o){
+      op.o = o; drag.moved = true;
+      positionTile(drag.g, op);   // move tile live
+      buildSchedule();            // keep the schedule position in sync
+    }
+  });
+  const end=()=>{
+    if(!drag) return;
+    drag.g && drag.g.classList.remove("dragging");
+    const didMove = drag.moved;
+    drag = null;
+    if(didMove) renderAll();   // normalize once at the end
+    else buildPanel();
+  };
+  svg.addEventListener("pointerup",end);
+  svg.addEventListener("pointercancel",end);
+}
+
+/* ─── SCHEDULE TABLE ─── */
+function buildSchedule(){
+  const body = document.getElementById("schedBody");
+  if(!state.openings.length){
+    body.innerHTML = `<tr class="sched-empty"><td colspan="7">No openings placed yet — add walk doors, windows, roll-up doors or framed openings from the panel.</td></tr>`;
+    return;
+  }
+  body.innerHTML = state.openings.map((op,i)=>{
+    const t = TYPES[op.type], wl = WALLS[op.wall];
+    const pos = `${ft(op.o)} from ${wl.ref} corner`;
+    return `<tr>
+      <td class="tagcell"><span class="tag" style="background:${t.hex}">${i+1}</span></td>
+      <td class="typecell">${t.label}</td>
+      <td>${wl.label}</td>
+      <td>${ft(op.w)}</td>
+      <td>${ft(op.h)}</td>
+      <td>${pos}</td>
+      <td style="color:var(--ink-2)"></td>
+    </tr>`;
+  }).join("");
+}
+
+/* ─── PANEL LIST + INSPECTOR ─── */
+function buildPanel(){
+  const list = document.getElementById("olist");
+  document.getElementById("oCount").textContent = state.openings.length ? `(${state.openings.length})` : "";
+  if(!state.openings.length){
+    list.innerHTML = `<div class="empty">No openings yet. Use “Add Opening” above.</div>`;
+  }else{
+    list.innerHTML = state.openings.map((op,i)=>{
+      const t = TYPES[op.type], wl = WALLS[op.wall];
+      return `<div class="oitem${op.id===state.selId?" sel":""}" data-id="${op.id}" style="border-left-color:${t.hex}">
+        <span class="tag" style="background:${t.hex}">${i+1}</span>
+        <span class="meta"><b>${t.label}</b><small>${wl.label} · ${ft(op.w)}×${ft(op.h)} · ${ft(op.o)} from ${wl.ref}</small></span>
+      </div>`;
+    }).join("");
+  }
+
+  const wrap = document.getElementById("inspectorWrap");
+  const op = state.openings.find(o=>o.id===state.selId);
+  if(!op){ wrap.innerHTML = `<p class="hint">Tip: click any opening — in the list or on the drawing — to edit its size and position. You can also drag openings along a wall.</p>`; return; }
+  const wl = wallLen(op.wall);
+  wrap.innerHTML = `<div class="inspector">
+    <div class="ins-head"><b>Edit Opening ${state.openings.indexOf(op)+1}</b>
+      <button class="del-btn" id="delBtn">Delete</button></div>
+    <div class="field"><label>Type</label>
+      <select id="eType">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${k===op.type?"selected":""}>${v.label}</option>`).join("")}</select></div>
+    <div class="field"><label>Wall</label>
+      <select id="eWall">${Object.entries(WALLS).map(([k,v])=>`<option value="${k}" ${k===op.wall?"selected":""}>${v.label} wall</option>`).join("")}</select></div>
+    <div class="row2">
+      <div class="field"><label>Width (ft)</label><input type="number" id="eW" value="${op.w}" min="0.5" max="${wl}" step="0.5"></div>
+      <div class="field"><label>Height (ft)</label><input type="number" id="eH" value="${op.h}" min="0.5" max="${state.height}" step="0.5"></div>
+    </div>
+    <div class="field"><label>Position — ${ft(op.o)} from ${WALLS[op.wall].ref} corner (max ${ft(wl-op.w)})</label>
+      <input type="range" id="ePos" value="${op.o}" min="0" max="${Math.max(0,wl-op.w)}" step="0.5" style="width:100%">
+      <input type="number" id="ePosN" value="${op.o}" min="0" max="${Math.max(0,wl-op.w)}" step="0.5" style="margin-top:6px"></div>
+    <p class="hint">Or drag this opening along the wall directly on the drawing.</p>
+  </div>`;
+
+  // wire inspector
+  document.getElementById("delBtn").onclick = ()=>{ state.openings = state.openings.filter(o=>o.id!==op.id); state.selId=null; renderAll(); };
+  document.getElementById("eType").onchange = e=>{ op.type=e.target.value; renderAll(); };
+  document.getElementById("eWall").onchange = e=>{ op.wall=e.target.value; op.o=clamp(op.o,0,wallLen(op.wall)-op.w); renderAll(); };
+  document.getElementById("eW").onchange = e=>{ op.w=clamp(+e.target.value||1,0.5,wallLen(op.wall)); op.o=clamp(op.o,0,wallLen(op.wall)-op.w); renderAll(); };
+  document.getElementById("eH").onchange = e=>{ op.h=clamp(+e.target.value||1,0.5,state.height); renderAll(); };
+  const posR=document.getElementById("ePos"), posN=document.getElementById("ePosN");
+  const setPos=v=>{ op.o=clamp(+v||0,0,wallLen(op.wall)-op.w); renderAll(); };
+  posR.oninput=e=>setPos(e.target.value);
+  posN.onchange=e=>setPos(e.target.value);
+}
+
+function select(id){ state.selId = id; renderAll(); }
+
+/* spec pill in the diagram header */
+function updateSpecPill(){
+  document.getElementById("specPill").textContent =
+    `${state.width}′ × ${state.length}′ × ${state.height}′ · ${state.openings.length} opening${state.openings.length===1?"":"s"}`;
+}
+
+function renderAll(){
+  buildSVG();
+  buildSchedule();
+  buildPanel();
+  updateSpecPill();
+}
+
+/* ─── WIRING ─── */
+function wire(){
+  const sync=()=>{
+    state.width = clamp(+document.getElementById("bWidth").value||40,8,120);
+    state.length = clamp(+document.getElementById("bLength").value||50,8,200);
+    state.height = clamp(+document.getElementById("bHeight").value||16,6,30);
+    // clamp openings to new walls
+    state.openings.forEach(op=>{ op.w=Math.min(op.w,wallLen(op.wall)); op.o=clamp(op.o,0,wallLen(op.wall)-op.w); });
+    renderAll();
+  };
+  ["bWidth","bLength","bHeight"].forEach(id=>document.getElementById(id).addEventListener("change",sync));
+
+  document.querySelectorAll(".add-btn").forEach(b=>b.onclick=()=>{
+    const wall = document.getElementById("addWall").value;
+    const op = add(b.dataset.add, wall, 0);
+    // nudge to first open-ish spot
+    state.selId = op.id;
+    renderAll();
+  });
+
+  document.getElementById("olist").addEventListener("click",e=>{
+    const it = e.target.closest(".oitem"); if(it) select(+it.dataset.id);
+  });
+
+  document.getElementById("printBtn").onclick = ()=>window.print();
+  document.getElementById("resetBtn").onclick = ()=>{
+    if(confirm("Reset the layout to the example and clear all openings?")){ seed(); renderAll(); }
+  };
+
+  // default date
+  const d=new Date();
+  document.getElementById("iDate").value = `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}/${d.getFullYear()}`;
+}
+
+seed();
+wire();
+renderAll();
+</script>
+
+<!-- ─── CRM INTEGRATION HOOKS (added for the StormSafe CRM embed only) ───
+     Does NOT change the sheet layout, the diagram, or the printed PDF design.
+     Exposes a tiny API the CRM modal calls: seed the building + customer from a
+     lead, and hand back the printable sheet HTML so the CRM can save a PDF. -->
+<script>
+"use strict";
+(function () {
+  function setVal(id, v) {
+    const el = document.getElementById(id);
+    if (el && v != null && v !== '') { el.value = v; return true; }
+    return false;
+  }
+  window.SS_LAYOUT = {
+    // Seed building dimensions + customer info from a CRM lead.
+    seedFromCRM: function (data) {
+      try {
+        data = data || {};
+        let w = data.width, l = data.length, h = data.height;
+        if ((w == null || l == null) && data.size) {
+          const nums = String(data.size).match(/\d+(\.\d+)?/g);
+          if (nums) { if (w == null) w = +nums[0]; if (l == null && nums[1] != null) l = +nums[1]; if (h == null && nums[2] != null) h = +nums[2]; }
+        }
+        if (w != null && !isNaN(w)) setVal('bWidth', clamp(+w, 8, 120));
+        if (l != null && !isNaN(l)) setVal('bLength', clamp(+l, 8, 200));
+        if (h != null && !isNaN(h)) setVal('bHeight', clamp(+h, 6, 30));
+        state.width = clamp(+document.getElementById('bWidth').value || 40, 8, 120);
+        state.length = clamp(+document.getElementById('bLength').value || 50, 8, 200);
+        state.height = clamp(+document.getElementById('bHeight').value || 16, 6, 30);
+        state.openings.forEach(function (op) { op.w = Math.min(op.w, wallLen(op.wall)); op.o = clamp(op.o, 0, wallLen(op.wall) - op.w); });
+        setVal('iCustomer', data.customer);
+        setVal('iQuote', data.quote);
+        setVal('iAddress', data.address);
+        setVal('iPhone', data.phone);
+        setVal('iRep', data.rep);
+        renderAll();
+        return true;
+      } catch (e) { return false; }
+    },
+    // Return a standalone HTML doc of the printable sheet (current field values
+    // baked in) so the CRM can rasterize it to a PDF — mirrors what prints.
+    getSheetHtml: function () {
+      const sheet = document.getElementById('sheet');
+      if (!sheet) return '';
+      const clone = sheet.cloneNode(true);
+      const src = sheet.querySelectorAll('input,select,textarea');
+      const dst = clone.querySelectorAll('input,select,textarea');
+      src.forEach(function (el, i) {
+        const d = dst[i]; if (!d) return;
+        if (el.tagName === 'SELECT') { d.querySelectorAll('option').forEach(function (o) { if (o.value === el.value) o.setAttribute('selected', 'selected'); else o.removeAttribute('selected'); }); }
+        else if (el.tagName === 'TEXTAREA') { d.textContent = el.value; }
+        else { d.setAttribute('value', el.value); }
+      });
+      const styleEl = document.querySelector('style');
+      const styles = styleEl ? styleEl.outerHTML : '';
+      const fonts = '<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">';
+      return '<!DOCTYPE html><html><head><meta charset="UTF-8">' + fonts + styles + '</head><body style="background:#fff;margin:0">' + clone.outerHTML + '</body></html>';
+    },
+    customerName: function () { const el = document.getElementById('iCustomer'); return el ? el.value : ''; }
+  };
+})();
+</script>
+</body>
+</html>

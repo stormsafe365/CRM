@@ -6,9 +6,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { BUILDING_TYPES, buildingTypeLabel } from '../lib/constants'
+import { BUILDING_TYPES, buildingTypeLabel, sourceLabel } from '../lib/constants'
 import { useUsers, userLabel } from '../lib/useUsers'
-import StatusPill from '../components/StatusPill'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -23,6 +22,32 @@ const GROUPS = [
   { key: 'dead',          label: 'Dead',              match: (c) => ['dead', 'lost', 'cancelled'].includes(c.status) },
   { key: 'all',           label: 'All',               match: () => true },
 ]
+
+// Lead-temperature → heat bar (matches the design's 6-stop gauge).
+const TEMP_KEYS = ['cold', 'warm', 'hot', 'ready', 'pending_deposit', 'ordered']
+const TEMP_LABELS = ['Cold', 'Warm', 'Hot', 'Ready', 'Pending', 'Ordered']
+const TEMP_COLORS = ['#6FC9E8', '#8FD14F', '#FFB547', '#FF5C5C', '#A06BFF', '#22C55E']
+function tempInfo(key) {
+  const i = TEMP_KEYS.indexOf(key)
+  if (i < 0) return { pct: 0, label: '—', color: 'var(--fg-3)' }
+  return { pct: Math.max(8, Math.round((i / (TEMP_KEYS.length - 1)) * 100)), label: TEMP_LABELS[i], color: TEMP_COLORS[i] }
+}
+
+// Sales status → compact design pill ([label, pill-class]).
+const STAGE_PILL = {
+  new_lead: ['New Lead', 'pill-lime'], contacted: ['Attempting', 'pill-cyan'],
+  working: ['Working', 'pill-amber'], working_hot: ['Hot', 'pill-red'],
+  contract_sent: ['Contract Sent', 'pill-violet'], ordered: ['Ordered', 'pill-lime'],
+  dead: ['Dead', 'pill-steel'], quoted: ['Working', 'pill-amber'], follow_up: ['Working', 'pill-amber'],
+  lost: ['Dead', 'pill-steel'], cancelled: ['Dead', 'pill-steel'],
+}
+function StagePill({ status }) {
+  const [lbl, cls] = STAGE_PILL[status] || ['—', 'pill-steel']
+  return <span className={`pill-sm ${cls}`}><span className="dot" />{lbl}</span>
+}
+function initialsOf(name) {
+  return (name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '·'
+}
 
 export default function ClientsList() {
   const navigate = useNavigate()
@@ -142,16 +167,22 @@ export default function ClientsList() {
   }, [clients, search, group, buildingTypeFilter, sortBy])
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1>Clients</h1>
-          <p className="muted">
-            {visible.length} {visible.length === 1 ? 'client' : 'clients'}
+    <>
+      <div className="page-head">
+        <div className="left">
+          <div className="eyebrow-lime">All Leads</div>
+          <h1>Leads</h1>
+          <div className="sub">
+            {visible.length} {visible.length === 1 ? 'lead' : 'leads'}
             {' · '}{(GROUPS.find(x => x.key === group) || GROUPS[0]).label}
-          </p>
+          </div>
         </div>
-        <Link to="/clients/new" className="btn-primary">+ New Client</Link>
+        <div className="right">
+          <Link to="/clients/new" className="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            New Lead
+          </Link>
+        </div>
       </div>
 
       <div className="list-tabs" ref={tabsRef}>
@@ -174,102 +205,98 @@ export default function ClientsList() {
         ))}
       </div>
 
-      <div className="filters-bar">
-        <input
-          type="text"
-          placeholder="Search by name, phone, email, or size…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="filter-search"
-        />
-
-        <select
-          value={buildingTypeFilter}
-          onChange={(e) => setBuildingTypeFilter(e.target.value)}
-          className="filter-select"
-        >
-          <option value="all">All build types</option>
-          {BUILDING_TYPES.map(b => (
-            <option key={b.value} value={b.value}>{b.label}</option>
-          ))}
-        </select>
-
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="filter-select"
-        >
-          <option value="updated_desc">Sort: Recently updated</option>
-          <option value="created_desc">Sort: Recently added</option>
-          <option value="first_contact_desc">Sort: First contact (newest)</option>
-          <option value="follow_up_asc">Sort: Follow-up date (soonest)</option>
-          <option value="name_asc">Sort: Name (A-Z)</option>
-        </select>
-      </div>
-
       {error && <div className="error-banner">{error}</div>}
 
-      {loading ? (
-        <div className="muted" style={{padding: '24px 0'}}>Loading clients…</div>
-      ) : visible.length === 0 ? (
-        <div className="empty-state">
-          {clients.length === 0
-            ? <>No clients yet. <Link to="/clients/new">Add your first one</Link>.</>
-            : 'No clients match your filters.'}
+      <section className="tile">
+        <div className="tile-head">
+          <h3>Active Pipeline</h3>
+          <div className="right" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div className="notes-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+              <input type="text" placeholder="Search leads…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select value={buildingTypeFilter} onChange={(e) => setBuildingTypeFilter(e.target.value)} style={SEL}>
+              <option value="all">All build types</option>
+              {BUILDING_TYPES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={SEL}>
+              <option value="updated_desc">Recently updated</option>
+              <option value="created_desc">Recently added</option>
+              <option value="first_contact_desc">First contact (newest)</option>
+              <option value="follow_up_asc">Follow-up (soonest)</option>
+              <option value="name_asc">Name (A–Z)</option>
+            </select>
+          </div>
         </div>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
+
+        {loading ? (
+          <div className="muted" style={{ padding: 24 }}>Loading leads…</div>
+        ) : visible.length === 0 ? (
+          <div className="list-empty">
+            {clients.length === 0
+              ? <>No leads yet. <Link to="/clients/new">Add your first one</Link>.</>
+              : 'No leads match your filters.'}
+          </div>
+        ) : (
+          <table className="dt">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Location</th>
-                <th>Building</th>
-                <th>Status</th>
-                <th>Follow-Up</th>
-                <th>Primary Rep</th>
+                <th>Client</th><th>Stage</th><th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th>
               </tr>
             </thead>
             <tbody key={group}>
-              {visible.map((c, i) => (
-                <tr
-                  key={c.id}
-                  onClick={() => navigate(`/clients/${c.id}`)}
-                  className="row-clickable row-enter"
-                  style={{ '--ri': Math.min(i, 14) }}
-                >
-                  <td>
-                    <div className="cell-primary">{c.name || '—'}</div>
-                    {c.email && <div className="cell-secondary">{c.email}</div>}
-                  </td>
-                  <td>{c.phone || '—'}</td>
-                  <td>
-                    {[c.city, c.state].filter(Boolean).join(', ') || '—'}
-                  </td>
-                  <td>
-                    {c.building_size || c.building_type ? (
-                      <>
-                        {c.building_size && <div className="cell-primary">{c.building_size}</div>}
-                        {c.building_type && <div className="cell-secondary">{buildingTypeLabel(c.building_type)}</div>}
-                      </>
-                    ) : <span className="muted">—</span>}
-                  </td>
-                  <td><StatusPill status={c.status} /></td>
-                  <td>
-                    {c.follow_up_date
-                      ? <FollowUpCell date={c.follow_up_date} />
-                      : <span className="muted">—</span>}
-                  </td>
-                  <td>{userLabel(users, c.primary_rep)}</td>
-                </tr>
-              ))}
+              {visible.map((c, i) => {
+                const t = tempInfo(c.lead_temperature)
+                const loc = [c.city, c.state].filter(Boolean).join(', ')
+                const repName = userLabel(users, c.primary_rep)
+                return (
+                  <tr key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="lead-row row-enter" style={{ '--ri': Math.min(i, 14) }}>
+                    <td>
+                      <div className="client">
+                        <div className="avatar xs">{initialsOf(c.name)}</div>
+                        <div>
+                          <div className="nm">{c.name || '—'}</div>
+                          <div className="sb">{[loc, c.email].filter(Boolean).join(' · ') || '—'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><StagePill status={c.status} /></td>
+                    <td>
+                      {c.building_size || c.building_type ? (
+                        <>
+                          {c.building_size && <div style={{ color: 'var(--fg)' }}>{c.building_size}</div>}
+                          {c.building_type && <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }}>{buildingTypeLabel(c.building_type)}</div>}
+                        </>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td>
+                      <div className="heat">
+                        <div className="bar"><i style={{ width: `${t.pct}%` }} /></div>
+                        <span className="lbl" style={{ color: t.color }}>{t.label}</span>
+                      </div>
+                    </td>
+                    <td>
+                      {repName && repName !== '—'
+                        ? <div className="client"><div className="avatar xs">{initialsOf(repName)}</div><span style={{ fontSize: 13 }}>{repName}</span></div>
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td>{c.follow_up_date ? <FollowUpCell date={c.follow_up_date} /> : <span className="muted">—</span>}</td>
+                    <td>{c.source ? <span className="cat-tag">{sourceLabel(c.source)}</span> : <span className="muted">—</span>}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
+        )}
+      </section>
+    </>
   )
+}
+
+// Inline style for the lead-list filter selects (design tokens, no extra CSS).
+const SEL = {
+  background: 'var(--inset)', border: '1px solid var(--line)', color: 'var(--fg-2)',
+  borderRadius: 'var(--r-md)', padding: '9px 12px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
 }
 
 // Small helper that colors follow-up dates: red if overdue, amber if today,

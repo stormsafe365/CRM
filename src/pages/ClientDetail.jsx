@@ -19,6 +19,7 @@ import FollowUpsCard from '../components/FollowUpsCard'
 import LeadTempSlider from '../components/LeadTempSlider'
 import NotesSection from '../components/NotesSection'
 import { useAuth } from '../context/AuthContext'
+import { toast } from '../lib/uiFx'
 
 const MFR_LABEL = { ca: 'Carolina Carports', cci: 'CCI', other: 'Other' }
 
@@ -44,6 +45,7 @@ export default function ClientDetail() {
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [buildingQuote, setBuildingQuote] = useState(false) // "Build Quote" — shared by QuotesTab + Document Hub menu
 
   useEffect(() => {
     let cancelled = false
@@ -105,7 +107,14 @@ export default function ClientDetail() {
       lead_temp_updated_by: user?.id ?? null,
     }
     const { error } = await supabase.from('clients').update(patch).eq('id', id)
-    if (!error) setClient(c => ({ ...c, ...patch }))
+    if (error) {
+      const m = (error.message || '').toLowerCase()
+      toast(m.includes('lead_temperature') || m.includes('check constraint') || m.includes('violates')
+        ? 'That temperature needs the one-time database update (migration 011) before it will save.'
+        : error.message)
+      return
+    }
+    setClient(c => ({ ...c, ...patch }))
   }
 
   // Quick-reschedule chips on the lead header — bump the legacy Next Follow-Up date.
@@ -152,8 +161,11 @@ export default function ClientDetail() {
     : '—'
 
   return (
-    <div>
-      <Link to="/clients" className="back-link">← Back to Leads</Link>
+    <>
+      <Link to="/clients" className="back-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+        Back to Leads
+      </Link>
 
       {confirmingDelete && (
         <div className="confirm-card">
@@ -272,20 +284,19 @@ export default function ClientDetail() {
         <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
       )}
 
-      <div className="ap-row">
+      <div className="row-2">
         <ActivityProgress client={client} showAudience={client.status === 'ordered'} />
         <FollowUpsCard clientId={client.id} />
       </div>
 
-      <div className="row2b">
-        <div className="detail-card detail-card-full" style={{ marginTop: 0 }}>
-          <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size} />
-        </div>
-        <DocumentHub clientId={client.id} />
+      <div className="row-2 flip">
+        <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
+          building={buildingQuote} setBuilding={setBuildingQuote} />
+        <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />
       </div>
 
       <NotesSection clientId={client.id} />
-    </div>
+    </>
   )
 }
 

@@ -9,6 +9,7 @@ import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
 import { isoToday } from '../lib/followups'
 import { useUsers, userLabel } from '../lib/useUsers'
+import { mountCursorFx } from '../lib/uiFx'
 
 // Lucide-style 2px-stroke icons, matched to the mockup sidebar.
 const navItems = [
@@ -36,6 +37,14 @@ const navItems = [
     to: '/quotes', label: 'Quotes',
     icon: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
   },
+  {
+    to: '/renderings', label: 'Renderings',
+    icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></>,
+  },
+  {
+    to: '/layout', label: '2D Layout',
+    icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
+  },
 ]
 
 export default function AppLayout({ children }) {
@@ -48,6 +57,9 @@ export default function AppLayout({ children }) {
 
   // Clock-triggered pings for follow-ups with a specific time set today.
   useTimedReminders(notifPerm === 'granted')
+
+  // Cursor ring/dot FX (matches the design mockup; auto-skips touch/reduced-motion).
+  useEffect(() => { mountCursorFx() }, [])
 
   // Tab title carries the due count even when the tab is backgrounded.
   useEffect(() => {

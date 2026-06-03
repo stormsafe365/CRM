@@ -71,7 +71,8 @@ export default function AllQuotes() {
     <div>
       <div className="page-header">
         <div>
-          <h1>All Quotes</h1>
+          <div className="eyebrow-lime">All Quotes</div>
+          <h1>Quotes</h1>
           <p className="muted">
             {visible.length} {visible.length === 1 ? 'quote' : 'quotes'} · every client, synced across devices
           </p>

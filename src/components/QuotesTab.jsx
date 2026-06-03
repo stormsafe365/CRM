@@ -1,26 +1,33 @@
 // QuotesTab: lives inside the ClientDetail page. Shows all quotes for
 // this client in a small table. Add / edit / delete / view PDF.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getQuotePdfSignedUrl, deleteQuotePdf } from '../lib/storage'
+import { quoteStatusLabel } from '../lib/constants'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import QuoteDeck from './QuoteDeck'
 import QuoteBuilderModal from './QuoteBuilderModal'
 
-export default function QuotesTab({ clientId, client, clientBuildingSize }) {
+const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
+
+export default function QuotesTab({ clientId, client, clientBuildingSize, building: buildingProp, setBuilding: setBuildingProp }) {
   const { user } = useAuth()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const [adding, setAdding] = useState(false)
-  const [building, setBuilding] = useState(false)
+  // "Build Quote" can be triggered from here OR from the Document Hub menu, so
+  // the parent (ClientDetail) may own this state. Fall back to local state.
+  const [buildingInner, setBuildingInner] = useState(false)
+  const building = buildingProp ?? buildingInner
+  const setBuilding = setBuildingProp ?? setBuildingInner
   const [editingId, setEditingId] = useState(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
-  const [viewMode, setViewMode] = useState('deck') // 'deck' | 'list'
+  const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
 
   // Load quotes + subscribe to changes
   useEffect(() => {
@@ -120,20 +127,25 @@ export default function QuotesTab({ clientId, client, clientBuildingSize }) {
   }
 
   return (
-    <div className="quotes-tab">
-      <div className="quotes-tab-header">
-        <div className="detail-card-title">Quotes</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <section className="card card-pad quotes-tab">
+      <div className="section-head">
+        <h3>Quotes</h3>
+        <div className="quotes-head-actions">
           {quotes.length > 0 && !adding && !editingId && (
-            <div className="qd-toggle">
-              <button className={viewMode === 'deck' ? 'on' : ''} onClick={() => setViewMode('deck')}>Deck</button>
-              <button className={viewMode === 'list' ? 'on' : ''} onClick={() => setViewMode('list')}>List</button>
+            <div className="seg">
+              <button className={viewMode === 'deck' ? 'active' : ''} onClick={() => setViewMode('deck')}>Deck</button>
+              <button className={viewMode === 'spread' ? 'active' : ''} onClick={() => setViewMode('spread')}>Spread</button>
+              <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')}>List</button>
             </div>
           )}
           {!adding && !editingId && (
             <>
-              <button onClick={() => setBuilding(true)} className="btn-primary">Build Quote</button>
-              <button onClick={() => setAdding(true)} className="btn-secondary">Add Manually</button>
+              <button onClick={() => setBuilding(true)} className="btn btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>Build Quote
+              </button>
+              <button onClick={() => setAdding(true)} className="btn btn-ghost">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>Add Manually
+              </button>
             </>
           )}
         </div>
@@ -175,6 +187,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize }) {
           onViewPdf={handleViewPdf}
           onAccept={handleAccept}
         />
+      ) : viewMode === 'spread' && !editingId && !adding ? (
+        <QuoteSpread quotes={quotes} onOpen={openFromDeck} onViewPdf={handleViewPdf} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -232,7 +246,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize }) {
           )}
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -240,4 +254,46 @@ function formatDate(yyyyMMdd) {
   if (!yyyyMMdd) return '—'
   const [y, m, d] = yyyyMMdd.split('-')
   return `${m}/${d}/${y}`
+}
+
+// Spread view — all quotes side by side in a scroll row (design .spread-grid).
+function QuoteSpread({ quotes, onOpen, onViewPdf }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
+    const timers = els.map((el, i) => setTimeout(() => el.classList.add('in'), 40 + i * 55))
+    return () => timers.forEach(clearTimeout)
+  }, [quotes])
+  return (
+    <div className="spread-scroll" ref={ref}>
+      <div className="spread-grid">
+        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} />)}
+      </div>
+    </div>
+  )
+}
+
+function SpreadCard({ q, onOpen, onViewPdf }) {
+  return (
+    <div className="spread-card" onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
+      <div className="q-head">
+        <div>
+          <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}</div>
+          <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
+        </div>
+        <span className="q-badge">{quoteStatusLabel(q.status)}</span>
+      </div>
+      {q.building_summary && <div className="q-sub">{q.building_summary}</div>}
+      <div className="q-figures">
+        <div className="q-fig"><div className="l">Deposit</div><div className="n num">{money(q.deposit_amount) || '—'}</div></div>
+        <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(q.balance_amount) || '—'}</div></div>
+      </div>
+      <div className="q-divider" />
+      <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
+      <div className="q-actions">
+        {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
+        <button className="btn btn-primary" onClick={() => onOpen(q)}>Open</button>
+      </div>
+    </div>
+  )
 }
