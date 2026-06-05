@@ -6080,7 +6080,7 @@ function buildingPageHTML(prefixHTML){
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5, foH=2.5, foYo=4.5;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=0;}
+    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.5:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -7404,7 +7404,7 @@ function printContract(){
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5, foH=2.5, foYo=4.5;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=0;}
+    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.5:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -9639,7 +9639,7 @@ function renderBuildingViews(){
     var loc=el.querySelector('.fo-loc').value;
     var qty=parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5,foH=2.5,foYo=4.5;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=0;}
+    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.5:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm3=comp.match(/(\d+)' Wide/);foW=wm3?parseInt(wm3[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm4=comp.match(/(\d+)' Wide/);foW=wm4?parseInt(wm4[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door')>=0){foW=6;foH=6.67;foYo=0;}

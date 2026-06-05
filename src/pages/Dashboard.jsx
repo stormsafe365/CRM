@@ -16,6 +16,8 @@ import { useCountUp } from '../lib/useCountUp'
 import { isoToday, fmtTime } from '../lib/followups'
 import Sparkline from '../components/Sparkline'
 import { AreaChart, Donut, Gauge } from '../components/charts'
+import DashCalendar from '../components/DashCalendar'
+import { toast } from '../lib/uiFx'
 
 const DAY = 86400000
 const moneyShort = (n) =>
@@ -175,38 +177,21 @@ export default function Dashboard() {
           <AreaChart points={area.points} labels={area.labels} peakText={area.peakText} />
         </div>
 
-        <div className="panel" style={{ '--i': 5 }}>
-          <div className="panel-title"><h3>Pipeline by Mfr</h3></div>
-          <div className="radial-wrap">
-            <Donut segments={[
-              { value: mfr.ca, color: 'var(--cyan)' },
-              { value: mfr.cci, color: 'var(--teal)' },
-            ]} />
-            {mfr.total > 0 && (
-              <div className="radial-center">
-                <div className="big num">{moneyShort(mfr.total)}</div>
-                <div className="cap">pipeline</div>
-              </div>
-            )}
-          </div>
-          {mfr.total > 0 && (
-            <div className="legend">
-              <span><i style={{ background: 'var(--cyan)' }} />CA · {Math.round(mfr.ca / mfr.total * 100)}%</span>
-              <span><i style={{ background: 'var(--teal)' }} />CCI · {Math.round(mfr.cci / mfr.total * 100)}%</span>
-            </div>
-          )}
-        </div>
+        <button className="panel launcher" style={{ '--i': 5 }} onClick={() => window.open('/quote-builder.html', '_blank', 'noopener')}>
+          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></div>
+          <div className="launcher-title">QTE Builder</div>
+          <div className="launcher-sub">Open the pricing &amp; quote tool</div>
+        </button>
 
-        <div className="panel" style={{ '--i': 6 }}>
-          <div className="panel-title"><h3>Win Rate</h3></div>
-          <div className="radial-wrap">
-            <Gauge fraction={winRate.frac} />
-            <div className="radial-center">
-              <div className="big num">{winRate.denom ? Math.round(winRate.frac * 100) + '%' : '—'}</div>
-              <div className="cap">{winRate.denom ? 'closed deals' : 'no closed deals yet'}</div>
-            </div>
-          </div>
-        </div>
+        <button className="panel launcher" style={{ '--i': 6 }} onClick={() => window.open('/3d-builder.html', '_blank', 'noopener')}>
+          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.3 7 12 12l8.7-5" /><path d="M12 22V12" /></svg></div>
+          <div className="launcher-title">3D Modeler</div>
+          <div className="launcher-sub">Build a 3D model</div>
+        </button>
+      </section>
+
+      <section className="stagger" style={{ marginBottom: 16 }}>
+        <DashCalendar />
       </section>
 
       {/* Lower row — breakdowns + follow-ups */}

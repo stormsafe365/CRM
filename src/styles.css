@@ -3667,4 +3667,16 @@ a.brand { text-decoration: none; color: inherit; }
 .pay-badge { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; }
 .pay-badge.warn { background: rgba(255,181,71,0.12); color: var(--warning); border: 1px solid rgba(255,181,71,0.3); }
 
+/* ---- dashboard launcher tiles (QTE Builder / 3D Modeler) ---- */
+.launcher { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; text-align: center; min-height: 240px; cursor: pointer; font: inherit; color: inherit; transition: transform .2s var(--spring-snap), border-color .2s ease; }
+.launcher:hover { transform: translateY(-3px); border-color: rgba(9,214,220,0.4); }
+.launcher:active { transform: translateY(-1px) scale(.99); }
+.launcher-ic { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; color: var(--cyan); background: rgba(9,214,220,0.08); border: 1px solid rgba(9,214,220,0.2); }
+.launcher-ic svg { width: 28px; height: 28px; }
+.launcher-title { font-family: var(--font-head); font-size: 16px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--fg); }
+.launcher-sub { font-size: 12.5px; color: var(--fg-3); }
+
+/* calendar event chips wrap nicely in dashboard cells */
+.cal-day .cd-event { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 } /* end @layer skin */
