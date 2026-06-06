@@ -5,7 +5,7 @@
 // show when there isn't enough data yet rather than faking numbers.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   statusLabel, PROJECT_STAGES, projectStageLabel,
@@ -27,6 +27,7 @@ const OPEN_QUOTE_STATUSES = ['draft', 'sent', 'verbal_accept']
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [clients, setClients] = useState([])
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -183,10 +184,10 @@ export default function Dashboard() {
           <div className="launcher-sub">Open the pricing &amp; quote tool</div>
         </button>
 
-        <button className="panel launcher" style={{ '--i': 6 }} onClick={() => window.open('/3d-builder.html', '_blank', 'noopener')}>
-          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.3 7 12 12l8.7-5" /><path d="M12 22V12" /></svg></div>
-          <div className="launcher-title">3D Modeler</div>
-          <div className="launcher-sub">Build a 3D model</div>
+        <button className="panel launcher" style={{ '--i': 6 }} onClick={() => navigate('/layout')}>
+          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg></div>
+          <div className="launcher-title">2D Layout</div>
+          <div className="launcher-sub">Lay out doors, windows &amp; openings</div>
         </button>
       </section>
 
