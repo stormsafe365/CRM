@@ -36,6 +36,7 @@ function buildMilestones(client, hasQuote) {
   const projAt = (s) => idx >= 0 && idx >= PROJ_ORDER.indexOf(s)
   return [
     { label: 'Lead Created', done: true },
+    { label: 'Attempting to Contact', done: client.status !== 'new_lead' || hasQuote },
     { label: 'Quote Sent', done: hasQuote },
     { label: 'Contract Sent', done: contractSent },
     { label: 'Contract Signed', done: ordered },
@@ -87,14 +88,15 @@ export default function ActivityProgress({ client, showAudience = false }) {
   // 'Lead Created' step is fixed (always done), so it isn't clickable.
   const STEP_PATCH = [
     null,                                                 // 0 Lead Created (fixed)
-    { status: 'working' },                                // 1 Quote Sent
-    { status: 'contract_sent' },                          // 2 Contract Sent
-    { status: 'ordered' },                                // 3 Contract Signed
-    { status: 'ordered', payment_cleared: true },         // 4 Deposit Received
-    { status: 'ordered', project_stage: 'engineering' },  // 5 Engineering
-    { status: 'ordered', project_stage: 'permitting' },   // 6 Permitting
-    { status: 'ordered', project_stage: 'scheduling' },   // 7 Scheduling
-    { status: 'ordered', project_stage: 'installed' },    // 8 Installed
+    { status: 'contacted' },                              // 1 Attempting to Contact
+    { status: 'working' },                                // 2 Quote Sent
+    { status: 'contract_sent' },                          // 3 Contract Sent
+    { status: 'ordered' },                                // 4 Contract Signed
+    { status: 'ordered', payment_cleared: true },         // 5 Deposit Received
+    { status: 'ordered', project_stage: 'engineering' },  // 6 Engineering
+    { status: 'ordered', project_stage: 'permitting' },   // 7 Permitting
+    { status: 'ordered', project_stage: 'scheduling' },   // 8 Scheduling
+    { status: 'ordered', project_stage: 'installed' },    // 9 Installed
   ]
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
@@ -178,6 +180,24 @@ function ActivityRow({ a, users }) {
   const m = TYPE_META[a.type] || { icon: '•', label: a.type }
   const aud = a.metadata?.audience
   const when = new Date(a.created_at)
+  // Only the manual touches you logged are editable — not the auto entries
+  // (status changes, quote created, follow-up set, etc.).
+  const editable = ['call', 'note', 'email', 'meeting'].includes(a.type)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(a.body || '')
+  const [busy, setBusy] = useState(false)
+
+  async function saveEdit() {
+    setBusy(true)
+    const { error } = await supabase.from('activities').update({ body: draft.trim() || null }).eq('id', a.id)
+    setBusy(false)
+    if (!error) setEditing(false) // realtime reload refreshes the timeline
+  }
+  async function del() {
+    if (!window.confirm('Delete this log entry? This cannot be undone.')) return
+    await supabase.from('activities').delete().eq('id', a.id)
+  }
+
   return (
     <div className="tl-item">
       <div className="tl-icon" aria-hidden>{m.icon}</div>
@@ -189,8 +209,26 @@ function ActivityRow({ a, users }) {
           <span className="tl-when">
             {when.toLocaleDateString()} · {when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </span>
+          {editable && !editing && (
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 12, flex: '0 0 auto' }}>
+              <span className="link-cyan" role="button" onClick={() => { setDraft(a.body || ''); setEditing(true) }}>Edit</span>
+              <span className="link-cyan" role="button" style={{ color: 'var(--danger)' }} onClick={del}>Delete</span>
+            </span>
+          )}
         </div>
-        {a.body && <div className="tl-body">{a.body}</div>}
+        {editing ? (
+          <div style={{ marginTop: 8 }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <textarea rows={3} value={draft} onChange={e => setDraft(e.target.value)} autoFocus />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={saveEdit} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        ) : (
+          a.body && <div className="tl-body">{a.body}</div>
+        )}
         <div className="tl-by muted">{userLabel(users, a.created_by) || 'System'}</div>
       </div>
     </div>

@@ -3679,4 +3679,7 @@ a.brand { text-decoration: none; color: inherit; }
 /* calendar event chips wrap nicely in dashboard cells */
 .cal-day .cd-event { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* selected state for composer / note type chips (they use .on) */
+.chip.on, .chip.active { color: var(--cyan); border-color: rgba(9,214,220,0.45); background: rgba(9,214,220,0.10); }
+
 } /* end @layer skin */

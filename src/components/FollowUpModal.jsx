@@ -87,7 +87,7 @@ export default function FollowUpModal({ clientId, followUp, onClose, onSaved }) 
             <span className="fum-label">Assign To</span>
             <div className="seg fum-seg">
               {AUDIENCES.map(a => (
-                <button key={a.v} type="button" className={f.audience === a.v ? 'on' : ''} onClick={() => up('audience', a.v)}>{a.l}</button>
+                <button key={a.v} type="button" className={f.audience === a.v ? 'active' : ''} onClick={() => up('audience', a.v)}>{a.l}</button>
               ))}
             </div>
           </div>
@@ -96,7 +96,7 @@ export default function FollowUpModal({ clientId, followUp, onClose, onSaved }) 
             <span className="fum-label">Type</span>
             <div className="seg fum-seg">
               {TYPES.map(t => (
-                <button key={t.v} type="button" className={f.type === t.v ? 'on' : ''} onClick={() => up('type', t.v)}>{t.l}</button>
+                <button key={t.v} type="button" className={f.type === t.v ? 'active' : ''} onClick={() => up('type', t.v)}>{t.l}</button>
               ))}
             </div>
           </div>
