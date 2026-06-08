@@ -2,9 +2,28 @@
 // pages. Receives initial values + an onSubmit callback. Validates that
 // 'name' and 'primary_rep' are present; everything else is optional.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CLIENT_STATUSES, LEAD_SOURCES, BUILDING_TYPES, PROJECT_STAGES } from '../lib/constants'
 import { useUsers } from '../lib/useUsers'
+
+// ZIP → City / State / County autofill via two free, no-key public APIs:
+//   Zippopotam (zip → city, state, lat/lon) + FCC census area (lat/lon → county).
+async function lookupZip(zip5) {
+  const r = await fetch(`https://api.zippopotam.us/us/${zip5}`)
+  if (!r.ok) return null
+  const d = await r.json()
+  const p = d.places?.[0]
+  if (!p) return null
+  const out = { city: p['place name'] || '', state: p['state abbreviation'] || '', county: '' }
+  try {
+    const fr = await fetch(`https://geo.fcc.gov/api/census/area?lat=${p.latitude}&lon=${p.longitude}&format=json`)
+    if (fr.ok) {
+      const fd = await fr.json()
+      out.county = (fd.results?.[0]?.county_name || '').replace(/\s+(County|Parish|Borough|Census Area)$/i, '')
+    }
+  } catch { /* county is best-effort; city/state still fill */ }
+  return out
+}
 
 const EMPTY = {
   name: '', email: '', phone: '',
@@ -28,6 +47,27 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
   const [form, setForm] = useState({ ...EMPTY, ...(initial ?? {}) })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [zipBusy, setZipBusy] = useState(false)
+  const [zipMsg, setZipMsg] = useState('')
+  const lastZip = useRef('')
+
+  // Fire the lookup as soon as a full 5-digit ZIP is present; fill City/State/County.
+  function onZipChange(value) {
+    update('zip', value)
+    const z = (value.match(/\d/g) || []).join('').slice(0, 5)
+    if (z.length !== 5) { setZipMsg(''); lastZip.current = ''; return }
+    if (lastZip.current === z) return
+    lastZip.current = z
+    setZipBusy(true); setZipMsg('')
+    lookupZip(z)
+      .then(res => {
+        if (!res) { setZipMsg('ZIP not found — fill in manually'); return }
+        setForm(f => ({ ...f, city: res.city, state: res.state, ...(res.county ? { county: res.county } : {}) }))
+        setZipMsg(`✓ ${res.city}, ${res.state}${res.county ? ` · ${res.county} County` : ''}`)
+      })
+      .catch(() => setZipMsg('Lookup failed — fill in manually'))
+      .finally(() => setZipBusy(false))
+  }
 
   function update(field, value) {
     setForm(f => {
@@ -162,7 +202,12 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
           <input type="text" value={form.state ?? ''} onChange={e => update('state', e.target.value)} maxLength={2} placeholder="FL" />
         </Field>
         <Field label="ZIP">
-          <input type="text" value={form.zip ?? ''} onChange={e => update('zip', e.target.value)} />
+          <input type="text" inputMode="numeric" value={form.zip ?? ''} onChange={e => onZipChange(e.target.value)} placeholder="33401 — auto-fills city/county/state" />
+          {(zipBusy || zipMsg) && (
+            <span style={{ display: 'block', marginTop: 4, fontSize: 11.5, color: zipMsg.startsWith('✓') ? 'var(--lime)' : 'var(--fg-3)' }}>
+              {zipBusy ? 'Looking up…' : zipMsg}
+            </span>
+          )}
         </Field>
       </FormSection>
 
