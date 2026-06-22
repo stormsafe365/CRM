@@ -2488,6 +2488,10 @@ body {
 }
 .canvas { max-width: 1480px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
+/* Full-bleed pages (3D Builder): fill the whole content area, no padding/column. */
+.scroll.flush { padding: 0; overflow: hidden; }
+.canvas.bleed { max-width: none; margin: 0; gap: 0; height: 100%; }
+
 .back-link {
   display: inline-flex; align-items: center; gap: 9px;
   color: var(--cyan); font-weight: 500; font-size: 14px;

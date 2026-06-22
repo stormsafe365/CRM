@@ -3,7 +3,7 @@
 // All behavior (auth, due-follow-up badge, desktop reminders, search) is unchanged.
 
 import { useEffect, useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
@@ -42,6 +42,10 @@ const navItems = [
     icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></>,
   },
   {
+    to: '/build', label: '3D Builder',
+    icon: <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></>,
+  },
+  {
     to: '/layout', label: '2D Layout',
     icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
   },
@@ -51,6 +55,9 @@ export default function AppLayout({ children }) {
   const { user, signOut } = useAuth()
   const { users } = useUsers()
   const navigate = useNavigate()
+  // Full-bleed pages (e.g. the 3D Builder) fill the whole content area —
+  // no centered max-width column, no scroll padding.
+  const bleed = useLocation().pathname.startsWith('/build')
   const { count: dueCount, clients: dueClients } = useDueFollowups()
   const notifSupported = typeof window !== 'undefined' && 'Notification' in window
   const [notifPerm, setNotifPerm] = useState(notifSupported ? Notification.permission : 'unsupported')
@@ -182,8 +189,8 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        <div className="scroll">
-          <div className="canvas">
+        <div className={bleed ? 'scroll flush' : 'scroll'}>
+          <div className={bleed ? 'canvas bleed' : 'canvas'}>
             {children}
           </div>
         </div>

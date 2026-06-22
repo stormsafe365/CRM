@@ -9,7 +9,7 @@ import { quoteStatusLabel } from '../lib/constants'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import QuoteDeck from './QuoteDeck'
-import QuoteBuilderModal from './QuoteBuilderModal'
+import BuildQuoteModal from './BuildQuoteModal'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
@@ -154,9 +154,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       {error && <div className="error-banner">{error}</div>}
 
       {building && (
-        <QuoteBuilderModal
+        <BuildQuoteModal
           client={client ?? { id: clientId }}
-          onSave={handleBuildSave}
           onClose={() => setBuilding(false)}
         />
       )}
