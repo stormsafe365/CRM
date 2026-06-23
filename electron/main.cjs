@@ -30,8 +30,10 @@ const MIME = {
   '.ttf': 'font/ttf', '.map': 'application/json', '.pdf': 'application/pdf',
 };
 
-// Serve `distDir` on a random localhost port, with SPA fallback to index.html
-// for extension-less routes (so deep links like /clients/:id work on reload).
+// Serve `distDir` on a STABLE localhost port (so per-origin storage like the
+// Follow-Up HQ calendar's localStorage survives app restarts), with SPA fallback
+// to index.html for extension-less routes. Falls back to a random port if taken.
+const APP_PORT = 31624;
 function startServer(distDir) {
   return new Promise((resolve, reject) => {
     const srv = http.createServer((req, res) => {
@@ -57,8 +59,14 @@ function startServer(distDir) {
         res.statusCode = 500; res.end('Server error');
       }
     });
-    srv.on('error', reject);
-    srv.listen(0, '127.0.0.1', () => resolve(srv));
+    srv.once('error', (e) => {
+      if (e && e.code === 'EADDRINUSE') {
+        const s2 = http.createServer(srv.listeners('request')[0]);
+        s2.on('error', reject);
+        s2.listen(0, '127.0.0.1', () => resolve(s2)); // fallback to a free port
+      } else reject(e);
+    });
+    srv.listen(APP_PORT, '127.0.0.1', () => resolve(srv));
   });
 }
 
