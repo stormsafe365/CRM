@@ -30,6 +30,10 @@ const navItems = [
     icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   },
   {
+    to: '/calendar', label: 'Calendar',
+    icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></>,
+  },
+  {
     to: '/pipeline', label: 'Pipeline',
     icon: <><path d="M3 4h18l-7 8v6l-4 2v-8z" /></>,
   },

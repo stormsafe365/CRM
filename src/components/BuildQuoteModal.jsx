@@ -24,7 +24,6 @@ const METAL = {
   textShadow: '0 1px 0 rgba(255,255,255,.7)',
   fontWeight: 800,
 }
-const METAL_CSS = 'background:linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%);color:#0b1622;border:1px solid #8a96a6;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.4);text-shadow:0 1px 0 rgba(255,255,255,.7);font-weight:800;'
 
 export default function BuildQuoteModal({ client, onSave, onClose }) {
   const iframeRef = useRef(null)
@@ -96,30 +95,38 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
   // Once the nested program is ready, relabel its SAVE QUOTE button(s) → "Save to
   // Lead" and route their click to the CRM save. Polls (the program loads async).
   useEffect(() => {
-    let tries = 0
-    const t = setInterval(() => {
-      tries++
-      const pg = getProgramWindow()
-      if (pg) {
-        const btns = [...pg.document.querySelectorAll('button')].filter((b) => {
-          const oc = b.getAttribute('onclick') || ''
-          return /saveQuote/.test(oc) || /save\s*quote|save current quote/i.test(b.textContent || '')
-        })
-        if (btns.length) {
-          btns.forEach((b) => {
-            if (b.dataset.ssHooked) return
-            b.dataset.ssHooked = '1'
-            const icon = (b.textContent || '').trim().charAt(0) === '\uD83D' ? '💾 ' : ''
-            b.textContent = icon + 'Save to Lead'
-            b.style.cssText += ';' + METAL_CSS
-            b.onclick = null
-            b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
-          })
-          clearInterval(t)
-        }
+    const SILVER = 'linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%)'
+    // Force the silver over the program's .sbtn{background:var(--or)} (orange),
+    // and keep it applied — the program restyles its save button on save, so we
+    // re-assert label + color every tick. Hook the click once.
+    const applyTo = (b) => {
+      if (b.dataset.ssHooked !== '1') {
+        b.dataset.ssHooked = '1'
+        b.dataset.ssIcon = (b.textContent || '').trim().charAt(0) === '\uD83D' ? '1' : '0'
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
       }
-      if (tries > 40) clearInterval(t) // ~20s safety net
-    }, 500)
+      const label = (b.dataset.ssIcon === '1' ? '💾 ' : '') + 'Save to Lead'
+      if (b.textContent !== label) b.textContent = label
+      b.style.setProperty('background', SILVER, 'important')
+      b.style.setProperty('color', '#0b1622', 'important')
+      b.style.setProperty('border', '1px solid #8a96a6', 'important')
+      b.style.setProperty('box-shadow', 'inset 0 1px 0 rgba(255,255,255,.9), 0 2px 8px rgba(0,0,0,.4)', 'important')
+      b.style.setProperty('text-shadow', '0 1px 0 rgba(255,255,255,.7)', 'important')
+      b.style.setProperty('font-weight', '800', 'important')
+    }
+    const tick = () => {
+      const pg = getProgramWindow()
+      if (!pg) return
+      const btns = [...pg.document.querySelectorAll('button')].filter((b) =>
+        b.dataset.ssHooked === '1' ||
+        /saveQuote/.test(b.getAttribute('onclick') || '') ||
+        /save\s*quote|save current quote/i.test(b.textContent || ''),
+      )
+      btns.forEach(applyTo)
+    }
+    const t = setInterval(tick, 500)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

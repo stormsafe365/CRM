@@ -14,6 +14,7 @@ import Today from './pages/Today'
 import ActiveOrders from './pages/ActiveOrders'
 import AllQuotes from './pages/AllQuotes'
 import Renderings from './pages/Renderings'
+import Calendar from './pages/Calendar'
 import BuildTool from './pages/BuildTool'
 import LayoutTool from './pages/LayoutTool'
 import ComingSoon from './pages/ComingSoon'
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/pipeline"  element={<Protected><ComingSoon title="Sales Pipeline" blurb="A drag-and-drop kanban to move deals from New Lead through Won." /></Protected>} />
         <Route path="/projects"  element={<Protected><ActiveOrders /></Protected>} />
         <Route path="/followups" element={<Protected><Today /></Protected>} />
+        <Route path="/calendar"  element={<Protected><Calendar /></Protected>} />
         <Route path="/quotes"    element={<Protected><AllQuotes /></Protected>} />
         <Route path="/renderings" element={<Protected><Renderings /></Protected>} />
         <Route path="/build"     element={<Protected><BuildTool /></Protected>} />
