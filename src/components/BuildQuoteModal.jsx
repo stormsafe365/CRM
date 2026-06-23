@@ -14,6 +14,17 @@ import { toast } from '../lib/uiFx'
 
 const SRC = '/build/build.html'
 
+// Metallic cyan-blue "Save to Lead" treatment — makes the action stand out.
+const METAL = {
+  background: 'linear-gradient(180deg,#bdf4f7 0%,#46dadf 36%,#13b6bb 62%,#0a9095 100%)',
+  color: '#042024',
+  border: '1px solid #0a9095',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.22), 0 2px 10px rgba(9,214,220,.4)',
+  textShadow: '0 1px 0 rgba(255,255,255,.35)',
+  fontWeight: 800,
+}
+const METAL_CSS = 'background:linear-gradient(180deg,#bdf4f7 0%,#46dadf 36%,#13b6bb 62%,#0a9095 100%);color:#042024;border:1px solid #0a9095;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 2px 10px rgba(9,214,220,.4);text-shadow:0 1px 0 rgba(255,255,255,.35);font-weight:800;'
+
 export default function BuildQuoteModal({ client, onSave, onClose }) {
   const iframeRef = useRef(null)
   const savingRef = useRef(false)
@@ -99,6 +110,7 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
             b.dataset.ssHooked = '1'
             const icon = (b.textContent || '').trim().charAt(0) === '\uD83D' ? '💾 ' : ''
             b.textContent = icon + 'Save to Lead'
+            b.style.cssText += ';' + METAL_CSS
             b.onclick = null
             b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
           })
@@ -127,7 +139,7 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
           <div className="qb-bar-actions">
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
-            <button type="button" className="btn-primary" onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : 'Save to Lead'}</button>
+            <button type="button" className="btn-primary" style={METAL} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
           </div>
         </div>
         <iframe ref={iframeRef} src={SRC} title="StormSafe 3D Builder" allow="fullscreen" className="qb-iframe" />

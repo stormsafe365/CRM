@@ -126,6 +126,13 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     setViewMode('list')
   }
 
+  // Delete straight from the deck / spread card (the list view has its own inline confirm).
+  function confirmDeleteQuote(quote) {
+    if (window.confirm('Delete this quote? The PDF will also be removed. This cannot be undone.')) {
+      handleDelete(quote)
+    }
+  }
+
   return (
     <section className="card card-pad quotes-tab">
       <div className="section-head">
@@ -186,9 +193,10 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           onOpen={openFromDeck}
           onViewPdf={handleViewPdf}
           onAccept={handleAccept}
+          onDelete={confirmDeleteQuote}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openFromDeck} onViewPdf={handleViewPdf} />
+        <QuoteSpread quotes={quotes} onOpen={openFromDeck} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -257,7 +265,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onOpen, onViewPdf }) {
+function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -267,13 +275,13 @@ function QuoteSpread({ quotes, onOpen, onViewPdf }) {
   return (
     <div className="spread-scroll" ref={ref}>
       <div className="spread-grid">
-        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} />)}
+        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} />)}
       </div>
     </div>
   )
 }
 
-function SpreadCard({ q, onOpen, onViewPdf }) {
+function SpreadCard({ q, onOpen, onViewPdf, onDelete }) {
   return (
     <div className="spread-card" onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
       <div className="q-head">
@@ -292,7 +300,8 @@ function SpreadCard({ q, onOpen, onViewPdf }) {
       <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
       <div className="q-actions">
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
-        <button className="btn btn-primary" onClick={() => onOpen(q)}>Open</button>
+        <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
+        {onDelete && <button className="btn btn-ghost" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>Delete</button>}
       </div>
     </div>
   )

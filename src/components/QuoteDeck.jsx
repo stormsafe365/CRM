@@ -20,7 +20,7 @@ const fmtDate = (d) => {
   return new Date(y, mo - 1, da).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export default function QuoteDeck({ quotes, onOpen, onViewPdf, onAccept }) {
+export default function QuoteDeck({ quotes, onOpen, onViewPdf, onAccept, onDelete }) {
   const stageRef = useRef(null)
   const cardRefs = useRef([])
   const dragRef = useRef(null)
@@ -143,7 +143,8 @@ export default function QuoteDeck({ quotes, onOpen, onViewPdf, onAccept }) {
                 {q.pdf_snapshot_url && (
                   <button className="qd-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>
                 )}
-                <button className="qd-btn" onClick={() => onOpen(q)}>Open</button>
+                <button className="qd-btn" onClick={() => onOpen(q)}>Open / Edit</button>
+                {onDelete && <button className="qd-btn" onClick={() => onDelete(q)} style={{ color: 'var(--danger, #FF5C5C)' }}>Delete</button>}
               </div>
             </div>
           </article>
