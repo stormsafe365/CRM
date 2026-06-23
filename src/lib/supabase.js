@@ -16,4 +16,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Keep the session signed in across app launches: persist it in local storage
+// under a fixed key and auto-refresh the token. Combined with the desktop app's
+// stable port, this means Jenna + Josh stay logged in and don't re-enter
+// credentials every time they open the app.
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storageKey: 'stormsafe-crm-auth',
+  },
+})
