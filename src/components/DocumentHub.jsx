@@ -5,6 +5,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { uploadClientDoc, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 import { openMenu, MENU_ICON } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 
@@ -40,6 +42,7 @@ const fmtDate = (iso) => {
 }
 
 export default function DocumentHub({ clientId, clientName, client, onBuildQuote }) {
+  const { user } = useAuth()
   const [filesByCat, setFilesByCat] = useState({})
   const [loading, setLoading] = useState(true)
   const [active, setActive] = useState('all')
@@ -74,7 +77,27 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const file = e.target.files?.[0]
     if (!file) return
     setBusy(true); setError('')
-    try { await uploadClientDoc(clientId, uploadCat.current, file); await refresh() }
+    try {
+      const cat = uploadCat.current
+      const path = await uploadClientDoc(clientId, cat, file)
+      // Uploading a quote PDF should also appear in the Quotes box — create a
+      // quote record that points at the uploaded file. Size is parsed from the
+      // filename (e.g. "…24x30x14.pdf") when present.
+      if (cat === 'quote') {
+        const m = file.name.match(/(\d+)\s*[xX]\s*(\d+)(?:\s*[xX]\s*(\d+))?/)
+        const size = m ? [m[1], m[2], m[3]].filter(Boolean).join('x') : null
+        await supabase.from('quotes').insert({
+          client_id: clientId,
+          quote_date: new Date().toISOString().slice(0, 10),
+          building_size: size,
+          status: 'draft',
+          pdf_snapshot_url: path,
+          notes: file.name.replace(/\.[^.]+$/, ''),
+          created_by: user?.id ?? null,
+        })
+      }
+      await refresh()
+    }
     catch (err) { setError(err.message) }
     finally { setBusy(false); if (inputRef.current) inputRef.current.value = '' }
   }
