@@ -14,14 +14,13 @@ import { toast } from '../lib/uiFx'
 
 const SRC = '/build/build.html'
 
-// Brushed-metal SILVER "Save to Lead" treatment — the 49%/50% color jump is the
-// metal "shine line". Dark text on silver makes it stand apart from the cyan buttons.
-const METAL = {
-  background: 'linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%)',
-  color: '#0b1622',
-  border: '1px solid #8a96a6',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.25), 0 2px 8px rgba(0,0,0,.4)',
-  textShadow: '0 1px 0 rgba(255,255,255,.7)',
+// White "Save to Lead" button — white background, dark-navy text (matches the
+// Generate Contract text color), so it reads clearly against the cyan buttons.
+const SAVE_BTN = {
+  background: '#ffffff',
+  color: '#080f14',
+  border: '1px solid #cdd6e0',
+  boxShadow: '0 1px 3px rgba(0,0,0,.35)',
   fontWeight: 800,
 }
 
@@ -95,38 +94,24 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
   // Once the nested program is ready, relabel its SAVE QUOTE button(s) → "Save to
   // Lead" and route their click to the CRM save. Polls (the program loads async).
   useEffect(() => {
-    const SILVER = 'linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%)'
-    // Force the silver over the program's .sbtn{background:var(--or)} (orange),
-    // and keep it applied — the program restyles its save button on save, so we
-    // re-assert label + color every tick. Hook the click once.
-    const applyTo = (b) => {
-      if (b.dataset.ssHooked !== '1') {
-        b.dataset.ssHooked = '1'
-        b.dataset.ssIcon = (b.textContent || '').trim().charAt(0) === '\uD83D' ? '1' : '0'
-        b.removeAttribute('onclick')
-        b.onclick = null
-        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
-      }
-      const label = (b.dataset.ssIcon === '1' ? '💾 ' : '') + 'Save to Lead'
-      if (b.textContent !== label) b.textContent = label
-      b.style.setProperty('background', SILVER, 'important')
-      b.style.setProperty('color', '#0b1622', 'important')
-      b.style.setProperty('border', '1px solid #8a96a6', 'important')
-      b.style.setProperty('box-shadow', 'inset 0 1px 0 rgba(255,255,255,.9), 0 2px 8px rgba(0,0,0,.4)', 'important')
-      b.style.setProperty('text-shadow', '0 1px 0 rgba(255,255,255,.7)', 'important')
-      b.style.setProperty('font-weight', '800', 'important')
-    }
+    // Route the program's SAVE QUOTE (and "Save Current Quote") click to the CRM
+    // save when used from a lead. The button's WHITE styling comes from the
+    // program itself now, so we don't touch its appearance — just its action.
     const tick = () => {
       const pg = getProgramWindow()
       if (!pg) return
       const btns = [...pg.document.querySelectorAll('button')].filter((b) =>
-        b.dataset.ssHooked === '1' ||
-        /saveQuote/.test(b.getAttribute('onclick') || '') ||
-        /save\s*quote|save current quote/i.test(b.textContent || ''),
+        /saveQuote/.test(b.getAttribute('onclick') || '') || /save current quote/i.test(b.textContent || ''),
       )
-      btns.forEach(applyTo)
+      btns.forEach((b) => {
+        if (b.dataset.ssHooked === '1') return
+        b.dataset.ssHooked = '1'
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
+      })
     }
-    const t = setInterval(tick, 500)
+    const t = setInterval(tick, 600)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -147,7 +132,7 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
           <div className="qb-bar-actions">
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
-            <button type="button" className="btn-primary" style={METAL} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
+            <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
           </div>
         </div>
         <iframe ref={iframeRef} src={SRC} title="StormSafe 3D Builder" allow="fullscreen" className="qb-iframe" />
