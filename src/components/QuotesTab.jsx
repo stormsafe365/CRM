@@ -93,13 +93,25 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     if (quote.pdf_snapshot_url) {
       try { await deleteQuotePdf(quote.pdf_snapshot_url) } catch {}
     }
-    const { error } = await supabase
+    // .select() returns the rows actually removed — so we can tell a real delete
+    // from one silently blocked by RLS (0 rows, no error).
+    const { data, error } = await supabase
       .from('quotes')
       .delete()
       .eq('id', quote.id)
+      .select('id')
     if (error) {
       setError(error.message)
+      return
     }
+    if (!data || data.length === 0) {
+      setError('Could not delete this quote — the database blocked it (permission). Run the quotes delete-policy update.')
+      return
+    }
+    // Remove it from the UI right away. Realtime DELETE events don't carry
+    // client_id, so the filtered subscription can miss them — this guarantees
+    // the deck/list updates immediately instead of showing a ghost quote.
+    setQuotes(qs => qs.filter(x => x.id !== quote.id))
     setConfirmingDeleteId(null)
   }
 

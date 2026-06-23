@@ -14,16 +14,17 @@ import { toast } from '../lib/uiFx'
 
 const SRC = '/build/build.html'
 
-// Metallic cyan-blue "Save to Lead" treatment — makes the action stand out.
+// Brushed-metal SILVER "Save to Lead" treatment — the 49%/50% color jump is the
+// metal "shine line". Dark text on silver makes it stand apart from the cyan buttons.
 const METAL = {
-  background: 'linear-gradient(180deg,#bdf4f7 0%,#46dadf 36%,#13b6bb 62%,#0a9095 100%)',
-  color: '#042024',
-  border: '1px solid #0a9095',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.22), 0 2px 10px rgba(9,214,220,.4)',
-  textShadow: '0 1px 0 rgba(255,255,255,.35)',
+  background: 'linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%)',
+  color: '#0b1622',
+  border: '1px solid #8a96a6',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.25), 0 2px 8px rgba(0,0,0,.4)',
+  textShadow: '0 1px 0 rgba(255,255,255,.7)',
   fontWeight: 800,
 }
-const METAL_CSS = 'background:linear-gradient(180deg,#bdf4f7 0%,#46dadf 36%,#13b6bb 62%,#0a9095 100%);color:#042024;border:1px solid #0a9095;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 2px 10px rgba(9,214,220,.4);text-shadow:0 1px 0 rgba(255,255,255,.35);font-weight:800;'
+const METAL_CSS = 'background:linear-gradient(180deg,#fbfcfd 0%,#dfe4ea 18%,#b9c2cd 49%,#9aa6b4 50%,#c4ccd6 82%,#eef1f5 100%);color:#0b1622;border:1px solid #8a96a6;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.4);text-shadow:0 1px 0 rgba(255,255,255,.7);font-weight:800;'
 
 export default function BuildQuoteModal({ client, onSave, onClose }) {
   const iframeRef = useRef(null)
