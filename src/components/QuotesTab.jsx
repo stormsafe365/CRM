@@ -156,6 +156,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       {building && (
         <BuildQuoteModal
           client={client ?? { id: clientId }}
+          onSave={handleCreate}
           onClose={() => setBuilding(false)}
         />
       )}
