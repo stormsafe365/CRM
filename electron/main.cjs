@@ -99,11 +99,28 @@ async function createWindow() {
 
   mainWindow.loadURL(startUrl);
 
-  // Internal links stay in-app; external (https) links open in the real browser.
+  // Window-open routing:
+  //  • about:/data:/blank + our own pages  → open IN-APP (the pricing program's
+  //    "Save / Print PDF" and "Generate Contract" open a blank popup and write the
+  //    print document into it — these must NOT be handed to the OS).
+  //  • real web links + mailto/tel/sms      → open in the OS default app.
+  //  • anything else                         → open in-app (never hand odd schemes
+  //    to the OS, which causes the "no app to open this link" popup).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) return { action: 'allow' };
-    shell.openExternal(url);
-    return { action: 'deny' };
+    if (
+      url === 'about:blank' ||
+      url.startsWith('about:') ||
+      url.startsWith('data:') ||
+      url.startsWith('http://127.0.0.1') ||
+      url.startsWith('http://localhost')
+    ) {
+      return { action: 'allow' };
+    }
+    if (/^(https?|mailto|tel|sms):/i.test(url)) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
   });
 
   if (isDev) mainWindow.webContents.openDevTools();
