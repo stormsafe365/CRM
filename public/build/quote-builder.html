@@ -7878,8 +7878,12 @@ function threeDPageHTML(imgs){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       cell(imgs.front,'FRONT',gAsp)+cell(imgs.back,'BACK',gAsp)+
     '</div>'+
-    '<div style="margin-top:14px">'+cell(imgs.right,'RIGHT EAVE',eAsp)+'</div>'+
-    '<div style="margin-top:14px">'+cell(imgs.left,'LEFT EAVE',eAsp)+'</div>'+
+    // The capture keyed 'right'/'left' is swapped vs the program's eave naming
+    // (Left Eave Side maps to the +X wall), so a "Left Eave Side" component lands
+    // in imgs.right. Pair each label with the correct image: RIGHT EAVE ← imgs.left,
+    // LEFT EAVE ← imgs.right. (Live view + ISO are already correct; only these were.)
+    '<div style="margin-top:14px">'+cell(imgs.left,'RIGHT EAVE',eAsp)+'</div>'+
+    '<div style="margin-top:14px">'+cell(imgs.right,'LEFT EAVE',eAsp)+'</div>'+
     caption
   );
   return pg1 + pg2;
@@ -7925,8 +7929,8 @@ function collectElevItems(){
 // One clean dimensioned elevation (SVG): wall outline (+gable), openings with
 // W×H + sill labels, a horizontal dimension chain (corner->opening->corner),
 // overall width, and wall height on the left.
-function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront){
-  var PADL=46, PADR=20, PADT=18, PADB=60, DRAWW=660;
+function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide){
+  var PADL=46, PADR=20, PADT=(frontSide?32:18), PADB=60, DRAWW=660;
   var sc=DRAWW/Math.max(faceW,1);
   var wallHpx=wallH*sc, peakHpx=(isGable?Math.max(peakH-wallH,0):0)*sc, totH=wallHpx+peakHpx;
   var SVGW=DRAWW+PADL+PADR, SVGH=totH+PADT+PADB;
@@ -7968,6 +7972,16 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront){
   s+='<line x1="'+(lx-3)+'" y1="'+Y(0)+'" x2="'+(lx+3)+'" y2="'+Y(0)+'" stroke="#64748b" stroke-width="0.8"/>';
   s+='<line x1="'+(lx-3)+'" y1="'+Y(wallH)+'" x2="'+(lx+3)+'" y2="'+Y(wallH)+'" stroke="#64748b" stroke-width="0.8"/>';
   s+='<text x="'+(lx-5)+'" y="'+Y(wallH/2)+'" font-size="8.5" fill="#0f172a" text-anchor="middle" font-family="Arial" transform="rotate(-90 '+(lx-5)+' '+Y(wallH/2)+')">'+_dimFtIn(wallH)+'</text>';
+  // Front-gable-end marker on eave views so the reader knows which end the
+  // dimensions are measured from. Convention: Left Eave shows FRONT on screen-
+  // right, Right Eave shows FRONT on screen-left (see getPosItems note).
+  if(frontSide){
+    var fx=frontSide==='right'?X(faceW):X(0);
+    var lbl=frontSide==='right'?'FRONT GABLE END ▸':'◂ FRONT GABLE END';
+    var anc=frontSide==='right'?'end':'start';
+    s+='<text x="'+fx+'" y="13" font-size="8.5" fill="#0d6e6e" text-anchor="'+anc+'" font-family="Arial" font-weight="800" letter-spacing="0.4">'+lbl+'</text>';
+    s+='<line x1="'+fx+'" y1="18" x2="'+fx+'" y2="'+Y(wallH)+'" stroke="#0d6e6e" stroke-width="1" stroke-dasharray="3 2"/>';
+  }
   s+='</svg>';
   return s;
 }
@@ -7978,15 +7992,15 @@ function dimSpacingPageHTML(){
   var H=parseInt(G('bh').value)||10, pitch=parseInt(G('pitch')?G('pitch').textContent:'3')||3;
   var it=collectElevItems(); var W=it.W, L=it.L, peakH=H+(W/2)*(pitch/12);
   var isGCH=G('btype')&&G('btype').value==='gch'&&parseInt(G('gch-enc').value)>0&&parseInt(G('gch-open').value)>0;
-  function box(label, faceW, isGable, items, gchFront){
+  function box(label, faceW, isGable, items, gchFront, frontSide){
     return '<div style="break-inside:avoid;page-break-inside:avoid;margin-bottom:16px;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;background:#fff">'+
       '<div style="background:#1C2E3F;color:#fff;font-size:9pt;font-weight:800;letter-spacing:1.8px;text-align:center;padding:6px;text-transform:uppercase">'+label+'</div>'+
-      '<div style="padding:10px 12px;background:#fff">'+dimElevSVG(faceW,H,peakH,isGable,items,gchFront)+'</div>'+
+      '<div style="padding:10px 12px;background:#fff">'+dimElevSVG(faceW,H,peakH,isGable,items,gchFront,frontSide)+'</div>'+
     '</div>';
   }
   return '<div style="page-break-before:always;background:#ffffff;min-height:100vh;padding:24px;box-sizing:border-box;font-family:Arial,sans-serif">'+
     '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#0D1B2A;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1B8A8A;text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
-    box('Front',W,true,it.front,isGCH)+box('Back',W,true,it.back,false)+box('Right Eave',L,false,it.right,false)+box('Left Eave',L,false,it.left,false)+
+    box('Front',W,true,it.front,isGCH)+box('Back',W,true,it.back,false)+box('Right Eave',L,false,it.right,false,'left')+box('Left Eave',L,false,it.left,false,'right')+
     '<div style="margin-top:4px;font-size:8pt;color:#64748b;text-align:center">All dimensions measured along grade from the wall corners. &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
   '</div>';
 }
@@ -8677,12 +8691,12 @@ async function printContract(){
     '.page:last-child{page-break-after:auto}'+
 
     // Header
-    '.c-hdr{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;padding:0 0 8px;border-bottom:2.5px solid #111827;margin-bottom:12px}'+
-    '.c-hdr-logo{width:56px;height:56px;object-fit:contain}'+
+    '.c-hdr{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;padding:0 0 8px;border-bottom:2.5px solid #111827;margin-bottom:12px}'+
+    '.c-hdr-logo{width:64px;height:64px;object-fit:contain;image-rendering:auto}'+
     '.c-hdr-brand-name{font-size:13pt;font-weight:900;color:#111827;letter-spacing:1.2px;line-height:1}'+
     '.c-hdr-brand-name span{color:#0d8a82}'+
-    '.c-hdr-brand-tag{font-size:7.5pt;color:#64748b;font-style:italic;margin-top:3px;letter-spacing:.3px}'+
-    '.c-hdr-brand-contact{font-size:7pt;color:#94a3b8;margin-top:3px}'+
+    '.c-hdr-brand-tag{font-size:8pt;color:#475569;font-style:italic;margin-top:3px;letter-spacing:.3px}'+
+    '.c-hdr-brand-contact{font-size:7.5pt;color:#475569;margin-top:3px;font-weight:500}'+
     '.c-hdr-meta{text-align:right}'+
     '.c-hdr-title{font-size:13pt;font-weight:900;color:#111827;letter-spacing:2px;text-transform:uppercase;line-height:1.1}'+
     '.c-hdr-sub{font-size:7.5pt;color:#64748b;margin-top:4px;letter-spacing:.4px}'+
@@ -8718,7 +8732,7 @@ async function printContract(){
 
     // Line items table
     '.c-tbl{width:100%;border-collapse:collapse;font-size:8pt}'+
-    '.c-tbl thead th{background:#111827;color:#ffffff;font-size:6.8pt;font-weight:900;letter-spacing:.8px;text-transform:uppercase;padding:5px 7px;text-align:left}'+
+    '.c-tbl thead th{background:#111827;color:#ffffff;font-size:6.8pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:5px 7px;text-align:left}'+
     '.c-tbl thead th.c{text-align:center}.c-tbl thead th.r{text-align:right}'+
     '.c-tbl tbody td{padding:2.3px 7px;border-bottom:1px solid #e2e8f0;color:#1e293b;vertical-align:middle}'+
     '.c-tbl tbody tr:nth-child(even) td{background:#f8fafc}'+
@@ -8763,7 +8777,7 @@ async function printContract(){
     '.c-doc-box .c-doc-amt{font-size:10pt;color:#111827;font-weight:900;margin-bottom:2px}'+
     '.c-doc-box .c-doc-note{color:#1e293b;font-weight:500}'+
     '.c-doc-box.full{grid-column:1/-1}'+
-    '.c-responsibilities{margin-top:6px;background:#f8fafc;border-left:3px solid #475569;border-radius:3px;padding:6px 10px;font-size:7.5pt;color:#1e293b;line-height:1.4;break-inside:avoid;page-break-inside:avoid}'+
+    '.c-responsibilities{margin-top:6px;background:#f8fafc;border-left:3px solid #475569;border-radius:3px;padding:7px 11px;font-size:8.5pt;color:#1e293b;line-height:1.5;break-inside:avoid;page-break-inside:avoid}'+
     '.c-responsibilities strong{color:#111827;font-weight:800}'+
 
     // Signature block — fixed spacing so it doesn\'t get cut off
@@ -8782,10 +8796,10 @@ async function printContract(){
     // Building views page
     '.c-views-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}'+
     '.c-view{background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;break-inside:avoid;page-break-inside:avoid}'+
-    '.c-view-hdr{background:#111827;color:#ffffff;font-size:7.5pt;font-weight:900;letter-spacing:1.5px;text-align:center;padding:4px 5px;text-transform:uppercase}'+
+    '.c-view-hdr{background:#111827;color:#ffffff;font-size:7.5pt;font-weight:700;letter-spacing:1.5px;text-align:center;padding:4px 5px;text-transform:uppercase}'+
     '.c-view-body{padding:5px 6px;background:#ffffff}'+
     '.c-floorplan{background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;break-inside:avoid;page-break-inside:avoid}'+
-    '.c-floorplan-hdr{background:#111827;color:#ffffff;font-size:8pt;font-weight:900;letter-spacing:1.8px;text-align:center;padding:5px;text-transform:uppercase}'+
+    '.c-floorplan-hdr{background:#111827;color:#ffffff;font-size:8pt;font-weight:700;letter-spacing:1.8px;text-align:center;padding:5px;text-transform:uppercase}'+
     '.c-floorplan-body{padding:6px 4px}'+
 
     // Legends
@@ -8905,6 +8919,8 @@ async function printContract(){
       '<div class="c-spec"><div class="l">Roof Color</div><div class="v">'+_esc(roofColor)+'</div></div>'+
       '<div class="c-spec"><div class="l">Wall Color</div><div class="v">'+_esc(wallColor)+'</div></div>'+
       '<div class="c-spec"><div class="l">Trim Color</div><div class="v">'+_esc(trimColor)+'</div></div>'+
+      // Wainscot color — only when wainscot is added to the build.
+      (wainOn ? '<div class="c-spec"><div class="l">Wainscot Color</div><div class="v">'+_esc((wainColor&&wainColor!=='N/A')?wainColor:'—')+'</div></div>' : '')+
     '</div>'+
     '</div>'+
 
@@ -8987,8 +9003,11 @@ async function printContract(){
       '<div class="c-view"><div class="c-view-hdr">Front</div><div class="c-view-body">'+_ctv(svgFront, imgs3D&&imgs3D.front, gAsp)+'</div></div>'+
       '<div class="c-view"><div class="c-view-hdr">Back</div><div class="c-view-body">'+_ctv(svgBack, imgs3D&&imgs3D.back, gAsp)+'</div></div>'+
     '</div>'+
-    '<div class="c-view" style="margin-top:10px"><div class="c-view-hdr">Right Eave</div><div class="c-view-body">'+_ctv(svgRight, imgs3D&&imgs3D.right, eAsp)+'</div></div>'+
-    '<div class="c-view" style="margin-top:10px"><div class="c-view-hdr">Left Eave</div><div class="c-view-body">'+_ctv(svgLeft, imgs3D&&imgs3D.left, eAsp)+'</div></div>'+
+    // Same eave-image swap as the quote: the 3D capture's right/left is opposite
+    // the program's eave naming. Swap only the IMAGE (keep the correct SVG fallback
+    // + header) so RIGHT EAVE shows the right wall image (imgs3D.left) and vice versa.
+    '<div class="c-view" style="margin-top:10px"><div class="c-view-hdr">Right Eave</div><div class="c-view-body">'+_ctv(svgRight, imgs3D&&imgs3D.left, eAsp)+'</div></div>'+
+    '<div class="c-view" style="margin-top:10px"><div class="c-view-hdr">Left Eave</div><div class="c-view-body">'+_ctv(svgLeft, imgs3D&&imgs3D.right, eAsp)+'</div></div>'+
     '<div class="c-floorplan" style="margin-top:10px">'+
       '<div class="c-floorplan-hdr">Top-Down Floor Plan</div>'+
       '<div class="c-floorplan-body">'+floorPlanSVG+'</div>'+
