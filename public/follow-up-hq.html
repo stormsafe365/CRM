@@ -315,9 +315,9 @@ const TYPES={
 const TYPE_ORDER=['permit','plans','site','install','call','pay','review'];
 const DEFAULT_STAGES=[
   {id:'quote',label:'Quote sent',icon:'file',ordered:false},
-  {id:'deposit',label:'Deposit & permit',icon:'shield',ordered:true},
+  {id:'deposit',label:'Ordered · deposit',icon:'shield',ordered:true},
   {id:'plans',label:'Engineered plans',icon:'ruler',ordered:true},
-  {id:'site',label:'Site / pad prep',icon:'cone',ordered:true},
+  {id:'site',label:'Permit & pad',icon:'cone',ordered:true},
   {id:'install',label:'Delivery & install',icon:'truck',ordered:true},
   {id:'post',label:'Post-install',icon:'check2',ordered:true},
   {id:'closed',label:'Closed · referral',icon:'star',ordered:false},
@@ -329,38 +329,27 @@ const isOrdered=c=>{const s=STAGES.find(x=>x.id===c.stage);return s?!!s.ordered:
 /* ---------- stage playbooks: standard follow-ups per build stage ---------- */
 const PLAYBOOKS={
   quote:[{type:'call',off:3,note:'Follow up on the quote — still interested?'}],
-  deposit:[{type:'pay',off:1,note:'Confirm deposit received.'},{type:'permit',off:3,note:'Submit / check permit application.'}],
-  plans:[{type:'plans',off:5,note:'Check engineered drawings status.'}],
-  site:[{type:'site',off:3,note:'Coordinate concrete pad / site prep.'}],
-  install:[{type:'install',off:2,note:'Confirm delivery & install window.'}],
-  post:[{type:'call',off:7,note:'Post-install satisfaction call.'},{type:'pay',off:2,note:'Final invoice / remaining balance.'}],
+  deposit:[{type:'pay',off:1,note:'Confirm deposit received.'},{type:'plans',off:2,note:'Send plans invoice / order engineered drawings.'}],
+  plans:[{type:'plans',off:7,note:'Check engineered drawings status; submit for permit once stamped.'}],
+  site:[{type:'permit',off:5,note:'Permit approved? Then schedule the concrete pad pour.'}],
+  install:[{type:'install',off:7,note:'Confirm delivery & install date.'}],
+  post:[{type:'call',off:7,note:'Post-install check-in.'},{type:'pay',off:2,note:'Final invoice / remaining balance.'}],
   closed:[{type:'review',off:2,note:'Ask for a review + referral.'}],
 };
 
-/* ---------- seed: ONLY James Woods + 4 renameable reps ---------- */
+/* ---------- seed: clean start — your two reps, no demo clients ---------- */
 const REP_COLORS=['#2dd4bf','#60a5fa','#a5b4fc','#34d399'];
 const SEED={
   reps:[
-    {id:'r1',name:'Rep 1',initials:'R1',color:REP_COLORS[0]},
-    {id:'r2',name:'Rep 2',initials:'R2',color:REP_COLORS[1]},
-    {id:'r3',name:'Rep 3',initials:'R3',color:REP_COLORS[2]},
-    {id:'r4',name:'Rep 4',initials:'R4',color:REP_COLORS[3]},
+    {id:'r1',name:'Jenna',initials:'JE',color:REP_COLORS[0]},
+    {id:'r2',name:'Josh',initials:'JO',color:REP_COLORS[1]},
   ],
-  clients:[
-    {id:'woods',name:'James Woods',city:'West Palm Beach',county:'Palm Beach',phone:'561-967-0004',
-     rep:'r1',building:'30′ × 80′ × 16′ Workshop',sqft:'2,400 sq ft',wind:'170 MPH',
-     model:'QTE-30×80',value:39244,stage:'site',ordered:'2026-05-18'},
-  ],
-  followups:[
-    {id:'f1',client:'woods',type:'pay',date:'2026-06-03',done:false,note:'Remaining balance due before delivery.'},
-    {id:'f2',client:'woods',type:'site',date:'2026-06-04',done:false,note:'Site walk — verify slab dims 30×80, anchor layout.'},
-    {id:'f3',client:'woods',type:'install',date:'2026-06-10',done:false,note:'Delivery — 30×80 workshop, West Palm Beach.'},
-    {id:'f4',client:'woods',type:'call',date:'2026-06-25',done:false,note:'Post-install check — West Palm Beach workshop.'},
-  ],
+  clients:[],
+  followups:[],
 };
 
 /* ---------- state + persistence ---------- */
-const LS='ssfu_v3';
+const LS='ssfu_v4';
 const ACCENTS=['#2dd4bf','#60a5fa','#a78bfa','#f472b6','#fb923c','#34d399'];
 let state;
 function freshState(){
