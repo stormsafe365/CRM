@@ -3223,7 +3223,7 @@ var MANUFACTURERS = {
       'Jefferson':'Generic Plans','Lafayette':'Generic Plans','Lake':'Generic Plans',
       'Lee':'Site Specific Plans','Leon':'Generic Plans','Levy':'Generic Plans',
       'Liberty':'Generic Plans','Madison':'Generic Plans','Manatee':'Generic Plans',
-      'Marion':'Master Files','Martin':'Generic Plans','Miami-Dade':'Generic Plans',
+      'Marion':'Master Files','Martin':'Site Specific Plans','Miami-Dade':'Generic Plans',
       'Broward':'Generic Plans','Nassau':'Master Files','Okaloosa':'Generic Plans',
       'Okeechobee':'Generic Plans','Orange':'Site Specific Plans','Osceola':'Generic Plans',
       'Palm Beach':'Site Specific Plans','Pasco':'Site Specific Plans','Pinellas':'Site Specific Plans',
@@ -6831,14 +6831,20 @@ function collectQuoteData(){
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add',
-    'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right'
+    'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right',
+    // Section 1 notes + contract page inputs — were missing, so they didn't persist.
+    'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready'
   ];
   simpleIds.forEach(function(id){
     var el = G(id);
     if(!el) return;
-    if(el.tagName==='SELECT'||el.tagName==='INPUT') data.fields[id]=el.value;
+    if(el.tagName==='SELECT'||el.tagName==='INPUT'||el.tagName==='TEXTAREA') data.fields[id]=el.value;
     else if(el.textContent!==undefined) data.fields[id]=el.textContent;
   });
+
+  // Active manufacturer (CA / CCI) — drives pricing tables + every per-mfr
+  // dropdown. Was never saved, so reloads reverted to the CA default.
+  data.mfr = ACTIVE_MFR;
 
   // Also capture span/div display fields
   ['city','county','state','pitch','cert-req','sc'].forEach(function(id){
@@ -7000,6 +7006,16 @@ function restoreQuoteData(data){
   if(!data||!data.fields) return;
   var f = data.fields;
 
+  // Step 0: restore manufacturer FIRST. switchMfr() rebuilds the pricing tables
+  // and every per-manufacturer dropdown (walk-door/window types, widths, colors,
+  // hi-impact options). Doing this before the fields/components below ensures
+  // their saved values map to options that actually exist — otherwise a CCI
+  // quote reloads as CA and e.g. a hi-impact walk door silently reverts.
+  if(data.mfr && MANUFACTURERS[data.mfr]){
+    var mfrSel=G('mfr-sel'); if(mfrSel) mfrSel.value=data.mfr;
+    if(data.mfr!==ACTIVE_MFR) switchMfr(data.mfr);
+  }
+
   // Step 1: restore building type, then width, then length in correct sequence
   if(f.btype){ var btEl=G('btype'); if(btEl) btEl.value=f.btype; }
   doBldType(); // enables bw dropdown and populates width options
@@ -7017,7 +7033,7 @@ function restoreQuoteData(data){
     var el = G(id);
     if(!el) return;
     if(el.tagName==='INPUT'&&el.type==='checkbox') el.checked=!!f[id];
-    else if(el.tagName==='SELECT'||el.tagName==='INPUT') el.value=f[id];
+    else if(el.tagName==='SELECT'||el.tagName==='INPUT'||el.tagName==='TEXTAREA') el.value=f[id];
   });
 
   // Step 3: restore span display fields (city/county/state)

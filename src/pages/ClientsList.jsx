@@ -60,6 +60,7 @@ export default function ClientsList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('view') || 'new_lead'
   const group = GROUPS.some(g => g.key === requested) ? requested : 'new_lead'
+  const repFilter = searchParams.get('rep') || 'all'   // 'all' | a user id
   const [search, setSearch] = useState(searchParams.get('q') || '')
   const [buildingTypeFilter, setBuildingTypeFilter] = useState('all')
   const [sortBy, setSortBy] = useState('updated_desc')
@@ -69,6 +70,24 @@ export default function ClientsList() {
     sp.set('view', key)
     setSearchParams(sp, { replace: true })
   }
+  function setRep(key) {
+    const sp = new URLSearchParams(searchParams)
+    if (key === 'all') sp.delete('rep'); else sp.set('rep', key)
+    setSearchParams(sp, { replace: true })
+  }
+
+  // Rep tabs: All Leads + one per user, by primary rep. Built from the real
+  // users list so it reads "Jenna's Leads" / "Joshua's Leads" automatically.
+  const firstNameOf = (u) => (u.display_name || u.email || 'Rep').split(/[\s@]/)[0]
+  const repTabs = [
+    { key: 'all', label: 'All Leads', count: clients.length },
+    ...users.map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: clients.filter(c => c.primary_rep === u.id).length })),
+  ]
+  // Everything below is scoped to the selected rep first, then by status.
+  const repScoped = useMemo(
+    () => (repFilter === 'all' ? clients : clients.filter(c => c.primary_rep === repFilter)),
+    [clients, repFilter]
+  )
 
   // Sliding active-tab indicator (Emil-style spring). Measure the active
   // tab and move the pill behind it with a transform.
@@ -80,6 +99,16 @@ export default function ClientsList() {
     const el = host.querySelector(`[data-tab="${group}"]`)
     if (el) setInd({ left: el.offsetLeft, width: el.offsetWidth, ready: true })
   }, [group, clients.length])
+
+  // Same sliding indicator for the rep tab row.
+  const repTabsRef = useRef(null)
+  const [repInd, setRepInd] = useState({ left: 0, width: 0, ready: false })
+  useLayoutEffect(() => {
+    const host = repTabsRef.current
+    if (!host) return
+    const el = host.querySelector(`[data-reptab="${repFilter}"]`)
+    if (el) setRepInd({ left: el.offsetLeft, width: el.offsetWidth, ready: true })
+  }, [repFilter, users.length, clients.length])
 
   // Initial load + realtime subscription
   useEffect(() => {
@@ -120,7 +149,7 @@ export default function ClientsList() {
   // this is plenty fast; if the list ever grows huge we'd push this
   // down into the DB query.
   const visible = useMemo(() => {
-    let result = clients
+    let result = repScoped
 
     const g = GROUPS.find(x => x.key === group) || GROUPS[0]
     result = result.filter(g.match)
@@ -164,13 +193,13 @@ export default function ClientsList() {
       sorted.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     }
     return sorted
-  }, [clients, search, group, buildingTypeFilter, sortBy])
+  }, [repScoped, search, group, buildingTypeFilter, sortBy])
 
   return (
     <>
       <div className="page-head">
         <div className="left">
-          <div className="eyebrow-lime">All Leads</div>
+          <div className="eyebrow-lime">{(repTabs.find(t => t.key === repFilter) || repTabs[0]).label}</div>
           <h1>Leads</h1>
           <div className="sub">
             {visible.length} {visible.length === 1 ? 'lead' : 'leads'}
@@ -184,6 +213,25 @@ export default function ClientsList() {
           </Link>
         </div>
       </div>
+
+      {repTabs.length > 1 && (
+        <div className="list-tabs" ref={repTabsRef} style={{ marginBottom: 10 }}>
+          {repInd.ready && (
+            <span className="list-tab-ind" style={{ transform: `translateX(${repInd.left}px)`, width: repInd.width }} />
+          )}
+          {repTabs.map(t => (
+            <button
+              key={t.key}
+              data-reptab={t.key}
+              className={`list-tab${repFilter === t.key ? ' on' : ''}`}
+              onClick={() => setRep(t.key)}
+            >
+              {t.label}
+              <span className="list-tab-count">{t.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="list-tabs" ref={tabsRef}>
         {ind.ready && (
@@ -200,7 +248,7 @@ export default function ClientsList() {
             onClick={() => setGroup(g.key)}
           >
             {g.label}
-            <span className="list-tab-count">{clients.filter(g.match).length}</span>
+            <span className="list-tab-count">{repScoped.filter(g.match).length}</span>
           </button>
         ))}
       </div>
@@ -244,7 +292,7 @@ export default function ClientsList() {
                 <th>Client</th><th>Stage</th><th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th>
               </tr>
             </thead>
-            <tbody key={group}>
+            <tbody key={`${repFilter}-${group}`}>
               {visible.map((c, i) => {
                 const t = tempInfo(c.lead_temperature)
                 const loc = [c.city, c.state].filter(Boolean).join(', ')
