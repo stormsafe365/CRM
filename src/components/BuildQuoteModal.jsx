@@ -91,6 +91,38 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
     }
   }
 
+  // Prefill the program's Client Information from the lead, once — name, phone,
+  // email and ZIP. We set each input and fire the program's OWN handlers (sy /
+  // doZip) so it behaves exactly as if typed: the quote/PDF picks up the contact
+  // info and the ZIP resolves city/county/state. We never overwrite a field the
+  // user already filled, and never touch the program's source.
+  useEffect(() => {
+    if (!client) return
+    let done = false
+    const t = setInterval(() => {
+      if (done) return
+      const pg = getProgramWindow()
+      const d = pg?.document
+      if (!pg || !d || !d.getElementById('cn')) return // program not ready yet
+      const set = (id, val) => { const el = d.getElementById(id); if (el && !el.value && val) el.value = String(val) }
+      set('cn', client.name)
+      set('cp', client.phone)
+      set('ce', client.email)
+      try { if (typeof pg.sy === 'function') pg.sy() } catch { /* ignore */ }
+      const zipEl = d.getElementById('zip')
+      const zip = client.zip ? String(client.zip).replace(/\D/g, '').slice(0, 5) : ''
+      if (zipEl && !zipEl.value && zip) {
+        zipEl.value = zip
+        try { if (typeof pg.doZip === 'function') pg.doZip(zip) } catch { /* ignore */ }
+      }
+      done = true
+      clearInterval(t)
+      toast('Client info filled in from the lead', 'success')
+    }, 500)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client])
+
   // Once the nested program is ready, relabel its SAVE QUOTE button(s) → "Save to
   // Lead" and route their click to the CRM save. Polls (the program loads async).
   useEffect(() => {
