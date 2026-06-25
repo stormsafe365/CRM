@@ -239,9 +239,9 @@ export default function ClientDetail() {
             )}
           </div>
           {client.status === 'ordered' ? (
-            <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details / timeline inputs">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></svg>
-              Ordered — edit timeline
+            <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details — manufacturer, dates, install window">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
+              Edit Order
             </button>
           ) : (
             <button className="order-btn" onClick={() => setOrdering(true)} title="Mark this lead as officially ordered">

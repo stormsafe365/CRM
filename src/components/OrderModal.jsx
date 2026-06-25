@@ -61,6 +61,8 @@ export default function OrderModal({ client, onClose, onSaved }) {
   const [county, setCounty] = useState(client.county || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  // Reopening an already-ordered lead = editing (fix a wrong manufacturer, date, etc.).
+  const editing = client.status === 'ordered' || !!client.order_date
 
   const preview = useMemo(() => buildPreview(orderDate, plan, bucket, county.trim()), [orderDate, plan, bucket, county])
 
@@ -90,16 +92,18 @@ export default function OrderModal({ client, onClose, onSaved }) {
   }
 
   return createPortal(
-    <div className="fum-overlay" role="dialog" aria-modal="true" aria-label="Mark as ordered" onClick={onClose}>
+    <div className="fum-overlay" role="dialog" aria-modal="true" aria-label={editing ? 'Edit order' : 'Mark as ordered'} onClick={onClose}>
       <div className="fum" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
         <div className="fum-head">
-          <h3>Mark as Ordered — {client.name}</h3>
+          <h3>{editing ? 'Edit Order' : 'Mark as Ordered'} — {client.name}</h3>
           <button className="fum-x" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         <div className="fum-body">
           <div className="muted" style={{ marginTop: -4, marginBottom: 4, fontSize: 13 }}>
-            Contract signed &amp; deposit placed. These details build the follow-up timeline in Follow-Up HQ.
+            {editing
+              ? 'Update any detail (e.g. wrong manufacturer) and save — the Follow-Up HQ timeline rebuilds to match.'
+              : 'Contract signed & deposit placed. These details build the follow-up timeline in Follow-Up HQ.'}
           </div>
 
           <div className="fum-row2">
@@ -157,7 +161,7 @@ export default function OrderModal({ client, onClose, onSaved }) {
           <div style={{ flex: 1 }} />
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
           <button type="button" className="btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : '✓ Confirm Order'}
+            {saving ? 'Saving…' : editing ? 'Save Changes' : '✓ Confirm Order'}
           </button>
         </div>
       </div>
