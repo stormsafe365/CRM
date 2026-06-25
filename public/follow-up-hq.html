@@ -841,21 +841,27 @@ function mergeCrmClients(list){
   state.clients=state.clients.filter(c=>!c.crmId||ids.has(c.crmId));
   list.forEach(src=>{
     let c=state.clients.find(x=>x.crmId===src.crmId);
-    if(c){ // refresh live display fields; keep locally-set order/stage/rep/value
-      if(src.name)c.name=src.name;
-      if(src.phone)c.phone=src.phone;
-      if(src.city)c.city=src.city;
-      if(!c.county&&src.county)c.county=src.county;
-      if(!c.building&&src.building)c.building=src.building;
-    }else{
-      c={id:'crm-'+src.crmId,crmId:src.crmId,name:src.name||'Lead',phone:src.phone||'',
-         city:src.city||'',county:src.county||'',building:src.building||'',value:0,
-         sqft:'',wind:'',model:'',rep:crmRepId(src.rep)||(state.reps[0]&&state.reps[0].id)||'r1',
-         stage:src.stage||'quote'};
+    if(!c){ // create the mirror
+      c={id:'crm-'+src.crmId,crmId:src.crmId,value:0,sqft:'',wind:'',model:'',
+         rep:crmRepId(src.rep)||(state.reps[0]&&state.reps[0].id)||'r1',stage:'quote'};
       state.clients.push(c);
     }
+    // The CRM is the source of truth for people, pipeline stage, and the order.
+    if(src.name)c.name=src.name;
+    if(src.phone)c.phone=src.phone;
+    if(src.city)c.city=src.city;
+    if(src.county)c.county=src.county;
+    if(src.building)c.building=src.building;
+    if(src.stage)c.stage=src.stage;
+    // Order details entered on the client portal → drive the auto-built timeline.
+    if(src.ordered){
+      c.ordered=src.ordered;
+      if(src.mfr)c.mfr=src.mfr;
+      if(src.planKey)c.planKey=src.planKey;
+      if(src.bucket)c.bucket=src.bucket;
+    }
   });
-  // Rebuild auto-timelines for any synced lead that has order details set here.
+  // (Re)build auto-timelines for any synced lead that now has an order.
   state.clients.forEach(c=>{if(c.crmId&&c.ordered)rebuildTimeline(c);});
   refreshBadges();save();render();
 }

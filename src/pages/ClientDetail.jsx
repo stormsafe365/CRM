@@ -13,6 +13,7 @@ import StatusPill from '../components/StatusPill'
 import ClientForm from '../components/ClientForm'
 import QuotesTab from '../components/QuotesTab'
 import DocumentHub from '../components/DocumentHub'
+import OrderModal from '../components/OrderModal'
 import { fmtTime } from '../lib/followups'
 import ActivityProgress from '../components/ActivityProgress'
 import FollowUpsCard from '../components/FollowUpsCard'
@@ -46,6 +47,7 @@ export default function ClientDetail() {
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [buildingQuote, setBuildingQuote] = useState(false) // "Build Quote" — shared by QuotesTab + Document Hub menu
+  const [ordering, setOrdering] = useState(false) // "Mark as Ordered" → OrderModal
 
   useEffect(() => {
     let cancelled = false
@@ -236,6 +238,17 @@ export default function ClientDetail() {
               </span>
             )}
           </div>
+          {client.status === 'ordered' ? (
+            <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details / timeline inputs">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /></svg>
+              Ordered — edit timeline
+            </button>
+          ) : (
+            <button className="order-btn" onClick={() => setOrdering(true)} title="Mark this lead as officially ordered">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+              Mark as Ordered
+            </button>
+          )}
           <div className="assigned-row" style={{ marginTop: 18 }}><span className="muted-label">Assigned Rep</span></div>
           <div className="assigned-row" style={{ marginTop: 6 }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
@@ -296,6 +309,14 @@ export default function ClientDetail() {
       </div>
 
       <NotesSection clientId={client.id} />
+
+      {ordering && (
+        <OrderModal
+          client={client}
+          onClose={() => setOrdering(false)}
+          onSaved={(patch) => setClient(c => ({ ...c, ...patch }))}
+        />
+      )}
     </>
   )
 }

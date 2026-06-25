@@ -39,7 +39,7 @@ export default function Calendar() {
     async function load() {
       const { data } = await supabase
         .from('clients')
-        .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type')
+        .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket')
         .order('updated_at', { ascending: false })
       if (!cancelled) setClients(data || [])
     }
@@ -67,6 +67,11 @@ export default function Calendar() {
         building: [c.building_size, c.building_type].filter(Boolean).join(' '),
         rep: userLabel(users, c.primary_rep),
         stage,
+        // Order details (set on the client portal) drive the auto-built timeline.
+        ordered: c.order_date || null,
+        mfr: c.order_mfr || null,
+        planKey: c.order_plan || null,
+        bucket: c.order_bucket || null,
       }
     }).filter(Boolean)
     win.postMessage({ type: 'ss-crm-clients', clients: payload }, '*')
