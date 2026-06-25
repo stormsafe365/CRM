@@ -288,6 +288,7 @@ const ICONS={
   sparkle:'<path d="M12 3l1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/>',
   arrowL:'<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>',
   arrowR:'<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  download:'<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>',
 };
 function icon(name,size=16,extra=''){return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" ${extra}>${ICONS[name]||''}</svg>`;}
 
@@ -301,18 +302,23 @@ const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const daysBetween=(a,b)=>Math.round((parseISO(a)-parseISO(b))/86400000);
 function relativeLabel(iso){const d=daysBetween(iso,TODAY);if(d===0)return'Today';if(d===1)return'Tomorrow';if(d===-1)return'Yesterday';if(d<0)return`${Math.abs(d)}d overdue`;return`in ${d}d`;}
 function prettyDate(iso){const d=parseISO(iso);return`${DOW[d.getDay()]} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getDate()}`;}
+function addDays(iso,n){const d=parseISO(iso);d.setDate(d.getDate()+n);return toISO(d);}
+function addWeeks(iso,n){return addDays(iso,n*7);}
+function addBiz(iso,n){let d=parseISO(iso),a=0;while(a<n){d.setDate(d.getDate()+1);const w=d.getDay();if(w!==0&&w!==6)a++;}return toISO(d);}
+function maxISO(a,b){return a>b?a:b;}
 
 /* ---------- reference data ---------- */
 const TYPES={
-  permit:{label:'Permit check-in',short:'Permit',icon:'shield',color:'#94a3b8'},
+  mfr:{label:'Manufacturer / order',short:'Order',icon:'board',color:'#cbd5e1'},
+  pay:{label:'Payment / invoice',short:'Invoice',icon:'receipt',color:'#a5b4fc'},
   plans:{label:'Engineered plans',short:'Plans',icon:'ruler',color:'#60a5fa'},
+  permit:{label:'Permitting',short:'Permit',icon:'shield',color:'#94a3b8'},
   site:{label:'Site / pad prep',short:'Pad prep',icon:'cone',color:'#fb923c'},
   install:{label:'Delivery & install',short:'Install',icon:'truck',color:'#2dd4bf'},
-  call:{label:'Satisfaction call',short:'Check-in',icon:'phone',color:'#34d399'},
-  pay:{label:'Payment / invoice',short:'Invoice',icon:'receipt',color:'#a5b4fc'},
+  call:{label:'Check-in call',short:'Check-in',icon:'phone',color:'#34d399'},
   review:{label:'Review & referral',short:'Referral',icon:'star',color:'#fbbf24'},
 };
-const TYPE_ORDER=['permit','plans','site','install','call','pay','review'];
+const TYPE_ORDER=['mfr','pay','plans','permit','site','install','call','review'];
 const DEFAULT_STAGES=[
   {id:'quote',label:'Quote sent',icon:'file',ordered:false},
   {id:'deposit',label:'Ordered · deposit',icon:'shield',ordered:true},
@@ -326,37 +332,63 @@ let STAGES=DEFAULT_STAGES;
 const stageIndex=id=>STAGES.findIndex(s=>s.id===id);
 const isOrdered=c=>{const s=STAGES.find(x=>x.id===c.stage);return s?!!s.ordered:false;};
 
-/* ---------- stage playbooks: standard follow-ups per build stage ---------- */
-const PLAYBOOKS={
-  quote:[{type:'call',off:3,note:'Follow up on the quote — still interested?'}],
-  deposit:[{type:'pay',off:1,note:'Confirm deposit received.'},{type:'plans',off:2,note:'Send plans invoice / order engineered drawings.'}],
-  plans:[{type:'plans',off:7,note:'Check engineered drawings status; submit for permit once stamped.'}],
-  site:[{type:'permit',off:5,note:'Permit approved? Then schedule the concrete pad pour.'}],
-  install:[{type:'install',off:7,note:'Confirm delivery & install date.'}],
-  post:[{type:'call',off:7,note:'Post-install check-in.'},{type:'pay',off:2,note:'Final invoice / remaining balance.'}],
-  closed:[{type:'review',off:2,note:'Ask for a review + referral.'}],
+/* ---------- order auto-scheduler: the real StormSafe follow-up timeline ---------- */
+const PLAN_TYPES={
+  generic:{label:'Generic stamped plans',engWeeks:3,blurb:'Generic stamped plans run ~2–3 weeks.'},
+  site:{label:'Site-specific plans',engWeeks:4,blurb:'Site-specific plans run ~4–5 weeks.'},
+  asbuilt:{label:'As-built stamped plans',engWeeks:4,blurb:'As-built stamped plans run ~4–5 weeks.'},
 };
+const INSTALL_BUCKETS=['4-6','6-8','8-10','10-12','12-14'];
+const MFRS=['CCI','CA','SBS'];
+/* Builds the full dated follow-up sequence from a client's order. Past-dated touches are marked done. */
+function buildOrderFollowups(c){
+  const o=c.ordered; if(!o) return [];
+  const plan=PLAN_TYPES[c.planKey]||PLAN_TYPES.generic;
+  const [lo,hi]=String(c.bucket||'8-10').split('-').map(Number);
+  const installStart=addWeeks(o,lo), installEnd=addWeeks(o,hi);
+  const cty=c.county?` (${c.county} County)`:'';
+  const raw=[
+    {d:addBiz(o,2),type:'mfr',note:'Confirm the manufacturer received the order — look for their confirmation email; if it hasn’t landed, email to confirm receipt before anything else moves.'},
+    {d:addBiz(o,7),type:'pay',note:'Invoice for plans — make sure it’s issued and paid; engineering can’t start until it clears.'},
+    {d:addWeeks(o,plan.engWeeks),type:'plans',note:`Engineered plans follow-up — ${plan.blurb} Check status and request the stamped set.`},
+    {d:addWeeks(o,6),type:'permit',note:`Permitting check-in #1 — timeline varies by county${cty}. Confirm the package was submitted and ask for a target date.`},
+    {d:addWeeks(o,8),type:'permit',note:'Permitting check-in #2 — if the permit still isn’t approved, stay on the county for status.'},
+    {d:addWeeks(o,8),type:'site',note:'Site-prep check-in — share the site-ready checklist so the pad is set when install gets scheduled. (Permit must be approved before the pad pour.)'},
+    {d:maxISO(addWeeks(o,8),addDays(installStart,-7)),type:'install',est:true,note:'Scheduling confirmation — once the site is ready, lock the install slot with the crew. Projected; confirm once the permit clears.'},
+    {d:addDays(installStart,-3),type:'call',est:true,note:'Installation check-in — confirm install date, crew, and site access with the client and manufacturer. Projected; depends on permit & site-ready.'},
+    {d:installStart,type:'install',est:true,note:`Installation — projected window ${prettyDate(installStart)} – ${prettyDate(installEnd)}. Confirm completion and book the final walkthrough. Projected; depends on permit & site-ready.`},
+  ];
+  return raw.sort((a,b)=>a.d.localeCompare(b.d)).map((r,i)=>({id:`${c.id}-o${i}`,client:c.id,type:r.type,date:r.d,note:r.note,done:r.d<TODAY,gen:true,est:!!r.est}));
+}
 
-/* ---------- seed: clean start — your two reps, no demo clients ---------- */
+/* ---------- seed: your reps + James Woods (his timeline auto-builds from the order) ---------- */
 const REP_COLORS=['#2dd4bf','#60a5fa','#a5b4fc','#34d399'];
 const SEED={
   reps:[
     {id:'r1',name:'Jenna',initials:'JE',color:REP_COLORS[0]},
     {id:'r2',name:'Josh',initials:'JO',color:REP_COLORS[1]},
   ],
-  clients:[],
+  clients:[
+    {id:'woods',name:'James Woods',city:'West Palm Beach',county:'Palm Beach',phone:'561-967-0004',
+     rep:'r1',building:'30′ × 80′ × 16′ Workshop',sqft:'2,400 sq ft',wind:'170 MPH',
+     model:'QTE-30×80',value:39244,stage:'site',ordered:'2026-05-18',
+     mfr:'CCI',planKey:'asbuilt',bucket:'6-8'},
+  ],
   followups:[],
 };
 
 /* ---------- state + persistence ---------- */
-const LS='ssfu_v4';
+const LS='ssfu_v5';
 const ACCENTS=['#2dd4bf','#60a5fa','#a78bfa','#f472b6','#fb923c','#34d399'];
 let state;
 function freshState(){
-  return{reps:structuredClone(SEED.reps),clients:structuredClone(SEED.clients),followups:structuredClone(SEED.followups),stages:structuredClone(DEFAULT_STAGES),
+  const clients=structuredClone(SEED.clients);
+  let followups=structuredClone(SEED.followups);
+  clients.forEach(c=>{followups=followups.concat(buildOrderFollowups(c));});
+  return{reps:structuredClone(SEED.reps),clients,followups,stages:structuredClone(DEFAULT_STAGES),
     view:'board',ym:{year:parseISO(TODAY).getFullYear(),month:parseISO(TODAY).getMonth()},
     filter:{rep:null,type:null},gam:{points:{},streak:{count:0,best:0,last:null},badges:[],lifetime:0},
-    tweaks:{accent:'#2dd4bf',dense:false,motion:true,theme:'dark',playbooks:true},ui:{tweaksOpen:false,modal:null}};
+    tweaks:{accent:'#2dd4bf',dense:false,motion:true,theme:'dark'},ui:{tweaksOpen:false,modal:null}};
 }
 function load(){try{const raw=localStorage.getItem(LS);if(raw){const s=JSON.parse(raw);s.ui={tweaksOpen:false,modal:null};return Object.assign(freshState(),s);}}catch(e){}return freshState();}
 function save(){const{ui,...p}=state;try{localStorage.setItem(LS,JSON.stringify(p));}catch(e){}}
@@ -404,7 +436,8 @@ function topbar(){
       <button data-act="view" data-v="pipeline" class="${state.view==='pipeline'?'on':''}">${icon('columns',15)} Pipeline</button>
     </div>
     <button class="iconbtn" data-act="tweaks" title="Tweaks">${icon('gear',18)}</button>
-    <button class="btn" data-act="newfu">${icon('plus',16)} New follow-up</button>
+    <button class="btn ghost" data-act="newfu">${icon('plus',16)} Follow-up</button>
+    <button class="btn" data-act="neworder">${icon('truck',16)} New order</button>
   </div>`;
 }
 
@@ -505,6 +538,7 @@ function taskPanel(){
           <span class="tcli" data-act="openclient" data-id="${c.id}">${escapeHtml(c.name)}</span>
           <span class="av" style="width:20px;height:20px;font-size:9.5px;background:${r?r.color:'#555'}" title="${r?escapeHtml(r.name):''}">${r?escapeHtml(r.initials):'?'}</span>
           <span class="twhen ${dd<0&&!f.done?'od':''}">${f.date===TODAY?'Today':relativeLabel(f.date)}</span>
+          ${f.est?'<span style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--gold);border:1px solid var(--gold);opacity:.65;border-radius:5px;padding:1px 5px">EST</span>':''}
           ${f.done?'':`<button class="snz" data-act="snooze" data-id="${f.id}" data-days="1" title="Push 1 day">+1d</button><button class="snz" data-act="snooze" data-id="${f.id}" data-days="7" title="Push 1 week">+1w</button>`}
         </div></div></div>`;}).join('');}
   function sec(t,list,cls=''){return list.length?`<div class="group-h ${cls}">${t} <span class="n">${list.length}</span></div>${rows(list)}`:'';}
@@ -571,6 +605,14 @@ function clientModal(id){return()=>{
         <button class="btn ghost" data-act="stageback" data-id="${c.id}" ${si<=0?'disabled style="opacity:.4"':''}>${icon('arrowL',15)} Back</button>
         <button class="btn" data-act="stagefwd" data-id="${c.id}" ${si>=STAGES.length-1?'disabled style="opacity:.4"':''}>Advance ${icon('arrowR',15)}</button>
         <button class="btn ghost" data-act="addforclient" data-id="${c.id}" style="margin-left:auto">${icon('plus',15)} Follow-up</button></div>
+      ${c.ordered?`<div style="background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)">${icon('truck',14)} Ordered ${escapeHtml(prettyDate(c.ordered))}</div>
+        <div style="font-size:13px;font-weight:600;margin-top:5px">${PLAN_TYPES[c.planKey]?escapeHtml(PLAN_TYPES[c.planKey].label):'—'} · ${escapeHtml(String(c.bucket||''))} wk install${c.mfr?' · '+escapeHtml(c.mfr):''}${c.county?' · '+escapeHtml(c.county)+' County':''}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">
+          <button class="btn ghost" data-act="editorder" data-id="${c.id}">${icon('gear',14)} Edit order</button>
+          <button class="btn ghost" data-act="regen" data-id="${c.id}">${icon('arrowR',14)} Rebuild timeline</button>
+          <button class="btn ghost" data-act="exportics" data-id="${c.id}" style="margin-left:auto">${icon('download',14)} Export .ics</button>
+        </div></div>`:`<button class="btn" data-act="editorder" data-id="${c.id}" style="margin-bottom:20px">${icon('truck',14)} Add delivery timeline</button>`}
       <label style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--faint)">Timeline</label>
       <div class="tl">${tl}</div></div></div></div>`;};}
 
@@ -586,6 +628,31 @@ function addModal(date,clientId){return()=>{
       <div class="field"><label>Date</label><input type="date" id="fld-date" value="${date||TODAY}"></div>
       <div class="field"><label>Note · what to do</label><textarea id="fld-note" placeholder="e.g. Confirm pad cured before delivery"></textarea></div>
       <button class="btn" data-act="savefu" style="width:100%;justify-content:center">Add follow-up</button></div></div></div>`;};}
+
+function orderModal(id){return()=>{
+  const c=id?clientById(id):null;
+  const plans=Object.entries(PLAN_TYPES).map(([k,p])=>`<option value="${k}" ${c&&c.planKey===k?'selected':''}>${escapeHtml(p.label)}</option>`).join('');
+  const buckets=INSTALL_BUCKETS.map(b=>`<option value="${b}" ${((c&&c.bucket)||'8-10')===b?'selected':''}>${b} weeks</option>`).join('');
+  const mfrs=MFRS.map(m=>`<option value="${m}" ${c&&c.mfr===m?'selected':''}>${m}</option>`).join('');
+  const reps=state.reps.map(r=>`<option value="${r.id}" ${(c?c.rep:state.reps[0]&&state.reps[0].id)===r.id?'selected':''}>${escapeHtml(r.name)}</option>`).join('');
+  return`<div class="overlay" data-act="closemodal"><div class="modal" data-stop style="max-width:560px">
+    <div class="modal-h"><div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px">${icon('truck',18)} ${c?'Edit order — '+escapeHtml(c.name):'New order'}</div><button class="x" data-act="closemodal">${icon('x',16)}</button></div>
+    <div class="modal-b">
+      <div class="field"><label>Client / project name</label><input id="o-name" value="${c?escapeHtml(c.name):''}" placeholder="e.g. James Woods — 30×80 Workshop"></div>
+      <div class="row2">
+        <div class="field"><label>Order date</label><input type="date" id="o-date" value="${c?c.ordered:TODAY}"></div>
+        <div class="field"><label>Assigned rep</label><select id="o-rep">${reps}</select></div></div>
+      <div class="row2">
+        <div class="field"><label>Manufacturer</label><select id="o-mfr">${mfrs}</select></div>
+        <div class="field"><label>County (permitting)</label><input id="o-county" value="${c?escapeHtml(c.county||''):''}" placeholder="e.g. Palm Beach"></div></div>
+      <div class="field"><label>Engineered plan type</label><select id="o-plan">${plans}</select></div>
+      <div class="field"><label>Install lead time</label><select id="o-bucket">${buckets}</select></div>
+      <div class="row2">
+        <div class="field"><label>Building (optional)</label><input id="o-building" value="${c?escapeHtml(c.building||''):''}" placeholder="30′ × 80′ × 16′ Workshop"></div>
+        <div class="field"><label>Contract value (optional)</label><input id="o-value" value="${c&&c.value?c.value:''}" placeholder="39244"></div></div>
+      <button class="btn" data-act="saveorder" data-id="${id||''}" style="width:100%;justify-content:center">${c?'Save & rebuild timeline':'Create order & build timeline'}</button>
+      <div class="hint" style="margin-top:10px">Builds the full follow-up timeline automatically — order confirmation, plans invoice, engineered plans, permitting, site-prep, scheduling, and install — dated from the order date. Anything already in the past is marked done.</div>
+    </div></div></div>`;};}
 
 function tweaksModal(){
   const sw=ACCENTS.map(c=>`<button class="sw ${state.tweaks.accent===c?'on':''}" style="background:${c}" data-act="accent" data-c="${c}"></button>`).join('');
@@ -603,10 +670,6 @@ function tweaksModal(){
       <div class="tweak-sec"><h4>Celebrations</h4><div class="seg">
         <button class="${state.tweaks.motion?'on':''}" data-act="motion" data-v="1">On</button>
         <button class="${!state.tweaks.motion?'on':''}" data-act="motion" data-v="0">Off</button></div></div>
-      <div class="tweak-sec"><h4>Stage playbooks</h4><div class="seg">
-        <button class="${state.tweaks.playbooks?'on':''}" data-act="playbooks" data-v="1">On</button>
-        <button class="${!state.tweaks.playbooks?'on':''}" data-act="playbooks" data-v="0">Off</button></div>
-        <div class="hint" style="margin-top:6px">Auto-adds the standard follow-ups when you advance a build stage.</div></div>
       <div class="tweak-sec reps-edit"><h4>Rename your crew</h4>${reps}<div class="hint" style="margin-top:2px">Names save as you type.</div></div>
       <div class="tweak-sec stages-edit"><h4>Build stages</h4>
         ${state.stages.map((s,i)=>`<div class="srow">
@@ -650,7 +713,11 @@ document.addEventListener('click',e=>{
     case'stagefwd':moveStage(id,1);break;
     case'stageback':moveStage(id,-1);break;
     case'snooze':snooze(id,+el.dataset.days);break;
-    case'playbooks':state.tweaks.playbooks=el.dataset.v==='1';save();render();break;
+    case'neworder':openModal(orderModal(null));break;
+    case'editorder':openModal(orderModal(id));break;
+    case'saveorder':saveOrder(el.dataset.id||null);break;
+    case'regen':regen(id);break;
+    case'exportics':exportICS(id);break;
     case'theme':state.tweaks.theme=el.dataset.v;save();render();break;
     case'accent':state.tweaks.accent=el.dataset.c;save();render();break;
     case'dense':state.tweaks.dense=el.dataset.v==='1';save();render();break;
@@ -694,17 +761,36 @@ function saveNewFollowup(){const client=document.getElementById('fld-client').va
   if(!note){toast('Add a quick note so you remember.','alert');return;}
   state.followups.push({id:'f'+Date.now(),client,type,date,note,done:false});save();closeModal();toast('Follow-up scheduled.','check');}
 function stepMonth(d){let{year,month}=state.ym;month+=d;if(month<0){month=11;year--;}if(month>11){month=0;year++;}state.ym={year,month};render();}
-function moveStage(id,d){const c=clientById(id);if(!c)return;const i=stageIndex(c.stage)+d;if(i<0||i>=STAGES.length)return;c.stage=STAGES[i].id;refreshBadges();if(d>0){if(state.tweaks.motion){confettiBurst(null);ding();}toast(`${c.name.split(' ')[0]} → ${STAGES[i].label}`,'arrowR');seedPlaybook(c);}save();render();}
+function moveStage(id,d){const c=clientById(id);if(!c)return;const i=stageIndex(c.stage)+d;if(i<0||i>=STAGES.length)return;c.stage=STAGES[i].id;refreshBadges();if(d>0){if(state.tweaks.motion){confettiBurst(null);ding();}toast(`${c.name.split(' ')[0]} → ${STAGES[i].label}`,'arrowR');}save();render();}
 function snooze(id,days){const f=state.followups.find(x=>x.id===id);if(!f)return;const d=parseISO(f.date);d.setDate(d.getDate()+days);f.date=toISO(d);toast(`Pushed to ${prettyDate(f.date)}`,'clock');save();render();}
-function seedPlaybook(c){
-  if(!state.tweaks.playbooks)return;
-  c.seeded=c.seeded||[];
-  if(c.seeded.includes(c.stage))return;
-  const pb=PLAYBOOKS[c.stage]||[];
-  if(!pb.length)return;
-  c.seeded.push(c.stage);
-  pb.forEach((p,k)=>{const d=new Date();d.setDate(d.getDate()+p.off);state.followups.push({id:'f'+Date.now()+'p'+k,client:c.id,type:p.type,date:toISO(d),note:p.note,done:false});});
-  toast(`Added ${pb.length} follow-up${pb.length>1?'s':''} for ${STAGES[stageIndex(c.stage)].label}`,'plus');
+
+/* ---------- order timeline actions ---------- */
+function rebuildTimeline(c){state.followups=state.followups.filter(f=>!(f.client===c.id&&f.gen));state.followups=state.followups.concat(buildOrderFollowups(c));}
+function saveOrder(id){
+  const v=k=>document.getElementById(k);
+  const name=v('o-name').value.trim();
+  if(!name){toast('Add a client / project name.','alert');return;}
+  const data={name,ordered:v('o-date').value||TODAY,rep:v('o-rep').value,mfr:v('o-mfr').value,county:v('o-county').value.trim(),planKey:v('o-plan').value,bucket:v('o-bucket').value,building:v('o-building').value.trim(),value:parseInt(v('o-value').value,10)||0};
+  let c=id?clientById(id):null;
+  if(c){Object.assign(c,data);}else{c=Object.assign({id:'c'+Date.now(),city:'',phone:'',sqft:'',wind:'',model:'',stage:'deposit'},data);state.clients.push(c);}
+  rebuildTimeline(c);refreshBadges();save();closeModal();render();
+  toast(id?'Order updated — timeline rebuilt.':'Order created — timeline built.','truck');
+}
+function regen(id){const c=clientById(id);if(!c)return;rebuildTimeline(c);save();render();toast('Timeline rebuilt from order.','truck');}
+function exportICS(id){
+  const c=clientById(id);if(!c)return;
+  const fus=state.followups.filter(f=>f.client===id).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!fus.length){toast('No follow-ups to export.','alert');return;}
+  const p2=n=>String(n).padStart(2,'0');
+  const idate=(iso,h,m)=>{const d=parseISO(iso);return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'T'+p2(h)+p2(m)+'00';};
+  const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  const n=new Date();const stamp=n.getUTCFullYear()+p2(n.getUTCMonth()+1)+p2(n.getUTCDate())+'T'+p2(n.getUTCHours())+p2(n.getUTCMinutes())+p2(n.getUTCSeconds())+'Z';
+  let L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//StormSafe//Follow-Up HQ//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+  fus.forEach((f,i)=>{const t=TYPES[f.type];L.push('BEGIN:VEVENT','UID:ss-'+Date.now()+'-'+i+'@stormsafe','DTSTAMP:'+stamp,'DTSTART:'+idate(f.date,9,0),'DTEND:'+idate(f.date,9,30),'SUMMARY:'+esc('['+t.short+'] '+c.name+(f.est?' (est)':'')),'DESCRIPTION:'+esc(f.note),'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:Reminder','END:VALARM','END:VEVENT');});
+  L.push('END:VCALENDAR');
+  const blob=new Blob([L.join('\r\n')],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='StormSafe-'+c.name.replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')+'.ics';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('Calendar file downloaded.','download');
 }
 
 /* drag & drop */
@@ -715,7 +801,7 @@ document.addEventListener('dragover',e=>{const cell=e.target.closest('[data-drop
 document.addEventListener('dragleave',e=>{const t=e.target.closest('[data-drop],[data-stage]');if(t)t.classList.remove('dragover');});
 document.addEventListener('drop',e=>{const cell=e.target.closest('[data-drop]'),colb=e.target.closest('[data-stage]');
   if(cell&&dragFU){e.preventDefault();const f=state.followups.find(x=>x.id===dragFU);if(f){f.date=cell.dataset.drop;toast('Rescheduled to '+prettyDate(f.date),'clock');save();render();}}
-  else if(colb&&dragCard){e.preventDefault();const c=clientById(dragCard);if(c&&c.stage!==colb.dataset.stage){const fwd=stageIndex(colb.dataset.stage)>stageIndex(c.stage);c.stage=colb.dataset.stage;refreshBadges();if(fwd&&state.tweaks.motion){confettiBurst(null);ding();}toast(`${c.name.split(' ')[0]} → ${STAGES[stageIndex(c.stage)].label}`,'arrowR');if(fwd)seedPlaybook(c);save();render();}}});
+  else if(colb&&dragCard){e.preventDefault();const c=clientById(dragCard);if(c&&c.stage!==colb.dataset.stage){const fwd=stageIndex(colb.dataset.stage)>stageIndex(c.stage);c.stage=colb.dataset.stage;refreshBadges();if(fwd&&state.tweaks.motion){confettiBurst(null);ding();}toast(`${c.name.split(' ')[0]} → ${STAGES[stageIndex(c.stage)].label}`,'arrowR');save();render();}}});
 
 /* toast */
 function toast(msg,ic){const wrap=document.getElementById('toasts');const t=document.createElement('div');t.className='toast';t.innerHTML=(ic?icon(ic,15):'')+'<span>'+msg+'</span>';wrap.appendChild(t);
@@ -736,6 +822,47 @@ let actx=null;
 function ding(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();const now=actx.currentTime;[784,1175].forEach((f,i)=>{const o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(actx.destination);const t=now+i*.08;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.12,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.3);o.start(t);o.stop(t+.31);});}catch(e){}}
 
 const LOGO=`<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="14" rx="2.5"/><path d="M5 10h14"/><path d="M8.5 14h2.5v3"/><path d="M13 14h2.5v3"/></svg>`;
+
+/* ============================================================================ CRM LINK
+   When this calendar runs inside the StormSafe CRM (in an iframe), the CRM posts
+   its live client list in. We mirror those leads here keyed by crmId so reps
+   never re-enter people — order/timeline details + completion still live in this
+   tool. Matching CRM lead deleted/lost → its mirror is removed automatically. */
+function crmRepId(name){
+  if(!name||name==='—')return null;
+  const n=String(name).toLowerCase();
+  const r=state.reps.find(x=>{const rn=x.name.toLowerCase();return rn===n||n.includes(rn)||rn.includes(n);});
+  return r?r.id:null;
+}
+function mergeCrmClients(list){
+  if(!Array.isArray(list))return;
+  const ids=new Set(list.map(c=>c.crmId));
+  // Drop mirrors whose CRM lead is gone (deleted, or now lost/cancelled).
+  state.clients=state.clients.filter(c=>!c.crmId||ids.has(c.crmId));
+  list.forEach(src=>{
+    let c=state.clients.find(x=>x.crmId===src.crmId);
+    if(c){ // refresh live display fields; keep locally-set order/stage/rep/value
+      if(src.name)c.name=src.name;
+      if(src.phone)c.phone=src.phone;
+      if(src.city)c.city=src.city;
+      if(!c.county&&src.county)c.county=src.county;
+      if(!c.building&&src.building)c.building=src.building;
+    }else{
+      c={id:'crm-'+src.crmId,crmId:src.crmId,name:src.name||'Lead',phone:src.phone||'',
+         city:src.city||'',county:src.county||'',building:src.building||'',value:0,
+         sqft:'',wind:'',model:'',rep:crmRepId(src.rep)||(state.reps[0]&&state.reps[0].id)||'r1',
+         stage:src.stage||'quote'};
+      state.clients.push(c);
+    }
+  });
+  // Rebuild auto-timelines for any synced lead that has order details set here.
+  state.clients.forEach(c=>{if(c.crmId&&c.ordered)rebuildTimeline(c);});
+  refreshBadges();save();render();
+}
+if(window.parent&&window.parent!==window){
+  window.addEventListener('message',e=>{const d=e.data||{};if(d.type==='ss-crm-clients')mergeCrmClients(d.clients);});
+  try{window.parent.postMessage({type:'ss-crm-ready'},'*');}catch(_){}
+}
 render();
 </script>
 <!--ssfu-build-complete-->
