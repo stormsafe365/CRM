@@ -487,7 +487,7 @@ function priorityBanner(){
     const overdue=open.filter(f=>daysBetween(f.date,TODAY)<0);
     totalOverdue+=overdue.length;
     const next=[...open].sort((a,b)=>a.date.localeCompare(b.date))[0];
-    const lastTouch=fus.filter(f=>f.done).map(f=>f.date).sort().pop()||c.ordered;
+    const lastTouch=fus.filter(f=>f.done).map(f=>f.date).sort().pop()||c.ordered||TODAY;
     const stale=daysBetween(TODAY,lastTouch);
     const prog=Math.round(stageIndex(c.stage)/(STAGES.length-1)*100);
     const flag=overdue.length?`<span class="flag red">${icon('alert',13)} ${overdue.length} overdue</span>`
