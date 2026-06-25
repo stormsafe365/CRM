@@ -30,18 +30,21 @@ function mapStage(c) {
 export default function Calendar() {
   const { users } = useUsers()
   const iframeRef = useRef(null)
-  const readyRef = useRef(false)
+  const readyRef = useRef(false)   // calendar iframe is loaded + listening
+  const loadedRef = useRef(false)  // at least one successful client load (avoid wiping mirrors with a premature/empty list)
   const [clients, setClients] = useState([])
 
   // Load the client list + keep it live via realtime.
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('clients')
         .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket')
         .order('updated_at', { ascending: false })
-      if (!cancelled) setClients(data || [])
+      if (cancelled || error) return   // on error keep the last good list, don't blank the calendar
+      loadedRef.current = true
+      setClients(data || [])
     }
     load()
     const ch = supabase
@@ -51,10 +54,10 @@ export default function Calendar() {
     return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [])
 
-  // Push the current snapshot into the calendar iframe (once it's ready).
+  // Push the current snapshot into the calendar iframe (once it's ready + loaded).
   const post = useCallback(() => {
     const win = iframeRef.current?.contentWindow
-    if (!win || !readyRef.current) return
+    if (!win || !readyRef.current || !loadedRef.current) return
     const payload = clients.map(c => {
       const stage = mapStage(c)
       if (!stage) return null
@@ -110,7 +113,7 @@ export default function Calendar() {
           ref={iframeRef}
           src="/follow-up-hq.html"
           title="StormSafe Follow-Up HQ"
-          onLoad={() => post()}
+          onLoad={() => { readyRef.current = true; post() }}
           style={{ width: '100%', height: 'calc(100vh - 200px)', minHeight: 600, border: 0, display: 'block', background: 'var(--bg)' }}
         />
       </section>
