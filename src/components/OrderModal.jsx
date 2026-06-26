@@ -19,6 +19,8 @@ const PLANS = {
   asbuilt: { label: 'As-built stamped plans (~4–5 wk)', engWeeks: 4, blurb: 'As-built stamped plans run ~4–5 wks.' },
 }
 const BUCKETS = ['4-6', '6-8', '8-10', '10-12', '12-14']
+const FOUNDATIONS = ['Concrete', 'Footers Only', 'Asphalt', 'Gravel', 'Directly to the ground']
+const PERMITTING = ['Client pulling permit', 'Permit service for building', 'Permit service for building & pad', 'No permit needed']
 
 const isoToday = () => {
   const d = new Date()
@@ -59,6 +61,8 @@ export default function OrderModal({ client, onClose, onSaved }) {
   const [plan, setPlan] = useState(client.order_plan || 'generic')
   const [bucket, setBucket] = useState(client.order_bucket || '8-10')
   const [county, setCounty] = useState(client.county || '')
+  const [foundation, setFoundation] = useState(client.order_foundation || '')
+  const [permitting, setPermitting] = useState(client.order_permitting || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // Reopening an already-ordered lead = editing (fix a wrong manufacturer, date, etc.).
@@ -76,6 +80,8 @@ export default function OrderModal({ client, onClose, onSaved }) {
       order_mfr: mfr,
       order_plan: plan,
       order_bucket: bucket,
+      order_foundation: foundation || null,
+      order_permitting: permitting || null,
       county: county.trim() || client.county || null,
     }
     const { error } = await supabase.from('clients').update(patch).eq('id', client.id)
@@ -136,6 +142,23 @@ export default function OrderModal({ client, onClose, onSaved }) {
             <label className="fum-field">
               <span className="fum-label">County (permitting)</span>
               <input type="text" value={county} onChange={e => setCounty(e.target.value)} placeholder="e.g. Palm Beach" />
+            </label>
+          </div>
+
+          <div className="fum-row2">
+            <label className="fum-field">
+              <span className="fum-label">Foundation Type</span>
+              <select value={foundation} onChange={e => setFoundation(e.target.value)}>
+                <option value="">— Select —</option>
+                {FOUNDATIONS.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </label>
+            <label className="fum-field">
+              <span className="fum-label">Permitting</span>
+              <select value={permitting} onChange={e => setPermitting(e.target.value)}>
+                <option value="">— Select —</option>
+                {PERMITTING.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
             </label>
           </div>
 

@@ -40,7 +40,7 @@ export default function Calendar() {
     async function load() {
       const { data, error } = await supabase
         .from('clients')
-        .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket')
+        .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket,order_foundation,order_permitting')
         .order('updated_at', { ascending: false })
       if (cancelled || error) return   // on error keep the last good list, don't blank the calendar
       loadedRef.current = true
@@ -75,6 +75,8 @@ export default function Calendar() {
         mfr: c.order_mfr || null,
         planKey: c.order_plan || null,
         bucket: c.order_bucket || null,
+        foundation: c.order_foundation || null,
+        permitting: c.order_permitting || null,
       }
     }).filter(Boolean)
     win.postMessage({ type: 'ss-crm-clients', clients: payload }, '*')
