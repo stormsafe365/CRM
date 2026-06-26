@@ -4544,10 +4544,18 @@ function gWalls(){
     //      the enclosed length × (open sides / 2) — chart price is for BOTH sides.
     var encL = parseInt(G('gch-enc').value)||0;
     if(encL > 0){
+      // GCH eave sides are controlled by the Left/Right Side Panels dropdowns
+      // (gch-left/gch-right), NOT the Section-4 wall options — those are forced to
+      // 'Closed' for a GCH, so reading them here made Open vs Closed price the same
+      // (customers charged for paneling that isn't there). 'closed' = full-length
+      // closed side; anything else = open (enclosed portion charged via the
+      // utility-sides chart below; partial panels add their cost in gSidePanels).
+      var gchL = G('gch-left')  ? G('gch-left').value  : 'open';
+      var gchR = G('gch-right') ? G('gch-right').value : 'open';
       // Step 1: Closed sides — full-length scLookup
       var sideOpenCount = 0;
-      if(rev==='Closed') t += scLookup(h, l, w); else sideOpenCount++;
-      if(lev==='Closed') t += scLookup(h, l, w); else sideOpenCount++;
+      if(gchR==='closed') t += scLookup(h, l, w); else sideOpenCount++;
+      if(gchL==='closed') t += scLookup(h, l, w); else sideOpenCount++;
       // Step 2: Divider end wall (always)
       t += ecLookup(w, h);
       // Step 3: Utility sides chart for OPEN sides (only the enclosed portion)
@@ -4932,10 +4940,11 @@ function gSidePanels(){
   if(bt==='gch'){
     // GCH: a side whose MAIN wall is already "Closed" is sheeted full-length via
     // scLookup, so side paneling on the open extension would double-charge → $0.
-    var levG=G('wle')?G('wle').value:'Open';
-    var revG=G('wre')?G('wre').value:'Open';
-    if(levG!=='Closed') total += sideClosurePrice(lv, H, tier, closedLen, w);
-    if(revG!=='Closed') total += sideClosurePrice(rv, H, tier, closedLen, w);
+    // A side set to 'closed' is sheeted full-length in gWalls (scLookup), so skip
+    // it here to avoid double-charging. 'open' costs $0; partial panels (1panel,
+    // q1/q2/q3, …) add their panel price on the open extension.
+    if(lv!=='closed') total += sideClosurePrice(lv, H, tier, closedLen, w);
+    if(rv!=='closed') total += sideClosurePrice(rv, H, tier, closedLen, w);
   } else if(bt==='carport'){
     // Carport: the side panels ARE the sides — independent, no main-wall interplay.
     total += sideClosurePrice(lv, H, tier, closedLen, w);
@@ -6356,10 +6365,19 @@ function chkDoorLift(szSel){
         rchEl.innerHTML='<option value="0">Included &#10003;</option>';
         rchEl.value='0'; rchEl.disabled=true;
       } else {
-        var prevSel=rchEl.value;
+        // Hoist-optional: offer 1..(door qty) just like the brush-seal dropdown
+        // below, so each of multiple doors can get a hoist (was hardcoded None/1,
+        // capping it at 1 even when 2+ doors were ordered).
+        var prevSel=parseInt(rchEl.value)||0;
+        var chQty=parseInt(((entry.querySelector('.rqt'))||{value:'1'}).value)||1;
         rchEl.disabled=false;
-        rchEl.innerHTML='<option value="0">None</option><option value="1">1 (+$325)</option>';
-        rchEl.value=(prevSel==='1')?'1':'0';
+        rchEl.innerHTML='<option value="0">None</option>';
+        for(var ci=1;ci<=chQty;ci++){
+          var co=document.createElement('option');
+          co.value=ci; co.textContent=ci+' (+$'+(ci*325).toLocaleString()+')';
+          rchEl.appendChild(co);
+        }
+        rchEl.value=Math.min(prevSel,chQty)||0;
       }
     }
   }
