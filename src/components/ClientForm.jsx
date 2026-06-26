@@ -6,6 +6,14 @@ import { useRef, useState } from 'react'
 import { CLIENT_STATUSES, LEAD_SOURCES, BUILDING_TYPES, PROJECT_STAGES } from '../lib/constants'
 import { useUsers } from '../lib/useUsers'
 
+// Rep option label: name plus email, so two accounts with the same display
+// name (e.g. a duplicate "Jenna" login) are tell-apart-able in the dropdown.
+function repOptionLabel(u) {
+  const name = u.display_name || ''
+  if (name && u.email) return `${name} — ${u.email}`
+  return name || u.email || 'Unknown'
+}
+
 // ZIP → City / State / County autofill via two free, no-key public APIs:
 //   Zippopotam (zip → city, state, lat/lon) + FCC census area (lat/lon → county).
 async function lookupZip(zip5) {
@@ -266,7 +274,7 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
           <select value={form.primary_rep ?? ''} onChange={e => update('primary_rep', e.target.value)} required>
             <option value="">— Select —</option>
             {users.map(u => (
-              <option key={u.id} value={u.id}>{u.display_name || u.email}</option>
+              <option key={u.id} value={u.id}>{repOptionLabel(u)}</option>
             ))}
           </select>
         </Field>
@@ -274,7 +282,7 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
           <select value={form.secondary_rep ?? ''} onChange={e => update('secondary_rep', e.target.value)}>
             <option value="">— None —</option>
             {users.map(u => (
-              <option key={u.id} value={u.id}>{u.display_name || u.email}</option>
+              <option key={u.id} value={u.id}>{repOptionLabel(u)}</option>
             ))}
           </select>
         </Field>
