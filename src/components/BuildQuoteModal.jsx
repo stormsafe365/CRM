@@ -24,7 +24,9 @@ const SAVE_BTN = {
   fontWeight: 800,
 }
 
-export default function BuildQuoteModal({ client, onSave, onClose }) {
+export default function BuildQuoteModal({ client, initialQuote, onSave, onClose }) {
+  // When reopening a saved builder quote, its full state lives in payload_json.
+  const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
   const savingRef = useRef(false)
   const [status, setStatus] = useState('')
@@ -96,8 +98,28 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
   // doZip) so it behaves exactly as if typed: the quote/PDF picks up the contact
   // info and the ZIP resolves city/county/state. We never overwrite a field the
   // user already filled, and never touch the program's source.
+  // Reopen a saved quote: once the program is ready, restore its full state
+  // (fields, doors, windows, lean-tos, manufacturer) via the program's own
+  // restoreQuoteData — which also re-syncs the 3D model and reprices. From here
+  // the user can adjust and re-save, or hit the program's Generate Contract.
   useEffect(() => {
-    if (!client) return
+    if (!restoreData) return
+    let done = false
+    const t = setInterval(() => {
+      if (done) return
+      const pg = getProgramWindow()
+      if (!pg || typeof pg.restoreQuoteData !== 'function') return
+      try { pg.restoreQuoteData(restoreData) } catch (e) { console.warn('restore failed', e) }
+      done = true
+      clearInterval(t)
+      toast(`Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim(), 'success')
+    }, 500)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!client || restoreData) return // editing a saved quote already carries its own client info
     let done = false
     const t = setInterval(() => {
       if (done) return
@@ -153,18 +175,20 @@ export default function BuildQuoteModal({ client, onSave, onClose }) {
       <div className="qb-modal">
         <div className="qb-bar">
           <div className="qb-bar-title">
-            3D Builder
+            {restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : '3D Builder'}
             {client?.name && <span className="qb-bar-client"> · {client.name}</span>}
           </div>
           {status
             ? <div className="qb-bar-status">{status}</div>
             : <div className="qb-bar-status" style={{ flex: 1, textAlign: 'center', opacity: 0.7 }}>
-                Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.
+                {restoreData
+                  ? <>Adjust the build, then <b>Save to Lead</b> to update this quote.</>
+                  : <>Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.</>}
               </div>}
           <div className="qb-bar-actions">
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
-            <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
+            <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
           </div>
         </div>
         <iframe ref={iframeRef} src={SRC} title="StormSafe 3D Builder" allow="fullscreen" className="qb-iframe" />

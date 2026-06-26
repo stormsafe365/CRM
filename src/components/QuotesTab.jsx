@@ -26,6 +26,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const building = buildingProp ?? buildingInner
   const setBuilding = setBuildingProp ?? setBuildingInner
   const [editingId, setEditingId] = useState(null)
+  const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
 
@@ -86,6 +87,17 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     setEditingId(null)
   }
 
+  // Re-save an edited builder quote onto the SAME row, keeping its original
+  // quote number + date so it stays the same quote — just revised.
+  async function handleBuildUpdate(original, payload) {
+    const { quote_number, quote_date, ...rest } = payload
+    const { error } = await supabase
+      .from('quotes')
+      .update({ ...rest, quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
+      .eq('id', original.id)
+    if (error) throw error
+  }
+
   async function handleDelete(quote) {
     // Best-effort: try to delete the PDF from storage too. We don't
     // block the delete on this — if the PDF cleanup fails we still
@@ -133,9 +145,19 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     if (error) setError(error.message)
   }
 
-  function openFromDeck(quote) {
-    setEditingId(quote.id)
-    setViewMode('list')
+  // Open / Edit a quote. Quotes built in the 3D builder carry their full state
+  // in payload_json — reopen those in the builder (adjust → re-save → contract).
+  // Manually-added / uploaded quotes (no builder state) open the details form.
+  function openQuote(quote) {
+    const data = quote.payload_json
+    const isBuilderQuote = !!(data && (data.fields || data.source === '3d-builder'))
+    if (isBuilderQuote) {
+      setEditQuote(quote)
+      setBuilding(true)
+    } else {
+      setEditingId(quote.id)
+      setViewMode('list')
+    }
   }
 
   // Delete straight from the deck / spread card (the list view has its own inline confirm).
@@ -159,7 +181,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           )}
           {!adding && !editingId && (
             <>
-              <button onClick={() => setBuilding(true)} className="btn btn-primary">
+              <button onClick={() => { setEditQuote(null); setBuilding(true) }} className="btn btn-primary">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>Build Quote
               </button>
               <button onClick={() => setAdding(true)} className="btn btn-ghost">
@@ -175,8 +197,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       {building && (
         <BuildQuoteModal
           client={client ?? { id: clientId }}
-          onSave={handleCreate}
-          onClose={() => setBuilding(false)}
+          initialQuote={editQuote}
+          onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
+          onClose={() => { setBuilding(false); setEditQuote(null) }}
         />
       )}
 
@@ -202,13 +225,13 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       ) : viewMode === 'deck' && !editingId && !adding ? (
         <QuoteDeck
           quotes={quotes}
-          onOpen={openFromDeck}
+          onOpen={openQuote}
           onViewPdf={handleViewPdf}
           onAccept={handleAccept}
           onDelete={confirmDeleteQuote}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openFromDeck} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} />
+        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
