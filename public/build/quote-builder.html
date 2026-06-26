@@ -287,10 +287,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </select></div>
   <!-- GCH: Length split (Enclosed + Open side by side) + Front Gable + Side Panels -->
   <div id="gch-section" style="display:none">
-    <div class="pnote" style="margin:4px 0 8px;font-size:10px">Enter any 2 of: Total Length, Enclosed Length, Open Length. The 3rd auto-calculates.</div>
-    <div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap"><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Enclosed Length (ft)</label>
-      <input id="gch-enc" type="number" min="5" max="200" placeholder="e.g. 20" oninput="gchSync('enc')" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"></div><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Open Length (ft)</label>
-      <input id="gch-open" type="number" min="5" max="200" placeholder="e.g. 11" oninput="gchSync('open')" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"></div></div>
+    <div class="pnote" style="margin:4px 0 8px;font-size:10px">Pick the enclosed storage length — the open carport fills the rest of the total length. Options step in truss-spacing increments (4' or 5' OC).</div>
+    <div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap"><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Enclosed Storage (ft)</label>
+      <select id="gch-enc" onchange="gchEncChange()" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"><option value="">— set total length first —</option></select></div><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Open Length (ft)</label>
+      <input id="gch-open" type="number" readonly tabindex="-1" placeholder="—" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--sub);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box;cursor:not-allowed"></div></div>
     <div id="gch-sum-note" class="enote" style="margin:6px 0;font-size:10px">Enter any 2 of total/enclosed/open length.</div>
     <!-- Front Gable: GCH-only selector. Syncs the Front Gable choice in Section 4. -->
     <div class="row"><label>Front Gable</label>
@@ -352,7 +352,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </select>
   </div>
   <div class="row hidden" id="oc-spacing-row"><label>OC Spacing</label>
-    <select id="oc-spacing" onchange="rc()">
+    <select id="oc-spacing" onchange="if(typeof populateGchEnc==='function')populateGchEnc();rc()">
       <option value="5oc">Standard — 5' OC (included)</option>
       <option value="4oc">Upgrade — 4' OC</option>
     </select>
@@ -3984,11 +3984,59 @@ function _gchSetTotal(total){
   blSel.value=total;
   doBld();
 }
-// Wrapper for Total Length dropdown onchange — handles GCH sync + normal doBld
-function onBlChange(){
-  if(G('btype') && G('btype').value === 'gch') gchSync('total');
-  doBld();
+// Wrapper for Total Length dropdown onchange.
+function onBlChange(){ doBld(); }
+
+// ── GCH enclosed-storage length: constrained to truss-spacing increments ──────
+// The enclosed/open divider must land on a truss line, so the enclosed length is
+// a multiple of the truss spacing (4' OC → 4' steps, 5' OC → 5' steps) and must
+// leave at least one bay of open carport. Rebuilt whenever total length / width /
+// OC changes (via doBld → populateGchEnc).
+function populateGchEnc(desired){
+  if(!G('btype')||G('btype').value!=='gch') return;
+  var sel=G('gch-enc'); if(!sel) return;
+  var L=parseInt(G('bl').value)||0;
+  var ti=(typeof getTrussInfo==='function')?getTrussInfo():null;
+  var S=(ti&&ti.spacing)?ti.spacing:5;
+  // `desired` (e.g. a restored value) wins over the current selection for the
+  // keep/snap step — lets old free-typed lengths snap to the nearest valid tier.
+  var prev=(desired!=null && desired!=='') ? (parseInt(desired)||0) : (parseInt(sel.value)||0);
+  sel.innerHTML='';
+  if(!L){ sel.add(new Option('— set total length first —','')); return; }
+  var opts=[];
+  for(var e=S; e<=L-S+0.001; e+=S) opts.push(e);
+  if(!opts.length){ sel.add(new Option('— length too short to split —','')); return; }
+  sel.add(new Option('— select enclosed length —',''));
+  opts.forEach(function(e){ sel.add(new Option(e+"' enclosed  ·  "+(L-e)+"' open", String(e))); });
+  // Keep the prior choice if still valid; otherwise snap to the nearest multiple.
+  var pick='';
+  if(prev>0){
+    if(opts.indexOf(prev)>=0) pick=prev;
+    else { var best=opts[0], bd=Math.abs(opts[0]-prev); opts.forEach(function(e){ var d=Math.abs(e-prev); if(d<bd){bd=d;best=e;} }); pick=best; }
+  }
+  sel.value=String(pick);
+  updateGchOpen();
 }
+// Derive the open length + status note from the selected enclosed length.
+function updateGchOpen(){
+  var L=parseInt(G('bl').value)||0;
+  var enc=parseInt(G('gch-enc')&&G('gch-enc').value)||0;
+  var opn=(L&&enc&&enc<L)?L-enc:0;
+  var opnEl=G('gch-open'); if(opnEl) opnEl.value=opn||'';
+  var note=G('gch-sum-note');
+  if(note){
+    if(enc>0&&opn>0){
+      var ti=(typeof getTrussInfo==='function')?getTrussInfo():null; var S=(ti&&ti.spacing)?ti.spacing:5;
+      note.textContent='✓ '+enc+"' enclosed + "+opn+"' open = "+L+"' total  ·  "+S+"' OC trusses";
+      note.style.color='#065f46'; note.style.background='#dcfce7'; note.style.borderLeftColor='#34d399';
+    } else {
+      note.textContent='Select an enclosed storage length — the open carport fills the rest.';
+      note.style.color=''; note.style.background=''; note.style.borderLeftColor='';
+    }
+  }
+}
+// User picked an enclosed length from the dropdown.
+function gchEncChange(){ updateGchOpen(); rc(); }
 
 function populateLength(){
   var blSel=G('bl');
@@ -4111,6 +4159,8 @@ function doBld(){
   if(typeof doPerm==='function' && G('perm') && G('perm').value==='yes') doPerm();
   // Refresh roll-up door size dropdowns since wall height/dimensions may have changed
   if(typeof refreshAllRUDSizes==='function') refreshAllRUDSizes();
+  // GCH: rebuild the enclosed-storage dropdown (total length / width / OC may have changed)
+  if(typeof populateGchEnc==='function') populateGchEnc();
   sy(); rc();
 }
 
@@ -4552,25 +4602,17 @@ function gWalls(){
       // utility-sides chart below; partial panels add their cost in gSidePanels).
       var gchL = G('gch-left')  ? G('gch-left').value  : 'open';
       var gchR = G('gch-right') ? G('gch-right').value : 'open';
-      // Step 1: Closed sides — full-length scLookup
-      var sideOpenCount = 0;
-      if(gchR==='closed') t += scLookup(h, l, w); else sideOpenCount++;
-      if(gchL==='closed') t += scLookup(h, l, w); else sideOpenCount++;
-      // Step 2: Divider end wall (always)
-      t += ecLookup(w, h);
-      // Step 3: Utility sides chart for OPEN sides (only the enclosed portion)
-      if(sideOpenCount > 0){
-        var utilSidesPair = 0;
-        if(typeof MFR==='function' && MFR().utilitySidesFn){
-          utilSidesPair = MFR().utilitySidesFn(w, h, encL);
-        }
-        if(utilSidesPair === null || utilSidesPair === 0){
-          // Fallback for widths outside chart (e.g., CA 32+ wide): use scLookup pro-rated
-          utilSidesPair = scLookup(h, encL, w);
-        }
-        // Chart price covers both sides — divide by 2 per open side
-        t += Math.round(utilSidesPair * sideOpenCount / 2);
-      }
+      // Each eave side: 'closed' sheets the FULL length (enclosed + open extension)
+      // via scLookup; any other setting sheets only the ENCLOSED portion
+      // (scLookup at the enclosed length) — the open extension is bare ($0) or
+      // gets partial panels in gSidePanels. The enclosed-side sheeting plus the
+      // internal divider are what Sensei bills as "Utility Storage".
+      //   (The old utility-sides CHART only ran to 15' of length; extrapolating it
+      //    out to a long enclosed section over-charged — e.g. 60' returned $2,620
+      //    for the pair vs the correct 2×scLookup(60)=$2,480.)
+      t += (gchR==='closed') ? scLookup(h, l, w) : scLookup(h, encL, w);
+      t += (gchL==='closed') ? scLookup(h, l, w) : scLookup(h, encL, w);
+      t += ecLookup(w, h); // internal divider end wall (always)
     }
   } else {
     // Regular building: full-length side close for each closed eave side
@@ -7174,9 +7216,11 @@ function restoreQuoteData(data){
       if(setSwatch) setSwatch(id, swMap[id]);
     }
   });
-  // GCH: re-sync total length from restored enc + open values
-  if(f.btype==='gch' && f['gch-enc'] && f['gch-open']){
-    gchSync('enc');
+  // GCH: build the enclosed-storage dropdown for the restored length/OC, then
+  // re-apply the saved enclosed length and derive the open length.
+  if(f.btype==='gch'){
+    populateGchEnc(f['gch-enc']);   // builds options + snaps the saved length to a valid tier
+    updateGchOpen();
   }
   sy();
   rc();
@@ -7396,39 +7440,38 @@ async function printQuote(){
   // Sides: closed sides charge full-length scLookup. Name the specific side when only
   // one is closed (mirrors the gable-end Front/Back/Each split). Open eave sides are
   // noted as "Open (No Sheeting)" on non-GCH buildings so each side's state is clear.
-  var _rClosed=(wrev==='Closed'), _lClosed=(wlev==='Closed');
-  if(_rClosed||_lClosed){
-    var sideP=scLookup(wallH,lv,parseInt(w)||0);
-    if(_rClosed && _lClosed) rows+=row('Each Side Closed ('+wallStyle+')',2,sideP,sideP*2);
-    else if(_lClosed)        rows+=row('Left Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
-    else                     rows+=row('Right Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
-  }
-  if(_btQ!=='gch'){
+  if(_btQ==='gch'){
+    // GCH sides are the Left/Right Side Panels (gch-left/gch-right). A 'closed'
+    // side sheets full length; otherwise the open extension is bare ($0) and the
+    // enclosed-side sheeting goes into "Utility Storage" (divider + enclosed
+    // sides) — matching Sensei's breakdown and the gWalls total.
+    var _encLQ=parseInt(G('gch-enc')&&G('gch-enc').value)||0;
+    var _wQ=parseInt(w)||0;
+    var _gchL=G('gch-left')?G('gch-left').value:'open';
+    var _gchR=G('gch-right')?G('gch-right').value:'open';
+    var _rC=(_gchR==='closed'), _lC=(_gchL==='closed');
+    var _sideP=scLookup(wallH, lv, _wQ);
+    if(_rC && _lC) rows+=row('Each Side Closed ('+wallStyle+')',2,_sideP,_sideP*2);
+    else if(_lC)   rows+=row('Left Eave Side Closed ('+wallStyle+')',1,_sideP,_sideP);
+    else if(_rC)   rows+=row('Right Eave Side Closed ('+wallStyle+')',1,_sideP,_sideP);
+    if(_gchR==='open') rows+=row('Right Side — Open (No Sheeting)',null,null,0);
+    if(_gchL==='open') rows+=row('Left Side — Open (No Sheeting)',null,null,0);
+    if(_encLQ>0){
+      var _utilStorage = ecLookup(_wQ, wallH);            // internal divider (always)
+      if(!_rC) _utilStorage += scLookup(wallH, _encLQ, _wQ); // enclosed right side
+      if(!_lC) _utilStorage += scLookup(wallH, _encLQ, _wQ); // enclosed left side
+      if(_utilStorage>0) rows+=row('Utility Storage — '+_encLQ+" Feet",null,null,_utilStorage);
+    }
+  } else {
+    var _rClosed=(wrev==='Closed'), _lClosed=(wlev==='Closed');
+    if(_rClosed||_lClosed){
+      var sideP=scLookup(wallH,lv,parseInt(w)||0);
+      if(_rClosed && _lClosed) rows+=row('Each Side Closed ('+wallStyle+')',2,sideP,sideP*2);
+      else if(_lClosed)        rows+=row('Left Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
+      else                     rows+=row('Right Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
+    }
     if(wlev==='Open') rows+=row('Left Eave Side — Open (No Sheeting)',null,null,0);
     if(wrev==='Open') rows+=row('Right Eave Side — Open (No Sheeting)',null,null,0);
-  }
-  // GCH-only: "Utility Storage X Feet" — includes the internal divider end wall,
-  // plus the utility-sides chart for ANY OPEN sides (matching Sensei's display).
-  if(_btQ==='gch'){
-    var _encLQ=parseInt(G('gch-enc')&&G('gch-enc').value)||0;
-    if(_encLQ>0){
-      var wQ=parseInt(w)||0;
-      var _utilStorage = ecLookup(wQ, wallH); // divider end wall (always)
-      var _openSides = (wrev!=='Closed' ? 1 : 0) + (wlev!=='Closed' ? 1 : 0);
-      if(_openSides > 0){
-        var _utilPair = 0;
-        if(typeof MFR==='function' && MFR().utilitySidesFn){
-          _utilPair = MFR().utilitySidesFn(wQ, wallH, _encLQ);
-        }
-        if(_utilPair === null || _utilPair === 0){
-          _utilPair = scLookup(wallH, _encLQ, wQ);
-        }
-        _utilStorage += Math.round(_utilPair * _openSides / 2);
-      }
-      if(_utilStorage > 0){
-        rows+=row('Utility Storage — '+_encLQ+" Feet",null,null,_utilStorage);
-      }
-    }
   }
   if(vertWallUpgP) rows+=row('Vertical Wall Upgrade',null,null,vertWallUpgP);
   if(sheetUpgrade) rows+=row('26-Gauge Sheeting Upgrade (+10%)',null,null,sheetUpgrade);
@@ -8329,37 +8372,37 @@ async function printContract(){
   } else if(bHalf_b){
     row('Back End Partial Close — 6&prime; Panel ('+wallStyle+')', 1, halfP_b, halfP_b);
   }
-  var _rClosed_b=(wrev==='Closed'), _lClosed_b=(wlev==='Closed');
-  if(_rClosed_b||_lClosed_b){
-    var sideP=scLookup(wallH,lv,parseInt(w)||0);
-    if(_rClosed_b && _lClosed_b) row('Each Side Closed ('+wallStyle+')',2,sideP,sideP*2);
-    else if(_lClosed_b)          row('Left Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
-    else                         row('Right Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
-  }
-  if(_btQ!=='gch'){
+  if(_btQ==='gch'){
+    // GCH sides = Left/Right Side Panels (gch-left/gch-right). 'closed' → full-length
+    // sheeting; otherwise the open extension is bare ($0) and the enclosed-side
+    // sheeting + divider bill as "Utility Storage" (matches Sensei + gWalls total).
+    var _encLQ=parseInt(G('gch-enc')&&G('gch-enc').value)||0;
+    var _wQ=parseInt(w)||0;
+    var _gchL=G('gch-left')?G('gch-left').value:'open';
+    var _gchR=G('gch-right')?G('gch-right').value:'open';
+    var _rC=(_gchR==='closed'), _lC=(_gchL==='closed');
+    var _sideP=scLookup(wallH, lv, _wQ);
+    if(_rC && _lC) row('Each Side Closed ('+wallStyle+')',2,_sideP,_sideP*2);
+    else if(_lC)   row('Left Eave Side Closed ('+wallStyle+')',1,_sideP,_sideP);
+    else if(_rC)   row('Right Eave Side Closed ('+wallStyle+')',1,_sideP,_sideP);
+    if(_gchR==='open') row('Right Side — Open (No Sheeting)',null,null,0);
+    if(_gchL==='open') row('Left Side — Open (No Sheeting)',null,null,0);
+    if(_encLQ>0){
+      var _utilStorage = ecLookup(_wQ, wallH);
+      if(!_rC) _utilStorage += scLookup(wallH, _encLQ, _wQ);
+      if(!_lC) _utilStorage += scLookup(wallH, _encLQ, _wQ);
+      if(_utilStorage>0) row('Utility Storage — '+_encLQ+" Feet",null,null,_utilStorage);
+    }
+  } else {
+    var _rClosed_b=(wrev==='Closed'), _lClosed_b=(wlev==='Closed');
+    if(_rClosed_b||_lClosed_b){
+      var sideP=scLookup(wallH,lv,parseInt(w)||0);
+      if(_rClosed_b && _lClosed_b) row('Each Side Closed ('+wallStyle+')',2,sideP,sideP*2);
+      else if(_lClosed_b)          row('Left Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
+      else                         row('Right Eave Side Closed ('+wallStyle+')',1,sideP,sideP);
+    }
     if(wlev==='Open') row('Left Eave Side — Open (No Sheeting)',null,null,0);
     if(wrev==='Open') row('Right Eave Side — Open (No Sheeting)',null,null,0);
-  }
-  if(_btQ==='gch'){
-    var _encLQ=parseInt(G('gch-enc')&&G('gch-enc').value)||0;
-    if(_encLQ>0){
-      var wQ=parseInt(w)||0;
-      var _utilStorage = ecLookup(wQ, wallH);
-      var _openSides = (wrev!=='Closed' ? 1 : 0) + (wlev!=='Closed' ? 1 : 0);
-      if(_openSides > 0){
-        var _utilPair = 0;
-        if(typeof MFR==='function' && MFR().utilitySidesFn){
-          _utilPair = MFR().utilitySidesFn(wQ, wallH, _encLQ);
-        }
-        if(_utilPair === null || _utilPair === 0){
-          _utilPair = scLookup(wallH, _encLQ, wQ);
-        }
-        _utilStorage += Math.round(_utilPair * _openSides / 2);
-      }
-      if(_utilStorage > 0){
-        row('Utility Storage — '+_encLQ+" Feet",null,null,_utilStorage);
-      }
-    }
   }
   if(vertWallUpgP) row('Vertical Wall Upgrade',null,null,vertWallUpgP);
   if(sheetUpgrade) row('26-Gauge Sheeting Upgrade (+10%)',null,null,sheetUpgrade);

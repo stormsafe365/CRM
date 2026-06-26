@@ -80,8 +80,12 @@ export default function ClientsList() {
   // users list so it reads "Jenna's Leads" / "Joshua's Leads" automatically.
   const firstNameOf = (u) => (u.display_name || u.email || 'Rep').split(/[\s@]/)[0]
   const repTabs = [
-    { key: 'all', label: 'All Leads', count: clients.length },
-    ...users.map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: clients.filter(c => c.primary_rep === u.id).length })),
+    { key: 'all', label: 'All StormSafe Leads', count: clients.length },
+    // Only reps who actually own leads get a tab — keeps stray/empty accounts
+    // (e.g. a duplicate login) from cluttering the row.
+    ...users
+      .map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: clients.filter(c => c.primary_rep === u.id).length }))
+      .filter(t => t.count > 0),
   ]
   // Everything below is scoped to the selected rep first, then by status.
   const repScoped = useMemo(
