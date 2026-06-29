@@ -665,7 +665,8 @@ function clientModal(id){return()=>{
       <div style="flex:1;min-width:0;padding-bottom:2px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-family:var(--font-head);font-weight:600;font-size:13.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink)">${t.label}</span>
-          <span style="font-family:var(--font-mono);font-size:11.5px;color:${od?'var(--storm-500)':'var(--faint)'}">${prettyDate(f.date)} · ${relativeLabel(f.date)}</span>
+          <input type="date" data-fudate="${f.id}" value="${f.date}" title="Click to change this follow-up's date" style="font-family:var(--font-mono);font-size:11px;color:${od?'var(--storm-500)':'var(--ink-2,#A8B5C7)'};background:transparent;border:1px solid var(--line);border-radius:5px;padding:1px 5px;cursor:pointer;color-scheme:dark">
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--faint)">${relativeLabel(f.date)}</span>
           ${f.est?'<span style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--gold);border:1px solid var(--gold);opacity:.7;border-radius:5px;padding:1px 5px">EST</span>':''}</div>
         <div style="font-size:13px;color:var(--muted);margin-top:3px;${f.done?'opacity:.55;text-decoration:line-through':''}">${escapeHtml(f.note)}</div></div>
       <button class="chk ${f.done?'on':''}" data-act="toggle" data-id="${f.id}" style="width:24px;height:24px;flex-shrink:0;border-radius:5px;${f.done?'background:var(--safe-500);border:none;color:#fff':'border:2px solid var(--line2);background:transparent'};display:flex;align-items:center;justify-content:center">${f.done?icon('check',14):''}</button>
@@ -838,6 +839,9 @@ document.addEventListener('click',e=>{const pick=e.target.closest('[data-pick]')
   pick.classList.add('on');pick.style.color=TYPES[pick.dataset.pick].color;}});
 document.addEventListener('input',e=>{const rep=e.target.closest('[data-rep]');if(rep){const r=repById(rep.dataset.rep);if(r){r.name=rep.value;r.initials=(rep.value.trim().split(/\s+/).map(w=>w[0]||'').join('').slice(0,2)||'?').toUpperCase();save();}}
   const sn=e.target.closest('[data-stagename]');if(sn){const s=STAGES.find(x=>x.id===sn.dataset.stagename);if(s){s.label=sn.value;save();}}});
+// Edit a follow-up's date from the client popup timeline.
+document.addEventListener('change',e=>{const di=e.target.closest('[data-fudate]');if(!di)return;
+  const f=state.followups.find(x=>x.id===di.dataset.fudate);if(f&&di.value){f.date=di.value;toast('Follow-up moved to '+prettyDate(f.date),'clock');save();render();}});
 
 function reorderStage(id,d){const i=stageIndex(id),j=i+d;if(i<0||j<0||j>=STAGES.length)return;[STAGES[i],STAGES[j]]=[STAGES[j],STAGES[i]];save();render();}
 function addStage(){STAGES.push({id:'s'+Date.now(),label:'New stage',icon:'pin',ordered:false});save();render();}
