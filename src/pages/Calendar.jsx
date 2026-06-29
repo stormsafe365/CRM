@@ -39,12 +39,16 @@ export default function Calendar() {
     let cancelled = false
     async function load() {
       const [cRes, qRes] = await Promise.all([
+        // select('*') (not an explicit column list) so the load can't fail if an
+        // optional order column (e.g. order_foundation/order_permitting from a
+        // not-yet-run migration) is missing — it just comes back undefined.
         supabase
           .from('clients')
-          .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket,order_foundation,order_permitting')
+          .select('*')
           .order('updated_at', { ascending: false }),
         supabase.from('quotes').select('client_id,total_amount,quote_date'),
       ])
+      if (cRes.error) console.warn('Calendar: client load failed —', cRes.error.message)
       if (cancelled || cRes.error) return   // on error keep the last good list, don't blank the calendar
       // Latest quote total per client → the popup's "Value" stat.
       const valueByClient = {}
