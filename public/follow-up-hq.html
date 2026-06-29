@@ -392,9 +392,27 @@ function freshState(){
   return{reps:structuredClone(SEED.reps),clients,followups,stages:structuredClone(DEFAULT_STAGES),
     view:'board',ym:{year:parseISO(TODAY).getFullYear(),month:parseISO(TODAY).getMonth()},
     filter:{rep:null,type:null},gam:{points:{},streak:{count:0,best:0,last:null},badges:[],lifetime:0},
-    tweaks:{accent:'#2dd4bf',dense:false,motion:true,theme:'dark'},ui:{tweaksOpen:false,modal:null}};
+    tweaks:{accent:'#14A6A0',dense:false,motion:true,theme:'dark'},ui:{tweaksOpen:false,modal:null}};
 }
-function load(){try{const raw=localStorage.getItem(LS);if(raw){const s=JSON.parse(raw);s.ui={tweaksOpen:false,modal:null};return Object.assign(freshState(),s);}}catch(e){}return freshState();}
+function load(){
+  try{
+    let raw=localStorage.getItem(LS);
+    // One-time forward-migration: if this version's store is empty, carry over the
+    // last saved calendar state from a previous key so nothing entered here is lost.
+    if(!raw){ raw=localStorage.getItem('ssfu_v6')||localStorage.getItem('ssfu_v5'); }
+    if(raw){
+      const s=JSON.parse(raw);
+      s.ui={tweaksOpen:false,modal:null};
+      delete s.tweaks;   // keep the new (design) palette + theme
+      delete s.stages;   // use the current stage set
+      // Drop the old built-in demo client if it rode along.
+      if(Array.isArray(s.clients))   s.clients   = s.clients.filter(c=>c.id!=='woods');
+      if(Array.isArray(s.followups)) s.followups = s.followups.filter(f=>f.client!=='woods');
+      return Object.assign(freshState(),s);
+    }
+  }catch(e){}
+  return freshState();
+}
 function save(){const{ui,...p}=state;try{localStorage.setItem(LS,JSON.stringify(p));}catch(e){}}
 state=load();
 if(!state.stages||!state.stages.length)state.stages=structuredClone(DEFAULT_STAGES);
