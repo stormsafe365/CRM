@@ -419,7 +419,7 @@ const SEED={
 };
 
 /* ---------- state + persistence ---------- */
-const LS='ssfu_v7';
+const LS='ssfu_v8';
 const ACCENTS=['#2dd4bf','#60a5fa','#a78bfa','#f472b6','#fb923c','#34d399'];
 let state;
 function freshState(){
@@ -435,15 +435,17 @@ function load(){
     let raw=localStorage.getItem(LS);
     // One-time forward-migration: if this version's store is empty, carry over the
     // last saved calendar state from a previous key so nothing entered here is lost.
-    if(!raw){ raw=localStorage.getItem('ssfu_v6')||localStorage.getItem('ssfu_v5'); }
+    if(!raw){ raw=localStorage.getItem('ssfu_v7')||localStorage.getItem('ssfu_v6')||localStorage.getItem('ssfu_v5'); }
     if(raw){
       const s=JSON.parse(raw);
       s.ui={tweaksOpen:false,modal:null};
       delete s.tweaks;   // keep the new (design) palette + theme
       delete s.stages;   // use the current stage set
-      // Drop the old built-in demo client if it rode along.
+      // Drop the old demo client + every PREVIOUS auto-generated follow-up, so each
+      // ordered lead re-seeds onto the new milestone chain on next sync. Manual
+      // (non-gen) follow-ups are kept.
       if(Array.isArray(s.clients))   s.clients   = s.clients.filter(c=>c.id!=='woods');
-      if(Array.isArray(s.followups)) s.followups = s.followups.filter(f=>f.client!=='woods');
+      if(Array.isArray(s.followups)) s.followups = s.followups.filter(f=>f.client!=='woods'&&!f.gen);
       return Object.assign(freshState(),s);
     }
   }catch(e){}
@@ -970,7 +972,7 @@ function mergeCrmClients(list){
   // Seed Wave 0 ONCE per ordered lead — never auto-rebuild, or it would wipe the
   // milestone chain (spawned waves, done states) on every sync. Use "Rebuild
   // timeline" (or "Apply new timeline to all") to deliberately re-seed.
-  state.clients.forEach(c=>{if(c.crmId&&c.ordered&&!state.followups.some(f=>f.client===c.id))seedWave0(c);});
+  state.clients.forEach(c=>{if(c.crmId&&c.ordered&&!state.followups.some(f=>f.client===c.id&&f.gen))seedWave0(c);});
   refreshBadges();save();render();
 }
 if(window.parent&&window.parent!==window){
