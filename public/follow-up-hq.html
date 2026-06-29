@@ -575,7 +575,7 @@ function calPanel(){
   for(let i=0;i<42;i++){const dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+i),iso=toISO(dt),out=dt.getMonth()!==month,isT=iso===TODAY;
     const list=(byDate[iso]||[]).sort((a,b)=>TYPE_ORDER.indexOf(a.type)-TYPE_ORDER.indexOf(b.type));
     const chips=list.slice(0,3).map(f=>{const c=clientById(f.client),t=TYPES[f.type];
-      return`<div class="chip ${f.done?'done':''}" draggable="true" data-fu="${f.id}" style="color:${t.color}" title="${escapeHtml(c.name)} — ${escapeHtml(f.note)}">${icon(t.icon,12)} ${escapeHtml(c.name.split(' ')[0])}</div>`;}).join('');
+      return`<div class="chip ${f.done?'done':''}" draggable="true" data-fu="${f.id}" data-act="openclient" data-id="${c.id}" style="color:${t.color}" title="${escapeHtml(c.name)} — ${escapeHtml(f.note)}">${icon(t.icon,12)} ${escapeHtml(c.name.split(' ')[0])}</div>`;}).join('');
     const more=list.length>3?`<div class="more">+${list.length-3} more</div>`:'';
     cells+=`<div class="cell ${out?'out':''} ${isT?'today':''}" data-act="addday" data-date="${iso}" data-drop="${iso}"><div class="daynum">${dt.getDate()}</div>${chips}${more}</div>`;}
   return`<div class="panel">
