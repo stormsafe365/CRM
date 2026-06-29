@@ -612,7 +612,8 @@ function clientModal(id){return()=>{
   // Spec strip — area derived from the building dims when we don't have sqft.
   let area=c.sqft; if(!area&&c.building){const m=String(c.building).match(/(\d+)\s*[x×]\s*(\d+)/);if(m)area=(+m[1]*+m[2]).toLocaleString()+' sq ft';}
   const model=c.model||(c.building?String(c.building).split(' ')[0]:'—');
-  const specs=[['Building',escapeHtml(c.building||'—'),13],['Area',escapeHtml(area||'—'),15],['Rated',escapeHtml(c.wind||'—'),15],['Value',c.value?'$'+c.value.toLocaleString():'—',15]];
+  const prettyBuilding=String(c.building||'').replace(/(\d+)\s*[x×]\s*(\d+)(?:\s*[x×]\s*(\d+))?/i,(m,a,b,d)=>d?`${a}′ × ${b}′ × ${d}′`:`${a}′ × ${b}′`)||'—';
+  const specs=[['Building',escapeHtml(prettyBuilding),13],['Area',escapeHtml(area||'—'),15],['Rated',escapeHtml(c.wind||'—'),15],['Value',c.value?'$'+c.value.toLocaleString():'—',15]];
   const specStrip=specs.map((s,i)=>`<div style="flex:1;padding-right:16px;${i?'padding-left:16px;':''}${i<3?'border-right:1px solid var(--navy-700);':''}">
       <div style="font-family:var(--font-head);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel-400)">${s[0]}</div>
       <div style="font-family:${i===3?'var(--font-mono)':'var(--font)'};font-weight:600;font-size:${s[2]}px;margin-top:3px;color:${i===2?'var(--teal-300)':'#fff'}">${s[1]}</div></div>`).join('');
@@ -632,24 +633,27 @@ function clientModal(id){return()=>{
     </div>`;}).join('')||`<div style="font-size:14px;color:var(--faint);padding:20px 0">No follow-ups yet. Add one above.</div>`;
   return`<div class="overlay" data-act="closemodal"><div class="modal" data-stop style="width:640px;max-width:92vw;max-height:86vh;padding:0;overflow:hidden;border-radius:14px;display:flex;flex-direction:column">
     <!-- header -->
-    <div style="background:var(--navy-900);color:#fff;padding:22px 24px;position:relative;overflow:hidden">
-      <div style="position:absolute;right:-24px;top:-30px;opacity:.06;transform:scale(6.4);transform-origin:top right;color:#fff">${LOGO}</div>
+    <div style="flex:none;background:var(--navy-900);color:#fff;padding:22px 24px;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;opacity:.07;background-image:url(pattern-diamond.svg);background-size:64px 64px"></div>
+      <img src="seal.png" alt="" aria-hidden="true" style="position:absolute;right:-34px;top:-30px;width:180px;height:180px;opacity:.10;pointer-events:none">
       <div style="position:relative">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
+          <div style="min-width:0">
             <div style="font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;color:var(--teal-300);margin-bottom:8px">${escapeHtml(model)}${c.ordered?` · ordered ${escapeHtml(prettyDate(c.ordered))}`:''}</div>
-            <h2 style="font-family:var(--font-head);font-weight:600;font-size:20px;text-transform:uppercase;letter-spacing:.02em;line-height:1.15;margin:0">${escapeHtml(c.name)}</h2>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h2 style="font-family:var(--font-head);font-weight:600;font-size:20px;text-transform:uppercase;letter-spacing:.02em;line-height:1.15;margin:0">${escapeHtml(c.name)}</h2>
+              ${c.mfr?`<span style="font-family:var(--font-head);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--navy-900);background:var(--teal-300);border-radius:5px;padding:3px 8px">${escapeHtml(c.mfr)}</span>`:''}</div>
             <div style="display:flex;align-items:center;gap:14px;margin-top:8px;color:var(--steel-300);font-size:13.5px;flex-wrap:wrap">
               <span style="display:inline-flex;align-items:center;gap:5px">${icon('pin',13)} ${escapeHtml(c.city||'—')}${c.county?', '+escapeHtml(c.county):''}</span>
               ${c.phone?`<span style="font-family:var(--font-mono)">${escapeHtml(c.phone)}</span>`:''}</div>
           </div>
-          <button class="x" data-act="closemodal" style="background:rgba(255,255,255,.06);border:none;color:var(--steel-300)">${icon('x',18)}</button>
+          <button class="x" data-act="closemodal" style="flex:none;background:rgba(255,255,255,.06);border:none;color:var(--steel-300)">${icon('x',18)}</button>
         </div>
         <div style="display:flex;margin-top:18px;border-top:1px solid var(--navy-700);padding-top:14px">${specStrip}</div>
       </div>
     </div>
     <!-- stage band -->
-    <div style="padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel2)">
+    <div style="flex:none;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel2)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <span style="font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;color:var(--faint)">Build stage</span>
         <span style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:13px;font-weight:600;color:${sAcc}">${icon(stage.icon,15)} ${stage.label}</span></div>
