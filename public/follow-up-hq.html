@@ -341,33 +341,70 @@ let STAGES=DEFAULT_STAGES;
 const stageIndex=id=>STAGES.findIndex(s=>s.id===id);
 const isOrdered=c=>{const s=STAGES.find(x=>x.id===c.stage);return s?!!s.ordered:false;};
 
-/* ---------- order auto-scheduler: the real StormSafe follow-up timeline ---------- */
+/* ---------- milestone-driven follow-up engine ----------
+   Each order starts a chain. Date-knowable steps seed at order time; the rest
+   spawn when you check off a milestone (invoice paid → plans → permit+site →
+   scheduling), so every date is anchored to what really happened. */
 const PLAN_TYPES={
-  generic:{label:'Generic stamped plans',engWeeks:3,blurb:'Generic stamped plans run ~2–3 weeks.'},
-  site:{label:'Site-specific plans',engWeeks:4,blurb:'Site-specific plans run ~4–5 weeks.'},
-  asbuilt:{label:'As-built stamped plans',engWeeks:4,blurb:'As-built stamped plans run ~4–5 weeks.'},
+  none:           {label:'No plans required',      earliest:null,      blurb:''},
+  masterfiles:    {label:'Master files',           earliest:{biz:5},   blurb:'Master files run ~5–7 business days.'},
+  generic:        {label:'Generic plans',          earliest:{days:14}, blurb:'Generic plans run ~2–3 weeks.'},
+  generic_stamped:{label:'Generic stamped plans',  earliest:{days:14}, blurb:'Generic stamped plans run ~2–3 weeks.'},
+  sitespecific:   {label:'Site-specific plans',    earliest:{days:28}, blurb:'Site-specific plans run ~4–6 weeks.'},
+  asbuilt:        {label:'As-built stamped plans', earliest:{days:28}, blurb:'As-built stamped plans run ~4–6 weeks.'},
+  site:           {label:'Site-specific plans',    earliest:{days:28}, blurb:'Site-specific plans run ~4–6 weeks.'}, // legacy alias
 };
 const INSTALL_BUCKETS=['4-6','6-8','8-10','10-12','12-14'];
 const MFRS=['CCI','CA','SBS'];
-/* Builds the full dated follow-up sequence from a client's order. Past-dated touches are marked done. */
-function buildOrderFollowups(c){
-  const o=c.ordered; if(!o) return [];
-  const plan=PLAN_TYPES[c.planKey]||PLAN_TYPES.generic;
-  const [lo,hi]=String(c.bucket||'8-10').split('-').map(Number);
-  const installStart=addWeeks(o,lo), installEnd=addWeeks(o,hi);
+const FOUNDATION_DAYS={'Concrete':21,'Footers Only':14,'Asphalt':10,'Gravel':7,'Directly to the ground':3};
+
+function planEarliestDate(from,planKey){const p=PLAN_TYPES[planKey];if(!p||!p.earliest)return null;return p.earliest.biz?addBiz(from,p.earliest.biz):addDays(from,p.earliest.days);}
+function fuExists(client,gate){return state.followups.some(f=>f.client===client&&f.gate===gate);}
+function gateMet(c,gate){const f=state.followups.find(x=>x.client===c.id&&x.gate===gate);return!!(f&&f.done);}
+function addFU(c,type,date,note,extra){state.followups.push(Object.assign({id:c.id+'-'+Math.random().toString(36).slice(2,8),client:c.id,type,date,note,done:false,gen:true},extra||{}));}
+
+// Wave 0 — seeded at order time (replaces any prior generated follow-ups).
+function seedWave0(c){
+  const o=c.ordered; if(!o) return;
+  addFU(c,'mfr',addBiz(o,2),'Order Confirmation — confirm the manufacturer received & entered the order (signed contract, deposit, specs, docs). Only chase if no acknowledgment has come in.');
+  if((c.planKey||'none')==='none'){ spawnAfterPlans(c,o); }
+  else {
+    addFU(c,'pay',addBiz(o,5),'Plan Invoice Issued? — confirm the manufacturer issued the plans invoice.');
+    addFU(c,'pay',addBiz(o,7),'Confirm Invoice Paid — verify the customer received & paid the plans invoice. Plans don’t start until it clears. ✓ this when paid.',{gate:'invoice_paid'});
+  }
+}
+// invoice_paid → plan status
+function spawnPlanStatus(c,from){
+  if(fuExists(c.id,'plans_received'))return;
+  const p=PLAN_TYPES[c.planKey]||PLAN_TYPES.generic, d=planEarliestDate(from,c.planKey)||addDays(from,14);
+  addFU(c,'plans',d,`Plan Status — ${p.label}. ${p.blurb} Confirm status / that plans were received. ✓ this when plans are in.`,{gate:'plans_received'});
+}
+// plans_received (or no-plans) → permit + site-prep gates
+function spawnAfterPlans(c,from){
   const cty=c.county?` (${c.county} County)`:'';
-  const raw=[
-    {d:addBiz(o,2),type:'mfr',note:'Confirm the manufacturer received the order — look for their confirmation email; if it hasn’t landed, email to confirm receipt before anything else moves.'},
-    {d:addBiz(o,7),type:'pay',note:'Invoice for plans — make sure it’s issued and paid; engineering can’t start until it clears.'},
-    {d:addWeeks(o,plan.engWeeks),type:'plans',note:`Engineered plans follow-up — ${plan.blurb} Check status and request the stamped set.`},
-    {d:addWeeks(o,6),type:'permit',note:`Permitting check-in #1 — timeline varies by county${cty}. Confirm the package was submitted and ask for a target date.`},
-    {d:addWeeks(o,8),type:'permit',note:'Permitting check-in #2 — if the permit still isn’t approved, stay on the county for status.'},
-    {d:addWeeks(o,8),type:'site',note:'Site-prep check-in — share the site-ready checklist so the pad is set when install gets scheduled. (Permit must be approved before the pad pour.)'},
-    {d:maxISO(addWeeks(o,8),addDays(installStart,-7)),type:'install',est:true,note:'Scheduling confirmation — once the site is ready, lock the install slot with the crew. Projected; confirm once the permit clears.'},
-    {d:addDays(installStart,-3),type:'call',est:true,note:'Installation check-in — confirm install date, crew, and site access with the client and manufacturer. Projected; depends on permit & site-ready.'},
-    {d:installStart,type:'install',est:true,note:`Installation — projected window ${prettyDate(installStart)} – ${prettyDate(installEnd)}. Confirm completion and book the final walkthrough. Projected; depends on permit & site-ready.`},
-  ];
-  return raw.sort((a,b)=>a.d.localeCompare(b.d)).map((r,i)=>({id:`${c.id}-o${i}`,client:c.id,type:r.type,date:r.d,note:r.note,done:r.d<TODAY,gen:true,est:!!r.est}));
+  if(!c.exempt&&!fuExists(c.id,'permit_approved'))
+    addFU(c,'permit',addDays(from,3),`Permit — submit & track the permit${cty}. Repeat every 14 days until approved. ✓ this when approved.`,{gate:'permit_approved'});
+  if(!c.siteReady&&!fuExists(c.id,'site_ready'))
+    addFU(c,'site',addDays(from,FOUNDATION_DAYS[c.foundation]||7),`Site Prep — get the site ready${c.foundation?` (${c.foundation})`:''}: grading, pad, inspections & access. Must be ready before scheduling. ✓ this when ready.`,{gate:'site_ready'});
+  checkSchedulingGate(c,from);
+}
+// scheduling unlocks once permit (unless exempt) + site (unless ready) are met
+function checkSchedulingGate(c,from){
+  if(fuExists(c.id,'scheduled'))return;
+  if(!c.exempt&&!gateMet(c,'permit_approved'))return;
+  if(!c.siteReady&&!gateMet(c,'site_ready'))return;
+  const [lo,hi]=String(c.bucket||'8-10').split('-').map(Number);
+  const iStart=addWeeks(from,lo),iEnd=addWeeks(from,hi);
+  addFU(c,'install',from,'Scheduling Request — site ready & permit cleared. Confirm the manufacturer has all approvals, request install scheduling, get the window.',{est:true,gate:'scheduled'});
+  addFU(c,'install',iStart,`Installation — projected ${prettyDate(iStart)} – ${prettyDate(iEnd)} (${c.bucket||'8-10'} wk lead from scheduling). Confirm date, crew & access.`,{est:true});
+  addFU(c,'call',addDays(iStart,6),'Progress Check — install on schedule? Address any concerns; update the timeline if delayed.',{est:true});
+  addFU(c,'review',addDays(iEnd,3),'Completion — verify satisfaction, clear punch-list, request photos and/or a review.',{est:true});
+}
+// fired by toggleFollowup when a milestone follow-up is checked done
+function onGateDone(f){const c=clientById(f.client);if(!c)return;
+  if(f.gate==='invoice_paid')spawnPlanStatus(c,TODAY);
+  else if(f.gate==='plans_received')spawnAfterPlans(c,TODAY);
+  else if(f.gate==='permit_approved'||f.gate==='site_ready')checkSchedulingGate(c,TODAY);
 }
 
 /* ---------- seed: your reps only — every client comes live from the CRM ---------- */
@@ -387,8 +424,7 @@ const ACCENTS=['#2dd4bf','#60a5fa','#a78bfa','#f472b6','#fb923c','#34d399'];
 let state;
 function freshState(){
   const clients=structuredClone(SEED.clients);
-  let followups=structuredClone(SEED.followups);
-  clients.forEach(c=>{followups=followups.concat(buildOrderFollowups(c));});
+  const followups=structuredClone(SEED.followups);
   return{reps:structuredClone(SEED.reps),clients,followups,stages:structuredClone(DEFAULT_STAGES),
     view:'board',ym:{year:parseISO(TODAY).getFullYear(),month:parseISO(TODAY).getMonth()},
     filter:{rep:null,type:null},gam:{points:{},streak:{count:0,best:0,last:null},badges:[],lifetime:0},
@@ -458,6 +494,7 @@ function topbar(){
       <button data-act="view" data-v="pipeline" class="${state.view==='pipeline'?'on':''}">${icon('columns',15)} Pipeline</button>
     </div>
     <button class="iconbtn" data-act="tweaks" title="Tweaks">${icon('gear',18)}</button>
+    <button class="btn ghost" data-act="rebuildall" title="Re-seed every ordered client onto the latest follow-up timeline">${icon('arrowR',16)} Apply new timeline</button>
     <button class="btn ghost" data-act="newfu">${icon('plus',16)} Follow-up</button>
     <button class="btn" data-act="neworder">${icon('truck',16)} New order</button>
   </div>`;
@@ -779,6 +816,7 @@ document.addEventListener('click',e=>{
     case'editorder':openModal(orderModal(id));break;
     case'saveorder':saveOrder(el.dataset.id||null);break;
     case'regen':regen(id);break;
+    case'rebuildall':{const ord=state.clients.filter(c=>c.ordered);if(!ord.length){toast('No ordered clients to rebuild.','alert');break;}if(confirm(`Apply the latest follow-up timeline to all ${ord.length} ordered client(s)? Their generated follow-ups will be replaced — then tick off the milestones each has already passed to catch them up.`)){ord.forEach(c=>rebuildTimeline(c));save();render();toast(`Rebuilt ${ord.length} client(s) onto the new timeline.`,'truck');}break;}
     case'exportics':exportICS(id);break;
     case'theme':state.tweaks.theme=el.dataset.v;save();render();break;
     case'accent':state.tweaks.accent=el.dataset.c;save();render();break;
@@ -814,6 +852,7 @@ function openModal(fn){state.ui.modal=fn;render();}
 function closeModal(){state.ui.modal=null;render();}
 function toggleFollowup(id,btn){const f=state.followups.find(x=>x.id===id);if(!f)return;f.done=!f.done;
   if(f.done){awardPoints(f);bumpStreak();state.gam.lifetime++;refreshBadges();
+    if(f.gate)onGateDone(f); // checking a milestone spawns the next wave from today
     if(state.tweaks.motion){confettiBurst(btn?btn.getBoundingClientRect():null);ding();}
     toast(CHEERS[Math.floor(Math.random()*CHEERS.length)],'check');}
   save();render();}
@@ -827,7 +866,7 @@ function moveStage(id,d){const c=clientById(id);if(!c)return;const i=stageIndex(
 function snooze(id,days){const f=state.followups.find(x=>x.id===id);if(!f)return;const d=parseISO(f.date);d.setDate(d.getDate()+days);f.date=toISO(d);toast(`Pushed to ${prettyDate(f.date)}`,'clock');save();render();}
 
 /* ---------- order timeline actions ---------- */
-function rebuildTimeline(c){state.followups=state.followups.filter(f=>!(f.client===c.id&&f.gen));state.followups=state.followups.concat(buildOrderFollowups(c));}
+function rebuildTimeline(c){state.followups=state.followups.filter(f=>!(f.client===c.id&&f.gen));seedWave0(c);}
 function saveOrder(id){
   const v=k=>document.getElementById(k);
   const name=v('o-name').value.trim();
@@ -916,7 +955,7 @@ function mergeCrmClients(list){
     if(src.building)c.building=src.building;
     if(typeof src.value==='number')c.value=src.value;
     if(src.stage)c.stage=src.stage;
-    // Order details entered on the client portal → drive the auto-built timeline.
+    // Order details entered on the client portal → drive the milestone timeline.
     if(src.ordered){
       c.ordered=src.ordered;
       if(src.mfr)c.mfr=src.mfr;
@@ -924,10 +963,14 @@ function mergeCrmClients(list){
       if(src.bucket)c.bucket=src.bucket;
       c.foundation=src.foundation||null;
       c.permitting=src.permitting||null;
+      c.exempt=!!src.exempt;
+      c.siteReady=!!src.siteReady;
     }
   });
-  // (Re)build auto-timelines for any synced lead that now has an order.
-  state.clients.forEach(c=>{if(c.crmId&&c.ordered)rebuildTimeline(c);});
+  // Seed Wave 0 ONCE per ordered lead — never auto-rebuild, or it would wipe the
+  // milestone chain (spawned waves, done states) on every sync. Use "Rebuild
+  // timeline" (or "Apply new timeline to all") to deliberately re-seed.
+  state.clients.forEach(c=>{if(c.crmId&&c.ordered&&!state.followups.some(f=>f.client===c.id))seedWave0(c);});
   refreshBadges();save();render();
 }
 if(window.parent&&window.parent!==window){

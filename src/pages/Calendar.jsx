@@ -91,6 +91,8 @@ export default function Calendar() {
         bucket: c.order_bucket || null,
         foundation: c.order_foundation || null,
         permitting: c.order_permitting || null,
+        exempt: !!c.order_exempt,
+        siteReady: !!c.order_site_ready,
       }
     }).filter(Boolean)
     win.postMessage({ type: 'ss-crm-clients', clients: payload }, '*')
