@@ -5655,9 +5655,11 @@ function aAC(){
     '<input type="number" class="acp" placeholder="0" min="0" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="fo-custom-size-box hidden" style="margin:4px 0 8px;padding:8px;background:#0d2a36;border-left:3px solid #1fcec4;border-radius:0 5px 5px 0">'+
       '<div style="font-size:11px;font-weight:700;color:#1fcec4;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Custom Opening Size</div>'+
-      '<div class="row fo-cw-row"><label>Opening Width (ft)</label>'+
+      '<div class="row"><label>Measurement Unit</label>'+
+      '<select class="fo-unit" onchange="foUnitChange(this)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
+      '<div class="row fo-cw-row"><label class="fo-cw-label">Opening Width (ft)</label>'+
       '<input type="number" class="fo-cw" placeholder="10" min="1" max="24" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
-      '<div class="row fo-ch-row"><label>Opening Height (ft)</label>'+
+      '<div class="row fo-ch-row"><label class="fo-ch-label">Opening Height (ft)</label>'+
       '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '</div>'+
     '<div class="row fo-loc-row hidden"><label>Wall Location</label>'+
@@ -5686,6 +5688,37 @@ function updACPrice(sel){
     var sec = entry.querySelector('.pos-section');
     if(sec) sec.innerHTML = '';
   }
+  rc();
+}
+// Custom frame-out opening size in FEET, converting from the entry's ft/in unit.
+// Empty fields fall back to the historical 10'×8' default (always in feet).
+function foCustomFeet(el){
+  var u=el.querySelector('.fo-unit'); var k=(u&&u.value==='in')?(1/12):1;
+  var cw=parseFloat((el.querySelector('.fo-cw')||{}).value);
+  var ch=parseFloat((el.querySelector('.fo-ch')||{}).value);
+  return { w:(cw>0?cw*k:10), h:(ch>0?ch*k:8) };
+}
+// Update the width/height labels + input constraints to match the chosen unit.
+// Does NOT touch the entered numbers (used on init/restore).
+function foApplyUnit(entry){
+  var u=entry.querySelector('.fo-unit'); var inIn=u&&u.value==='in';
+  var cwl=entry.querySelector('.fo-cw-label'), chl=entry.querySelector('.fo-ch-label');
+  if(cwl) cwl.textContent='Opening Width ('+(inIn?'in':'ft')+')';
+  if(chl) chl.textContent='Opening Height ('+(inIn?'in':'ft')+')';
+  var cw=entry.querySelector('.fo-cw'), ch=entry.querySelector('.fo-ch');
+  if(cw){ cw.step=inIn?'1':'0.5'; cw.max=inIn?'288':'24'; cw.placeholder=inIn?'120':'10'; }
+  if(ch){ ch.step=inIn?'1':'0.5'; ch.max=inIn?'192':'16'; ch.placeholder=inIn?'96':'8'; }
+}
+// User toggled the ft/in unit: convert the existing numbers so the physical size
+// is unchanged, then relabel + recalc.
+function foUnitChange(sel){
+  var entry=sel.closest('.ace'); if(!entry) return;
+  var inIn=sel.value==='in';
+  [entry.querySelector('.fo-cw'), entry.querySelector('.fo-ch')].forEach(function(inp){
+    if(!inp) return; var v=parseFloat(inp.value);
+    if(!isNaN(v)) inp.value = inIn ? Math.round(v*12*100)/100 : Math.round((v/12)*100)/100;
+  });
+  foApplyUnit(entry);
   rc();
 }
 function setAddDiscType(type){
@@ -6776,7 +6809,7 @@ function buildingPageHTML(prefixHTML){
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5, foH=2.5, foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -6969,7 +7002,7 @@ function collectQuoteData(){
   data.addcomps = [];
   document.querySelectorAll('.ace.entry').forEach(function(el){
     var d = {};
-    ['act','acq','acp','fo-cw','fo-ch'].forEach(function(cls){
+    ['act','acq','acp','fo-cw','fo-ch','fo-unit'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
     data.addcomps.push(d);
@@ -7202,8 +7235,10 @@ function restoreQuoteData(data){
     var actEl=el.querySelector('.act'); if(actEl&&d.act){ actEl.value=d.act; updACPrice(actEl); }
     var acqEl=el.querySelector('.acq'); if(acqEl&&d.acq) acqEl.value=d.acq;
     var acpEl=el.querySelector('.acp'); if(acpEl&&d.acp) acpEl.value=d.acp;
+    var foUnEl=el.querySelector('.fo-unit'); if(foUnEl&&d['fo-unit']) foUnEl.value=d['fo-unit'];
     var foCwEl=el.querySelector('.fo-cw'); if(foCwEl&&d['fo-cw']) foCwEl.value=d['fo-cw'];
     var foChEl=el.querySelector('.fo-ch'); if(foChEl&&d['fo-ch']) foChEl.value=d['fo-ch'];
+    if(typeof foApplyUnit==='function') foApplyUnit(el); // relabel ft/in (no conversion)
   });
 
   // Step 10: trigger all update functions in correct order
@@ -7993,7 +8028,7 @@ function collectElevItems(){
     var comp=el.querySelector('.act')?el.querySelector('.act').value:''; if(comp.indexOf('Framed Opening')<0) return;
     var locRow=el.querySelector('.fo-loc-row'); if(!locRow||locRow.classList.contains('hidden')) return;
     var qty=parseInt(el.querySelector('.acq').value)||1, foW=2.5,foH=2.5,foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door')>=0){foW=6;foH=6.67;foYo=0;}
@@ -8315,7 +8350,7 @@ async function printContract(){
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5, foH=2.5, foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -10606,7 +10641,7 @@ function renderBuildingViews(){
     var loc=el.querySelector('.fo-loc').value;
     var qty=parseInt(el.querySelector('.acq').value)||1;
     var foW=2.5,foH=2.5,foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var cwEl=el.querySelector('.fo-cw'),chEl=el.querySelector('.fo-ch');foW=parseFloat(cwEl&&cwEl.value)||10;foH=parseFloat(chEl&&chEl.value)||8;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
     else if(comp.indexOf('Garage Door')>=0){var wm3=comp.match(/(\d+)' Wide/);foW=wm3?parseInt(wm3[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm4=comp.match(/(\d+)' Wide/);foW=wm4?parseInt(wm4[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door')>=0){foW=6;foH=6.67;foYo=0;}

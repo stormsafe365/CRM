@@ -38,13 +38,22 @@ export default function Calendar() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket,order_foundation,order_permitting')
-        .order('updated_at', { ascending: false })
-      if (cancelled || error) return   // on error keep the last good list, don't blank the calendar
+      const [cRes, qRes] = await Promise.all([
+        supabase
+          .from('clients')
+          .select('id,name,phone,city,county,status,project_stage,primary_rep,building_size,building_type,order_date,order_mfr,order_plan,order_bucket,order_foundation,order_permitting')
+          .order('updated_at', { ascending: false }),
+        supabase.from('quotes').select('client_id,total_amount,quote_date'),
+      ])
+      if (cancelled || cRes.error) return   // on error keep the last good list, don't blank the calendar
+      // Latest quote total per client → the popup's "Value" stat.
+      const valueByClient = {}
+      for (const q of (qRes.data || [])) {
+        const cur = valueByClient[q.client_id]
+        if (!cur || (q.quote_date || '') >= cur.d) valueByClient[q.client_id] = { d: q.quote_date || '', v: q.total_amount || 0 }
+      }
       loadedRef.current = true
-      setClients(data || [])
+      setClients((cRes.data || []).map(c => ({ ...c, quote_value: valueByClient[c.id]?.v || 0 })))
     }
     load()
     const ch = supabase
@@ -69,6 +78,7 @@ export default function Calendar() {
         county: c.county || '',
         building: [c.building_size, c.building_type].filter(Boolean).join(' '),
         rep: userLabel(users, c.primary_rep),
+        value: c.quote_value || 0,
         stage,
         // Order details (set on the client portal) drive the auto-built timeline.
         ordered: c.order_date || null,

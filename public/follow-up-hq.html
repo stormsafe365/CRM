@@ -4,16 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StormSafe Steel — Follow-Up HQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* ===================== THEME ===================== */
+  /* ===================== THEME (claude-design "refined dark") ===================== */
   :root{
-    --bg:#0b0e14; --bg2:#0a0c11;
-    --panel:#12161f; --panel2:#171c27; --inset:#0e121a;
-    --line:#222836; --line2:#2c3444;
-    --ink:#e8ecf3; --muted:#8b95a6; --faint:#5d6677;
-    --accent:#2dd4bf; --accent-soft:rgba(45,212,191,.14);
-    --warn:#f97362; --warn-soft:rgba(249,115,98,.14);
-    --gold:#e0b341;
+    --bg:#0A1220; --bg2:#0A1220;
+    --panel:#131C2E; --panel2:#1A2438; --inset:#0E1828;
+    --line:#243044; --line2:#324158;
+    --ink:#EAF0F7; --muted:#A8B5C7; --faint:#6A7A91;
+    --accent:#14A6A0; --accent-soft:rgba(20,166,160,.14);
+    --warn:#E84A1F; --warn-soft:rgba(232,74,31,.14);
+    --gold:#E0A82E;
+    /* extra tokens used by the client popup (matches the design) */
+    --navy-900:#0B1F3A; --navy-700:#2E4868;
+    --teal-300:#5BD2CB; --steel-300:#9AA9BB; --steel-400:#6A7A91;
+    --safe-500:#14A269; --storm-500:#E84A1F;
+    --font-head:'Saira',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --font-mono:ui-monospace,Menlo,Consolas,"Roboto Mono",monospace;
     --radius:16px; --pad:18px; --gap:18px; --rowpad:13px;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.28);
     --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
@@ -361,24 +370,19 @@ function buildOrderFollowups(c){
   return raw.sort((a,b)=>a.d.localeCompare(b.d)).map((r,i)=>({id:`${c.id}-o${i}`,client:c.id,type:r.type,date:r.d,note:r.note,done:r.d<TODAY,gen:true,est:!!r.est}));
 }
 
-/* ---------- seed: your reps + James Woods (his timeline auto-builds from the order) ---------- */
-const REP_COLORS=['#2dd4bf','#60a5fa','#a5b4fc','#34d399'];
+/* ---------- seed: your reps only — every client comes live from the CRM ---------- */
+const REP_COLORS=['#14A6A0','#E84A1F','#36598F','#14A269'];
 const SEED={
   reps:[
     {id:'r1',name:'Jenna',initials:'JE',color:REP_COLORS[0]},
     {id:'r2',name:'Josh',initials:'JO',color:REP_COLORS[1]},
   ],
-  clients:[
-    {id:'woods',name:'James Woods',city:'West Palm Beach',county:'Palm Beach',phone:'561-967-0004',
-     rep:'r1',building:'30′ × 80′ × 16′ Workshop',sqft:'2,400 sq ft',wind:'170 MPH',
-     model:'QTE-30×80',value:39244,stage:'site',ordered:'2026-05-18',
-     mfr:'CCI',planKey:'asbuilt',bucket:'6-8'},
-  ],
+  clients:[],   // no demo people — the CRM bridge fills this
   followups:[],
 };
 
 /* ---------- state + persistence ---------- */
-const LS='ssfu_v6';
+const LS='ssfu_v7';
 const ACCENTS=['#2dd4bf','#60a5fa','#a78bfa','#f472b6','#fb923c','#34d399'];
 let state;
 function freshState(){
@@ -421,7 +425,7 @@ function render(){
   document.body.className=(state.tweaks.theme==='light'?'light ':'')+(state.tweaks.dense?'dense':'');
   document.documentElement.style.setProperty('--accent',state.tweaks.accent);
   document.documentElement.style.setProperty('--accent-soft',hexA(state.tweaks.accent,.14));
-  app.innerHTML=topbar()+greeting()+rail()+(state.view==='board'?priorityBanner()+filterbar()+board():filterbar()+pipeline());
+  app.innerHTML=topbar()+(state.view==='board'?priorityBanner()+filterbar()+board():filterbar()+pipeline());
   if(state.ui.tweaksOpen)app.insertAdjacentHTML('beforeend',tweaksModal());
   if(state.ui.modal)app.insertAdjacentHTML('beforeend',state.ui.modal());
 }
@@ -581,41 +585,76 @@ function pipeline(){
 }
 
 /* ============================================================================ MODALS */
+const STAGE_ACC={quote:'#5A6A7E',deposit:'#254570',plans:'#36598F',site:'#E84A1F',install:'#14A6A0',post:'#14A269',closed:'#0E7A76'};
 function clientModal(id){return()=>{
-  const c=clientById(id);if(!c)return'';const r=repById(c.rep),si=stageIndex(c.stage);
-  const fus=state.followups.filter(f=>f.client===id).sort((a,b)=>b.date.localeCompare(a.date));
-  const tl=fus.map(f=>{const t=TYPES[f.type];return`<div class="tlitem">
-      <div class="tldot" style="background:${f.done?'var(--accent)':t.color}"></div>
-      <div class="th" style="color:${t.color}">${icon(t.icon,14)} <span style="color:var(--ink)">${t.label}</span>${f.done?icon('check',13,'style="color:var(--accent)"'):''}</div>
-      <div class="td">${prettyDate(f.date)} · ${relativeLabel(f.date)} — ${escapeHtml(f.note)}</div></div>`;}).join('')||`<div class="empty">No follow-ups yet.</div>`;
-  const bar=STAGES.map((s,i)=>`<div class="s ${i<=si?'on':''}" title="${s.label}"></div>`).join('');
-  return`<div class="overlay" data-act="closemodal"><div class="modal" data-stop>
-    <div class="modal-h"><span class="av" style="width:38px;height:38px;font-size:13px;background:${r?r.color:'#555'}">${r?escapeHtml(r.initials):'?'}</span>
-      <div><div style="font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px">${escapeHtml(c.name)}${isOrdered(c)?'<span class="flag red" style="position:static">ordered</span>':''}</div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">${escapeHtml(c.city)}, ${escapeHtml(c.county)} · ${escapeHtml(c.phone)}</div></div>
-      <button class="x" data-act="closemodal">${icon('x',16)}</button></div>
-    <div class="modal-b">
-      <div class="specs">
-        <div class="spec"><div class="k">Building</div><div class="v" style="font-size:13.5px">${escapeHtml(c.building)}</div></div>
-        <div class="spec"><div class="k">Model</div><div class="v" style="font-size:13.5px">${escapeHtml(c.model)}</div></div>
-        <div class="spec"><div class="k">Wind rating</div><div class="v">${escapeHtml(c.wind)}</div></div>
-        <div class="spec"><div class="k">Contract value</div><div class="v" style="color:var(--accent)">$${c.value.toLocaleString()}</div></div></div>
-      <div class="field"><label>Build stage — ${STAGES[si].label}</label><div class="stageline">${bar}</div></div>
-      <div style="display:flex;gap:9px;margin-bottom:20px;flex-wrap:wrap">
-        <button class="btn ghost" data-act="stageback" data-id="${c.id}" ${si<=0?'disabled style="opacity:.4"':''}>${icon('arrowL',15)} Back</button>
-        <button class="btn" data-act="stagefwd" data-id="${c.id}" ${si>=STAGES.length-1?'disabled style="opacity:.4"':''}>Advance ${icon('arrowR',15)}</button>
-        <button class="btn ghost" data-act="addforclient" data-id="${c.id}" style="margin-left:auto">${icon('plus',15)} Follow-up</button></div>
-      ${c.ordered?`<div style="background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:20px">
-        <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)">${icon('truck',14)} Ordered ${escapeHtml(prettyDate(c.ordered))}</div>
-        <div style="font-size:13px;font-weight:600;margin-top:5px">${PLAN_TYPES[c.planKey]?escapeHtml(PLAN_TYPES[c.planKey].label):'—'} · ${escapeHtml(String(c.bucket||''))} wk install${c.mfr?' · '+escapeHtml(c.mfr):''}${c.county?' · '+escapeHtml(c.county)+' County':''}</div>
+  const c=clientById(id);if(!c)return'';
+  const si=stageIndex(c.stage),stage=STAGES[si]||STAGES[0],sAcc=STAGE_ACC[stage.id]||'var(--accent)';
+  const fus=state.followups.filter(f=>f.client===id).sort((a,b)=>a.date.localeCompare(b.date));
+  const open=fus.filter(f=>!f.done).length;
+  // Spec strip — area derived from the building dims when we don't have sqft.
+  let area=c.sqft; if(!area&&c.building){const m=String(c.building).match(/(\d+)\s*[x×]\s*(\d+)/);if(m)area=(+m[1]*+m[2]).toLocaleString()+' sq ft';}
+  const model=c.model||(c.building?String(c.building).split(' ')[0]:'—');
+  const specs=[['Building',escapeHtml(c.building||'—'),13],['Area',escapeHtml(area||'—'),15],['Rated',escapeHtml(c.wind||'—'),15],['Value',c.value?'$'+c.value.toLocaleString():'—',15]];
+  const specStrip=specs.map((s,i)=>`<div style="flex:1;padding-right:16px;${i?'padding-left:16px;':''}${i<3?'border-right:1px solid var(--navy-700);':''}">
+      <div style="font-family:var(--font-head);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel-400)">${s[0]}</div>
+      <div style="font-family:${i===3?'var(--font-mono)':'var(--font)'};font-weight:600;font-size:${s[2]}px;margin-top:3px;color:${i===2?'var(--teal-300)':'#fff'}">${s[1]}</div></div>`).join('');
+  const segs=STAGES.map((s,i)=>`<div title="${s.label}" style="flex:1;height:6px;border-radius:2px;background:${i<=si?(STAGE_ACC[s.id]||'var(--accent)'):'var(--line)'};transition:background .2s"></div>`).join('');
+  const rail=fus.map((f,i)=>{const t=TYPES[f.type],od=!f.done&&f.date<TODAY,last=i===fus.length-1;
+    return`<div style="display:flex;gap:14px;padding-bottom:${last?0:18}px">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;z-index:1;background:${f.done?'var(--safe-500)':t.tint||'var(--panel2)'};color:${f.done?'#fff':t.color};${f.done?'':`border:1.5px solid ${t.color}`}">${icon(f.done?'check':t.icon,15)}</div>
+        ${last?'':'<div style="width:2px;flex:1;background:var(--line);margin-top:2px"></div>'}</div>
+      <div style="flex:1;min-width:0;padding-bottom:2px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:var(--font-head);font-weight:600;font-size:13.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink)">${t.label}</span>
+          <span style="font-family:var(--font-mono);font-size:11.5px;color:${od?'var(--storm-500)':'var(--faint)'}">${prettyDate(f.date)} · ${relativeLabel(f.date)}</span>
+          ${f.est?'<span style="font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--gold);border:1px solid var(--gold);opacity:.7;border-radius:5px;padding:1px 5px">EST</span>':''}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:3px;${f.done?'opacity:.55;text-decoration:line-through':''}">${escapeHtml(f.note)}</div></div>
+      <button class="chk ${f.done?'on':''}" data-act="toggle" data-id="${f.id}" style="width:24px;height:24px;flex-shrink:0;border-radius:5px;${f.done?'background:var(--safe-500);border:none;color:#fff':'border:2px solid var(--line2);background:transparent'};display:flex;align-items:center;justify-content:center">${f.done?icon('check',14):''}</button>
+    </div>`;}).join('')||`<div style="font-size:14px;color:var(--faint);padding:20px 0">No follow-ups yet. Add one above.</div>`;
+  return`<div class="overlay" data-act="closemodal"><div class="modal" data-stop style="width:640px;max-width:92vw;max-height:86vh;padding:0;overflow:hidden;border-radius:14px;display:flex;flex-direction:column">
+    <!-- header -->
+    <div style="background:var(--navy-900);color:#fff;padding:22px 24px;position:relative;overflow:hidden">
+      <div style="position:absolute;right:-24px;top:-30px;opacity:.06;transform:scale(6.4);transform-origin:top right;color:#fff">${LOGO}</div>
+      <div style="position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;color:var(--teal-300);margin-bottom:8px">${escapeHtml(model)}${c.ordered?` · ordered ${escapeHtml(prettyDate(c.ordered))}`:''}</div>
+            <h2 style="font-family:var(--font-head);font-weight:600;font-size:20px;text-transform:uppercase;letter-spacing:.02em;line-height:1.15;margin:0">${escapeHtml(c.name)}</h2>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:8px;color:var(--steel-300);font-size:13.5px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;gap:5px">${icon('pin',13)} ${escapeHtml(c.city||'—')}${c.county?', '+escapeHtml(c.county):''}</span>
+              ${c.phone?`<span style="font-family:var(--font-mono)">${escapeHtml(c.phone)}</span>`:''}</div>
+          </div>
+          <button class="x" data-act="closemodal" style="background:rgba(255,255,255,.06);border:none;color:var(--steel-300)">${icon('x',18)}</button>
+        </div>
+        <div style="display:flex;margin-top:18px;border-top:1px solid var(--navy-700);padding-top:14px">${specStrip}</div>
+      </div>
+    </div>
+    <!-- stage band -->
+    <div style="padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;color:var(--faint)">Build stage</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:13px;font-weight:600;color:${sAcc}">${icon(stage.icon,15)} ${stage.label}</span></div>
+      <div style="display:flex;gap:4px">${segs}</div>
+      <div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
+        <button class="btn ghost" data-act="stageback" data-id="${c.id}" ${si<=0?'disabled style="opacity:.4"':''}>${icon('arrowL',14)} Back</button>
+        <button class="btn ghost" data-act="stagefwd" data-id="${c.id}" ${si>=STAGES.length-1?'disabled style="opacity:.4"':''}>Advance ${icon('arrowR',14)}</button></div>
+    </div>
+    <!-- body (scrolls) -->
+    <div style="padding:18px 24px;overflow-y:auto;flex:1">
+      ${c.ordered?`<div style="background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:18px">
+        <div style="font-size:13px;font-weight:600">${PLAN_TYPES[c.planKey]?escapeHtml(PLAN_TYPES[c.planKey].label):'Order'} · ${escapeHtml(String(c.bucket||''))} wk install${c.mfr?' · '+escapeHtml(c.mfr):''}${c.county?' · '+escapeHtml(c.county)+' County':''}</div>
         ${(c.foundation||c.permitting)?`<div style="font-size:12px;color:var(--muted);margin-top:6px;display:flex;gap:7px;flex-wrap:wrap">${c.foundation?`<span>${icon('cone',12)} ${escapeHtml(c.foundation)}</span>`:''}${(c.foundation&&c.permitting)?'<span style="opacity:.4">·</span>':''}${c.permitting?`<span>${icon('shield',12)} ${escapeHtml(c.permitting)}</span>`:''}</div>`:''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">
           <button class="btn ghost" data-act="editorder" data-id="${c.id}">${icon('gear',14)} Edit order</button>
-          <button class="btn ghost" data-act="regen" data-id="${c.id}">${icon('arrowR',14)} Rebuild timeline</button>
-          <button class="btn ghost" data-act="exportics" data-id="${c.id}" style="margin-left:auto">${icon('download',14)} Export .ics</button>
-        </div></div>`:`<button class="btn" data-act="editorder" data-id="${c.id}" style="margin-bottom:20px">${icon('truck',14)} Add delivery timeline</button>`}
-      <label style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--faint)">Timeline</label>
-      <div class="tl">${tl}</div></div></div></div>`;};}
+          <button class="btn ghost" data-act="regen" data-id="${c.id}">${icon('arrowR',14)} Rebuild</button>
+          <button class="btn ghost" data-act="exportics" data-id="${c.id}" style="margin-left:auto">${icon('download',14)} .ics</button>
+        </div></div>`:`<button class="btn" data-act="editorder" data-id="${c.id}" style="margin-bottom:18px">${icon('truck',14)} Add delivery timeline</button>`}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-family:var(--font-head);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;color:var(--faint)">Follow-up timeline · ${open} open</span>
+        <button class="btn ghost" data-act="addforclient" data-id="${c.id}">${icon('plus',14)} Add follow-up</button></div>
+      ${rail}
+    </div></div></div>`;};}
 
 function addModal(date,clientId){return()=>{
   const types=TYPE_ORDER.map(t=>`<button type="button" class="typeopt" data-pick="${t}">${icon(TYPES[t].icon,18)}<span>${TYPES[t].short}</span></button>`).join('');
@@ -853,6 +892,7 @@ function mergeCrmClients(list){
     if(src.city)c.city=src.city;
     if(src.county)c.county=src.county;
     if(src.building)c.building=src.building;
+    if(typeof src.value==='number')c.value=src.value;
     if(src.stage)c.stage=src.stage;
     // Order details entered on the client portal → drive the auto-built timeline.
     if(src.ordered){
