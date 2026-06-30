@@ -59,9 +59,9 @@ export default function DashCalendar() {
     async function load() {
       const { data } = await supabase
         .from('clients')
-        .select('id, name, status, project_stage, follow_up_date, follow_up_time')
+        .select('id, name, status, project_stage, follow_up_date, follow_up_time, deleted_at')
         .not('follow_up_date', 'is', null)
-      if (!cancelled) setClients(data ?? [])
+      if (!cancelled) setClients((data ?? []).filter(c => !c.deleted_at))
     }
     load()
     const ch = supabase.channel('dash-cal')

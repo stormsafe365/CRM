@@ -43,8 +43,8 @@ export default function Dashboard() {
         supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at'),
       ])
       if (cancelled) return
-      setClients(c.data ?? [])
-      setQuotes(q.data ?? [])
+      setClients((c.data ?? []).filter(x => !x.deleted_at))
+      setQuotes((q.data ?? []).filter(x => !x.deleted_at))
       setLoading(false)
     }
     load()

@@ -53,6 +53,10 @@ const navItems = [
     to: '/layout', label: '2D Layout',
     icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
   },
+  {
+    to: '/trash', label: 'Trash',
+    icon: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></>,
+  },
 ]
 
 export default function AppLayout({ children }) {

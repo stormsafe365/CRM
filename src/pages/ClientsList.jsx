@@ -79,12 +79,13 @@ export default function ClientsList() {
   // Rep tabs: All Leads + one per user, by primary rep. Built from the real
   // users list so it reads "Jenna's Leads" / "Joshua's Leads" automatically.
   const firstNameOf = (u) => (u.display_name || u.email || 'Rep').split(/[\s@]/)[0]
+  const liveClients = clients.filter(c => !c.deleted_at)
   const repTabs = [
-    { key: 'all', label: 'All StormSafe Leads', count: clients.length },
+    { key: 'all', label: 'All StormSafe Leads', count: liveClients.length },
     // Only reps who actually own leads get a tab — keeps stray/empty accounts
     // (e.g. a duplicate login) from cluttering the row.
     ...users
-      .map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: clients.filter(c => c.primary_rep === u.id).length }))
+      .map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: liveClients.filter(c => c.primary_rep === u.id).length }))
       .filter(t => t.count > 0),
   ]
   // Everything below is scoped to the selected rep first, then by status.
@@ -153,7 +154,7 @@ export default function ClientsList() {
   // this is plenty fast; if the list ever grows huge we'd push this
   // down into the DB query.
   const visible = useMemo(() => {
-    let result = repScoped
+    let result = repScoped.filter(c => !c.deleted_at)   // hide soft-deleted leads (recoverable in Trash)
 
     const g = GROUPS.find(x => x.key === group) || GROUPS[0]
     result = result.filter(g.match)

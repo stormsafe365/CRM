@@ -26,14 +26,14 @@ export function useTimedReminders(enabled, onFire) {
       const today = isoToday()
       const { data } = await supabase
         .from('clients')
-        .select('id, name, follow_up_date, follow_up_time, status')
+        .select('id, name, follow_up_date, follow_up_time, status, deleted_at')
         .eq('follow_up_date', today)
         .not('follow_up_time', 'is', null)
       if (cancelled || !data) return
 
       const now = Date.now()
       for (const c of data) {
-        if (DEAD_STATUSES.includes(c.status) || c.status === 'ordered') continue
+        if (c.deleted_at || DEAD_STATUSES.includes(c.status) || c.status === 'ordered') continue
         const [h, m] = c.follow_up_time.split(':').map(Number)
         const when = new Date(); when.setHours(h, m, 0, 0)
         const delay = when.getTime() - now

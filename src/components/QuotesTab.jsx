@@ -2,6 +2,7 @@
 // this client in a small table. Add / edit / delete / view PDF.
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getQuotePdfSignedUrl, deleteQuotePdf } from '../lib/storage'
@@ -29,6 +30,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
+  const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
 
   // Load quotes + subscribe to changes
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
       if (cancelled) return
       if (error) setError(error.message)
-      else setQuotes(data ?? [])
+      else setQuotes((data ?? []).filter(q => !q.deleted_at))
       setLoading(false)
     }
     load()
@@ -99,25 +101,21 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   }
 
   async function handleDelete(quote) {
-    // Best-effort: try to delete the PDF from storage too. We don't
-    // block the delete on this — if the PDF cleanup fails we still
-    // want the DB row gone.
-    if (quote.pdf_snapshot_url) {
-      try { await deleteQuotePdf(quote.pdf_snapshot_url) } catch {}
-    }
-    // .select() returns the rows actually removed — so we can tell a real delete
-    // from one silently blocked by RLS (0 rows, no error).
+    // Soft-delete — keep the PDF + row so the quote can be restored from Trash.
     const { data, error } = await supabase
       .from('quotes')
-      .delete()
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
       .eq('id', quote.id)
       .select('id')
     if (error) {
-      setError(error.message)
+      const m = (error.message || '').toLowerCase()
+      setError(m.includes('deleted_at') || m.includes('column') || m.includes('schema cache')
+        ? 'Recovery needs the one-time database update (migration 017) before deleting.'
+        : error.message)
       return
     }
     if (!data || data.length === 0) {
-      setError('Could not delete this quote — the database blocked it (permission). Run the quotes delete-policy update.')
+      setError('Could not delete this quote — the database blocked it (permission).')
       return
     }
     // Remove it from the UI right away. Realtime DELETE events don't carry
@@ -128,9 +126,12 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   }
 
   async function handleViewPdf(path) {
+    // Open in an in-app viewer (iframe) rather than window.open — the desktop
+    // app's window-open handler can swallow external popups, so this is reliable.
     try {
       const url = await getQuotePdfSignedUrl(path)
-      window.open(url, '_blank')
+      if (url) setPdfUrl(url)
+      else setError('No PDF is attached to this quote.')
     } catch (err) {
       setError('Could not open PDF: ' + err.message)
     }
@@ -288,6 +289,22 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
             )
           )}
         </div>
+      )}
+
+      {pdfUrl && createPortal(
+        <div className="fum-overlay" role="dialog" aria-modal="true" aria-label="Quote PDF" onClick={() => setPdfUrl(null)} style={{ zIndex: 200 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '92vw', height: '92vh', maxWidth: 1100, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
+              <strong style={{ fontFamily: 'var(--font-head)', fontSize: 13, letterSpacing: '.04em', textTransform: 'uppercase' }}>Quote PDF</strong>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a className="btn-secondary" href={pdfUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in browser</a>
+                <button className="btn-secondary" onClick={() => setPdfUrl(null)}>Close</button>
+              </div>
+            </div>
+            <iframe src={pdfUrl} title="Quote PDF" style={{ flex: 1, width: '100%', border: 0, background: '#fff' }} />
+          </div>
+        </div>,
+        document.body
       )}
     </section>
   )

@@ -16,12 +16,12 @@ export function useDueFollowups() {
       const today = isoToday()
       const { data } = await supabase
         .from('clients')
-        .select('id, name, follow_up_date, status')
+        .select('id, name, follow_up_date, status, deleted_at')
         .not('follow_up_date', 'is', null)
         .lte('follow_up_date', today)
       if (cancelled) return
       const due = (data ?? [])
-        .filter(c => !DEAD_STATUSES.includes(c.status) && c.status !== 'ordered')
+        .filter(c => !c.deleted_at && !DEAD_STATUSES.includes(c.status) && c.status !== 'ordered')
         .sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date))
       setClients(due)
     }

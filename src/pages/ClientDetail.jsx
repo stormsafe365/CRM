@@ -141,9 +141,16 @@ export default function ClientDetail() {
   }
 
   async function handleDelete() {
-    const { error } = await supabase.from('clients').delete().eq('id', id)
-    if (error) setError(error.message)
-    else navigate('/clients')
+    // Soft-delete — the lead is hidden everywhere but recoverable from Trash.
+    const { error } = await supabase.from('clients')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+      .eq('id', id)
+    if (error) {
+      const m = (error.message || '').toLowerCase()
+      setError(m.includes('deleted_at') || m.includes('column') || m.includes('schema cache')
+        ? 'Recovery needs the one-time database update (migration 017) before deleting.'
+        : error.message)
+    } else navigate('/clients')
   }
 
   if (loading) return <div className="muted">Loading…</div>

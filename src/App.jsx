@@ -17,6 +17,7 @@ import Renderings from './pages/Renderings'
 import Calendar from './pages/Calendar'
 import BuildTool from './pages/BuildTool'
 import LayoutTool from './pages/LayoutTool'
+import Trash from './pages/Trash'
 import ComingSoon from './pages/ComingSoon'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/renderings" element={<Protected><Renderings /></Protected>} />
         <Route path="/build"     element={<Protected><BuildTool /></Protected>} />
         <Route path="/layout"    element={<Protected><LayoutTool /></Protected>} />
+        <Route path="/trash"     element={<Protected><Trash /></Protected>} />
         <Route path="/documents" element={<Protected><AllQuotes /></Protected>} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

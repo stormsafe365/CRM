@@ -19,7 +19,7 @@ export default function ActiveOrders() {
 
   async function load() {
     const { data } = await supabase.from('clients').select('*').eq('status', 'ordered')
-    const list = data ?? []
+    const list = (data ?? []).filter(c => !c.deleted_at)
     setOrders(list)
     if (list.length) {
       const ids = list.map(c => c.id)

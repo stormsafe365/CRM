@@ -72,6 +72,7 @@ export default function Calendar() {
     const win = iframeRef.current?.contentWindow
     if (!win || !readyRef.current || !loadedRef.current) return
     const payload = clients.map(c => {
+      if (c.deleted_at) return null   // soft-deleted leads stay out of the calendar
       const stage = mapStage(c)
       if (!stage) return null
       return {

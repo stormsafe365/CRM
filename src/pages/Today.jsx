@@ -28,7 +28,7 @@ export default function Today() {
     // Pre-order only: dead leads and already-ordered clients don't belong on the
     // daily nudge list (ordered clients live on Active Orders).
     const due = (data ?? [])
-      .filter(c => !DEAD_STATUSES.includes(c.status) && c.status !== 'ordered')
+      .filter(c => !c.deleted_at && !DEAD_STATUSES.includes(c.status) && c.status !== 'ordered')
       .sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date))
     setClients(due)
 
