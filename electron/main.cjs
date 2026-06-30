@@ -8,10 +8,27 @@
 //
 // Data still lives in Supabase (cloud), reached over https/wss like always.
 
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+
+// Render an HTML document to a PDF (base64) using Chromium's native print-to-PDF.
+// Used to save quote PDFs that honor the builder's print styles + dark theme.
+ipcMain.handle('ss:render-pdf', async (_evt, html) => {
+  const w = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: true } });
+  try {
+    await w.loadURL('about:blank');
+    await w.webContents.executeJavaScript(
+      `document.open();document.write(${JSON.stringify(String(html || ''))});document.close();`
+    );
+    await new Promise((r) => setTimeout(r, 600)); // let fonts/images settle
+    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'Letter', landscape: false });
+    return buf.toString('base64');
+  } finally {
+    try { w.destroy(); } catch { /* ignore */ }
+  }
+});
 
 const isDev = !app.isPackaged && process.env.ELECTRON_SERVE_DIST !== '1';
 
@@ -91,6 +108,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
       // The app only ever loads its OWN local content; relaxing this lets the
       // builder read its same-page pricing iframe without origin friction.
       webSecurity: false,

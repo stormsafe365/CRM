@@ -14,6 +14,21 @@ import { toast } from '../lib/uiFx'
 
 const SRC = '/build/build.html'
 
+// Render the captured quote document to a PDF blob. Prefer Electron's native
+// print-to-PDF (honors the quote's print styles + dark theme exactly like the
+// builder's own working "Save / Print PDF"); fall back to html2pdf in a browser.
+async function renderQuotePdf(printHtml) {
+  const api = typeof window !== 'undefined' ? window.electronAPI : null
+  if (api && typeof api.renderPdf === 'function') {
+    const b64 = await api.renderPdf(printHtml)
+    if (b64) {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+      return new Blob([bytes], { type: 'application/pdf' })
+    }
+  }
+  return htmlToPdfBlob(printHtml)
+}
+
 // White "Save to Lead" button — white background, dark-navy text (matches the
 // Generate Contract text color), so it reads clearly against the cyan buttons.
 const SAVE_BTN = {
@@ -69,7 +84,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       try {
         if (printHtml) {
           setStatus('Generating PDF…')
-          const blob = await htmlToPdfBlob(printHtml)
+          const blob = await renderQuotePdf(printHtml)
           pdf_snapshot_url = await uploadQuotePdfBlob(client.id, blob, `${quote_number}.pdf`)
         } else { pdfWarn = 'Quote saved, but the PDF could not be captured.' }
       } catch (e) { pdfWarn = `Quote saved, but the PDF could not be captured (${e.message}).` }
