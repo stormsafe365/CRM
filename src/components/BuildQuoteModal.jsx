@@ -59,7 +59,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       const manufacturer = mfrRaw === 'cci' ? 'cci' : mfrRaw === 'ca' ? 'ca' : 'other'
       const dims = [f.bw, f.bl, f.bh].filter(Boolean).join('x') || null
       const building_summary = buildSummary(pg, data)
-      const printHtml = capturePrintHtml(pg)
+      setStatus('Capturing quote…')
+      const printHtml = await capturePrintHtml(pg)
       const now = new Date()
       const quote_number = quoteNumberFromHtml(printHtml) || `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`
 

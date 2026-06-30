@@ -49,7 +49,7 @@ export function buildSummary(win, data) {
 // Capture printQuote()'s exact branded HTML *without* opening a popup or
 // printing, by intercepting window.open on the same-origin builder window.
 // Does not modify the builder or touch its visible UI.
-export function capturePrintHtml(win) {
+export async function capturePrintHtml(win) {
   if (typeof win.printQuote !== 'function') throw new Error('Builder print function unavailable.')
   let captured = ''
   const origOpen = win.open
@@ -60,10 +60,20 @@ export function capturePrintHtml(win) {
     document: { open() {}, close() {}, write(html) { captured += html } },
   }
   win.open = function () { return fakeWin }
+  // printQuote() is async in the current program (it can capture the live 3D
+  // model). We MUST await it or we grab the page before the body is written
+  // (→ blank PDF). Force the 2D quote document too: the 3D capture is the part
+  // that blanks out inside the embedded builder, and the saved PDF is the
+  // branded text quote regardless.
+  let prevMode
   try {
-    win.printQuote()
+    const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
+    if (sel) { prevMode = sel.value; sel.value = '2d' }
+    await win.printQuote()
   } finally {
     win.open = origOpen
+    const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
+    if (sel && prevMode !== undefined) sel.value = prevMode
   }
   return captured
 }
