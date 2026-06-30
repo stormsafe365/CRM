@@ -51,8 +51,10 @@ export function buildSummary(win, data) {
 // Does not modify the builder or touch its visible UI.
 export async function capturePrintHtml(win) {
   if (typeof win.printQuote !== 'function') throw new Error('Builder print function unavailable.')
-  let captured = ''
+  let captured = ''   // browser path: printQuote → pwin.document.write(fullDoc)
+  let fullDoc = ''    // desktop path: printQuote → _ssSavePdfViaElectron(fullDoc, …)
   const origOpen = win.open
+  const origSave = win._ssSavePdfViaElectron
   const fakeWin = {
     closed: false,
     focus() {},
@@ -60,11 +62,14 @@ export async function capturePrintHtml(win) {
     document: { open() {}, close() {}, write(html) { captured += html } },
   }
   win.open = function () { return fakeWin }
-  // printQuote() is async in the current program (it can capture the live 3D
-  // model). We MUST await it or we grab the page before the body is written
-  // (→ blank PDF). Force the 2D quote document too: the 3D capture is the part
-  // that blanks out inside the embedded builder, and the saved PDF is the
-  // branded text quote regardless.
+  // In the desktop app, printQuote sends the finished document to Electron via
+  // _ssSavePdfViaElectron(fullDoc,…) and SKIPS document.write — so our window
+  // capture would only see the "Generating quote…" placeholder (→ blank PDF).
+  // Intercept it: grab fullDoc and return true so printQuote treats it as
+  // handled (no real save dialog, no double-print).
+  win._ssSavePdfViaElectron = function (doc) { fullDoc = doc || ''; return true }
+  // printQuote is async (optional 3D capture). Await it, and force the 2D quote
+  // (the 3D capture is the part that blanks out inside the embedded builder).
   let prevMode
   try {
     const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
@@ -72,10 +77,15 @@ export async function capturePrintHtml(win) {
     await win.printQuote()
   } finally {
     win.open = origOpen
+    win._ssSavePdfViaElectron = origSave
     const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
     if (sel && prevMode !== undefined) sel.value = prevMode
   }
-  return captured
+  if (fullDoc) return fullDoc
+  // Browser fallback: captured may hold the placeholder + the real doc — take the
+  // last complete <html> document.
+  const docs = captured.match(/<!doctype[\s\S]*?<\/html>/gi)
+  return docs && docs.length ? docs[docs.length - 1] : captured
 }
 
 // The builder stamps an "SS-YYYY-NNNNN" number into the printed quote. Reusing
