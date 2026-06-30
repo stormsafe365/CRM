@@ -46,6 +46,7 @@ const EMPTY = {
   building_size: '',
   building_type: '',
   building_mfr: '',
+  order_foundation: '',
   building_features: '',
   estimated_price_range: '',
   notes: '',
@@ -183,6 +184,12 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
           <select value={form.building_mfr ?? ''} onChange={e => update('building_mfr', e.target.value)}>
             <option value="">— Select —</option>
             {['CCI', 'CA', 'SBSI', 'MMM'].map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </Field>
+        <Field label="Foundation Type">
+          <select value={form.order_foundation ?? ''} onChange={e => update('order_foundation', e.target.value)}>
+            <option value="">— Select —</option>
+            {['Concrete', 'Gravel', 'Asphalt', 'Footers Only', 'Ground Install'].map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </Field>
         <Field label="Estimated Price Range">

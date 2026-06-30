@@ -237,7 +237,8 @@ export default function ClientDetail() {
             <div className="spec-row"><span className="k">Building Type</span><span className="v">{client.building_type ? buildingTypeLabel(client.building_type) : '—'}</span></div>
             <div className="spec-row"><span className="k">Building Size</span><span className="v num">{client.building_size || '—'}</span></div>
             {client.roof_style && <div className="spec-row"><span className="k">Roof Style</span><span className="v">{client.roof_style}</span></div>}
-            <div className="spec-row"><span className="k">Manufacturer</span><span className="v">{latestQuote?.manufacturer ? (MFR_LABEL[latestQuote.manufacturer] || latestQuote.manufacturer) : '—'}</span></div>
+            <div className="spec-row"><span className="k">Manufacturer</span><span className="v">{client.building_mfr || client.order_mfr || (latestQuote?.manufacturer ? (MFR_LABEL[latestQuote.manufacturer] || latestQuote.manufacturer) : '—')}</span></div>
+            <div className="spec-row"><span className="k">Foundation Type</span><span className="v">{client.order_foundation || '—'}</span></div>
             <div className="spec-row"><span className="k">Current Quote</span><span className="v price num">{fmtMoney(latestQuote?.total_amount) ?? '—'}</span></div>
           </div>
         </div>

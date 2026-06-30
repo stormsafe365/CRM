@@ -20,7 +20,7 @@ const PLANS = {
   asbuilt:         { label: 'As-built stamped plans (~4–6 wk)', earliest: '+4 weeks' },
 }
 const BUCKETS = ['4-6', '6-8', '8-10', '10-12', '12-14']
-const FOUNDATIONS = ['Concrete', 'Footers Only', 'Asphalt', 'Gravel', 'Directly to the ground']
+const FOUNDATIONS = ['Concrete', 'Gravel', 'Asphalt', 'Footers Only', 'Ground Install']
 const PERMITTING = ['Client pulling permit', 'Permit service for building', 'Permit service for building & pad', 'No permit needed']
 
 const isoToday = () => {

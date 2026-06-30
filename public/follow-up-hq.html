@@ -356,7 +356,7 @@ const PLAN_TYPES={
 };
 const INSTALL_BUCKETS=['4-6','6-8','8-10','10-12','12-14'];
 const MFRS=['CCI','CA','SBS'];
-const FOUNDATION_DAYS={'Concrete':21,'Footers Only':14,'Asphalt':10,'Gravel':7,'Directly to the ground':3};
+const FOUNDATION_DAYS={'Concrete':21,'Footers Only':14,'Asphalt':10,'Gravel':7,'Ground Install':3,'Directly to the ground':3};
 
 function planEarliestDate(from,planKey){const p=PLAN_TYPES[planKey];if(!p||!p.earliest)return null;return p.earliest.biz?addBiz(from,p.earliest.biz):addDays(from,p.earliest.days);}
 function fuExists(client,gate){return state.followups.some(f=>f.client===client&&f.gate===gate);}
