@@ -7002,9 +7002,16 @@ function collectQuoteData(){
   data.addcomps = [];
   document.querySelectorAll('.ace.entry').forEach(function(el){
     var d = {};
-    ['act','acq','acp','fo-cw','fo-ch','fo-unit'].forEach(function(cls){
+    // fo-loc = the wall a framed opening sits on; was missing, so loads reverted
+    // every framed opening to the first wall (Front Gable End).
+    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-loc'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
+    // Position rows (placement along the wall) — same as doors/windows/roll-ups.
+    var pos=[]; el.querySelectorAll('.pos-section .pos-row').forEach(function(row){
+      var inp=row.querySelector('input'); var btn=row.querySelector('.pos-toggle button.active');
+      pos.push({val:inp?inp.value:'', side:btn?btn.dataset.side:'left'});
+    }); d.positions=pos;
     data.addcomps.push(d);
   });
 
@@ -7239,6 +7246,22 @@ function restoreQuoteData(data){
     var foCwEl=el.querySelector('.fo-cw'); if(foCwEl&&d['fo-cw']) foCwEl.value=d['fo-cw'];
     var foChEl=el.querySelector('.fo-ch'); if(foChEl&&d['fo-ch']) foChEl.value=d['fo-ch'];
     if(typeof foApplyUnit==='function') foApplyUnit(el); // relabel ft/in (no conversion)
+    // Wall location (was reverting framed openings to the first wall).
+    var foLocEl=el.querySelector('.fo-loc'); if(foLocEl&&d['fo-loc']) foLocEl.value=d['fo-loc'];
+    // Rebuild + restore placement rows for framed openings (act starts with "Framed Opening").
+    if(actEl && actEl.value.indexOf('Framed Opening')===0){
+      var foQty=parseInt(d.acq)||1;
+      updatePosSection(el, foQty, 'Opening');
+      if(typeof refreshPosLabels==='function') refreshPosLabels(el);
+      var foRows=el.querySelectorAll('.pos-section .pos-row');
+      (d.positions||[]).forEach(function(p,i){
+        if(!foRows[i]) return;
+        var inp=foRows[i].querySelector('input'); if(inp) inp.value=p.val||'';
+        foRows[i].querySelectorAll('.pos-toggle button').forEach(function(b){
+          b.classList.toggle('active', b.dataset.side===(p.side||'left'));
+        });
+      });
+    }
   });
 
   // Step 10: trigger all update functions in correct order

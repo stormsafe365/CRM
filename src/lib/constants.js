@@ -49,6 +49,7 @@ const LEGACY_STATUS_LABELS = {
 }
 
 export const LEAD_SOURCES = [
+  { value: 'website_submission', label: 'Website Submission' },
   { value: 'google_search',      label: 'Google Search' },
   { value: 'facebook',           label: 'Facebook' },
   { value: 'instagram',          label: 'Instagram' },

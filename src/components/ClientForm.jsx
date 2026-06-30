@@ -45,6 +45,7 @@ const EMPTY = {
   follow_up_date: '',
   building_size: '',
   building_type: '',
+  building_mfr: '',
   building_features: '',
   estimated_price_range: '',
   notes: '',
@@ -178,6 +179,12 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
             ))}
           </select>
         </Field>
+        <Field label="Manufacturer">
+          <select value={form.building_mfr ?? ''} onChange={e => update('building_mfr', e.target.value)}>
+            <option value="">— Select —</option>
+            {['CCI', 'CA', 'SBSI', 'MMM'].map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </Field>
         <Field label="Estimated Price Range">
           <input
             type="text"
@@ -197,8 +204,14 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
       </FormSection>
 
       <FormSection title="Address">
-        <Field label="Street" wide>
-          <input type="text" value={form.address_line ?? ''} onChange={e => update('address_line', e.target.value)} />
+        {/* ZIP first — it auto-fills City / County / State; street goes last. */}
+        <Field label="ZIP">
+          <input type="text" inputMode="numeric" value={form.zip ?? ''} onChange={e => onZipChange(e.target.value)} placeholder="33401 — auto-fills city/county/state" />
+          {(zipBusy || zipMsg) && (
+            <span style={{ display: 'block', marginTop: 4, fontSize: 11.5, color: zipMsg.startsWith('✓') ? 'var(--lime)' : 'var(--fg-3)' }}>
+              {zipBusy ? 'Looking up…' : zipMsg}
+            </span>
+          )}
         </Field>
         <Field label="City">
           <input type="text" value={form.city ?? ''} onChange={e => update('city', e.target.value)} />
@@ -209,13 +222,8 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
         <Field label="State">
           <input type="text" value={form.state ?? ''} onChange={e => update('state', e.target.value)} maxLength={2} placeholder="FL" />
         </Field>
-        <Field label="ZIP">
-          <input type="text" inputMode="numeric" value={form.zip ?? ''} onChange={e => onZipChange(e.target.value)} placeholder="33401 — auto-fills city/county/state" />
-          {(zipBusy || zipMsg) && (
-            <span style={{ display: 'block', marginTop: 4, fontSize: 11.5, color: zipMsg.startsWith('✓') ? 'var(--lime)' : 'var(--fg-3)' }}>
-              {zipBusy ? 'Looking up…' : zipMsg}
-            </span>
-          )}
+        <Field label="Street" wide>
+          <input type="text" value={form.address_line ?? ''} onChange={e => update('address_line', e.target.value)} />
         </Field>
       </FormSection>
 

@@ -101,12 +101,20 @@ export default function ClientDetail() {
     if (!error) setClient(c => ({ ...c, cooling_off: next }))
   }
 
-  // Lead temperature, set via the thermometer slider. Stamps who/when.
+  // Lead temperature, set via the thermometer slider. Stamps who/when, and
+  // drives the sales stage — sliding the bar moves the status to match (so it
+  // shows on the Activity & Progress stepper and the Stage pill too).
+  const TEMP_TO_STATUS = { cold: 'new_lead', warm: 'contacted', hot: 'working_hot', ready: 'quoted', pending_deposit: 'deposit_pending', ordered: 'ordered' }
   async function setTemperature(t) {
     const patch = {
       lead_temperature: t,
       lead_temp_updated_at: new Date().toISOString(),
       lead_temp_updated_by: user?.id ?? null,
+    }
+    const mapped = TEMP_TO_STATUS[t]
+    if (mapped) {
+      patch.status = mapped
+      if (mapped === 'ordered') patch.project_stage = client.project_stage || 'ordered'
     }
     const { error } = await supabase.from('clients').update(patch).eq('id', id)
     if (error) {
@@ -238,6 +246,15 @@ export default function ClientDetail() {
               </span>
             )}
           </div>
+          {/* Lead temperature drives the sales stage — slide it and the status follows. */}
+          <div style={{ margin: '16px 0 4px' }}>
+            <LeadTempSlider
+              value={client.lead_temperature}
+              updatedAt={client.lead_temp_updated_at}
+              updatedByName={userLabel(users, client.lead_temp_updated_by)}
+              onChange={setTemperature}
+            />
+          </div>
           {client.status === 'ordered' ? (
             <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details — manufacturer, dates, install window">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
@@ -276,18 +293,6 @@ export default function ClientDetail() {
               {client.cooling_off ? 'Cooling off — longer cadence' : 'Standard cadence — click to cool off'}
             </div>
           )}
-        </div>
-
-        {/* lead temperature */}
-        <div>
-          <div className="col-label">Lead Temperature</div>
-          <LeadTempSlider
-            value={client.lead_temperature}
-            updatedAt={client.lead_temp_updated_at}
-            updatedByName={userLabel(users, client.lead_temp_updated_by)}
-            onChange={setTemperature}
-          />
-          <svg className="temp-edit" onClick={() => setEditing(true)} role="button" aria-label="Edit lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
         </div>
 
         <span className="delete-lead" onClick={() => setConfirmingDelete(true)} role="button">Delete Lead</span>
