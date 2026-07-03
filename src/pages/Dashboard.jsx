@@ -172,8 +172,6 @@ export default function Dashboard() {
   const firstName = (user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'there')
     .split(' ')[0].replace(/^./, c => c.toUpperCase())
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-  // Atlantic hurricane season: June 1 – November 30 (months 5–10).
-  const inStormSeason = (() => { const m = new Date().getMonth(); return m >= 5 && m <= 10 })()
 
   if (loading) return <div className="muted" style={{ padding: '24px 0' }}>Loading dashboard…</div>
 
@@ -225,17 +223,6 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
-
-      {/* ===== STORM STRIP (honest seasonal note — no invented counts) ===== */}
-      {inStormSeason && (
-        <Link to="/clients" className="dsh-storm">
-          <Icon d={ico.wind} w={20} style={{ color: 'var(--amber-soft)', flex: 'none' }} />
-          <div className="dsh-storm-msg">
-            <b>Hurricane season is active.</b> <span>June 1 – November 30 — keep coastal-county builds moving.</span>
-          </div>
-          <span className="dsh-storm-link">Review leads →</span>
-        </Link>
-      )}
 
       {/* ===== KPI ROW ===== */}
       <div className="dsh-kpis">
