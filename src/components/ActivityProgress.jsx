@@ -29,23 +29,40 @@ const TYPE_META = {
 
 const PROJ_ORDER = ['engineering', 'permitting', 'scheduling', 'installed']
 
+const STEP_LABELS = [
+  'Lead Created', 'Attempting to Contact', 'Quote Sent', 'Contract Sent',
+  'Contract Signed', 'Deposit Received', 'Engineering', 'Permitting',
+  'Scheduling', 'Installed',
+]
+
+// How far down the linear stepper each sales status sits. Legacy/side values
+// fold onto the nearest step so old rows still render sensibly.
+const STATUS_RANK = {
+  new_lead: 0,
+  contacted: 1,
+  working: 2, quoted: 2, follow_up: 2, working_hot: 2, deposit_pending: 2,
+  contract_sent: 3,
+  ordered: 4,
+}
+
+// One linear rank for where the client actually is, derived from the SAME
+// fields the stepper clicks write (status / project_stage / payment_cleared).
+// This keeps click → visible advance in lockstep: clicking a node writes the
+// status, and the node then reads as done because its rank is reached.
+function reachedRank(client, hasQuote) {
+  let rank = STATUS_RANK[client.status] ?? 1
+  if (hasQuote && rank < 2) rank = 2 // a saved quote means at least "Quote Sent"
+  if (client.status === 'ordered') {
+    rank = client.payment_cleared ? 5 : 4
+    const idx = PROJ_ORDER.indexOf(client.project_stage)
+    if (idx >= 0) rank = 6 + idx // engineering=6 … installed=9
+  }
+  return rank
+}
+
 function buildMilestones(client, hasQuote) {
-  const ordered = client.status === 'ordered'
-  const contractSent = client.status === 'contract_sent' || ordered
-  const idx = PROJ_ORDER.indexOf(client.project_stage)
-  const projAt = (s) => idx >= 0 && idx >= PROJ_ORDER.indexOf(s)
-  return [
-    { label: 'Lead Created', done: true },
-    { label: 'Attempting to Contact', done: client.status !== 'new_lead' || hasQuote },
-    { label: 'Quote Sent', done: hasQuote },
-    { label: 'Contract Sent', done: contractSent },
-    { label: 'Contract Signed', done: ordered },
-    { label: 'Deposit Received', done: ordered && !!client.payment_cleared },
-    { label: 'Engineering', done: ordered && projAt('engineering') },
-    { label: 'Permitting', done: ordered && projAt('permitting') },
-    { label: 'Scheduling', done: ordered && projAt('scheduling') },
-    { label: 'Installed', done: ordered && client.project_stage === 'installed' },
-  ]
+  const rank = reachedRank(client, hasQuote)
+  return STEP_LABELS.map((label, i) => ({ label, done: i <= rank }))
 }
 
 export default function ActivityProgress({ client, showAudience = false }) {
