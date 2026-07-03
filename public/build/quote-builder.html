@@ -7050,7 +7050,7 @@ function collectQuoteData(){
   data.leantos = [];
   document.querySelectorAll('.lte.entry').forEach(function(el){
     var d = {};
-    ['lts','ltw','ltl','lth','ltc','ltp','lt-type','lt-tall-h'].forEach(function(cls){
+    ['lts','ltw','ltl2','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
     data.leantos.push(d);
@@ -7284,7 +7284,7 @@ function restoreQuoteData(data){
     aLT();
     var entries=document.querySelectorAll('.lte.entry');
     var el=entries[entries.length-1];
-    ['lts','ltw','ltl','lth','ltc','ltp','lt-type','lt-tall-h'].forEach(function(cls){
+    ['lts','ltw','ltl2','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
       var fld=el.querySelector('.'+cls); if(fld&&d[cls]!==undefined) fld.value=d[cls];
     });
     // Trigger type change to show/hide correct rows
