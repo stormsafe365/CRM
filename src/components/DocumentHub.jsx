@@ -62,6 +62,15 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
 
   useEffect(() => { setLoading(true); refresh() /* eslint-disable-next-line */ }, [clientId])
 
+  // Storage has no realtime — refresh when a quote/contract PDF is saved to this
+  // lead from the builder (BuildQuoteModal dispatches ss:docs-updated).
+  useEffect(() => {
+    const onDocs = (e) => { if (!e.detail || e.detail.clientId === clientId) refresh() }
+    window.addEventListener('ss:docs-updated', onDocs)
+    return () => window.removeEventListener('ss:docs-updated', onDocs)
+    /* eslint-disable-next-line */
+  }, [clientId])
+
   const counts = Object.fromEntries(SECTIONS.map(s => [s.key, (filesByCat[s.key] || []).length]))
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const rows = (active === 'all'

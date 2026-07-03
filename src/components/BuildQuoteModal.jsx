@@ -124,6 +124,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       }
       setStatus('Saving…')
       await onSave(payload)
+      // Tell the Document Hub (Storage has no realtime) a new quote file landed.
+      try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
       setStatus('')
       savingRef.current = false
       toast(pdfWarn || `Quote ${quote_number} saved to ${client.name || 'lead'}`, pdfWarn ? undefined : 'success')
@@ -222,6 +224,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
           const blob = await renderQuotePdf(html)
           const num = quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
           await uploadClientDocBlob(client.id, 'contract', blob, `${num}-contract.pdf`, 'application/pdf')
+          try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
           toast(`Contract saved to ${client.name || 'lead'} · Documents › Contracts`, 'success')
         }
       }
