@@ -6,8 +6,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { BUILDING_TYPES, buildingTypeLabel, sourceLabel } from '../lib/constants'
+import { BUILDING_TYPES, buildingTypeLabel, sourceLabel, projectStageLabel } from '../lib/constants'
 import { useUsers, userLabel } from '../lib/useUsers'
+import { derivedProjectStage } from '../lib/projectStage'
+import { readState } from '../lib/ssfuEngine'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -60,14 +62,30 @@ export default function ClientsList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get('view') || 'new_lead'
   const group = GROUPS.some(g => g.key === requested) ? requested : 'new_lead'
+  const stageFilter = searchParams.get('stage') || null   // project-stage filter (only meaningful when view=ordered)
   const repFilter = searchParams.get('rep') || 'all'   // 'all' | a user id
   const [search, setSearch] = useState(searchParams.get('q') || '')
   const [buildingTypeFilter, setBuildingTypeFilter] = useState('all')
   const [sortBy, setSortBy] = useState('updated_desc')
+  // Follow-Up HQ milestone store — drives the DERIVED project stage so this list
+  // matches the Dashboard "Project Stage" box exactly. Refresh on tab focus.
+  const [ssfu, setSsfu] = useState(() => readState())
+  useEffect(() => {
+    const refresh = () => setSsfu(readState())
+    window.addEventListener('focus', refresh)
+    window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
+  }, [])
 
   function setGroup(key) {
     const sp = new URLSearchParams(searchParams)
     sp.set('view', key)
+    sp.delete('stage')   // switching the funnel tab clears any project-stage filter
+    setSearchParams(sp, { replace: true })
+  }
+  function clearStage() {
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('stage')
     setSearchParams(sp, { replace: true })
   }
   function setRep(key) {
@@ -159,6 +177,12 @@ export default function ClientsList() {
     const g = GROUPS.find(x => x.key === group) || GROUPS[0]
     result = result.filter(g.match)
 
+    // Project-stage filter (from clicking a stage in the Dashboard box) — only for
+    // ordered clients, using the same derived stage the dashboard shows.
+    if (stageFilter && group === 'ordered') {
+      result = result.filter(c => derivedProjectStage(c, ssfu) === stageFilter)
+    }
+
     if (buildingTypeFilter !== 'all') {
       result = result.filter(c => c.building_type === buildingTypeFilter)
     }
@@ -198,7 +222,7 @@ export default function ClientsList() {
       sorted.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     }
     return sorted
-  }, [repScoped, search, group, buildingTypeFilter, sortBy])
+  }, [repScoped, search, group, stageFilter, ssfu, buildingTypeFilter, sortBy])
 
   return (
     <>
@@ -209,6 +233,11 @@ export default function ClientsList() {
           <div className="sub">
             {visible.length} {visible.length === 1 ? 'lead' : 'leads'}
             {' · '}{(GROUPS.find(x => x.key === group) || GROUPS[0]).label}
+            {stageFilter && group === 'ordered' && (
+              <span className="stage-filter-chip" onClick={clearStage} role="button" title="Clear stage filter">
+                {' · '}{projectStageLabel(stageFilter)} <span aria-hidden>✕</span>
+              </span>
+            )}
           </div>
         </div>
         <div className="right">

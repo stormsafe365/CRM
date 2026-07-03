@@ -16,7 +16,8 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useCountUp } from '../lib/useCountUp'
 import { isoToday, fmtTime } from '../lib/followups'
-import { readState, followupsForClient } from '../lib/ssfuEngine'
+import { readState } from '../lib/ssfuEngine'
+import { derivedProjectStage } from '../lib/projectStage'
 import { AreaChart } from '../components/charts'
 import DashCalendar from '../components/DashCalendar'
 import BuildQuoteModal from '../components/BuildQuoteModal'
@@ -296,15 +297,20 @@ export default function Dashboard() {
             <div className="dsh-muted" style={{ fontSize: 13 }}>No ordered projects yet.</div>
           ) : (
             <div className="dsh-stages">
-              {projectBreakdown.map(s => (
-                <div key={s.value} className="dsh-stage">
-                  <div className="dsh-stage-head">
-                    <span style={{ color: s.count ? 'var(--fg-2)' : 'var(--fg-3)' }}>{s.label}</span>
-                    <span className="num" style={{ color: s.count ? 'var(--cyan)' : 'var(--fg-3)' }}>{s.count}</span>
-                  </div>
-                  <div className="dsh-stage-track"><div className="dsh-stage-fill" style={{ width: `${Math.round(s.scale * 100)}%` }} /></div>
-                </div>
-              ))}
+              {projectBreakdown.map(s => {
+                const inner = (
+                  <>
+                    <div className="dsh-stage-head">
+                      <span style={{ color: s.count ? 'var(--fg-2)' : 'var(--fg-3)' }}>{s.label}</span>
+                      <span className="num" style={{ color: s.count ? 'var(--cyan)' : 'var(--fg-3)' }}>{s.count}</span>
+                    </div>
+                    <div className="dsh-stage-track"><div className="dsh-stage-fill" style={{ width: `${Math.round(s.scale * 100)}%` }} /></div>
+                  </>
+                )
+                return s.count > 0
+                  ? <Link key={s.value} to={`/clients?view=ordered&stage=${s.value}`} className="dsh-stage dsh-stage-link">{inner}</Link>
+                  : <div key={s.value} className="dsh-stage">{inner}</div>
+              })}
             </div>
           )}
         </div>
@@ -401,43 +407,6 @@ function SpecRow({ label, value, accent, dim, to, last }) {
   )
   const cls = `dsh-spec${last ? ' last' : ''}`
   return to ? <Link to={to} className={cls}>{inner}</Link> : <div className={cls}>{inner}</div>
-}
-
-/* ---------- Follow-Up HQ milestone → project stage ----------
- * The ssfu milestone chain is finer-grained than the 6 project stages. We map a
- * client's FURTHEST COMPLETED milestone onto a project-stage bucket, so a client
- * whose "Scheduling" gate is checked shows under Scheduling (not auto-jumped to
- * Installed). Mirrors followupModel's STEP_MILESTONE. */
-const MS_ORDER = ['order', 'planinv', 'paid', 'plans', 'permit', 'site', 'sched', 'install', 'progress', 'complete']
-const MS_TO_STAGE = {
-  order: 'ordered', planinv: 'ordered', paid: 'ordered',
-  plans: 'engineering', permit: 'permitting', site: 'permitting',
-  sched: 'scheduling', install: 'installed', progress: 'installed', complete: 'installed',
-}
-function stepMilestone(f) {
-  if (f.type === 'mfr') return 'order'
-  if (f.type === 'pay') return f.gate === 'invoice_paid' ? 'paid' : 'planinv'
-  if (f.type === 'plans') return 'plans'
-  if (f.type === 'permit') return 'permit'
-  if (f.type === 'site') return 'site'
-  if (f.type === 'install') return f.gate === 'scheduled' ? 'sched' : 'install'
-  if (f.type === 'call') return 'progress'
-  if (f.type === 'review') return 'complete'
-  return 'order'
-}
-function derivedProjectStage(client, ssfu) {
-  // Revisions is a manual stepper-only stage — always honor it if set.
-  if (client.project_stage === 'revisions_needed') return 'revisions_needed'
-  if (ssfu) {
-    let best = -1
-    for (const f of followupsForClient(ssfu, client.id)) {
-      if (!f.done) continue
-      const idx = MS_ORDER.indexOf(stepMilestone(f))
-      if (idx > best) best = idx
-    }
-    if (best >= 0) return MS_TO_STAGE[MS_ORDER[best]] || 'ordered'
-  }
-  return client.project_stage || 'ordered'
 }
 
 /* ---------- area-chart series builder ---------- */

@@ -3881,6 +3881,10 @@ a.brand { text-decoration: none; color: inherit; }
 .dsh-stage-head .num { font-size: 14px; font-weight: 700; }
 .dsh-stage-track { height: 6px; border-radius: 999px; background: var(--inset); overflow: hidden; }
 .dsh-stage-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width .6s var(--ease); }
+.dsh-stage-link { display: block; text-decoration: none; color: inherit; cursor: pointer; margin: 0 -8px; padding: 3px 8px; border-radius: var(--r-sm); transition: background .15s ease; }
+.dsh-stage-link:hover { background: var(--elev); }
+.stage-filter-chip { color: var(--cyan); cursor: pointer; }
+.stage-filter-chip:hover { text-decoration: underline; }
 .dsh-clear { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 16px 0; gap: 11px; }
 .dsh-clear-ic { width: 46px; height: 46px; border-radius: 999px; display: grid; place-items: center;
