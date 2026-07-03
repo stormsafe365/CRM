@@ -13,7 +13,7 @@ import ClientDetail from './pages/ClientDetail'
 import Today from './pages/Today'
 import ActiveOrders from './pages/ActiveOrders'
 import AllQuotes from './pages/AllQuotes'
-import Renderings from './pages/Renderings'
+import Documents from './pages/Documents'
 import FollowUpHQ from './components/FollowUpHQ'
 import BuildTool from './pages/BuildTool'
 import LayoutTool from './pages/LayoutTool'
@@ -46,11 +46,12 @@ export default function App() {
         <Route path="/followups" element={<Protected><Today /></Protected>} />
         <Route path="/calendar"  element={<Protected><FollowUpHQ /></Protected>} />
         <Route path="/quotes"    element={<Protected><AllQuotes /></Protected>} />
-        <Route path="/renderings" element={<Protected><Renderings /></Protected>} />
         <Route path="/build"     element={<Protected><BuildTool /></Protected>} />
         <Route path="/layout"    element={<Protected><LayoutTool /></Protected>} />
         <Route path="/trash"     element={<Protected><Trash /></Protected>} />
-        <Route path="/documents" element={<Protected><AllQuotes /></Protected>} />
+        <Route path="/documents" element={<Protected><Documents /></Protected>} />
+        {/* legacy: the old global Renderings gallery now lives inside Document Hub */}
+        <Route path="/renderings" element={<Navigate to="/documents" replace />} />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
