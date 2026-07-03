@@ -108,6 +108,61 @@ export async function getDocSignedUrl(path) {
   return data.signedUrl
 }
 
+// ---- Company-wide Document Hub ----
+// Walks storage top-down: the bucket root lists only client folders that
+// actually have files (empty leads never appear), so this scales with the
+// number of document-bearing clients, not the whole client list.
+const DOC_CATS = ['quote', 'contract', 'rendering', 'layout', 'revisions', 'additional']
+
+function mkDoc(clientId, cat, f, path) {
+  return {
+    clientId,
+    cat,
+    path,
+    name: f.name,
+    label: f.name.replace(/^\d+-/, ''),
+    createdAt: f.created_at || f.updated_at || null,
+    size: f.metadata?.size ?? null,
+    mime: f.metadata?.mimetype || '',
+  }
+}
+
+export async function listAllDocs() {
+  const root = await supabase.storage.from(BUCKET).list('', { limit: 2000 })
+  if (root.error) throw root.error
+  // Folders come back with a null id; files have an id. Client folders are the
+  // null-id entries at the root.
+  const clientIds = (root.data ?? [])
+    .filter(e => e.id === null && e.name && e.name !== '.emptyFolderPlaceholder')
+    .map(e => e.name)
+
+  const perClient = await Promise.all(clientIds.map(async (cid) => {
+    const lvl = await supabase.storage.from(BUCKET).list(cid, { limit: 2000 })
+    if (lvl.error) return []
+    const entries = lvl.data ?? []
+    const out = []
+    // Legacy loose quote PDFs sit directly under <clientId> (no category folder).
+    for (const f of entries) {
+      if (f.id !== null && f.name && f.name !== '.emptyFolderPlaceholder') {
+        out.push(mkDoc(cid, 'quote', f, `${cid}/${f.name}`))
+      }
+    }
+    // Category subfolders (null-id entries whose name is a known category).
+    const subCats = entries.filter(e => e.id === null && DOC_CATS.includes(e.name)).map(e => e.name)
+    const catLists = await Promise.all(subCats.map(async (cat) => {
+      const r = await supabase.storage.from(BUCKET)
+        .list(`${cid}/${cat}`, { limit: 2000, sortBy: { column: 'created_at', order: 'desc' } })
+      return (r.data ?? [])
+        .filter(f => f.name && f.name !== '.emptyFolderPlaceholder')
+        .map(f => mkDoc(cid, cat, f, `${cid}/${cat}/${f.name}`))
+    }))
+    catLists.forEach(l => out.push(...l))
+    return out
+  }))
+
+  return perClient.flat()
+}
+
 export async function deleteDoc(path) {
   const { error } = await supabase.storage.from(BUCKET).remove([path])
   if (error) throw error
