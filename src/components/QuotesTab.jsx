@@ -217,6 +217,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
       {building && (
         <BuildQuoteModal
+          key={editQuote?.id || 'new'}
           client={client ?? { id: clientId }}
           initialQuote={editQuote}
           onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}

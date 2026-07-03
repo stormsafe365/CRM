@@ -68,12 +68,13 @@ export async function capturePrintHtml(win) {
   // Intercept it: grab fullDoc and return true so printQuote treats it as
   // handled (no real save dialog, no double-print).
   win._ssSavePdfViaElectron = function (doc) { fullDoc = doc || ''; return true }
-  // printQuote is async (optional 3D capture). Await it, and force the 2D quote
-  // (the 3D capture is the part that blanks out inside the embedded builder).
+  // printQuote is async and captures the live 3D via window.parent.__ssCapture3D.
+  // Force '3d' so the saved PDF uses the CURRENT 3D renderings (printQuote falls
+  // back to 2D elevations on its own if the 3D capture ever fails).
   let prevMode
   try {
     const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
-    if (sel) { prevMode = sel.value; sel.value = '2d' }
+    if (sel) { prevMode = sel.value; sel.value = '3d' }
     await win.printQuote()
   } finally {
     win.open = origOpen
@@ -107,7 +108,7 @@ export async function captureContractHtml(win) {
   let prevMode
   try {
     const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
-    if (sel) { prevMode = sel.value; sel.value = '2d' }
+    if (sel) { prevMode = sel.value; sel.value = '3d' }
     await win.printContract()
   } finally {
     win.open = origOpen

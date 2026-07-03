@@ -151,10 +151,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       if (done) return
       const pg = getProgramWindow()
       if (!pg || typeof pg.restoreQuoteData !== 'function') return
-      try { pg.restoreQuoteData(restoreData) } catch (e) { console.warn('restore failed', e) }
+      let ok = true
+      try { pg.restoreQuoteData(restoreData) } catch (e) { ok = false; console.warn('restore failed', e) }
       done = true
       clearInterval(t)
-      toast(`Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim(), 'success')
+      toast(
+        ok ? `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim()
+           : "Couldn't fully load this quote's saved build — please rebuild or check the console.",
+        ok ? 'success' : undefined,
+      )
     }, 500)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
