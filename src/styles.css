@@ -2718,6 +2718,19 @@ body {
 .add-followup { display: inline-flex; align-items: center; gap: 8px; color: var(--lime); font-weight: 500; font-size: 13px; cursor: pointer; margin-top: 14px; }
 .add-followup svg { width: 15px; height: 15px; }
 
+/* One-click "start the post-quote reminder cadence" button */
+.seed-cadence {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; margin-top: 16px; padding: 11px 14px;
+  background: var(--cyan-dim, rgba(9,214,220,0.08));
+  border: 1px dashed var(--cyan); border-radius: 10px;
+  color: var(--cyan); font-family: inherit; font-weight: 600; font-size: 13px;
+  cursor: pointer; transition: background var(--ease) .15s, box-shadow var(--ease) .15s;
+}
+.seed-cadence:hover { background: rgba(9,214,220,0.16); box-shadow: 0 0 14px rgba(9,214,220,0.25); }
+.seed-cadence:disabled { opacity: .6; cursor: default; box-shadow: none; }
+.seed-cadence svg { width: 15px; height: 15px; }
+
 /* =============================================================================
    QUOTES CAROUSEL
    ============================================================================= */

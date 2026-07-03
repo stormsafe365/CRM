@@ -5,7 +5,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUsers, userLabel } from '../lib/useUsers'
+import { useAuth } from '../context/AuthContext'
 import { fmtLong, fmtTime } from '../lib/followups'
+import { CADENCE_MARKER, QUOTED_PLUS, POST_QUOTE_CADENCE, seedPostQuoteCadence } from '../lib/quoteCadence'
+import { toast } from '../lib/uiFx'
 import FollowUpModal from './FollowUpModal'
 
 const ic = (paths) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
@@ -18,11 +21,13 @@ const TYPE_SVG = {
 const TYPE_CLASS = { call: 'call', email: 'email', text: 'text', note: 'email' }
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
-export default function FollowUpsCard({ clientId }) {
+export default function FollowUpsCard({ clientId, client }) {
   const { users } = useUsers()
+  const { user } = useAuth()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // null | 'new' | followUp row
+  const [seeding, setSeeding] = useState(false)
 
   async function load() {
     const { data } = await supabase
@@ -46,6 +51,24 @@ export default function FollowUpsCard({ clientId }) {
   }, [clientId])
 
   const pending = rows.filter(r => r.status === 'pending')
+
+  // The post-quote reminder sequence: offer a one-click "Start" for any lead
+  // that's been quoted (status at Quote Sent or beyond) and hasn't had the
+  // cadence seeded yet. This also covers leads quoted before the auto-prompt
+  // existed. Once seeded, the button disappears.
+  const alreadySeeded = rows.some(r => (r.details || '').includes(CADENCE_MARKER))
+  const canSeed = !!client && !alreadySeeded && QUOTED_PLUS.includes(client.status)
+
+  async function startSequence() {
+    if (seeding) return
+    if (!window.confirm(`Start the post-quote follow-up sequence? This adds ${POST_QUOTE_CADENCE.length} reminders (Day 3, Week 1, Week 3, Week 6) for the team to check in with this lead.`)) return
+    setSeeding(true)
+    const res = await seedPostQuoteCadence(client, user?.id)
+    setSeeding(false)
+    if (res.seeded) { toast(`Added ${res.count} follow-up reminders.`, 'success'); load() }
+    else if (res.already) toast('Follow-up sequence already started for this lead.')
+    else if (res.error) toast(res.error.message)
+  }
 
   return (
     <section className="card card-pad fuc-card">
@@ -78,6 +101,13 @@ export default function FollowUpsCard({ clientId }) {
             ))}
           </tbody>
         </table>
+      )}
+
+      {canSeed && (
+        <button type="button" className="seed-cadence" onClick={startSequence} disabled={seeding}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+          {seeding ? 'Starting…' : 'Start post-quote follow-up sequence'}
+        </button>
       )}
 
       <span className="add-followup" role="button" onClick={() => setModal('new')}>

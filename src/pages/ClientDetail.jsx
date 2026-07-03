@@ -304,7 +304,7 @@ export default function ClientDetail() {
 
         <div className="row-2">
           <NotesSection clientId={client.id} />
-          <FollowUpsCard clientId={client.id} />
+          <FollowUpsCard clientId={client.id} client={client} />
         </div>
       </div>
 

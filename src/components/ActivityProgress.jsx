@@ -11,7 +11,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useUsers, userLabel } from '../lib/useUsers'
+import { useAuth } from '../context/AuthContext'
 import { agoLabel, fmtLong, fmtTime } from '../lib/followups'
+import { cadenceSeeded, seedPostQuoteCadence, POST_QUOTE_CADENCE } from '../lib/quoteCadence'
 import ActivityComposer from './ActivityComposer'
 import { toast } from '../lib/uiFx'
 
@@ -67,6 +69,7 @@ function buildMilestones(client, hasQuote) {
 
 export default function ActivityProgress({ client, showAudience = false }) {
   const { users } = useUsers()
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [acts, setActs] = useState([])
   const [hasQuote, setHasQuote] = useState(false)
@@ -127,6 +130,16 @@ export default function ActivityProgress({ client, showAudience = false }) {
       return
     }
     toast(`Stage updated to "${milestones[i].label}"`, 'success')
+
+    // Marking "Quote Sent" offers to kick off the post-quote reminder cadence
+    // (team check-ins). Reminders only — nothing auto-sends to the customer.
+    if (i === 2 && !(await cadenceSeeded(client.id))) {
+      if (window.confirm(`Quote sent! Start the post-quote follow-up sequence? This adds ${POST_QUOTE_CADENCE.length} reminders (Day 3, Week 1, Week 3, Week 6) for the team to check in with this lead.`)) {
+        const res = await seedPostQuoteCadence(client, user?.id)
+        if (res.seeded) toast(`Added ${res.count} follow-up reminders.`, 'success')
+        else if (res.error) toast(res.error.message)
+      }
+    }
   }
 
   return (
