@@ -21,6 +21,12 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 .right{padding:14px;overflow-y:auto;max-height:90vh;background:var(--d2)}
 .sec{margin-bottom:4px;padding:16px 18px;border-bottom:1px solid var(--bv);background:var(--d3)}
 .st{font-family:var(--h);font-size:13px;font-weight:600;color:var(--t);text-transform:uppercase;letter-spacing:.8px;padding-bottom:6px;margin-bottom:12px;border-bottom:none}
+/* Collapsible sections — click a section title to minimize/expand its contents */
+.sec>.st{cursor:pointer;user-select:none;position:relative;padding-right:22px}
+.sec>.st::after{content:'▾';position:absolute;right:2px;top:0;font-size:12px;opacity:.55;transition:transform .2s ease}
+.sec.collapsed>.st{margin-bottom:0;padding-bottom:0}
+.sec.collapsed>.st::after{transform:rotate(-90deg)}
+.sec.collapsed>*:not(.st){display:none!important}
 .row{display:grid;grid-template-columns:148px 1fr;align-items:center;margin-bottom:7px;gap:6px}
 .row label{font-size:15px;color:var(--sb);font-weight:500}
 .row input,.row select,.row textarea{border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:400;background:var(--d4);width:100%;outline:none;font-family:var(--b),Arial,sans-serif;-webkit-appearance:none}
@@ -334,11 +340,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="Boxed Eve">Boxed Eve</option>
       <option value="Regular">Regular</option>
     </select></div>
-  <div class="row"><label>Wall Style</label>
-    <select id="ws" onchange="rc()">
-      <option value="Horizontal">Horizontal</option>
-      <option value="Vertical">Vertical</option>
-    </select></div>
+  <!-- Wall Style moved to Section 4 (Wall Options) -->
   <div class="row" id="sheeting-row"><label>Sheeting Gauge</label>
     <select id="sheeting-upgrade" onchange="rc()">
       <option value="standard">Standard (29GA walls / 26GA roof — FL standard)</option>
@@ -398,6 +400,11 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 <!-- 4. WALL OPTIONS — default Closed -->
 <div class="sec">
   <div class="st">4 — Wall Options</div>
+  <div class="row"><label>Wall Style</label>
+    <select id="ws" onchange="rc()">
+      <option value="Horizontal">Horizontal</option>
+      <option value="Vertical">Vertical</option>
+    </select></div>
   <div class="row"><label>Lap Siding (walls)</label>
     <select id="lap" onchange="rc()"><option value="no">No</option><option value="yes">Yes — Horizontal Walls (+10%)</option></select></div>
   <!-- Wainscot moved to Section 11 (Color Selections) — checkbox + color dropdown -->
@@ -990,6 +997,15 @@ function wainToggle(){
   if(h) h.value=(cb && cb.checked)?'yes':'no';
   rc();
 }
+
+// Collapsible sections — click a section's title bar to minimize/expand it.
+// Independent per section; state is not persisted (resets when reopened).
+(function initCollapsibleSections(){
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', initCollapsibleSections); return; }
+  document.querySelectorAll('.sec > .st').forEach(function(st){
+    st.addEventListener('click', function(){ st.parentElement.classList.toggle('collapsed'); });
+  });
+})();
 
 // Rebuild the four color dropdowns (Roof, Wall, Trim, Wainscot) using the active manufacturer's palette.
 // Preserves the previously selected color if it's still available in the new palette.
