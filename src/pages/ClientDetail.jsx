@@ -318,7 +318,7 @@ export default function ClientDetail() {
 
       {client.status === 'ordered' && <OrderTimeline client={client} />}
 
-      <div className="row-2 flip">
+      <div className="row-2 quotes-docs">
         <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
           building={buildingQuote} setBuilding={setBuildingQuote} />
         <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />

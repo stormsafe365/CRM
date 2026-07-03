@@ -2648,6 +2648,8 @@ body {
    ============================================================================= */
 .row-2 { display: grid; grid-template-columns: 1fr 1.18fr; gap: 18px; }
 .row-2.flip { grid-template-columns: 1.05fr 1.25fr; }
+/* Quotes ↔ Document Hub: Quotes wider (spread fits 3), Doc Hub narrower. */
+.row-2.quotes-docs { grid-template-columns: 1.72fr 1fr; }
 .row-2 > * { min-width: 0; }
 
 .link-cyan { color: var(--cyan); font-weight: 500; font-size: 13px; cursor: pointer; }
@@ -2934,10 +2936,19 @@ body {
   .qcard-media { min-height: 190px; }
 }
 
-.spread-grid { display: inline-flex; gap: 16px; padding: 2px; }
+/* Spread carousel: cards sized so exactly 3 fill the visible width; more scroll.
+   Arrows appear (in JSX) when there are >3 quotes. */
+.spread-wrap { position: relative; }
+.spread-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 4;
+  width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center;
+  background: rgba(8,15,22,.88); border: 1px solid var(--line-2); color: var(--fg);
+  font-size: 18px; line-height: 1; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.spread-arrow:hover { border-color: var(--cyan); background: var(--elev); }
+.spread-arrow.left { left: -8px; } .spread-arrow.right { right: -8px; }
+.spread-grid { display: flex; width: 100%; gap: 16px; padding: 2px; }
 .spread-card { scroll-snap-align: start; }
 .spread-card {
-  flex: 0 0 296px; width: 296px; padding: 24px; cursor: pointer;
+  flex: 0 0 calc((100% - 32px) / 3); min-width: 210px; padding: 20px; cursor: pointer;
   background:
     linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 18%),
     linear-gradient(165deg, #122132 0%, #0C1A29 100%);
@@ -2949,7 +2960,7 @@ body {
 .spread-card.in { opacity: 1; transform: none; }
 .spread-card:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 16px 40px rgba(0,0,0,0.5); border-color: rgba(120,160,190,0.2); transform: translateY(-5px); }
 .spread-card.sel { border-color: rgba(9,214,220,0.34); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 0 0 1px rgba(9,214,220,0.10), 0 18px 44px rgba(0,0,0,0.5), 0 0 26px rgba(9,214,220,0.09); background: linear-gradient(165deg, #142536 0%, #0D1C2C 100%); }
-.spread-card .q-actions { margin-top: 14px; }
+.spread-card .q-actions { margin-top: 14px; flex-wrap: wrap; }
 .spread-card .q-actions .btn { flex: 1; justify-content: center; }
 .spread-card.add {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -2984,7 +2995,7 @@ body {
 /* =============================================================================
    DOCUMENT HUB
    ============================================================================= */
-.doc-cats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 11px; }
+.doc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 11px; }
 .doc-cat {
   background: linear-gradient(180deg, var(--elev), #0C1929);
   border: 1px solid var(--line);
@@ -3083,7 +3094,7 @@ body {
 @media (max-width: 1280px) {
   .lead-head { grid-template-columns: 1fr 1fr; }
   .lead-head > div:nth-child(2) { border-right: none; }
-  .row-2, .row-2.flip { grid-template-columns: 1fr; }
+  .row-2, .row-2.flip, .row-2.quotes-docs { grid-template-columns: 1fr; }
   .notes-grid { grid-template-columns: repeat(2, 1fr); }
   .doc-cats { grid-template-columns: repeat(3, 1fr); }
 }

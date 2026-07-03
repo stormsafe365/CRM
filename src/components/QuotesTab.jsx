@@ -345,11 +345,17 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate }) {
     const timers = els.map((el, i) => setTimeout(() => el.classList.add('in'), 40 + i * 55))
     return () => timers.forEach(clearTimeout)
   }, [quotes])
+  const scrollBy = (dir) => ref.current?.scrollBy({ left: dir * 320, behavior: 'smooth' })
+  const many = quotes.length > 3
   return (
-    <div className="spread-scroll" ref={ref}>
-      <div className="spread-grid">
-        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} />)}
+    <div className="spread-wrap">
+      {many && <button className="spread-arrow left" onClick={() => scrollBy(-1)} aria-label="Scroll left">‹</button>}
+      <div className="spread-scroll" ref={ref}>
+        <div className="spread-grid">
+          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} />)}
+        </div>
       </div>
+      {many && <button className="spread-arrow right" onClick={() => scrollBy(1)} aria-label="Scroll right">›</button>}
     </div>
   )
 }
