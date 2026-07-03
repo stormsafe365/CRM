@@ -8,7 +8,7 @@
 // fallback. Pricing/PDF come straight from the program — never re-derived here.
 
 import { useEffect, useRef, useState } from 'react'
-import { uploadClientDocBlob } from '../lib/storage'
+import { uploadClientDocBlob, deleteDoc } from '../lib/storage'
 import { readBuilderTotals, buildSummary, capturePrintHtml, captureContractHtml, dataUrlToThumb, quoteNumberFromHtml, htmlToPdfBlob } from '../lib/quoteCapture'
 import { toast } from '../lib/uiFx'
 
@@ -100,7 +100,12 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       setStatus('Capturing quote…')
       const printHtml = await capturePrintHtml(pg)
       const now = new Date()
-      const quote_number = quoteNumberFromHtml(printHtml) || `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`
+      // Keep the quote's EXISTING number when editing, so the DB row, the card,
+      // and the PDF filename in the Document Hub all show the same number. Only a
+      // brand-new quote takes the number stamped into the freshly printed quote.
+      const quote_number = initialQuote?.quote_number
+        || quoteNumberFromHtml(printHtml)
+        || `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`
 
       let pdf_snapshot_url = null
       let pdfWarn = ''
@@ -124,6 +129,11 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       }
       setStatus('Saving…')
       await onSave(payload)
+      // Replaced an existing quote's PDF → remove the old file so the Document Hub
+      // keeps ONE PDF per quote (named with the quote's number), not a stale pile.
+      if (initialQuote?.pdf_snapshot_url && initialQuote.pdf_snapshot_url !== pdf_snapshot_url) {
+        try { await deleteDoc(initialQuote.pdf_snapshot_url) } catch { /* ignore */ }
+      }
       // Tell the Document Hub (Storage has no realtime) a new quote file landed.
       try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
       setStatus('')
