@@ -3,7 +3,7 @@
 // Live-updates via Supabase realtime — if your partner adds/edits a
 // client, you see it without refreshing.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { BUILDING_TYPES, buildingTypeLabel, sourceLabel, projectStageLabel } from '../lib/constants'
@@ -23,6 +23,17 @@ const GROUPS = [
   { key: 'ordered',       label: 'Ordered',           match: (c) => c.status === 'ordered' },
   { key: 'dead',          label: 'Dead',              match: (c) => ['dead', 'lost', 'cancelled'].includes(c.status) },
   { key: 'all',           label: 'All',               match: () => true },
+]
+
+// The seven pipeline stages the inline "Change Stage" control offers.
+const CHANGE_STAGES = [
+  { key: 'new_lead', label: 'New Lead' },
+  { key: 'contacted', label: 'Attempting' },
+  { key: 'working', label: 'Working' },
+  { key: 'working_hot', label: 'Hot' },
+  { key: 'contract_sent', label: 'Contract Sent' },
+  { key: 'ordered', label: 'Ordered' },
+  { key: 'dead', label: 'Dead' },
 ]
 
 // Lead-temperature → heat bar (matches the design's 6-stop gauge).
@@ -87,6 +98,33 @@ export default function ClientsList() {
     const sp = new URLSearchParams(searchParams)
     sp.delete('stage')
     setSearchParams(sp, { replace: true })
+  }
+
+  // Expand-for-detail drawer — one open row at a time.
+  const [expanded, setExpanded] = useState(null)
+  const [expandedQuote, setExpandedQuote] = useState(null) // { id, total } — the open row's latest quote
+  // Any filter change closes the open drawer.
+  useEffect(() => { setExpanded(null) }, [group, repFilter, search, buildingTypeFilter, sortBy])
+  // Lazily fetch the open lead's latest (non-deleted) quote total for the drawer.
+  useEffect(() => {
+    if (!expanded) { setExpandedQuote(null); return }
+    let cancelled = false
+    supabase.from('quotes')
+      .select('total_amount, deleted_at, quote_date')
+      .eq('client_id', expanded)
+      .order('quote_date', { ascending: false, nullsFirst: false })
+      .then(({ data }) => {
+        if (cancelled) return
+        const live = (data || []).filter(q => !q.deleted_at)
+        setExpandedQuote({ id: expanded, total: live[0]?.total_amount ?? null })
+      })
+    return () => { cancelled = true }
+  }, [expanded])
+
+  async function changeStage(client, status) {
+    if (client.status === status) return
+    const { error } = await supabase.from('clients').update({ status }).eq('id', client.id)
+    if (error) setError(error.message)
   }
   function setRep(key) {
     const sp = new URLSearchParams(searchParams)
@@ -267,22 +305,16 @@ export default function ClientsList() {
         </div>
       )}
 
-      <div className="list-tabs" ref={tabsRef}>
-        {ind.ready && (
-          <span
-            className="list-tab-ind"
-            style={{ transform: `translateX(${ind.left}px)`, width: ind.width }}
-          />
-        )}
+      <div className="lead-chips" ref={tabsRef}>
         {GROUPS.map(g => (
           <button
             key={g.key}
             data-tab={g.key}
-            className={`list-tab${group === g.key ? ' on' : ''}`}
+            className={`lead-chip${group === g.key ? ' on' : ''}`}
             onClick={() => setGroup(g.key)}
           >
             {g.label}
-            <span className="list-tab-count">{repScoped.filter(g.match).length}</span>
+            <span className="lead-chip-count">{repScoped.filter(g.match).length}</span>
           </button>
         ))}
       </div>
@@ -320,10 +352,10 @@ export default function ClientsList() {
               : 'No leads match your filters.'}
           </div>
         ) : (
-          <table className="dt">
+          <table className="dt lead-table">
             <thead>
               <tr>
-                <th>Client</th><th>Stage</th><th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th>
+                <th>Client</th><th>Stage</th><th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th><th aria-label="Expand"></th>
               </tr>
             </thead>
             <tbody key={`${repFilter}-${group}`}>
@@ -331,40 +363,61 @@ export default function ClientsList() {
                 const t = tempInfo(c.lead_temperature)
                 const loc = [c.city, c.state].filter(Boolean).join(', ')
                 const repName = userLabel(users, c.primary_rep)
+                const isOpen = expanded === c.id
+                const toggle = () => setExpanded(isOpen ? null : c.id)
                 return (
-                  <tr key={c.id} onClick={() => navigate(`/clients/${c.id}`)} className="lead-row row-enter" style={{ '--ri': Math.min(i, 14) }}>
-                    <td>
-                      <div className="client">
-                        <div className="avatar xs">{initialsOf(c.name)}</div>
-                        <div>
-                          <div className="nm">{c.name || '—'}</div>
-                          <div className="sb">{[loc, c.email].filter(Boolean).join(' · ') || '—'}</div>
+                  <Fragment key={c.id}>
+                    <tr onClick={toggle} className={`lead-row row-enter${isOpen ? ' open' : ''}`} style={{ '--ri': Math.min(i, 14) }}>
+                      <td>
+                        <div className="client">
+                          <div className="avatar xs">{initialsOf(c.name)}</div>
+                          <div>
+                            <div className="nm">{c.name || '—'}</div>
+                            <div className="sb">{[loc, c.email].filter(Boolean).join(' · ') || '—'}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td><StagePill status={c.status} /></td>
-                    <td>
-                      {c.building_size || c.building_type ? (
-                        <>
-                          {c.building_size && <div style={{ color: 'var(--fg)' }}>{c.building_size}</div>}
-                          {c.building_type && <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }}>{buildingTypeLabel(c.building_type)}</div>}
-                        </>
-                      ) : <span className="muted">—</span>}
-                    </td>
-                    <td>
-                      <div className="heat">
-                        <div className="bar"><i style={{ width: `${t.pct}%` }} /></div>
-                        <span className="lbl" style={{ color: t.color }}>{t.label}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {repName && repName !== '—'
-                        ? <div className="client"><div className="avatar xs">{initialsOf(repName)}</div><span style={{ fontSize: 13 }}>{repName}</span></div>
-                        : <span className="muted">—</span>}
-                    </td>
-                    <td>{c.follow_up_date ? <FollowUpCell date={c.follow_up_date} /> : <span className="muted">—</span>}</td>
-                    <td>{c.source ? <span className="cat-tag">{sourceLabel(c.source)}</span> : <span className="muted">—</span>}</td>
-                  </tr>
+                      </td>
+                      <td><StagePill status={c.status} /></td>
+                      <td>
+                        {c.building_size || c.building_type ? (
+                          <>
+                            {c.building_size && <div className="num" style={{ color: 'var(--fg)' }}>{c.building_size}</div>}
+                            {c.building_type && <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }}>{buildingTypeLabel(c.building_type)}</div>}
+                          </>
+                        ) : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <div className="heat">
+                          <div className="bar"><i style={{ width: `${t.pct}%` }} /></div>
+                          <span className="lbl" style={{ color: t.color }}>{t.label}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {repName && repName !== '—'
+                          ? <div className="client"><div className="avatar xs">{initialsOf(repName)}</div><span style={{ fontSize: 13 }}>{repName}</span></div>
+                          : <span className="muted">—</span>}
+                      </td>
+                      <td>{c.follow_up_date ? <FollowUpCell date={c.follow_up_date} /> : <span className="muted">—</span>}</td>
+                      <td>{c.source ? <span className="cat-tag">{sourceLabel(c.source)}</span> : <span className="muted">—</span>}</td>
+                      <td className="lead-chev-cell">
+                        <button className={`lead-chevron${isOpen ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); toggle() }} aria-label={isOpen ? 'Collapse' : 'Expand'}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={isOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /></svg>
+                        </button>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="lead-drawer-row">
+                        <td colSpan={8}>
+                          <LeadDrawer
+                            c={c} loc={loc}
+                            quote={expandedQuote?.id === c.id ? expandedQuote.total : undefined}
+                            onChangeStage={changeStage}
+                            onOpenPortal={() => navigate(`/clients/${c.id}`)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -393,4 +446,48 @@ function FollowUpCell({ date }) {
   const formatted = `${m}/${d}/${y}`
 
   return <span className={className}>{formatted}</span>
+}
+
+// Inline expand-for-detail drawer beneath a lead row: contact, project spec, an
+// inline stage changer, and a jump to the client portal.
+function LeadDrawer({ c, loc, quote, onChangeStage, onOpenPortal }) {
+  const money = (n) => (n == null ? '—' : '$' + Number(n).toLocaleString())
+  const ic = (d) => <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+  return (
+    <div className="lead-drawer">
+      <div className="lead-drawer-grid">
+        <div>
+          <div className="lead-drawer-label">Contact</div>
+          <div className="lead-contact">
+            {c.phone && <div className="lead-contact-row">{ic(<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />)}{c.phone}</div>}
+            {c.email && <div className="lead-contact-row">{ic(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)}{c.email}</div>}
+            {loc && <div className="lead-contact-row">{ic(<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></>)}{loc}</div>}
+            {!c.phone && !c.email && !loc && <div className="muted" style={{ fontSize: 13 }}>No contact info yet.</div>}
+          </div>
+        </div>
+        <div>
+          <div className="lead-drawer-label">Project Spec</div>
+          <div className="lead-spec">
+            <div className="lead-spec-row"><span>Building</span><span className="num" style={{ color: 'var(--fg)' }}>{c.building_size || '—'}</span></div>
+            <div className="lead-spec-row"><span>Type</span><span style={{ color: 'var(--cyan)' }}>{c.building_type ? buildingTypeLabel(c.building_type) : '—'}</span></div>
+            <div className="lead-spec-row"><span>Current quote</span><span className="num" style={{ color: 'var(--lime)' }}>{quote === undefined ? '…' : money(quote)}</span></div>
+          </div>
+        </div>
+      </div>
+      <div className="lead-drawer-foot">
+        <div className="lead-change">
+          <div className="lead-drawer-label">Change Stage</div>
+          <div className="lead-stage-btns">
+            {CHANGE_STAGES.map(s => (
+              <button key={s.key} className={`lead-stage-btn${c.status === s.key ? ' on' : ''}`} onClick={() => onChangeStage(c, s.key)}>{s.label}</button>
+            ))}
+          </div>
+        </div>
+        <button className="lead-portal-btn" onClick={onOpenPortal}>
+          {ic(<><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6M10 14 21 3" /></>)}
+          Open Client Portal
+        </button>
+      </div>
+    </div>
+  )
 }

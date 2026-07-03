@@ -3898,6 +3898,52 @@ a.brand { text-decoration: none; color: inherit; }
 .dsh-stage-link:hover { background: var(--elev); }
 .stage-filter-chip { color: var(--cyan); cursor: pointer; }
 .stage-filter-chip:hover { text-decoration: underline; }
+
+/* ===== Leads page redesign — stage chips, expand chevron, detail drawer ===== */
+.lead-chips { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 14px; }
+.lead-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--line-soft); color: var(--fg-2); font-family: var(--font-body);
+  font-size: 13px; cursor: pointer; transition: border-color .14s var(--ease), color .14s var(--ease), background .14s var(--ease); }
+.lead-chip:hover { border-color: var(--cyan); color: var(--fg); }
+.lead-chip.on { background: rgba(9,214,220,.12); border-color: rgba(9,214,220,.38); color: var(--cyan); }
+.lead-chip-count { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: var(--fg-3);
+  background: var(--inset); padding: 1px 7px; border-radius: 999px; }
+.lead-chip.on .lead-chip-count { color: var(--cyan); background: rgba(9,214,220,.16); }
+
+.lead-table th:last-child, .lead-table td.lead-chev-cell { width: 44px; text-align: right; }
+.lead-row.open { background: rgba(9,214,220,.06); }
+.lead-chevron { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-2);
+  background: rgba(255,255,255,.03); color: var(--fg-3); display: grid; place-items: center; cursor: pointer;
+  transition: border-color .14s var(--ease), color .14s var(--ease), background .14s var(--ease); }
+.lead-chevron svg { width: 16px; height: 16px; }
+.lead-row:hover .lead-chevron { border-color: rgba(9,214,220,.4); color: var(--cyan); }
+.lead-chevron.on { border-color: rgba(9,214,220,.5); background: rgba(9,214,220,.12); color: var(--cyan); }
+
+.lead-drawer-row > td { padding: 2px 22px 20px !important; border-bottom: none !important; background: transparent; }
+.lead-drawer { background: var(--inset); border: 1px solid var(--line); border-radius: 9px; padding: 20px 22px; }
+.lead-drawer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+.lead-drawer-label { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .12em;
+  font-size: 11px; font-weight: 600; color: var(--fg-3); margin-bottom: 12px; }
+.lead-contact { display: flex; flex-direction: column; gap: 10px; }
+.lead-contact-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--fg-2); }
+.lead-contact-row svg { color: var(--cyan-dim); flex: none; }
+.lead-spec { display: flex; flex-direction: column; gap: 9px; }
+.lead-spec-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.lead-spec-row span:first-child { color: var(--fg-3); }
+.lead-drawer-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.lead-stage-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.lead-stage-btn { padding: 6px 11px; border-radius: 6px; border: 1px solid var(--line-2); background: rgba(255,255,255,.03);
+  color: var(--fg-2); font-family: var(--font-body); font-size: 12px; cursor: pointer;
+  transition: border-color .14s var(--ease), color .14s var(--ease), background .14s var(--ease); }
+.lead-stage-btn:hover { border-color: var(--cyan); color: var(--fg); }
+.lead-stage-btn.on { background: rgba(9,214,220,.13); border-color: rgba(9,214,220,.4); color: var(--cyan); font-weight: 600; }
+.lead-portal-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 7px; border: 0;
+  background: var(--cyan-dim); color: #05201f; font-family: var(--font-head); text-transform: uppercase;
+  letter-spacing: .06em; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: box-shadow .14s var(--ease), transform .14s var(--ease); }
+.lead-portal-btn:hover { box-shadow: 0 0 0 1px rgba(9,214,220,.4), 0 6px 16px rgba(9,214,220,.28); transform: translateY(-1px); }
+@media (max-width: 720px) { .lead-drawer-grid { grid-template-columns: 1fr; gap: 16px; } }
 .dsh-clear { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 16px 0; gap: 11px; }
 .dsh-clear-ic { width: 46px; height: 46px; border-radius: 999px; display: grid; place-items: center;
