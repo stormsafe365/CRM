@@ -3546,8 +3546,8 @@ a.brand { text-decoration: none; color: inherit; }
 .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .cwk-day { background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--r-sm);
   min-height: 92px; padding: 8px 8px 7px; display: flex; flex-direction: column; gap: 6px;
-  transition: background .12s ease, border-color .12s ease; }
-.cwk-day:hover { background: var(--card-2); }
+  transition: background .15s var(--ease), border-color .15s var(--ease), box-shadow .15s var(--ease), transform .15s var(--ease); }
+.cwk-day:hover { background: var(--card-2); border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(9,214,220,.18); transform: translateY(-2px); }
 .cwk-day.empty { background: rgba(10,19,30,0.5); }
 .cwk-day.today { box-shadow: inset 0 0 0 2px var(--cyan); border-color: transparent; }
 .cwk-head { display: flex; align-items: baseline; justify-content: space-between; }
@@ -3808,10 +3808,10 @@ a.brand { text-decoration: none; color: inherit; }
   background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-sm);
   color: var(--fg-2); font-family: var(--font-head); font-weight: 600; text-transform: uppercase;
   letter-spacing: .07em; font-size: 12px; cursor: pointer; text-decoration: none;
-  transition: border-color .16s ease, background .16s ease, color .16s ease; }
-.dsh-abtn:hover { border-color: var(--cyan); color: var(--fg); }
+  transition: border-color .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.dsh-abtn:hover { border-color: var(--cyan); color: var(--fg); box-shadow: 0 0 0 1px rgba(9,214,220,.25), 0 4px 14px rgba(9,214,220,.18); transform: translateY(-2px); }
 .dsh-abtn-primary { background: var(--cyan); border-color: var(--cyan); color: #05222a; }
-.dsh-abtn-primary:hover { background: var(--cyan-dim); border-color: var(--cyan-dim); color: #05222a; }
+.dsh-abtn-primary:hover { background: var(--cyan-dim); border-color: var(--cyan-dim); color: #05222a; box-shadow: 0 0 0 1px rgba(9,214,220,.45), 0 6px 22px rgba(9,214,220,.42); transform: translateY(-2px); }
 
 /* ---- Storm strip ---- */
 .dsh-storm { display: flex; align-items: center; gap: 14px; padding: 12px 18px; margin-bottom: 20px;
@@ -3826,17 +3826,30 @@ a.brand { text-decoration: none; color: inherit; }
 
 /* ---- KPI row ---- */
 .dsh-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+/* StatCard accent system — per-card accent top-line + hover glow/lift, and the
+   value recolors to the accent on hover. Category accents mapped onto app tokens. */
+.dsh-kpi, .dsh-statcard { --sc-accent: var(--cyan); --sc-ring: rgba(9,214,220,.36); --sc-soft: rgba(9,214,220,.18); }
+.acc-cyan   { --sc-accent: var(--cyan);    --sc-ring: rgba(9,214,220,.36);   --sc-soft: rgba(9,214,220,.18); }
+.acc-green  { --sc-accent: var(--lime);    --sc-ring: rgba(143,209,79,.38);  --sc-soft: rgba(143,209,79,.18); }
+.acc-orange { --sc-accent: var(--warning); --sc-ring: rgba(255,181,71,.40);  --sc-soft: rgba(255,181,71,.20); }
+.acc-purple { --sc-accent: var(--violet);  --sc-ring: rgba(155,143,209,.46); --sc-soft: rgba(155,143,209,.22); }
 .dsh-kpi { position: relative; background: var(--card); border: 1px solid var(--line-soft);
-  border-top: 3px solid var(--cyan); border-radius: var(--r-md); padding: 14px 16px 13px;
+  border-top: 2.5px solid var(--sc-accent); border-radius: var(--r-md); padding: 14px 16px 13px;
   text-decoration: none; overflow: hidden; animation: fadeUp .4s var(--ease) both;
-  animation-delay: calc(var(--i) * 60ms); transition: border-color .2s ease, transform .2s var(--spring-snap); }
-.dsh-kpi:hover { border-color: var(--line-2); border-top-color: var(--cyan); transform: translateY(-2px); }
+  animation-delay: calc(var(--i) * 60ms);
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease), transform .2s var(--ease); }
+.dsh-kpi:hover { border-color: var(--sc-accent); box-shadow: 0 0 0 1.25px var(--sc-ring), 0 4px 13px var(--sc-soft); transform: translateY(-2px); }
+/* Bottom-row panels opt into the same treatment with .dsh-statcard + an accent. */
+.dsh-statcard { border-top: 2.5px solid var(--sc-accent);
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease), transform .2s var(--ease); }
+.dsh-statcard:hover { border-color: var(--sc-accent); box-shadow: 0 0 0 1.25px var(--sc-ring), 0 4px 13px var(--sc-soft); transform: translateY(-2px); }
 .dsh-kpi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .dsh-kpi-label { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .1em;
   font-size: 11px; font-weight: 600; color: var(--fg-3); }
 .dsh-kpi-ic { color: var(--fg-4); flex: none; }
 .dsh-kpi-val-row { display: flex; align-items: baseline; gap: 9px; margin-top: 8px; }
-.dsh-kpi-val { font-size: 36px; font-weight: 700; line-height: .9; }
+.dsh-kpi-val { font-size: 34px; font-weight: 700; line-height: .9; color: var(--fg); transition: color .2s var(--ease); }
+.dsh-kpi:hover .dsh-kpi-val { color: var(--sc-accent); }
 .dsh-kpi-delta { font-size: 12px; font-weight: 500; }
 .dsh-kpi-sub { margin-top: 8px; font-size: 12px; color: var(--fg-3); }
 
@@ -3880,7 +3893,7 @@ a.brand { text-decoration: none; color: inherit; }
 .dsh-stage-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
 .dsh-stage-head .num { font-size: 14px; font-weight: 700; }
 .dsh-stage-track { height: 6px; border-radius: 999px; background: var(--inset); overflow: hidden; }
-.dsh-stage-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); transition: width .6s var(--ease); }
+.dsh-stage-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #5f52a0, var(--violet)); transition: width .6s var(--ease); }
 .dsh-stage-link { display: block; text-decoration: none; color: inherit; cursor: pointer; margin: 0 -8px; padding: 3px 8px; border-radius: var(--r-sm); transition: background .15s ease; }
 .dsh-stage-link:hover { background: var(--elev); }
 .stage-filter-chip { color: var(--cyan); cursor: pointer; }

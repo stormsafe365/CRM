@@ -177,16 +177,15 @@ export default function Dashboard() {
   if (loading) return <div className="muted" style={{ padding: '24px 0' }}>Loading dashboard…</div>
 
   const kpis = [
-    { label: 'New Leads · This Week', icon: ico.userPlus, value: buckets.newLeadsWeek.length, color: 'var(--fg)',
+    { label: 'New Leads · This Week', icon: ico.userPlus, value: buckets.newLeadsWeek.length, accent: 'cyan',
       delta: leadDelta > 0 ? `▲ ${leadDelta}` : leadDelta < 0 ? `▼ ${Math.abs(leadDelta)}` : '—',
       deltaColor: leadDelta > 0 ? 'var(--cyan)' : 'var(--fg-3)',
       sub: `${buckets.newLeadsMonth.length} this month`, to: '/clients?view=new_lead' },
-    { label: 'Active Working Leads', icon: ico.flame, value: buckets.activeWorking.length, color: 'var(--cyan)',
+    { label: 'Active Working Leads', icon: ico.flame, value: buckets.activeWorking.length, accent: 'green',
       sub: 'Working · hot · contract sent', to: '/clients?view=working' },
-    { label: 'Ordered · In Project', icon: ico.hardHat, value: buckets.ordered.length, color: 'var(--fg)',
+    { label: 'Ordered · In Project', icon: ico.hardHat, value: buckets.ordered.length, accent: 'purple',
       sub: 'Deposit paid + contract signed', to: '/clients?view=ordered' },
-    { label: 'Due Today', icon: ico.calClock, value: dueToday.length,
-      color: dueToday.length > 0 ? 'var(--warning)' : 'var(--fg-3)',
+    { label: 'Due Today', icon: ico.calClock, value: dueToday.length, accent: 'orange',
       delta: overdue.length > 0 ? `▲ ${overdue.length} overdue` : null,
       deltaColor: 'var(--amber)',
       sub: 'Follow-ups scheduled', to: '/followups' },
@@ -280,7 +279,7 @@ export default function Dashboard() {
       {/* ===== BOTTOM ROW ===== */}
       <div className="dsh-bottom">
         {/* Active Clients */}
-        <div className="dsh-panel">
+        <div className="dsh-panel dsh-statcard acc-cyan">
           <div className="dsh-panel-title">Active Clients</div>
           <SpecRow label="New Leads · This Week" value={buckets.newLeadsWeek.length} to="/clients?view=new_lead" />
           <SpecRow label="Attempting to Contact" value={buckets.attempting.length} to="/clients?view=contacted" />
@@ -291,7 +290,7 @@ export default function Dashboard() {
         </div>
 
         {/* Project Stage */}
-        <div className="dsh-panel">
+        <div className="dsh-panel dsh-statcard acc-purple">
           <div className="dsh-panel-title">Project Stage</div>
           {buckets.ordered.length === 0 ? (
             <div className="dsh-muted" style={{ fontSize: 13 }}>No ordered projects yet.</div>
@@ -316,7 +315,7 @@ export default function Dashboard() {
         </div>
 
         {/* Follow-Ups Due Today */}
-        <div className="dsh-panel">
+        <div className="dsh-panel dsh-statcard acc-orange">
           <div className="dsh-panel-title dsh-title-row">
             <span>Follow-Ups Due Today</span>
             <Link to="/followups" className="dsh-link">View all</Link>
@@ -341,7 +340,7 @@ export default function Dashboard() {
         </div>
 
         {/* Needs Attention */}
-        <div className="dsh-panel">
+        <div className="dsh-panel dsh-statcard acc-orange">
           <div className="dsh-panel-title dsh-title-row">
             <span>Needs Attention</span>
             {(pendingPay.length + overdue.length) > 0 && (
@@ -377,8 +376,9 @@ export default function Dashboard() {
 }
 
 /* ---------- KPI card ---------- */
-function KpiCard({ i, label, value, color, delta, deltaColor, sub, icon, to }) {
+function KpiCard({ i, label, value, delta, deltaColor, sub, icon, to, accent = 'cyan' }) {
   const display = useCountUp(value)
+  const cls = `dsh-kpi acc-${accent}`
   const content = (
     <>
       <div className="dsh-kpi-head">
@@ -386,15 +386,15 @@ function KpiCard({ i, label, value, color, delta, deltaColor, sub, icon, to }) {
         <span className="dsh-kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg></span>
       </div>
       <div className="dsh-kpi-val-row">
-        <span className="dsh-kpi-val num" style={{ color }}>{Math.round(display).toLocaleString()}</span>
+        <span className="dsh-kpi-val num">{Math.round(display).toLocaleString()}</span>
         {delta && <span className="dsh-kpi-delta num" style={{ color: deltaColor }}>{delta}</span>}
       </div>
       <div className="dsh-kpi-sub">{sub}</div>
     </>
   )
   return to
-    ? <Link to={to} className="dsh-kpi" style={{ '--i': i }}>{content}</Link>
-    : <div className="dsh-kpi" style={{ '--i': i }}>{content}</div>
+    ? <Link to={to} className={cls} style={{ '--i': i }}>{content}</Link>
+    : <div className={cls} style={{ '--i': i }}>{content}</div>
 }
 
 /* ---------- spec-table row (Active Clients) ---------- */
