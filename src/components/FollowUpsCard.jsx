@@ -28,6 +28,7 @@ export default function FollowUpsCard({ clientId, client }) {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // null | 'new' | followUp row
   const [seeding, setSeeding] = useState(false)
+  const [showAll, setShowAll] = useState(false) // include completed follow-ups
 
   async function load() {
     const { data } = await supabase
@@ -51,6 +52,9 @@ export default function FollowUpsCard({ clientId, client }) {
   }, [clientId])
 
   const pending = rows.filter(r => r.status === 'pending')
+  const doneCount = rows.length - pending.length
+  // "View all" folds in completed follow-ups; default view is pending only.
+  const visible = showAll ? rows : pending
 
   // The post-quote reminder sequence: offer a one-click "Start" for any lead
   // that's been quoted (status at Quote Sent or beyond) and hasn't had the
@@ -74,21 +78,27 @@ export default function FollowUpsCard({ clientId, client }) {
     <section className="card card-pad fuc-card">
       <div className="section-head">
         <h3>Upcoming Follow-Ups</h3>
-        <span className="link-cyan" role="button" onClick={() => setModal('new')}>View all</span>
+        {doneCount > 0 && (
+          <span className="link-cyan" role="button" onClick={() => setShowAll(s => !s)}>
+            {showAll ? 'Show pending' : `View all (${rows.length})`}
+          </span>
+        )}
       </div>
 
       {loading ? (
         <div className="muted" style={{ padding: '10px 0' }}>Loading…</div>
-      ) : pending.length === 0 ? (
-        <div className="empty-state" style={{ padding: '14px 0' }}>No upcoming follow-ups.</div>
+      ) : visible.length === 0 ? (
+        <div className="empty-state" style={{ padding: '14px 0' }}>
+          {showAll ? 'No follow-ups yet.' : 'No upcoming follow-ups.'}
+        </div>
       ) : (
         <table className="fu-table">
           <thead>
             <tr><th>Date</th><th>Type</th><th>Purpose</th><th>Assigned To</th><th>Status</th></tr>
           </thead>
           <tbody>
-            {pending.map(r => (
-              <tr key={r.id} className="fuc-trow" onClick={() => setModal(r)} style={{ cursor: 'pointer' }}>
+            {visible.map(r => (
+              <tr key={r.id} className={`fuc-trow${r.status === 'done' ? ' is-done' : ''}`} onClick={() => setModal(r)} style={{ cursor: 'pointer' }}>
                 <td className="fu-date">
                   <div className="d num">{fmtLong(r.due_date)}</div>
                   {r.due_time && <div className="t num">{fmtTime(r.due_time)}</div>}
@@ -96,7 +106,9 @@ export default function FollowUpsCard({ clientId, client }) {
                 <td><span className={`fu-type ${TYPE_CLASS[r.type] || 'call'}`}>{TYPE_SVG[r.type] || TYPE_SVG.call}{cap(r.type)}</span></td>
                 <td className="fu-purpose">{r.purpose || '—'}</td>
                 <td className="fu-assigned">{r.assigned_to ? userLabel(users, r.assigned_to) : cap(r.audience)}</td>
-                <td><span className="status-pending"><span className="dot" />Pending</span></td>
+                <td>{r.status === 'done'
+                  ? <span className="status-done"><span className="dot" />Done</span>
+                  : <span className="status-pending"><span className="dot" />Pending</span>}</td>
               </tr>
             ))}
           </tbody>

@@ -2715,6 +2715,10 @@ body {
 .fu-assigned { color: var(--fg-2); }
 .status-pending { display: inline-flex; align-items: center; gap: 8px; color: var(--warning); font-weight: 500; }
 .status-pending .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 7px var(--warning); }
+.status-done { display: inline-flex; align-items: center; gap: 8px; color: var(--lime); font-weight: 500; }
+.status-done .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 7px var(--lime); }
+.fuc-trow.is-done { opacity: .62; }
+.fuc-trow.is-done .fu-purpose { text-decoration: line-through; }
 .add-followup { display: inline-flex; align-items: center; gap: 8px; color: var(--lime); font-weight: 500; font-size: 13px; cursor: pointer; margin-top: 14px; }
 .add-followup svg { width: 15px; height: 15px; }
 
