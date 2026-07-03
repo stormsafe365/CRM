@@ -72,6 +72,20 @@ export async function uploadClientDoc(clientId, category, file) {
   return path
 }
 
+// Upload a generated Blob (quote PDF, contract PDF, rendering image) into a
+// Document Hub category folder, so it shows up in that category automatically.
+// category ∈ 'quote' | 'contract' | 'rendering' | ...
+export async function uploadClientDocBlob(clientId, category, blob, filename, contentType) {
+  if (!blob) return null
+  const safe = (filename || `${category}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_')
+  const path = `${clientId}/${category}/${Date.now()}-${safe}`
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, { cacheControl: '3600', upsert: false, contentType: contentType || blob.type || 'application/octet-stream' })
+  if (error) throw error
+  return path
+}
+
 export async function listClientDocs(clientId, category) {
   const { data, error } = await supabase.storage
     .from(BUCKET)

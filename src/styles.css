@@ -2879,6 +2879,61 @@ body {
 
 /* ---- SPREAD ---- */
 .spread-scroll { width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 6px 4px 14px; scroll-snap-type: x proximity; }
+/* ===== Wide quote card (deck carousel) ===== */
+.qcard-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0; }
+.qcard { width: 100%; max-width: 780px; background: var(--card); border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-card, 0 10px 30px rgba(0,0,0,.4)); }
+.qcard-main { position: relative; display: grid; grid-template-columns: 44% 1fr; }
+.qcard-media { position: relative; background: linear-gradient(160deg, #0f1f30, #0a141f);
+  min-height: 300px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.qcard-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qcard-media-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--fg-4); font-size: 12px; }
+.qcard-media-empty svg { width: 40px; height: 40px; }
+.qcard-date { position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(8,15,22,.72); border: 1px solid var(--line-2); color: var(--fg-2);
+  font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px; }
+.qcard-date svg { width: 13px; height: 13px; }
+.qcard-body { padding: 22px 24px; display: flex; flex-direction: column; }
+.qcard-num { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; letter-spacing: .04em; color: var(--fg-3); }
+.qcard-dims { font-family: var(--font-head); font-size: 30px; line-height: 1.05; color: var(--fg); margin-top: 4px; }
+.qcard-subtitle { font-size: 13.5px; color: var(--fg-3); margin-top: 4px; }
+.qcard-divider { height: 1px; background: var(--line-soft); margin: 16px 0; }
+.qcard-specs { display: flex; flex-direction: column; gap: 9px; }
+.qcard-spec { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.qcard-spec-k { font-size: 13px; color: var(--fg-3); }
+.qcard-spec-v { font-size: 13.5px; font-weight: 600; color: var(--fg); text-align: right; }
+.qcard-total { display: flex; align-items: baseline; justify-content: space-between; margin-top: auto; padding-top: 16px; }
+.qcard-total-l { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--fg-3); }
+.qcard-total-v { font-family: var(--font-head); font-size: 28px; color: var(--cyan); }
+.qcard-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 999px;
+  display: grid; place-items: center; background: rgba(8,15,22,.72); border: 1px solid var(--line-2); color: var(--fg);
+  font-size: 20px; line-height: 1; cursor: pointer; transition: background .15s ease, border-color .15s ease; z-index: 3; }
+.qcard-nav:hover { background: var(--elev); border-color: var(--cyan); }
+.qcard-nav.left { left: 12px; } .qcard-nav.right { right: 12px; }
+.qcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-top: 1px solid var(--line-soft); background: var(--bg-2); }
+.qcard-creator { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fg-3); }
+.qcard-creator svg { width: 14px; height: 14px; }
+.qcard-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.qcard-btn { font-family: var(--font-body); font-size: 12.5px; font-weight: 600; padding: 8px 13px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--line-2); color: var(--fg-2); cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease; }
+.qcard-btn:hover { border-color: var(--cyan); color: var(--fg); }
+.qcard-btn.primary { background: transparent; border-color: var(--cyan); color: var(--cyan); }
+.qcard-btn.primary:hover { background: var(--acc-bg, rgba(9,214,220,.13)); }
+.qcard-btn.danger { color: var(--danger); }
+.qcard-btn.danger:hover { border-color: var(--danger); }
+.qcard-dots { display: flex; gap: 7px; }
+.qcard-dot { width: 8px; height: 8px; border-radius: 999px; border: 0; padding: 0; background: var(--line-2); cursor: pointer; transition: width .2s ease, background .2s ease; }
+.qcard-dot.on { width: 22px; background: var(--cyan); }
+.qcard-hint { font-size: 11.5px; color: var(--fg-4); }
+.q-thumb { margin: -8px -8px 12px; border-radius: 12px; overflow: hidden; height: 130px; }
+.q-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 640px) {
+  .qcard-main { grid-template-columns: 1fr; }
+  .qcard-media { min-height: 190px; }
+}
+
 .spread-grid { display: inline-flex; gap: 16px; padding: 2px; }
 .spread-card { scroll-snap-align: start; }
 .spread-card {

@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getQuotePdfSignedUrl, deleteQuotePdf } from '../lib/storage'
-import { quoteStatusLabel } from '../lib/constants'
+import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import QuoteDeck from './QuoteDeck'
@@ -16,6 +16,7 @@ const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleStr
 
 export default function QuotesTab({ clientId, client, clientBuildingSize, building: buildingProp, setBuilding: setBuildingProp }) {
   const { user } = useAuth()
+  const { users } = useUsers()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -78,6 +79,25 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   async function handleBuildSave(payload) {
     await handleCreate(payload)
     setBuilding(false)
+  }
+
+  // Duplicate a quote → a fresh draft (new number + today's date, no PDF yet).
+  // Keeps the builder config + rendering thumbnail so it opens ready to tweak.
+  async function handleDuplicate(quote) {
+    const now = new Date()
+    const { id, created_at, updated_at, deleted_at, deleted_by, ...rest } = quote
+    const copy = {
+      ...rest,
+      client_id: clientId,
+      created_by: user?.id ?? null,
+      quote_date: now.toISOString().slice(0, 10),
+      quote_number: `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`,
+      status: 'draft',
+      pdf_snapshot_url: null,
+      valid_through: new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10),
+    }
+    const { error } = await supabase.from('quotes').insert(copy)
+    if (error) setError(error.message)
   }
 
   async function handleUpdate(id, payload) {
@@ -226,13 +246,14 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       ) : viewMode === 'deck' && !editingId && !adding ? (
         <QuoteDeck
           quotes={quotes}
+          users={users}
           onOpen={openQuote}
           onViewPdf={handleViewPdf}
-          onAccept={handleAccept}
           onDelete={confirmDeleteQuote}
+          onDuplicate={handleDuplicate}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} />
+        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -317,7 +338,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete }) {
+function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -327,21 +348,23 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete }) {
   return (
     <div className="spread-scroll" ref={ref}>
       <div className="spread-grid">
-        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} />)}
+        {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} />)}
       </div>
     </div>
   )
 }
 
-function SpreadCard({ q, onOpen, onViewPdf, onDelete }) {
+function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate }) {
+  const thumb = q.payload_json?.rendering_thumb || null
   return (
     <div className="spread-card" onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
+      {thumb && <div className="q-thumb"><img src={thumb} alt="3D rendering" /></div>}
       <div className="q-head">
         <div>
           <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}</div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
         </div>
-        <span className="q-badge">{quoteStatusLabel(q.status)}</span>
+        <span className="q-badge">{formatDate(q.quote_date)}</span>
       </div>
       {q.building_summary && <div className="q-sub">{q.building_summary}</div>}
       <div className="q-figures">
@@ -353,6 +376,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete }) {
       <div className="q-actions">
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
+        {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
         {onDelete && <button className="btn btn-ghost" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>Delete</button>}
       </div>
     </div>

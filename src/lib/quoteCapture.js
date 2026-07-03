@@ -88,6 +88,62 @@ export async function capturePrintHtml(win) {
   return docs && docs.length ? docs[docs.length - 1] : captured
 }
 
+// Capture printContract()'s branded contract HTML the same silent way as
+// capturePrintHtml — intercept window.open + the Electron save hook so no popup
+// opens and nothing prints; just return the finished document string. Lets us
+// save a contract PDF to the Document Hub without disturbing the builder.
+export async function captureContractHtml(win) {
+  if (typeof win.printContract !== 'function') throw new Error('Builder contract function unavailable.')
+  let captured = ''
+  let fullDoc = ''
+  const origOpen = win.open
+  const origSave = win._ssSavePdfViaElectron
+  const fakeWin = {
+    closed: false, focus() {}, print() {},
+    document: { open() {}, close() {}, write(html) { captured += html } },
+  }
+  win.open = function () { return fakeWin }
+  win._ssSavePdfViaElectron = function (doc) { fullDoc = doc || ''; return true }
+  let prevMode
+  try {
+    const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
+    if (sel) { prevMode = sel.value; sel.value = '2d' }
+    await win.printContract()
+  } finally {
+    win.open = origOpen
+    win._ssSavePdfViaElectron = origSave
+    const sel = typeof win.G === 'function' ? win.G('pdf-render') : null
+    if (sel && prevMode !== undefined) sel.value = prevMode
+  }
+  if (fullDoc) return fullDoc
+  const docs = captured.match(/<!doctype[\s\S]*?<\/html>/gi)
+  return docs && docs.length ? docs[docs.length - 1] : captured
+}
+
+// Downscale a (possibly large, hi-res) image data URL to a small JPEG data URL
+// suitable for storing on a quote row and showing as a card thumbnail.
+export function dataUrlToThumb(dataUrl, maxW = 520, quality = 0.72) {
+  return new Promise((resolve) => {
+    if (!dataUrl) return resolve(null)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxW / (img.naturalWidth || maxW))
+        const w = Math.round((img.naturalWidth || maxW) * scale)
+        const h = Math.round((img.naturalHeight || maxW) * scale)
+        const c = document.createElement('canvas')
+        c.width = w; c.height = h
+        const ctx = c.getContext('2d')
+        ctx.fillStyle = '#0d1825'; ctx.fillRect(0, 0, w, h)
+        ctx.drawImage(img, 0, 0, w, h)
+        resolve(c.toDataURL('image/jpeg', quality))
+      } catch { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = dataUrl
+  })
+}
+
 // The builder stamps an "SS-YYYY-NNNNN" number into the printed quote. Reusing
 // it as quotes.quote_number keeps the DB row and the PDF in lockstep.
 export function quoteNumberFromHtml(html) {

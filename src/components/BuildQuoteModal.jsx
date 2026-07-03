@@ -8,8 +8,8 @@
 // fallback. Pricing/PDF come straight from the program — never re-derived here.
 
 import { useEffect, useRef, useState } from 'react'
-import { uploadQuotePdfBlob } from '../lib/storage'
-import { readBuilderTotals, buildSummary, capturePrintHtml, quoteNumberFromHtml, htmlToPdfBlob } from '../lib/quoteCapture'
+import { uploadClientDocBlob } from '../lib/storage'
+import { readBuilderTotals, buildSummary, capturePrintHtml, captureContractHtml, dataUrlToThumb, quoteNumberFromHtml, htmlToPdfBlob } from '../lib/quoteCapture'
 import { toast } from '../lib/uiFx'
 
 const SRC = '/build/build.html'
@@ -74,6 +74,29 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       const manufacturer = mfrRaw === 'cci' ? 'cci' : mfrRaw === 'ca' ? 'ca' : 'other'
       const dims = [f.bw, f.bl, f.bh].filter(Boolean).join('x') || null
       const building_summary = buildSummary(pg, data)
+
+      // Snapshot the live 3D iso view as a small thumbnail for the quote card.
+      // Best-effort: a save must never fail because the capture didn't work.
+      let rendering_thumb = null
+      try {
+        const bw = iframeRef.current?.contentWindow
+        if (bw && typeof bw.__ssCapture3D === 'function') {
+          setStatus('Capturing 3D…')
+          const shots = await bw.__ssCapture3D()
+          rendering_thumb = await dataUrlToThumb(shots?.iso)
+        }
+      } catch { /* rendering is optional */ }
+
+      // Card display fields (colors / foundation / type) read from the program.
+      const optText = (id) => {
+        const el = pg.document.getElementById(id)
+        if (!el || el.selectedIndex < 0) return null
+        const t = (el.options[el.selectedIndex]?.text || '').trim()
+        return t && t !== '—' ? t : null
+      }
+      const colorName = (id) => { const t = optText(id); return t ? t.replace(/\s*\(.*\)\s*$/, '').trim() : null }
+      const card = { roofColor: colorName('cr'), wallColor: colorName('cw'), foundation: optText('foundation'), buildingType: optText('btype') }
+
       setStatus('Capturing quote…')
       const printHtml = await capturePrintHtml(pg)
       const now = new Date()
@@ -85,7 +108,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
         if (printHtml) {
           setStatus('Generating PDF…')
           const blob = await renderQuotePdf(printHtml)
-          pdf_snapshot_url = await uploadQuotePdfBlob(client.id, blob, `${quote_number}.pdf`)
+          // Save under the 'quote' category so it also lands in Document Hub › Quotes.
+          pdf_snapshot_url = await uploadClientDocBlob(client.id, 'quote', blob, `${quote_number}.pdf`, 'application/pdf')
         } else { pdfWarn = 'Quote saved, but the PDF could not be captured.' }
       } catch (e) { pdfWarn = `Quote saved, but the PDF could not be captured (${e.message}).` }
 
@@ -95,7 +119,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
         quote_number, manufacturer, building_summary, building_size: dims,
         total_amount: totals.total, deposit_amount: totals.deposit, balance_amount: totals.balance,
         status: 'draft', valid_through, pdf_snapshot_url,
-        payload_json: { ...data, totals, manufacturer, quote_number, building_summary, source: '3d-builder' },
+        payload_json: { ...data, totals, manufacturer, quote_number, building_summary, source: '3d-builder', rendering_thumb, card },
         notes: null,
       }
       setStatus('Saving…')
@@ -179,6 +203,52 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
         b.removeAttribute('onclick')
         b.onclick = null
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
+      })
+    }
+    const t = setInterval(tick, 600)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Save a PDF copy of the contract to the Document Hub (Contracts), then let the
+  // program generate it for the rep as usual.
+  async function saveContractThenPrint(pg) {
+    if (!pg) return
+    try {
+      if (client?.id) {
+        setStatus('Saving contract…')
+        const html = await captureContractHtml(pg)
+        if (html && html.length > 3000) {
+          const blob = await renderQuotePdf(html)
+          const num = quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
+          await uploadClientDocBlob(client.id, 'contract', blob, `${num}-contract.pdf`, 'application/pdf')
+          toast(`Contract saved to ${client.name || 'lead'} · Documents › Contracts`, 'success')
+        }
+      }
+    } catch (e) {
+      console.warn('contract save failed', e)
+    } finally {
+      setStatus('')
+    }
+    try { pg.printContract() } catch (e) { toast('Could not open the contract: ' + (e.message || e)) }
+  }
+
+  // Hook the program's GENERATE CONTRACT button so it also saves to the Doc Hub.
+  // Capture-phase + stopImmediatePropagation blocks the inline onclick so it
+  // doesn't also fire (which would double-open and race the silent capture).
+  useEffect(() => {
+    const tick = () => {
+      const pg = getProgramWindow()
+      if (!pg || !pg.document) return
+      const btns = [...pg.document.querySelectorAll('button')].filter((b) =>
+        /printContract/.test(b.getAttribute('onclick') || '') || /generate contract/i.test(b.textContent || ''),
+      )
+      btns.forEach((b) => {
+        if (b.dataset.ssContractHooked === '1') return
+        b.dataset.ssContractHooked = '1'
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveContractThenPrint(getProgramWindow()) }, true)
       })
     }
     const t = setInterval(tick, 600)
