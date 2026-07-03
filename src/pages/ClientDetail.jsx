@@ -160,7 +160,7 @@ export default function ClientDetail() {
 
   if (editing) {
     return (
-      <div>
+      <div style={{ padding: '24px 26px 48px', maxWidth: 920, margin: '0 auto' }}>
         <div className="page-header">
           <div>
             <Link to="/clients" className="back-link">← Back to Leads</Link>
@@ -178,162 +178,140 @@ export default function ClientDetail() {
     ? `${formatDate(client.follow_up_date)}${client.follow_up_time ? ` @ ${fmtTime(client.follow_up_time)}` : ''}`
     : '—'
 
+  const repName = userLabel(users, client.primary_rep)
+  const repInitial = repName && repName !== '—' ? repName.trim()[0].toUpperCase() : '?'
+  const mfr = client.building_mfr || client.order_mfr || (latestQuote?.manufacturer ? (MFR_LABEL[latestQuote.manufacturer] || latestQuote.manufacturer) : '—')
+  const stroke = (paths) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
+
   return (
-    <>
-      <Link to="/clients" className="back-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-        Back to Leads
-      </Link>
+    <div className="cp">
+      {/* ===================== LEFT: Client Summary ===================== */}
+      <aside className="cp-summary">
+        <Link to="/clients" className="cp-back">{stroke(<path d="M19 12H5M12 19l-7-7 7-7" />)}Back to Leads</Link>
 
-      {confirmingDelete && (
-        <div className="confirm-card">
-          <div>
-            <strong>Delete this lead?</strong>
-            <div className="muted" style={{ marginTop: 4 }}>
-              This permanently deletes the lead and all their quotes and activity history. Cannot be undone.
-            </div>
+        <div className="cp-id">
+          <div className="cp-avatar">{initials}</div>
+          <div className="cp-name">
+            <h2>{client.name}</h2>
+            <span className="cp-edit" onClick={() => setEditing(true)} role="button" aria-label="Edit lead">
+              {stroke(<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></>)}
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setConfirmingDelete(false)} className="btn-secondary">Cancel</button>
-            <button onClick={handleDelete} className="btn-danger">Yes, delete</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== Lead Header — 4-column card ===== */}
-      <section className="card lead-head">
-        {/* identity */}
-        <div className="identity">
-          <div className="identity-top">
-            <div className="avatar lg">{initials}</div>
-            <div style={{ flex: 1 }}>
-              <div className="id-name">
-                <h2>{client.name}</h2>
-                <svg className="id-edit" onClick={() => setEditing(true)} role="button" aria-label="Edit lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
-              </div>
-              {client.phone && (
-                <a className="id-row link" href={`tel:${client.phone}`} style={{ textDecoration: 'none' }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" /></svg>{client.phone}
-                </a>
-              )}
-              {client.email && (
-                <a className="id-row link" href={`mailto:${client.email}`} style={{ textDecoration: 'none' }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></svg>{client.email}
-                </a>
-              )}
-              {addr && (
-                <div className="id-row">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>{addr}
-                </div>
-              )}
-            </div>
-          </div>
-          {client.source && <span className="tag">Lead Source: <b>{sourceLabel(client.source)}</b></span>}
+          <div className="cp-statuspill"><StatusPill status={client.status} /></div>
         </div>
 
-        {/* project */}
-        <div>
-          <div className="col-label">Project</div>
-          <div className="spec-list">
-            <div className="spec-row"><span className="k">Building Type</span><span className="v">{client.building_type ? buildingTypeLabel(client.building_type) : '—'}</span></div>
-            <div className="spec-row"><span className="k">Building Size</span><span className="v num">{client.building_size || '—'}</span></div>
-            {client.roof_style && <div className="spec-row"><span className="k">Roof Style</span><span className="v">{client.roof_style}</span></div>}
-            <div className="spec-row"><span className="k">Manufacturer</span><span className="v">{client.building_mfr || client.order_mfr || (latestQuote?.manufacturer ? (MFR_LABEL[latestQuote.manufacturer] || latestQuote.manufacturer) : '—')}</span></div>
-            <div className="spec-row"><span className="k">Foundation Type</span><span className="v">{client.order_foundation || '—'}</span></div>
-            <div className="spec-row"><span className="k">Current Quote</span><span className="v price num">{fmtMoney(latestQuote?.total_amount) ?? '—'}</span></div>
+        <div className="cp-contact">
+          {client.phone && <a className="cp-crow" href={`tel:${client.phone}`}>{stroke(<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />)}<span>{client.phone}</span></a>}
+          {client.email && <a className="cp-crow" href={`mailto:${client.email}`}>{stroke(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)}<span className="ell">{client.email}</span></a>}
+          {addr && <div className="cp-crow">{stroke(<><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>)}<span>{addr}</span></div>}
+          {client.source && <div className="cp-source">Lead Source · <b>{sourceLabel(client.source)}</b></div>}
+        </div>
+
+        <div className="cp-block">
+          <div className="cp-block-label">Project Spec</div>
+          <div className="cp-spec">
+            <div className="cp-spec-row"><span>Building Type</span><span className="v teal">{client.building_type ? buildingTypeLabel(client.building_type) : '—'}</span></div>
+            <div className="cp-spec-row"><span>Building Size</span><span className="v num">{client.building_size || '—'}</span></div>
+            <div className="cp-spec-row"><span>Manufacturer</span><span className="v">{mfr}</span></div>
+            <div className="cp-spec-row"><span>Foundation</span><span className="v">{client.order_foundation || '—'}</span></div>
+            <div className="cp-spec-row"><span>Current Quote</span><span className="v teal num">{fmtMoney(latestQuote?.total_amount) ?? '—'}</span></div>
           </div>
         </div>
 
-        {/* stage & assigned */}
-        <div>
-          <div className="col-label">Stage &amp; Assigned</div>
-          <div className="cs-pills" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <StatusPill status={client.status} />
-            {client.status === 'ordered' && client.project_stage && (
-              <span className="status-pill" style={{ background: projectStageColor(client.project_stage).bg, color: projectStageColor(client.project_stage).fg }}>
-                {projectStageLabel(client.project_stage)}
-              </span>
-            )}
+        <div className="cp-block">
+          <div className="cp-block-label">Pipeline Stage</div>
+          {client.status === 'ordered' && client.project_stage && (
+            <span className="status-pill" style={{ display: 'inline-flex', marginBottom: 12, background: projectStageColor(client.project_stage).bg, color: projectStageColor(client.project_stage).fg }}>
+              {projectStageLabel(client.project_stage)}
+            </span>
+          )}
+          <LeadTempSlider
+            value={client.lead_temperature}
+            updatedAt={client.lead_temp_updated_at}
+            updatedByName={userLabel(users, client.lead_temp_updated_by)}
+            onChange={setTemperature}
+          />
+        </div>
+
+        <div className="cp-block">
+          <div className="cp-block-label">Assigned Rep</div>
+          <div className="cp-rep">
+            <span className="cp-rep-av">{repInitial}</span>
+            <b>{repName}</b>
+            <span className="cp-rep-change" role="button" onClick={() => setEditing(true)}>Change</span>
           </div>
-          {/* Lead temperature drives the sales stage — slide it and the status follows. */}
-          <div style={{ margin: '16px 0 4px' }}>
-            <LeadTempSlider
-              value={client.lead_temperature}
-              updatedAt={client.lead_temp_updated_at}
-              updatedByName={userLabel(users, client.lead_temp_updated_by)}
-              onChange={setTemperature}
-            />
-          </div>
+        </div>
+
+        <div className="cp-block">
           {client.status === 'ordered' ? (
-            <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details — manufacturer, dates, install window">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
-              Edit Order
+            <button className="order-btn ordered" onClick={() => setOrdering(true)} title="Edit order details">
+              {stroke(<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z" /></>)}Edit Order
             </button>
           ) : (
             <button className="order-btn" onClick={() => setOrdering(true)} title="Mark this lead as officially ordered">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-              Mark as Ordered
+              {stroke(<path d="M20 6 9 17l-5-5" />)}Mark as Ordered
             </button>
           )}
-          <div className="assigned-row" style={{ marginTop: 18 }}><span className="muted-label">Assigned Rep</span></div>
-          <div className="assigned-row" style={{ marginTop: 6 }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-            <b>{userLabel(users, client.primary_rep)}</b>
-          </div>
-          <div style={{ marginTop: 18 }}><span className="muted-label">Next Follow-Up</span></div>
-          <div className="followup-time">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>{nextFollow}
-          </div>
+          <div className="cp-block-label" style={{ marginTop: 16 }}>Next Follow-Up</div>
+          <div className="cp-nextfu">{stroke(<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></>)}{nextFollow}</div>
           <div className="chip-grid">
             <button className="chip" onClick={() => quickReschedule('today')}>Today</button>
             <button className="chip" onClick={() => quickReschedule('3d')}>+3 days</button>
             <button className="chip" onClick={() => quickReschedule('2w')}>+2 weeks</button>
             <button className="chip" onClick={() => quickReschedule('1m')}>+1 month</button>
-            <button className="chip" onClick={() => quickReschedule('6w')}>+6 weeks</button>
-            <button className="chip snooze" onClick={() => quickReschedule('snooze')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>Snooze 1 wk
-            </button>
             <button className="chip" onClick={() => setEditing(true)}>Custom…</button>
           </div>
           {'cooling_off' in client && (
             <div className="cadence-note" onClick={toggleCooling} role="button" title="Toggle cooling-off cadence"
-              style={{ cursor: 'pointer', color: client.cooling_off ? 'var(--warning)' : 'var(--fg-3)' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" /><path d="M12 8v4l3 2" /></svg>
+              style={{ cursor: 'pointer', marginTop: 12, color: client.cooling_off ? 'var(--warning)' : 'var(--fg-3)' }}>
+              {stroke(<><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" /><path d="M12 8v4l3 2" /></>)}
               {client.cooling_off ? 'Cooling off — longer cadence' : 'Standard cadence — click to cool off'}
             </div>
           )}
         </div>
 
-        <span className="delete-lead" onClick={() => setConfirmingDelete(true)} role="button">Delete Lead</span>
-      </section>
+        <button className="cp-delete" onClick={() => setConfirmingDelete(true)}>Delete Lead</button>
+      </aside>
 
-      {client.status === 'ordered' && (
-        <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
-      )}
+      {/* ===================== RIGHT: Work area ===================== */}
+      <div className="cp-work">
+        {confirmingDelete && (
+          <div className="confirm-card">
+            <div>
+              <strong>Delete this lead?</strong>
+              <div className="muted" style={{ marginTop: 4 }}>This permanently deletes the lead and all their quotes and activity history. Cannot be undone.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setConfirmingDelete(false)} className="btn-secondary">Cancel</button>
+              <button onClick={handleDelete} className="btn-danger">Yes, delete</button>
+            </div>
+          </div>
+        )}
 
-      <div className="row-2">
+        {client.status === 'ordered' && (
+          <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
+        )}
+
         <ActivityProgress client={client} showAudience={client.status === 'ordered'} />
-        <FollowUpsCard clientId={client.id} />
+
+        {client.status === 'ordered' && <OrderTimeline client={client} />}
+
+        <div className="row-2 quotes-docs">
+          <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
+            building={buildingQuote} setBuilding={setBuildingQuote} />
+          <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />
+        </div>
+
+        <div className="row-2">
+          <NotesSection clientId={client.id} />
+          <FollowUpsCard clientId={client.id} />
+        </div>
       </div>
-
-      {client.status === 'ordered' && <OrderTimeline client={client} />}
-
-      <div className="row-2 quotes-docs">
-        <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
-          building={buildingQuote} setBuilding={setBuildingQuote} />
-        <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />
-      </div>
-
-      <NotesSection clientId={client.id} />
 
       {ordering && (
-        <OrderModal
-          client={client}
-          onClose={() => setOrdering(false)}
-          onSaved={(patch) => setClient(c => ({ ...c, ...patch }))}
-        />
+        <OrderModal client={client} onClose={() => setOrdering(false)} onSaved={(patch) => setClient(c => ({ ...c, ...patch }))} />
       )}
-    </>
+    </div>
   )
 }
 

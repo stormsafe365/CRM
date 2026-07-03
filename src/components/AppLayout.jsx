@@ -68,7 +68,10 @@ export default function AppLayout({ children }) {
   // content area — no centered max-width column, no scroll padding. The page
   // manages its own internal scrolling.
   const path = useLocation().pathname
-  const bleed = path.startsWith('/build') || path.startsWith('/pipeline') || path.startsWith('/calendar')
+  // The lead detail page (/clients/<id>) is a full-bleed 2-column layout; the
+  // Leads list (/clients) and new-lead form (/clients/new) are normal pages.
+  const isLeadDetail = /^\/clients\/[^/]+$/.test(path) && path !== '/clients/new'
+  const bleed = path.startsWith('/build') || path.startsWith('/pipeline') || path.startsWith('/calendar') || isLeadDetail
   const { count: dueCount, clients: dueClients } = useDueFollowups()
   const notifSupported = typeof window !== 'undefined' && 'Notification' in window
   const [notifPerm, setNotifPerm] = useState(notifSupported ? Notification.permission : 'unsupported')
