@@ -113,7 +113,18 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   }
   async function onDelete(path) {
     if (!window.confirm('Delete this file? This cannot be undone.')) return
-    try { await deleteDoc(path); await refresh() } catch (e) { setError(e.message) }
+    try {
+      await deleteDoc(path)
+      // Mirror: if a quote is backed by this exact PDF, soft-delete that quote too
+      // so the Quotes box updates in lockstep (its realtime picks up the change).
+      // No-op for non-quote files (contracts/renderings) — no row points at them.
+      try {
+        await supabase.from('quotes')
+          .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+          .eq('client_id', clientId).eq('pdf_snapshot_url', path)
+      } catch { /* the file is deleted regardless */ }
+      await refresh()
+    } catch (e) { setError(e.message) }
   }
 
   // Category card → popover menu (View all / Upload / [Build new quote]).

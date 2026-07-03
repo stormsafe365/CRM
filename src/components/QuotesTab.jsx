@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { getQuotePdfSignedUrl, deleteQuotePdf } from '../lib/storage'
+import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
@@ -143,6 +143,12 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     // the deck/list updates immediately instead of showing a ghost quote.
     setQuotes(qs => qs.filter(x => x.id !== quote.id))
     setConfirmingDeleteId(null)
+    // Mirror the deletion into the Document Hub — remove this quote's PDF too so
+    // the Quotes box and the Hub stay in lockstep (config stays in payload_json).
+    if (quote.pdf_snapshot_url) {
+      try { await deleteDoc(quote.pdf_snapshot_url) } catch { /* ignore */ }
+      try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId } })) } catch { /* ignore */ }
+    }
   }
 
   async function handleViewPdf(path) {
