@@ -7053,6 +7053,16 @@ function collectQuoteData(){
     ['lts','ltw','ltl2','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
+    // Lean-to accessories (roll-up / walk / window / frame-out on the lean-to) + their offsets
+    d.accs=[];
+    el.querySelectorAll('.lt-acc-e').forEach(function(ae){
+      var a={};
+      ['lt-acc-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(cls){
+        var f=ae.querySelector('.'+cls); if(f) a[cls]=f.value;
+      });
+      a.offs=Array.prototype.map.call(ae.querySelectorAll('.lt-acc-off'),function(i){return i.value;});
+      d.accs.push(a);
+    });
     data.leantos.push(d);
   });
 
@@ -7289,6 +7299,25 @@ function restoreQuoteData(data){
     });
     // Trigger type change to show/hide correct rows
     if(d['lt-type']) ltTypeChange(el);
+    // Restore lean-to accessories (doors / windows / frame-outs) with positions.
+    // Order matters: set type + wall + qty FIRST so the size/chain/seal/offset
+    // option lists are rebuilt before we set the saved values.
+    (d.accs||[]).forEach(function(a){
+      addLTAcc(el);
+      var aes=el.querySelectorAll('.lt-acc-e'); var ae=aes[aes.length-1];
+      var tEl=ae.querySelector('.lt-acc-type'); if(tEl&&a['lt-acc-type']!==undefined){ tEl.value=a['lt-acc-type']; updLTAccType(tEl); }
+      var locEl=ae.querySelector('.lt-acc-loc'); if(locEl&&a['lt-acc-loc']!==undefined) locEl.value=a['lt-acc-loc'];
+      var qEl=ae.querySelector('.lt-acc-qty'); if(qEl&&a['lt-acc-qty']!==undefined) qEl.value=a['lt-acc-qty'];
+      updateLTAccSize(ae);
+      var szEl=ae.querySelector('.lt-acc-size'); if(szEl&&a['lt-acc-size']!==undefined) szEl.value=a['lt-acc-size'];
+      refreshLTAccChSl(ae); rebuildLTAccOffsets(ae);
+      ['lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi'].forEach(function(cls){
+        var f=ae.querySelector('.'+cls); if(f&&a[cls]!==undefined) f.value=a[cls];
+      });
+      var pEl=ae.querySelector('.lt-acc-pos'); if(pEl&&a['lt-acc-pos']!==undefined){ pEl.value=a['lt-acc-pos']; updLTAccPos(pEl); }
+      var offInputs=ae.querySelectorAll('.lt-acc-off');
+      (a.offs||[]).forEach(function(v,i){ if(offInputs[i]) offInputs[i].value=v; });
+    });
   });
 
   // Step 9: Clear and restore additional components
