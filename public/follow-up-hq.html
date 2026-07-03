@@ -432,20 +432,22 @@ function freshState(){
 }
 function load(){
   try{
-    let raw=localStorage.getItem(LS);
-    // One-time forward-migration: if this version's store is empty, carry over the
-    // last saved calendar state from a previous key so nothing entered here is lost.
-    if(!raw){ raw=localStorage.getItem('ssfu_v7')||localStorage.getItem('ssfu_v6')||localStorage.getItem('ssfu_v5'); }
+    let raw=localStorage.getItem(LS), migrating=false;
+    // One-time forward-migration: ONLY if this version's store is empty, carry over
+    // the last saved calendar state from a previous key so nothing entered here is
+    // lost. `migrating` is true only on that path.
+    if(!raw){ raw=localStorage.getItem('ssfu_v7')||localStorage.getItem('ssfu_v6')||localStorage.getItem('ssfu_v5'); migrating=!!raw; }
     if(raw){
       const s=JSON.parse(raw);
       s.ui={tweaksOpen:false,modal:null};
       delete s.tweaks;   // keep the new (design) palette + theme
       delete s.stages;   // use the current stage set
-      // Drop the old demo client + every PREVIOUS auto-generated follow-up, so each
-      // ordered lead re-seeds onto the new milestone chain on next sync. Manual
-      // (non-gen) follow-ups are kept.
+      // Always drop the old demo client. Drop PREVIOUS auto-generated follow-ups
+      // ONLY when migrating from an older key (so old orders re-seed onto the new
+      // chain). On a normal load of the current store, KEEP generated follow-ups —
+      // otherwise every restart wipes check-offs + the spawned milestone chain.
       if(Array.isArray(s.clients))   s.clients   = s.clients.filter(c=>c.id!=='woods');
-      if(Array.isArray(s.followups)) s.followups = s.followups.filter(f=>f.client!=='woods'&&!f.gen);
+      if(Array.isArray(s.followups)) s.followups = s.followups.filter(f=>f.client!=='woods' && (!migrating || !f.gen));
       return Object.assign(freshState(),s);
     }
   }catch(e){}
@@ -497,6 +499,8 @@ function topbar(){
     </div>
     <button class="iconbtn" data-act="tweaks" title="Tweaks">${icon('gear',18)}</button>
     <button class="btn ghost" data-act="rebuildall" title="Re-seed every ordered client onto the latest follow-up timeline">${icon('arrowR',16)} Apply new timeline</button>
+    <button class="btn ghost" data-act="exportdata" title="Download all calendar data (clients + follow-ups) as a JSON file to share">${icon('download',16)} Export</button>
+    <button class="btn ghost" data-act="importdata" title="Load calendar data from a JSON file (replaces current)">${icon('arrowR',16)} Import</button>
     <button class="btn ghost" data-act="newfu">${icon('plus',16)} Follow-up</button>
     <button class="btn" data-act="neworder">${icon('truck',16)} New order</button>
   </div>`;
@@ -821,6 +825,8 @@ document.addEventListener('click',e=>{
     case'regen':regen(id);break;
     case'rebuildall':{const ord=state.clients.filter(c=>c.ordered);if(!ord.length){toast('No ordered clients to rebuild.','alert');break;}if(confirm(`Apply the latest follow-up timeline to all ${ord.length} ordered client(s)? Their generated follow-ups will be replaced — then tick off the milestones each has already passed to catch them up.`)){ord.forEach(c=>rebuildTimeline(c));save();render();toast(`Rebuilt ${ord.length} client(s) onto the new timeline.`,'truck');}break;}
     case'exportics':exportICS(id);break;
+    case'exportdata':exportData();break;
+    case'importdata':importData();break;
     case'theme':state.tweaks.theme=el.dataset.v;save();render();break;
     case'accent':state.tweaks.accent=el.dataset.c;save();render();break;
     case'dense':state.tweaks.dense=el.dataset.v==='1';save();render();break;
@@ -884,6 +890,32 @@ function saveOrder(id){
   toast(id?'Order updated — timeline rebuilt.':'Order created — timeline built.','truck');
 }
 function regen(id){const c=clientById(id);if(!c)return;rebuildTimeline(c);save();render();toast('Timeline rebuilt from order.','truck');}
+// Export the whole calendar (clients + follow-ups + process/timeframes) as JSON
+// to hand off — e.g. to claude design so they can load the real clients & dates.
+function exportData(){
+  const{ui,...p}=state;
+  const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+  a.download='StormSafe-FollowUpHQ-data-'+TODAY+'.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('Calendar data exported — send the JSON file to share.','download');
+}
+// Load a previously-exported JSON, replacing the current calendar data.
+function importData(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='application/json,.json';
+  inp.onchange=()=>{const file=inp.files&&inp.files[0];if(!file)return;
+    const r=new FileReader();
+    r.onload=()=>{try{
+      const s=JSON.parse(r.result);
+      if(!s||!Array.isArray(s.clients)||!Array.isArray(s.followups))throw 0;
+      if(!confirm('Replace the current calendar with the imported file?\n\n'+s.clients.length+' client(s), '+s.followups.length+' follow-up(s). This overwrites what’s here now.'))return;
+      state=Object.assign(freshState(),s);state.ui={tweaksOpen:false,modal:null};
+      if(!state.stages||!state.stages.length)state.stages=structuredClone(DEFAULT_STAGES);
+      STAGES=state.stages;save();render();
+      toast('Imported '+s.clients.length+' client(s).','check');
+    }catch(err){toast('That file isn’t a valid calendar export.','alert');}};
+    r.readAsText(file);};
+  inp.click();
+}
 function exportICS(id){
   const c=clientById(id);if(!c)return;
   const fus=state.followups.filter(f=>f.client===id).sort((a,b)=>a.date.localeCompare(b.date));

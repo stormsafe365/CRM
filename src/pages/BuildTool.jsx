@@ -5,9 +5,13 @@
 // rendering live in the CRM. Renders edge-to-edge (AppLayout drops the canvas
 // max-width + padding for /build) with only a slim action bar on top.
 
+import { useMemo } from 'react'
 import { toast } from '../lib/uiFx'
 
 export default function BuildTool() {
+  // Cache-bust build.html per tab-open so a freshly synced builder shows up
+  // without a hard refresh (the iframe otherwise serves a stale cached copy).
+  const buildSrc = useMemo(() => `/build/build.html?v=${Date.now()}`, [])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Slim action bar — the builder has its own header, so keep this minimal. */}
@@ -31,7 +35,7 @@ export default function BuildTool() {
       </div>
 
       <iframe
-        src="/build/build.html"
+        src={buildSrc}
         title="StormSafe 3D Builder"
         allow="fullscreen"
         style={{ flex: 1, width: '100%', minHeight: 0, border: 0, display: 'block', background: '#08121d' }}

@@ -1,27 +1,50 @@
-// Dashboard: command-center view, styled to match the prototype.
-// Two-track aware: SALES leads (broken into the subcategories Jenna asked
-// for) are kept separate from ORDERED / in-project clients so they never
-// get mixed up. All figures derive from live Supabase data; empty states
-// show when there isn't enough data yet rather than faking numbers.
+// Dashboard — command-center view, rebuilt to the Claude Design "CRM Dashboard
+// Redesign" handoff: greeting + action row, seasonal storm strip, KPI row,
+// full-width follow-up calendar, Build & Quote tools, a compact Quotes-Sent
+// strip, and a 4-panel bottom row. The DESIGN is ported; every value is wired
+// to live Supabase data (the mockup's sample numbers are NOT used). Mapped onto
+// the app's existing tokens (cyan/lime/amber, Orbitron heads) for consistency
+// with the rest of the CRM.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
-  statusLabel, PROJECT_STAGES, projectStageLabel,
+  statusLabel, PROJECT_STAGES,
   WORKING_STATUSES, DEAD_STATUSES,
 } from '../lib/constants'
 import { useAuth } from '../context/AuthContext'
 import { useCountUp } from '../lib/useCountUp'
 import { isoToday, fmtTime } from '../lib/followups'
-import Sparkline from '../components/Sparkline'
-import { AreaChart, Donut, Gauge } from '../components/charts'
+import { readState, followupsForClient } from '../lib/ssfuEngine'
+import { AreaChart } from '../components/charts'
 import DashCalendar from '../components/DashCalendar'
-import { toast } from '../lib/uiFx'
+import BuildQuoteModal from '../components/BuildQuoteModal'
 
 const DAY = 86400000
-const moneyShort = (n) =>
-  n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'K' : '$' + Math.round(n)
+
+/* ---- Lucide-style inline icons (2px stroke, matches the shell) ---- */
+const ico = {
+  userPlus: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M20 8v6M23 11h-6" /></>,
+  sparkles: <><path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6 7 18.2l1.9-5.8L4 8.8h6.1z" /></>,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  flame: <><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></>,
+  hardHat: <><path d="M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a8 8 0 0 0-16 0" /><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5" /><path d="M4 15v-3a6 6 0 0 1 6-6M20 15v-3a6 6 0 0 0-6-6" /></>,
+  calClock: <><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M16 2v4M8 2v4M3 10h18" /><circle cx="18" cy="18" r="4" /><path d="M18 16.5V18l1 1" /></>,
+  fileText: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></>,
+  layout: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></>,
+  arrowR: <><path d="M5 12h14M12 5l7 7-7 7" /></>,
+  wind: <><path d="M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2" /></>,
+  alert: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" /></>,
+  check: <><path d="M20 6 9 17l-5-5" /></>,
+}
+const Icon = ({ d, w = 18, style }) => (
+  <svg viewBox="0 0 24 24" width={w} height={w} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>{d}</svg>
+)
+const Eyebrow = ({ children }) => (
+  <div className="dsh-eyebrow"><span className="dsh-bar" />{children}</div>
+)
 
 const OPEN_QUOTE_STATUSES = ['draft', 'sent', 'verbal_accept']
 
@@ -32,12 +55,21 @@ export default function Dashboard() {
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('7D')
+  const [building, setBuilding] = useState(false) // "New Quote" → same builder as client-portal Build Quote
+  const [ssfu, setSsfu] = useState(() => readState()) // Follow-Up HQ milestone store (ssfu_v8)
+
+  // Re-read the Follow-Up HQ store on focus / when it changes, so the Project
+  // Stage box stays in sync with what's managed in Follow-Up HQ.
+  useEffect(() => {
+    const refresh = () => setSsfu(readState())
+    window.addEventListener('focus', refresh)
+    window.addEventListener('storage', refresh)
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh) }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      // select('*') so a missing optional column (e.g. project_stage before
-      // its migration runs) never makes the whole query fail.
       const [c, q] = await Promise.all([
         supabase.from('clients').select('*'),
         supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at'),
@@ -56,14 +88,11 @@ export default function Dashboard() {
     return () => { cancelled = true; supabase.removeChannel(channel) }
   }, [])
 
-  // Local calendar date (not UTC) so "due today" matches how follow_up_date is
-  // stored and what the Today page / nav badge use. A UTC date here made evening
-  // follow-ups silently drop off the Dashboard for US-timezone users.
   const today = isoToday()
   const weekAgoISO = new Date(Date.now() - 7 * DAY).toISOString()
   const monthStartISO = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString() })()
 
-  /* ---------- lead subcategories (Jenna's list) ---------- */
+  /* ---------- lead subcategories ---------- */
   const buckets = useMemo(() => {
     const isNewLead = c => c.status === 'new_lead'
     return {
@@ -87,220 +116,341 @@ export default function Dashboard() {
     [clients, today])
   const dueToday = useMemo(() =>
     clients.filter(c => c.follow_up_date === today), [clients, today])
-
-  // Ordered clients whose deposit/ACH hasn't cleared yet.
   const pendingPay = useMemo(() =>
     clients.filter(c => c.status === 'ordered' && !c.payment_cleared), [clients])
 
-  /* ---------- project-stage breakdown (ordered clients) ---------- */
+  // Real week-over-week lead inflow (created this week vs the 7 days before).
+  const leadDelta = useMemo(() => {
+    const now = Date.now()
+    const inWin = (lo, hi) => clients.filter(c => {
+      if (!c.created_at) return false
+      const t = new Date(c.created_at).getTime()
+      return t >= now - lo * DAY && t < now - hi * DAY
+    }).length
+    return inWin(7, 0) - inWin(14, 7)
+  }, [clients])
+
+  /* ---------- project-stage breakdown ----------
+   * Derives each ordered client's stage from the Follow-Up HQ milestone system
+   * (ssfu_v8) — the furthest milestone checked off — so it matches what's
+   * managed there. Falls back to clients.project_stage (set by the client-page
+   * stepper) when a client has no milestone progress yet. */
   const projectBreakdown = useMemo(() => {
     const counts = {}
     for (const s of PROJECT_STAGES) counts[s.value] = 0
     for (const c of buckets.ordered) {
-      const stage = c.project_stage || 'ordered'
+      const stage = derivedProjectStage(c, ssfu)
       counts[stage] = (counts[stage] ?? 0) + 1
     }
     const max = Math.max(1, ...Object.values(counts))
     return PROJECT_STAGES.map(s => ({ ...s, count: counts[s.value], scale: counts[s.value] / max }))
-  }, [buckets.ordered])
+  }, [buckets.ordered, ssfu])
 
-  /* ---------- new-clients sparkline (last 7 days) ---------- */
-  const newClientSpark = useMemo(() => {
-    const b = Array(7).fill(0)
-    const start = Date.now() - 6 * DAY
-    for (const c of clients) {
-      if (!c.created_at) continue
-      const idx = Math.floor((new Date(c.created_at).getTime() - start) / DAY)
-      if (idx >= 0 && idx < 7) b[idx]++
-    }
-    return b.some(v => v > 0) ? b : [0, 0, 0, 0, 0, 0, 0]
-  }, [clients])
-
-  /* ---------- charts ---------- */
+  /* ---------- quotes-sent chart + header stat ---------- */
   const area = useMemo(() => buildQuoteSeries(quotes, period), [quotes, period])
-  const mfr = useMemo(() => {
-    const open = quotes.filter(q => OPEN_QUOTE_STATUSES.includes(q.status))
-    const ca = open.filter(q => q.manufacturer === 'ca').reduce((a, q) => a + Number(q.total_amount || 0), 0)
-    const cci = open.filter(q => q.manufacturer === 'cci').reduce((a, q) => a + Number(q.total_amount || 0), 0)
-    return { ca, cci, total: ca + cci }
-  }, [quotes])
-  const winRate = useMemo(() => {
-    const won = quotes.filter(q => q.status === 'deposit_paid').length
-    const lost = quotes.filter(q => q.status === 'declined').length
-    const denom = won + lost
-    return { frac: denom ? won / denom : 0, denom }
-  }, [quotes])
+  const quotesStat = useMemo(() => {
+    const total = area.points.reduce((a, b) => a + b, 0)
+    let deltaPct = null
+    if (period === '7D') {
+      const now = Date.now()
+      const inWin = (lo, hi) => quotes.filter(q => {
+        if (!q.created_at) return false
+        const t = new Date(q.created_at).getTime()
+        return t >= now - lo * DAY && t < now - hi * DAY
+      }).length
+      const thisW = inWin(7, 0), lastW = inWin(14, 7)
+      if (lastW > 0) deltaPct = Math.round((thisW - lastW) / lastW * 100)
+      else if (thisW > 0) deltaPct = 100
+    }
+    const label = period === '7D' ? 'this week' : period === '30D' ? 'last 30 days' : 'this quarter'
+    return { total, deltaPct, label }
+  }, [area, quotes, period])
 
+  /* ---------- greeting ---------- */
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const firstName = (user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'there')
     .split(' ')[0].replace(/^./, c => c.toUpperCase())
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  // Atlantic hurricane season: June 1 – November 30 (months 5–10).
+  const inStormSeason = (() => { const m = new Date().getMonth(); return m >= 5 && m <= 10 })()
 
   if (loading) return <div className="muted" style={{ padding: '24px 0' }}>Loading dashboard…</div>
 
+  const kpis = [
+    { label: 'New Leads · This Week', icon: ico.userPlus, value: buckets.newLeadsWeek.length, color: 'var(--fg)',
+      delta: leadDelta > 0 ? `▲ ${leadDelta}` : leadDelta < 0 ? `▼ ${Math.abs(leadDelta)}` : '—',
+      deltaColor: leadDelta > 0 ? 'var(--cyan)' : 'var(--fg-3)',
+      sub: `${buckets.newLeadsMonth.length} this month`, to: '/clients?view=new_lead' },
+    { label: 'Active Working Leads', icon: ico.flame, value: buckets.activeWorking.length, color: 'var(--cyan)',
+      sub: 'Working · hot · contract sent', to: '/clients?view=working' },
+    { label: 'Ordered · In Project', icon: ico.hardHat, value: buckets.ordered.length, color: 'var(--fg)',
+      sub: 'Deposit paid + contract signed', to: '/clients?view=ordered' },
+    { label: 'Due Today', icon: ico.calClock, value: dueToday.length,
+      color: dueToday.length > 0 ? 'var(--warning)' : 'var(--fg-3)',
+      delta: overdue.length > 0 ? `▲ ${overdue.length} overdue` : null,
+      deltaColor: 'var(--amber)',
+      sub: 'Follow-ups scheduled', to: '/followups' },
+  ]
+
+  const tools = [
+    { icon: ico.fileText, name: 'QTE Builder', desc: 'Pricing & quote tool', onClick: () => setBuilding(true) },
+    { icon: ico.layout, name: '2D Layout', desc: 'Doors, windows & openings', onClick: () => navigate('/layout') },
+  ]
+
   return (
     <>
-      <div className="greet">
-        <h1>{greeting}, <span>{firstName}</span></h1>
-        <p>
-          You have <b>{dueToday.length} {dueToday.length === 1 ? 'follow-up' : 'follow-ups'}</b> due today
-          {overdue.length > 0 && <> and <span className="amberword">{overdue.length} overdue</span></>}.
-          &nbsp;{dateStr}
-        </p>
+      {/* ===== GREETING ===== */}
+      <div className="dsh-greet">
+        <div>
+          <Eyebrow>{dateStr} · Command Center</Eyebrow>
+          <h1 className="dsh-h1">{greeting}, <span>{firstName}</span></h1>
+          <div className="dsh-status">
+            <span><b>{dueToday.length} {dueToday.length === 1 ? 'follow-up' : 'follow-ups'}</b> due today</span>
+            {overdue.length > 0 && (
+              <>
+                <span className="dsh-mid-dot" />
+                <span className="dsh-pill-warn"><Icon d={ico.alert} w={13} />{overdue.length} Overdue</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="dsh-actions">
+          <Link to="/clients/new" className="dsh-abtn"><Icon d={ico.userPlus} w={15} style={{ color: 'var(--cyan)' }} />Add Lead</Link>
+          <button className="dsh-abtn" onClick={() => window.dispatchEvent(new CustomEvent('ss:command-center'))}>
+            <Icon d={ico.sparkles} w={15} style={{ color: 'var(--cyan)' }} />Command Center
+          </button>
+          <button className="dsh-abtn dsh-abtn-primary" onClick={() => setBuilding(true)}>
+            <Icon d={ico.plus} w={15} />New Quote
+          </button>
+        </div>
       </div>
 
-      {/* KPI row — leads vs ordered kept separate */}
-      <section className="kpis stagger">
-        <KpiCard i={0} label="New Leads · This Week" value={buckets.newLeadsWeek.length}
-          sub={`${buckets.newLeadsMonth.length} this month`} spark={newClientSpark} to="/clients?view=new_lead" />
-        <KpiCard i={1} label="Active Working Leads" value={buckets.activeWorking.length}
-          sub="Working · hot · contract sent" spark={newClientSpark} to="/clients?view=working" />
-        <KpiCard i={2} label="Ordered · In Project" value={buckets.ordered.length}
-          sub="Deposit paid + contract signed" spark={newClientSpark} to="/clients?view=ordered" />
-        <KpiCard i={3} label="Due Today" value={dueToday.length}
-          accent={dueToday.length > 0 ? 'amber' : null}
-          sparkColor={dueToday.length > 0 ? 'var(--amber)' : 'var(--cyan)'}
-          sub="Follow-ups scheduled" spark={[0, 1, 0, 2, 1, 1, dueToday.length]} to="/followups" />
-      </section>
-
-      {/* Charts row */}
-      <section className="charts stagger">
-        <div className="panel" style={{ '--i': 4 }}>
-          <div className="panel-title">
-            <h3>Quotes Sent</h3>
-            <div className="seg">
-              {['7D', '30D', 'QTR'].map(p => (
-                <button key={p} className={p === period ? 'on' : ''} onClick={() => setPeriod(p)}>{p}</button>
-              ))}
-            </div>
+      {/* ===== STORM STRIP (honest seasonal note — no invented counts) ===== */}
+      {inStormSeason && (
+        <Link to="/clients" className="dsh-storm">
+          <Icon d={ico.wind} w={20} style={{ color: 'var(--amber-soft)', flex: 'none' }} />
+          <div className="dsh-storm-msg">
+            <b>Hurricane season is active.</b> <span>June 1 – November 30 — keep coastal-county builds moving.</span>
           </div>
-          <AreaChart points={area.points} labels={area.labels} peakText={area.peakText} />
-        </div>
+          <span className="dsh-storm-link">Review leads →</span>
+        </Link>
+      )}
 
-        <button className="panel launcher" style={{ '--i': 5 }} onClick={() => window.open('/quote-builder.html', '_blank', 'noopener')}>
-          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></div>
-          <div className="launcher-title">QTE Builder</div>
-          <div className="launcher-sub">Open the pricing &amp; quote tool</div>
-        </button>
+      {/* ===== KPI ROW ===== */}
+      <div className="dsh-kpis">
+        {kpis.map((k, i) => <KpiCard key={k.label} i={i} {...k} />)}
+      </div>
 
-        <button className="panel launcher" style={{ '--i': 6 }} onClick={() => navigate('/layout')}>
-          <div className="launcher-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg></div>
-          <div className="launcher-title">2D Layout</div>
-          <div className="launcher-sub">Lay out doors, windows &amp; openings</div>
-        </button>
-      </section>
+      {/* ===== FOLLOW-UP CALENDAR ===== */}
+      <div style={{ marginBottom: 16 }}><DashCalendar /></div>
 
-      <section className="stagger" style={{ marginBottom: 16 }}>
-        <DashCalendar />
-      </section>
-
-      {/* Lower row — breakdowns + follow-ups */}
-      <section className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-        {/* Active clients breakdown — Jenna's subcategories */}
-        <div className="panel" style={{ '--i': 7 }}>
-          <div className="panel-title"><h3>Active Clients</h3></div>
-          <StatRow label="New Leads · This Week" count={buckets.newLeadsWeek.length} to="/clients?view=new_lead" />
-          <StatRow label="Attempting to Contact" count={buckets.attempting.length} to="/clients?view=contacted" />
-          <StatRow label="Working Leads" count={buckets.working.length} to="/clients?view=working" />
-          <StatRow label="Working Hot Leads" count={buckets.hot.length} to="/clients?view=working_hot" />
-          <StatRow label="Contract Sent" count={buckets.contractSent.length} to="/clients?view=contract_sent" />
-          <StatRow label="Dead" count={buckets.dead.length} to="/clients?view=dead" dim />
-        </div>
-
-        {/* Project stage breakdown — ordered clients only */}
-        <div className="panel" style={{ '--i': 8 }}>
-          <div className="panel-title"><h3>Project Stage</h3></div>
-          {buckets.ordered.length === 0 ? (
-            <div className="muted" style={{ padding: '6px 0', fontSize: 13 }}>No ordered projects yet.</div>
-          ) : projectBreakdown.map((s, idx) => (
-            <div key={s.value} className="stage-row">
-              <div className="label">{s.label}</div>
-              <div className="stage-bar"><div className="stage-bar-fill" style={{ '--i': idx, '--scale': s.scale }} /></div>
-              <div className="count num">{s.count}</div>
-            </div>
+      {/* ===== BUILD & QUOTE TOOLS ===== */}
+      <div className="dsh-section">
+        <Eyebrow>Build &amp; Quote Tools</Eyebrow>
+        <div className="dsh-tools">
+          {tools.map(t => (
+            <button key={t.name} className="dsh-tool" onClick={t.onClick}>
+              <span className="dsh-tool-ic"><Icon d={t.icon} w={19} /></span>
+              <span className="dsh-tool-tx">
+                <span className="dsh-tool-name">{t.name}</span>
+                <span className="dsh-tool-desc">{t.desc}</span>
+              </span>
+              <span className="dsh-tool-arrow"><Icon d={ico.arrowR} w={17} /></span>
+            </button>
           ))}
         </div>
+      </div>
 
-        {/* Follow-ups due today */}
-        <div className="panel" style={{ '--i': 9 }}>
-          <div className="panel-title">
-            <h3>Follow-ups Due Today</h3>
-            <Link to="/clients" className="link-btn" style={{ fontSize: 12 }}>View all</Link>
+      {/* ===== QUOTES SENT (compact strip) ===== */}
+      <div className="dsh-panel dsh-quotes">
+        <div className="dsh-quotes-head">
+          <div className="dsh-quotes-titles">
+            <Eyebrow>Quotes Sent</Eyebrow>
+            <div className="dsh-quotes-stat">
+              <span className="num">{quotesStat.total}</span>
+              <span className="dsh-muted">{quotesStat.label}</span>
+              {quotesStat.deltaPct != null && (
+                <span className="num" style={{ color: quotesStat.deltaPct >= 0 ? 'var(--cyan)' : 'var(--fg-3)' }}>
+                  {quotesStat.deltaPct >= 0 ? '▲' : '▼'} {Math.abs(quotesStat.deltaPct)}%
+                </span>
+              )}
+              {area.peakText && <span className="dsh-muted">· peak {area.peakText}</span>}
+            </div>
+          </div>
+          <div className="seg">
+            {['7D', '30D', 'QTR'].map(p => (
+              <button key={p} className={p === period ? 'on' : ''} onClick={() => setPeriod(p)}>{p}</button>
+            ))}
+          </div>
+        </div>
+        <div className="dsh-quotes-chart">
+          <AreaChart points={area.points} labels={area.labels} peakText={area.peakText} />
+        </div>
+      </div>
+
+      {/* ===== BOTTOM ROW ===== */}
+      <div className="dsh-bottom">
+        {/* Active Clients */}
+        <div className="dsh-panel">
+          <div className="dsh-panel-title">Active Clients</div>
+          <SpecRow label="New Leads · This Week" value={buckets.newLeadsWeek.length} to="/clients?view=new_lead" />
+          <SpecRow label="Attempting to Contact" value={buckets.attempting.length} to="/clients?view=contacted" />
+          <SpecRow label="Working Leads" value={buckets.working.length} accent to="/clients?view=working" />
+          <SpecRow label="Working Hot Leads" value={buckets.hot.length} to="/clients?view=working_hot" />
+          <SpecRow label="Contract Sent" value={buckets.contractSent.length} to="/clients?view=contract_sent" />
+          <SpecRow label="Dead" value={buckets.dead.length} dim to="/clients?view=dead" last />
+        </div>
+
+        {/* Project Stage */}
+        <div className="dsh-panel">
+          <div className="dsh-panel-title">Project Stage</div>
+          {buckets.ordered.length === 0 ? (
+            <div className="dsh-muted" style={{ fontSize: 13 }}>No ordered projects yet.</div>
+          ) : (
+            <div className="dsh-stages">
+              {projectBreakdown.map(s => (
+                <div key={s.value} className="dsh-stage">
+                  <div className="dsh-stage-head">
+                    <span style={{ color: s.count ? 'var(--fg-2)' : 'var(--fg-3)' }}>{s.label}</span>
+                    <span className="num" style={{ color: s.count ? 'var(--cyan)' : 'var(--fg-3)' }}>{s.count}</span>
+                  </div>
+                  <div className="dsh-stage-track"><div className="dsh-stage-fill" style={{ width: `${Math.round(s.scale * 100)}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Follow-Ups Due Today */}
+        <div className="dsh-panel">
+          <div className="dsh-panel-title dsh-title-row">
+            <span>Follow-Ups Due Today</span>
+            <Link to="/followups" className="dsh-link">View all</Link>
           </div>
           {dueToday.length === 0 ? (
-            <div className="muted" style={{ padding: '6px 0', fontSize: 13 }}>Nothing due today.</div>
+            <div className="dsh-clear">
+              <span className="dsh-clear-ic"><Icon d={ico.check} w={22} /></span>
+              <div className="dsh-clear-t">All clear.</div>
+              <div className="dsh-clear-s">Nothing due today. Nice work.</div>
+            </div>
           ) : (
-            <div className="fu">
+            <div className="dsh-list">
               {dueToday.map(c => (
-                <Link key={c.id} to={`/clients/${c.id}`} className="fu-item">
-                  <span className="fu-date">{fmtDate(c.follow_up_date)}{c.follow_up_time ? ` · ${fmtTime(c.follow_up_time)}` : ''}</span>
-                  <span className="fu-name">{c.name}</span>
-                  <span className="fu-status">{statusLabel(c.status)}</span>
+                <Link key={c.id} to={`/clients/${c.id}`} className="dsh-li">
+                  <span className="num dsh-li-date">{c.follow_up_time ? fmtTime(c.follow_up_time) : 'Today'}</span>
+                  <span className="dsh-li-name">{c.name}</span>
+                  <span className="dsh-li-tag">{statusLabel(c.status)}</span>
                 </Link>
               ))}
             </div>
           )}
         </div>
 
-        {/* Needs attention — overdue */}
-        <div className="panel urgent" style={{ '--i': 10 }}>
-          <div className="panel-title"><h3>Needs Attention</h3></div>
+        {/* Needs Attention */}
+        <div className="dsh-panel">
+          <div className="dsh-panel-title dsh-title-row">
+            <span>Needs Attention</span>
+            {(pendingPay.length + overdue.length) > 0 && (
+              <span className="dsh-badge-warn num">{pendingPay.length + overdue.length}</span>
+            )}
+          </div>
           {pendingPay.length === 0 && overdue.length === 0 ? (
-            <div className="muted" style={{ padding: '6px 0', fontSize: 13 }}>Nothing needs attention. Nice.</div>
+            <div className="dsh-muted" style={{ fontSize: 13 }}>Nothing needs attention. Nice.</div>
           ) : (
-            <div className="fu">
+            <div className="dsh-attn-list">
               {pendingPay.map(c => (
-                <Link key={'pay-' + c.id} to={`/clients/${c.id}`} className="fu-item">
-                  <span className="fu-date follow-up-overdue">PENDING</span>
-                  <span className="fu-name">{c.name}</span>
-                  <span className="fu-status">Payment not cleared</span>
+                <Link key={'pay-' + c.id} to={`/clients/${c.id}`} className="dsh-attn">
+                  <span className="num dsh-attn-date">PENDING</span>
+                  <span className="dsh-attn-name">{c.name}</span>
+                  <span className="dsh-attn-tag">Payment not cleared</span>
                 </Link>
               ))}
               {overdue.map(c => (
-                <Link key={c.id} to={`/clients/${c.id}`} className="fu-item">
-                  <span className="fu-date follow-up-overdue">{fmtDate(c.follow_up_date)}</span>
-                  <span className="fu-name">{c.name}</span>
-                  <span className="fu-status">{statusLabel(c.status)}</span>
+                <Link key={c.id} to={`/clients/${c.id}`} className="dsh-attn">
+                  <span className="num dsh-attn-date">{fmtDate(c.follow_up_date)}</span>
+                  <span className="dsh-attn-name">{c.name}</span>
+                  <span className="dsh-attn-tag">{statusLabel(c.status)}</span>
                 </Link>
               ))}
             </div>
           )}
         </div>
-      </section>
-    </>
-  )
-}
+      </div>
 
-/* ---------- small stat row (label + count) ---------- */
-function StatRow({ label, count, dim, to }) {
-  const inner = (
-    <>
-      <span className="stat-label" style={dim ? { color: 'var(--txt-3)' } : undefined}>{label}</span>
-      <span className="stat-count num" style={dim ? { color: 'var(--txt-3)' } : undefined}>{count}</span>
+      {building && <BuildQuoteModal client={null} onClose={() => setBuilding(false)} />}
     </>
   )
-  return to
-    ? <Link to={to} className="stat-row stat-row-link">{inner}</Link>
-    : <div className="stat-row">{inner}</div>
 }
 
 /* ---------- KPI card ---------- */
-function KpiCard({ i, label, value, sub, spark, sparkColor, accent, to, format }) {
+function KpiCard({ i, label, value, color, delta, deltaColor, sub, icon, to }) {
   const display = useCountUp(value)
-  const className = `panel kpi${accent ? ` ${accent}` : ''}`
-  const shown = format ? format(display) : Math.round(display).toLocaleString()
   const content = (
     <>
-      <div className="label">{label}</div>
-      <div className="value num">{shown}</div>
-      <div className="sub">{sub}</div>
-      {spark && <Sparkline points={spark} color={sparkColor} />}
+      <div className="dsh-kpi-head">
+        <span className="dsh-kpi-label">{label}</span>
+        <span className="dsh-kpi-ic"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg></span>
+      </div>
+      <div className="dsh-kpi-val-row">
+        <span className="dsh-kpi-val num" style={{ color }}>{Math.round(display).toLocaleString()}</span>
+        {delta && <span className="dsh-kpi-delta num" style={{ color: deltaColor }}>{delta}</span>}
+      </div>
+      <div className="dsh-kpi-sub">{sub}</div>
     </>
   )
   return to
-    ? <Link to={to} className={className} style={{ '--i': i }}>{content}</Link>
-    : <div className={className} style={{ '--i': i }}>{content}</div>
+    ? <Link to={to} className="dsh-kpi" style={{ '--i': i }}>{content}</Link>
+    : <div className="dsh-kpi" style={{ '--i': i }}>{content}</div>
+}
+
+/* ---------- spec-table row (Active Clients) ---------- */
+function SpecRow({ label, value, accent, dim, to, last }) {
+  const inner = (
+    <>
+      <span className="dsh-spec-lbl" style={dim ? { color: 'var(--fg-3)' } : undefined}>{label}</span>
+      <span className="dsh-spec-val num" style={{ color: dim ? 'var(--fg-3)' : accent ? 'var(--cyan)' : 'var(--fg)' }}>{value}</span>
+    </>
+  )
+  const cls = `dsh-spec${last ? ' last' : ''}`
+  return to ? <Link to={to} className={cls}>{inner}</Link> : <div className={cls}>{inner}</div>
+}
+
+/* ---------- Follow-Up HQ milestone → project stage ----------
+ * The ssfu milestone chain is finer-grained than the 6 project stages. We map a
+ * client's FURTHEST COMPLETED milestone onto a project-stage bucket, so a client
+ * whose "Scheduling" gate is checked shows under Scheduling (not auto-jumped to
+ * Installed). Mirrors followupModel's STEP_MILESTONE. */
+const MS_ORDER = ['order', 'planinv', 'paid', 'plans', 'permit', 'site', 'sched', 'install', 'progress', 'complete']
+const MS_TO_STAGE = {
+  order: 'ordered', planinv: 'ordered', paid: 'ordered',
+  plans: 'engineering', permit: 'permitting', site: 'permitting',
+  sched: 'scheduling', install: 'installed', progress: 'installed', complete: 'installed',
+}
+function stepMilestone(f) {
+  if (f.type === 'mfr') return 'order'
+  if (f.type === 'pay') return f.gate === 'invoice_paid' ? 'paid' : 'planinv'
+  if (f.type === 'plans') return 'plans'
+  if (f.type === 'permit') return 'permit'
+  if (f.type === 'site') return 'site'
+  if (f.type === 'install') return f.gate === 'scheduled' ? 'sched' : 'install'
+  if (f.type === 'call') return 'progress'
+  if (f.type === 'review') return 'complete'
+  return 'order'
+}
+function derivedProjectStage(client, ssfu) {
+  // Revisions is a manual stepper-only stage — always honor it if set.
+  if (client.project_stage === 'revisions_needed') return 'revisions_needed'
+  if (ssfu) {
+    let best = -1
+    for (const f of followupsForClient(ssfu, client.id)) {
+      if (!f.done) continue
+      const idx = MS_ORDER.indexOf(stepMilestone(f))
+      if (idx > best) best = idx
+    }
+    if (best >= 0) return MS_TO_STAGE[MS_ORDER[best]] || 'ordered'
+  }
+  return client.project_stage || 'ordered'
 }
 
 /* ---------- area-chart series builder ---------- */

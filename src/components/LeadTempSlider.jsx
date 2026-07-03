@@ -6,11 +6,14 @@
 import { useRef, useState } from 'react'
 import { fmtLong } from '../lib/followups'
 
-// Six stops, matching the mockup gauge (labels per StormSafe spec).
+// Seven stops, matching the sales stages (labels per StormSafe spec).
+// 'working' sits between Warm (attempting contact) and Hot — a spoken-to lead
+// that isn't hot yet.
 const TEMP_LEVELS = [
   { key: 'cold',            label: 'Cold',            color: '#6FC9E8' },
   { key: 'warm',            label: 'Warm',            color: '#5FD98F' },
-  { key: 'hot',             label: 'Hot',             color: '#8FD14F' },
+  { key: 'working',         label: 'Working',         color: '#86D45A' },
+  { key: 'hot',             label: 'Hot',             color: '#C8D14F' },
   { key: 'ready',           label: 'Ready to Close',  color: '#FFB547' },
   { key: 'pending_deposit', label: 'Pending Deposit', color: '#FF5C5C' },
   { key: 'ordered',         label: 'Ordered',         color: '#22C55E' },
@@ -84,7 +87,7 @@ export default function LeadTempSlider({ value, updatedAt, updatedByName, onChan
             style={{ left: `${frac * 100}%`, borderColor: hasValue ? active.color : undefined }}
           />
         </div>
-        <div className="temp-scale six">
+        <div className="temp-scale seven">
           {TEMP_LEVELS.map(l => <span key={l.key}>{l.label}</span>)}
         </div>
         <div className="temp-meta">

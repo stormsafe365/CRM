@@ -17,6 +17,7 @@ import OrderModal from '../components/OrderModal'
 import { fmtTime } from '../lib/followups'
 import ActivityProgress from '../components/ActivityProgress'
 import FollowUpsCard from '../components/FollowUpsCard'
+import OrderTimeline from '../components/OrderTimeline'
 import LeadTempSlider from '../components/LeadTempSlider'
 import NotesSection from '../components/NotesSection'
 import { useAuth } from '../context/AuthContext'
@@ -104,7 +105,7 @@ export default function ClientDetail() {
   // Lead temperature, set via the thermometer slider. Stamps who/when, and
   // drives the sales stage — sliding the bar moves the status to match (so it
   // shows on the Activity & Progress stepper and the Stage pill too).
-  const TEMP_TO_STATUS = { cold: 'new_lead', warm: 'contacted', hot: 'working_hot', ready: 'quoted', pending_deposit: 'deposit_pending', ordered: 'ordered' }
+  const TEMP_TO_STATUS = { cold: 'new_lead', warm: 'contacted', working: 'working', hot: 'working_hot', ready: 'quoted', pending_deposit: 'deposit_pending', ordered: 'ordered' }
   async function setTemperature(t) {
     const patch = {
       lead_temperature: t,
@@ -120,7 +121,7 @@ export default function ClientDetail() {
     if (error) {
       const m = (error.message || '').toLowerCase()
       toast(m.includes('lead_temperature') || m.includes('check constraint') || m.includes('violates')
-        ? 'That temperature needs the one-time database update (migration 011) before it will save.'
+        ? 'That temperature needs the one-time database update (migration 012) before it will save.'
         : error.message)
       return
     }
@@ -314,6 +315,8 @@ export default function ClientDetail() {
         <ActivityProgress client={client} showAudience={client.status === 'ordered'} />
         <FollowUpsCard clientId={client.id} />
       </div>
+
+      {client.status === 'ordered' && <OrderTimeline client={client} />}
 
       <div className="row-2 flip">
         <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}

@@ -152,10 +152,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px">MFR</span>
     <select id="mfr-sel" onchange="switchMfr(this.value)" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;outline:none">
       <option value="CA">Carports Anywhere</option>
-      <option value="CCI">CCI</option>
+      <option value="CCI" selected>CCI</option>
       <option value="INPUT">Input (manual pricing)</option>
     </select>
-    <span id="mfr-badge" style="background:#f15e30;color:#1a1a2e;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.3px">CA</span>
+    <span id="mfr-badge" style="background:#9fc839;color:#1a1a2e;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.3px">CCI</span>
   </div>
   <span class="hdr-d" id="hdr-d" style="margin-left:8px"></span>
 </div>
@@ -352,7 +352,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </select>
   </div>
   <div class="row hidden" id="oc-spacing-row"><label>OC Spacing</label>
-    <select id="oc-spacing" onchange="if(typeof populateGchEnc==='function')populateGchEnc();rc()">
+    <select id="oc-spacing" onchange="doBld()">
       <option value="5oc">Standard — 5' OC (included)</option>
       <option value="4oc">Upgrade — 4' OC</option>
     </select>
@@ -581,7 +581,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 <div class="sec">
   <div class="st">12 — Site Information</div>
   <div class="row"><label>Foundation Type</label>
-    <select id="foundation" onchange="sy()">
+    <select id="foundation" onchange="sy();rc()">
       <option value="">— select —</option>
       <option value="concrete">Concrete</option>
       <option value="footers">Footers Only</option>
@@ -3094,7 +3094,7 @@ var MANUFACTURERS = {
     ],
     // ── Scalar pricing ───────────────────────────────────────────────────────
     wtd_std: 400, wtd_hi: 600,
-    win_std: 200, win_hi: 675,
+    win_std: 200, win_hi: 895,
     // Per-size roll-up price overrides (clean WxH key) where CCI's chart
     // differs from the shared tables (entered from CA's sheet). Applies to the
     // standard/chain/merged tiers — NOT hi-impact.
@@ -3333,17 +3333,18 @@ var MANUFACTURERS = {
       {v:'hiwind',      label:'Man Door (Hi-Wind Rated) 36×80',  style:'std',     color:'white'},
     ],
     // ── Window types ───────────────────────────────────────────────────────────────────────────────
-    winPrices: {std:200, w3036:225, b3030:250, b3036:275, hi:675},
+    winPrices: {std:200, w3036:225, b3030:250, b3036:275, hi:895, hi3036:995},
     winTypes: [
-      {v:'std',   label:'White 30×30',                     fw:30, fh:30, color:'white'},
-      {v:'w3036', label:'White 30×36',                     fw:30, fh:36, color:'white'},
-      {v:'b3030', label:'Black 30×30 (non-impact areas)',  fw:30, fh:30, color:'black'},
-      {v:'b3036', label:'Black 30×36 (non-impact areas)',  fw:30, fh:36, color:'black'},
-      {v:'hi',    label:'Hi-Impact',                       fw:30, fh:30, color:'white'},
+      {v:'std',    label:'White 30×30',                     fw:30, fh:30, color:'white'},
+      {v:'w3036',  label:'White 30×36',                     fw:30, fh:36, color:'white'},
+      {v:'b3030',  label:'Black 30×30 (non-impact areas)',  fw:30, fh:30, color:'black'},
+      {v:'b3036',  label:'Black 30×36 (non-impact areas)',  fw:30, fh:36, color:'black'},
+      {v:'hi',     label:'Hi-Impact 30×30',                 fw:30, fh:30, color:'white'},
+      {v:'hi3036', label:'Hi-Impact 30×36',                 fw:30, fh:36, color:'white'},
     ],
   }
 };
-var ACTIVE_MFR = 'CA';
+var ACTIVE_MFR = 'CCI'; // default manufacturer (switchable to CA / Input)
 function MFR() { return MANUFACTURERS[ACTIVE_MFR]; }
 
 // ── Roll-up door color helpers (shared CA/CCI) ──────────────────────────────
@@ -4058,6 +4059,7 @@ function populateLength(){
 }
 
 
+var _prevOcWidth = -1; // last width doBld saw — resets the 4' OC upgrade on width change
 function doBld(){
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, f=[];
   var bt=G('btype').value;
@@ -4123,7 +4125,12 @@ function doBld(){
   var ocSel = G('oc-spacing');
   var showOC = (w>0 && w<=24 && bt!=='widespan');
   if(ocRow) ocRow.classList.toggle('hidden', !showOC);
-  if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden
+  if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden (>24 = 4' OC standard)
+  // A WIDTH change re-evaluates the standard spacing → drop any 4' OC upgrade back
+  // to 5' OC (length changes keep the choice). Prevents a prior 4' OC pick from
+  // sticking to a different, newly-sized ≤24' building.
+  if(showOC && ocSel && w!==_prevOcWidth) ocSel.value='5oc';
+  _prevOcWidth = w;
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : " — 4' OC";
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
   // Wide span already 26GA so hide upgrade option; show for standard/carport
@@ -4793,6 +4800,20 @@ function gWIN(){
 // Roof: (Width+2) x Length x $1.50
 // Side Walls: Length x Height x 2 x $1.50
 // End Walls: Width x (Height+2) x 2 x $1.50
+// ── Mobile home anchors (CCI, ground installs only) ───────────────────────────
+// CCI installs ONE mobile home anchor per LEG (2 legs per bent), $68 each, when
+// the unit is set directly on the ground (concrete/other surfaces use concrete/
+// rebar anchors that are included). Legs = 2 × the truss/bent count. CA anchor
+// pricing wasn't provided, so this stays $0 for CA.
+var ANCHOR_UNIT=68; // $ per mobile home anchor
+function gAnchorLegs(){
+  if(ACTIVE_MFR!=='CCI') return 0;
+  if((G('foundation')?G('foundation').value:'')!=='ground') return 0;
+  var ti=(typeof getTrussInfo==='function')?getTrussInfo():null;
+  return (ti&&ti.count)?ti.count*2:0;
+}
+function gAnchors(){ return gAnchorLegs()*ANCHOR_UNIT; }
+
 var INSUL_RATE=1.50;
 function gInsul(){
   var insulSel=G('insul-sel');
@@ -5964,7 +5985,7 @@ function rc(){
   var perm=G('perm').value, co=G('county').textContent, pt=G('pt').value;
 
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP;
+  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP+gAnchors();
   var da=Math.round(sub*(disc/100));
   var ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100));
@@ -7389,6 +7410,7 @@ async function printQuote(){
   var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
   var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
+  var anchorLegsQ=gAnchorLegs(), anchorPr=gAnchors();
   // Overhang for PDF
   var overhangPQ=0;
   var ohSelP=G('overhang-sel');
@@ -7410,7 +7432,7 @@ async function printQuote(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // Build plans HTML now that sub is computed (CCI Site Specific = 5% of retail)
@@ -7613,6 +7635,7 @@ async function printQuote(){
     var iSel=G('insul-sel');
     rows+=row((iSel&&iSel.value==='roof-walls'?'Fully Insulated — Roof & Walls':'Insulation — Roof Only'),null,null,insulPr);
   }
+  if(anchorPr) rows+=row('Mobile Home Anchors — Ground Install',anchorLegsQ,ANCHOR_UNIT,anchorPr);
   // Lean-tos
   document.querySelectorAll('.lte').forEach(function(el){
     var lw=parseInt(el.querySelector('.ltw').value)||0;
@@ -8280,6 +8303,7 @@ async function printContract(){
   var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
   var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
+  var anchorLegsQ=gAnchorLegs(), anchorPr=gAnchors();
   var overhangPQ=0;
   var ohSelP=G('overhang-sel');
   if(ohSelP && ACTIVE_MFR==='CCI' && ohSelP.value!=='none' && MFR().overhang){
@@ -8299,7 +8323,7 @@ async function printContract(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // ── Engineered Plans + Permit Service (both invoiced separately by engineering firm) ──
@@ -8545,6 +8569,7 @@ async function printContract(){
     var iSel=G('insul-sel');
     row((iSel&&iSel.value==='roof-walls'?'Fully Insulated — Roof & Walls':'Insulation — Roof Only'),null,null,insulPr);
   }
+  if(anchorPr) row('Mobile Home Anchors — Ground Install',anchorLegsQ,ANCHOR_UNIT,anchorPr);
 
   // ── Build line items HTML ──
   if(INPUT_MODE){ lineItems.length=0; manualLineItems().forEach(function(it){ lineItems.push({desc:it.desc, qty:null, unit:null, amt:it.amt}); }); }
@@ -11530,8 +11555,13 @@ drawBlueprintWall = function(wt, fw, wh, items, wn, bw, lts){
   return svg;
 };
 
-// Apply initial manufacturer settings on page load (sets pitch labels, etc.)
-try { if(typeof initMfrPricing==='function') initMfrPricing(); } catch(e){ console.warn('initMfrPricing on load failed:', e); }
+// Apply initial manufacturer settings on page load. switchMfr(ACTIVE_MFR) does a
+// full setup for the default manufacturer (CCI): pricing tables, badge, per-mfr
+// dropdowns, CCI-only rows, and color palette. Falls back to initMfrPricing.
+try {
+  if(typeof switchMfr==='function') switchMfr(ACTIVE_MFR);
+  else if(typeof initMfrPricing==='function') initMfrPricing();
+} catch(e){ console.warn('initial manufacturer setup failed:', e); }
 try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } catch(e){ console.warn('rebuildColorDropdowns on load failed:', e); }
 
 </script>
