@@ -32,6 +32,16 @@ const ICONS = {
 const EYE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
 const TRASH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 
+// 6A category accents (rotating palette; All Files uses the brand teal) + short chip labels.
+const CAT_ACCENT = { all: '#14A6A0', quote: '#1cddd5', contract: '#4d9d78', rendering: '#ff8f49', layout: '#99acff', revisions: '#1cddd5', additional: '#4d9d78' }
+const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Extra' }
+const hexRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})` }
+const accentVars = (accent) => ({
+  '--accent': accent, '--ring': hexRgba(accent, 0.40), '--soft': hexRgba(accent, 0.20),
+  '--tile': hexRgba(accent, 0.14), '--tileBd': hexRgba(accent, 0.32),
+  '--chipBg': hexRgba(accent, 0.12), '--chipBd': hexRgba(accent, 0.38),
+})
+
 const labelSingular = (key) => SECTIONS.find(s => s.key === key)?.label.replace(/s$/, '') || key
 const fmtDate = (iso) => {
   if (!iso) return '—'
@@ -49,6 +59,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [layoutOpen, setLayoutOpen] = useState(false)
   const inputRef = useRef(null)
   const uploadCat = useRef('quote')
+  const [docExpanded, setDocExpanded] = useState(false)
+  const selectCat = (key) => { setActive(key); setDocExpanded(false) }
 
   async function refresh() {
     try {
@@ -138,61 +150,79 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     openMenu(e.currentTarget, `${sec.label} · ${counts[key]} files`, items)
   }
 
+  const activeAccent = CAT_ACCENT[active] || '#14A6A0'
+  const visibleRows = docExpanded ? rows : rows.slice(0, 4)
+
   return (
-    <section className="card card-pad">
-      <div className="section-head">
-        <h3>Document Hub</h3>
-        <div className="right" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-          <span className="link-cyan" role="button" onClick={() => setLayoutOpen(true)}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: -2, marginRight: 4 }}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
-            Open Layout
-          </span>
-          <span className="link-cyan" role="button" onClick={() => triggerUpload(active === 'all' ? 'quote' : active)}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: -2, marginRight: 4 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5M12 3v12" /></svg>
-            {busy ? 'Uploading…' : 'Upload'}
-          </span>
-        </div>
+    <section className="doc-hub" style={accentVars(activeAccent)}>
+      {/* Header bar */}
+      <div className="doc-hub-head">
+        <span className="doc-hub-mark" />
+        <span className="doc-hub-title">Document Hub</span>
+        <button className="doc-hub-ghost" onClick={() => setLayoutOpen(true)}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
+          Open Layout
+        </button>
+        <button className="doc-hub-cta" onClick={() => triggerUpload(active === 'all' ? 'quote' : active)}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5M12 3v12" /></svg>
+          {busy ? 'Uploading…' : 'Upload'}
+        </button>
       </div>
+
       <input ref={inputRef} type="file" onChange={onPick} hidden />
 
-      <div className="doc-cats">
-        <div className="doc-cat" onClick={() => setActive('all')} style={active === 'all' ? ACTIVE_CAT : undefined}>
-          <div className="ic">{ICONS.all}</div><div className="nm">All Files</div><div className="ct">{total} Files</div>
-        </div>
+      {/* Category grid — 6A centered cards with a per-category accent bar */}
+      <div className="doc-cats-6a">
+        <button className={`cat-card${active === 'all' ? ' on' : ''}`} style={accentVars(CAT_ACCENT.all)} onClick={() => selectCat('all')}>
+          <span className="cat-bar" /><span className="cat-tile">{ICONS.all}</span>
+          <span className="cat-nm">All Files</span><span className="cat-ct num">{total} files</span>
+        </button>
         {SECTIONS.map(s => (
-          <div key={s.key} className="doc-cat" data-menu-anchor onClick={(e) => openCatMenu(e, s.key)}
-            title="Open menu" style={active === s.key ? ACTIVE_CAT : undefined}>
-            <div className="ic">{ICONS[s.key]}</div><div className="nm">{s.label}</div><div className="ct">{counts[s.key]} Files</div>
-          </div>
+          <button key={s.key} className={`cat-card${active === s.key ? ' on' : ''}`} style={accentVars(CAT_ACCENT[s.key])} onClick={() => selectCat(s.key)}>
+            <span className="cat-bar" /><span className="cat-tile">{ICONS[s.key]}</span>
+            <span className="cat-nm">{s.label}</span><span className="cat-ct num">{counts[s.key]} files</span>
+          </button>
         ))}
       </div>
 
-      {error && <div className="error-banner" style={{ marginTop: 12 }}>{error}</div>}
+      {error && <div className="error-banner" style={{ margin: '0 24px 12px' }}>{error}</div>}
 
+      {/* File list */}
       {loading ? (
-        <div className="muted" style={{ padding: '16px 0' }}>Loading…</div>
+        <div className="muted" style={{ padding: 24 }}>Loading…</div>
       ) : rows.length === 0 ? (
-        <div className="list-empty">No files in {active === 'all' ? 'this lead' : labelSingular(active).toLowerCase()} yet — click a category and Upload to add one.</div>
+        <div className="doc-empty">No files in {active === 'all' ? 'this lead' : labelSingular(active).toLowerCase()} yet.</div>
       ) : (
-        <table className="doc-table">
-          <thead><tr><th>File Name</th><th>Category</th><th>Date</th><th>Actions</th></tr></thead>
-          <tbody>
-            {rows.map(f => (
-              <tr key={f.path}>
-                <td><span className="doc-file" role="button" onClick={() => onView(f.path)} style={{ cursor: 'pointer' }}>{ICONS[f.cat]}{f.label}</span></td>
-                <td><span className={`cat-tag${f.cat === 'rendering' ? ' rendering' : ''}`}>{labelSingular(f.cat)}</span></td>
-                <td className="doc-date num">{fmtDate(f.createdAt)}</td>
-                <td>
-                  <div className="doc-actions">
-                    <span role="button" title="View" onClick={() => onView(f.path)}>{EYE}</span>
-                    <span role="button" title="Delete" onClick={() => onDelete(f.path)}>{TRASH}</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="doc-list" key={`${active}-${docExpanded}`}>
+          <div className="doc-list-head"><span>File Name</span><span>Category</span><span>Date</span><span className="r">Actions</span></div>
+          {visibleRows.map(f => {
+            const acc = CAT_ACCENT[f.cat] || '#14A6A0'
+            return (
+              <div key={f.path} className="doc-row" style={accentVars(acc)}>
+                <span className="doc-name" role="button" onClick={() => onView(f.path)}><span className="doc-name-ic">{ICONS[f.cat]}</span>{f.label}</span>
+                <span><span className="doc-chip">{CHIP_LABEL[f.cat] || labelSingular(f.cat)}</span></span>
+                <span className="doc-date num">{fmtDate(f.createdAt)}</span>
+                <span className="doc-acts">
+                  <button title="View" onClick={() => onView(f.path)}>{EYE}</button>
+                  <button title="Delete" className="del" onClick={() => onDelete(f.path)}>{TRASH}</button>
+                </span>
+              </div>
+            )
+          })}
+          {rows.length > 4 && (
+            <button className="doc-showall" onClick={() => setDocExpanded(v => !v)}>
+              {docExpanded ? 'Show less' : `Show all ${rows.length}`}
+              <svg className={docExpanded ? 'flip' : ''} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+          )}
+        </div>
       )}
+
+      {/* Footer */}
+      <div className="doc-hub-foot">
+        <span className="num">{total} {total === 1 ? 'file' : 'files'}</span>
+        <span className="num">Updated {fmtDate(new Date().toISOString())}</span>
+      </div>
 
       {layoutOpen && <LayoutSheetModal client={client || { id: clientId, name: clientName }} onSaved={refresh} onClose={() => setLayoutOpen(false)} />}
     </section>
