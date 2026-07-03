@@ -400,8 +400,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="st">4 — Wall Options</div>
   <div class="row"><label>Lap Siding (walls)</label>
     <select id="lap" onchange="rc()"><option value="no">No</option><option value="yes">Yes — Horizontal Walls (+10%)</option></select></div>
-  <div class="row"><label>Wainscot</label>
-    <select id="wain" onchange="rc()"><option value="no">No</option><option value="yes">Yes</option></select></div>
+  <!-- Wainscot moved to Section 11 (Color Selections) — checkbox + color dropdown -->
   <!-- Additional End Wall: internal cost line (shown in live summary, hidden from customer quote) -->
   <div class="row"><label>Additional End Wall</label>
     <select id="add-end-wall" onchange="updateAddEndWallDisplay();rc()">
@@ -569,6 +568,16 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <label>Trim Color</label>
     <select id="ct" onchange="setSwatch('ct','swt')"><option value="">— select color —</option></select>
     <div class="csw" id="swt"></div>
+  </div>
+  <!-- Wainscot toggle (moved from Section 4). Checked → reveals the color dropdown below.
+       Drives a hidden #wain input ('yes'/'no') so all pricing/PDF code stays unchanged. -->
+  <div class="crow">
+    <label>Wainscot</label>
+    <div style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="wain-cb" onchange="wainToggle()" style="width:16px;height:16px;cursor:pointer">
+      <span style="font-size:12px;color:#555">Add wainscot</span>
+    </div>
+    <input type="hidden" id="wain" value="no">
   </div>
   <div id="wain-col-row" class="crow hidden">
     <label>Wainscot Color</label>
@@ -971,6 +980,16 @@ var COLORS = [
   {n:'Burgundy',      c:'WXR0081L',  h:'#4A1E2A'},
   {n:'Copper Penny',  c:'KM2Y49352', h:'#C47F2A'}
 ];
+
+// Wainscot on/off is a checkbox in Section 11 (Color Selections). It drives a
+// hidden #wain input (value 'yes'/'no') so every pricing/PDF/blueprint code path —
+// all of which read G('wain').value — keeps working unchanged. rc() re-prices and
+// reveals the wainscot color dropdown when 'yes'.
+function wainToggle(){
+  var cb=G('wain-cb'), h=G('wain');
+  if(h) h.value=(cb && cb.checked)?'yes':'no';
+  rc();
+}
 
 // Rebuild the four color dropdowns (Roof, Wall, Trim, Wainscot) using the active manufacturer's palette.
 // Preserves the previously selected color if it's still available in the new palette.
@@ -6132,7 +6151,9 @@ function rc(){
     pn.className='';
   }
 
-  // Wainscot color
+  // Wainscot: keep the Section-11 checkbox in sync with the (hidden) wain value
+  // (covers page load / restore), then show/hide the wainscot color dropdown.
+  if(G('wain-cb')) G('wain-cb').checked = (G('wain').value==='yes');
   G('wain-col-row').classList.toggle('hidden', G('wain').value!=='yes');
 
   // Spec flags
