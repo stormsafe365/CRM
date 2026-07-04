@@ -29,6 +29,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const setBuilding = setBuildingProp ?? setBuildingInner
   const [editingId, setEditingId] = useState(null)
   const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
+  const [autoContract, setAutoContract] = useState(false) // opened via "Generate Contract" → auto-run contract flow
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
@@ -187,6 +188,20 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     }
   }
 
+  // "Generate Contract" from a quote card. Contracts render from the builder's
+  // full build state, so this reopens the quote in the builder and auto-runs the
+  // program's Generate Contract (which saves a PDF to Documents › Contracts).
+  const isBuilderQuote = (q) => !!(q?.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
+  function handleGenerateContract(quote) {
+    if (!isBuilderQuote(quote)) {
+      setError('This quote was added manually, so there’s no build to generate a contract from. Build it in the 3D quote builder first.')
+      return
+    }
+    setEditQuote(quote)
+    setAutoContract(true)
+    setBuilding(true)
+  }
+
   // Delete straight from the deck / spread card (the list view has its own inline confirm).
   function confirmDeleteQuote(quote) {
     if (window.confirm('Delete this quote? The PDF will also be removed. This cannot be undone.')) {
@@ -226,8 +241,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           key={editQuote?.id || 'new'}
           client={client ?? { id: clientId }}
           initialQuote={editQuote}
+          autoContract={autoContract}
           onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
-          onClose={() => { setBuilding(false); setEditQuote(null) }}
+          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false) }}
         />
       )}
 
@@ -258,9 +274,10 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           onViewPdf={handleViewPdf}
           onDelete={confirmDeleteQuote}
           onDuplicate={handleDuplicate}
+          onGenerateContract={handleGenerateContract}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} />
+        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -345,7 +362,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate }) {
+function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -359,7 +376,7 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate }) {
       {many && <button className="spread-arrow left" onClick={() => scrollBy(-1)} aria-label="Scroll left">‹</button>}
       <div className="spread-scroll" ref={ref}>
         <div className="spread-grid">
-          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} />)}
+          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} />)}
         </div>
       </div>
       {many && <button className="spread-arrow right" onClick={() => scrollBy(1)} aria-label="Scroll right">›</button>}
@@ -367,8 +384,9 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate }) {
   )
 }
 
-function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate }) {
+function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract }) {
   const thumb = q.payload_json?.rendering_thumb || null
+  const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
   return (
     <div className="spread-card" onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
       {thumb && <div className="q-thumb"><img src={thumb} alt="3D rendering" /></div>}
@@ -389,6 +407,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate }) {
       <div className="q-actions">
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
+        {onGenerateContract && canContract && <button className="btn btn-ghost" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
         {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
         {onDelete && <button className="btn btn-ghost" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>Delete</button>}
       </div>

@@ -39,7 +39,7 @@ const SAVE_BTN = {
   fontWeight: 800,
 }
 
-export default function BuildQuoteModal({ client, initialQuote, onSave, onClose }) {
+export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false }) {
   // When reopening a saved builder quote, its full state lives in payload_json.
   const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
@@ -166,10 +166,19 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose 
       done = true
       clearInterval(t)
       toast(
-        ok ? `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim()
+        ok ? (autoContract
+              ? `Loaded quote ${initialQuote?.quote_number || ''} — generating contract…`.trim()
+              : `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim())
            : "Couldn't fully load this quote's saved build — please rebuild or check the console.",
         ok ? 'success' : undefined,
       )
+      // "Generate Contract" from a quote card: once the build is fully restored
+      // and repriced, auto-run the same save-to-Doc-Hub + print flow the rep would
+      // trigger by hand. The delay lets restoreQuoteData finish repricing first.
+      if (ok && autoContract) {
+        setStatus('Generating contract…')
+        setTimeout(() => { saveContractThenPrint(getProgramWindow()) }, 1400)
+      }
     }, 500)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
