@@ -74,6 +74,7 @@ export default function OrderModal({ client, onClose, onSaved }) {
     const patch = {
       status: 'ordered',
       payment_cleared: true,
+      lead_temperature: 'ordered', // keep the summary temp bar in sync with the order
       order_date: orderDate,
       order_mfr: mfr,
       order_plan: plan,

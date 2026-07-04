@@ -121,7 +121,11 @@ export default function ActivityProgress({ client, showAudience = false }) {
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
     if (!patch) return
-    const { error } = await supabase.from('clients').update(patch).eq('id', client.id)
+    // Reaching any "ordered" milestone (Contract Signed, Deposit Received, …)
+    // also moves the summary lead-temperature bar to Ordered, so the gauge and
+    // the stepper stay in sync.
+    const finalPatch = patch.status === 'ordered' ? { ...patch, lead_temperature: 'ordered' } : patch
+    const { error } = await supabase.from('clients').update(finalPatch).eq('id', client.id)
     if (error) {
       const m = (error.message || '').toLowerCase()
       toast(m.includes('project_stage') || m.includes('payment_cleared') || m.includes('schema cache')
