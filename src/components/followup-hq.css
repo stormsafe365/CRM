@@ -5,13 +5,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 .fuhq {
-  /* surfaces */
-  --app-bg: #090E17; --panel: #111826; --panel-2: #161F2F; --panel-3: #1F2A3B;
-  --line: rgba(255,255,255,.07); --line-soft: rgba(255,255,255,.045); --line-strong: rgba(255,255,255,.14);
-  --ink: #F4F7FA; --ink-2: #A2B0C2; --ink-3: #5F6E82;
-  --topbar-bg: #0B111C; --filterbar-bg: #0C121D; --filterbar-line: rgba(255,255,255,.06);
-  /* brand / semantic */
-  --accent: #14A6A0; --storm-500: #E84A1F; --safe-500: #14A269;
+  /* surfaces — mapped to the app's global tokens (styles.css :root) so Follow-Up
+     HQ matches the dashboard / leads / client-portal color scheme. */
+  --app-bg: #0A1622; --panel: #0D1825; --panel-2: #122131; --panel-3: #16273A;
+  --line: #1B2A3B; --line-soft: #16222F; --line-strong: #233547;
+  --ink: #E7EEF4; --ink-2: #9DB0C2; --ink-3: #6B7E92;
+  --topbar-bg: #08121D; --filterbar-bg: #08121D; --filterbar-line: #16222F;
+  /* brand / semantic — app cyan accent, app red/green for urgency + success */
+  --accent: #09D6DC; --storm-500: #FF5C5C; --safe-500: #8FD14F;
   --navy-900: #0B1F3A; --navy-700: #21364f; --teal-300: #5BD2CB; --steel-300: #9AA9BB; --steel-400: #6B7E92;
   --ease-out: cubic-bezier(.2,.7,.2,1);
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -259,7 +260,7 @@ html.cursor-fx-active .fuhq-overlay .fuhq-iconbtn-dark { cursor: pointer !import
 @keyframes fuhqFade { from { opacity: 0; } to { opacity: 1; } }
 .fuhq-dialog { width: 100%; display: flex; justify-content: center; }
 .fuhq-overlay .cm { width: 660px; max-width: 94vw; max-height: 88vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,.6); color: var(--ink); font-family: var(--font-ui); }
-.fuhq-overlay { --accent: #14A6A0; --storm-500: #E84A1F; --safe-500: #14A269; --navy-900: #0B1F3A; --navy-700: #21364f; --teal-300: #5BD2CB; --steel-300: #9AA9BB; --steel-400: #6B7E92; --panel: #111826; --panel-2: #161F2F; --line: rgba(255,255,255,.07); --line-soft: rgba(255,255,255,.045); --line-strong: rgba(255,255,255,.14); --ink: #F4F7FA; --ink-2: #A2B0C2; --ink-3: #5F6E82; --font-head: 'Saira', system-ui, sans-serif; --font-ui: system-ui, sans-serif; --font-body: var(--font-ui); --font-mono: 'JetBrains Mono', ui-monospace, monospace; --ease-out: cubic-bezier(.2,.7,.2,1); }
+.fuhq-overlay { --accent: #09D6DC; --storm-500: #FF5C5C; --safe-500: #8FD14F; --navy-900: #0B1F3A; --navy-700: #21364f; --teal-300: #5BD2CB; --steel-300: #9AA9BB; --steel-400: #6B7E92; --panel: #0D1825; --panel-2: #122131; --line: #1B2A3B; --line-soft: #16222F; --line-strong: #233547; --ink: #E7EEF4; --ink-2: #9DB0C2; --ink-3: #6B7E92; --font-head: 'Saira', system-ui, sans-serif; --font-ui: system-ui, sans-serif; --font-body: var(--font-ui); --font-mono: 'JetBrains Mono', ui-monospace, monospace; --ease-out: cubic-bezier(.2,.7,.2,1); }
 .fuhq-overlay .ico svg { width: 100%; height: 100%; display: block; }
 .cm-head { background: var(--navy-900); color: #fff; padding: 22px 24px; position: relative; overflow: hidden; }
 .cm-head-pattern { position: absolute; inset: 0; opacity: .07; background-image: url(/pattern-diamond.svg); background-size: 64px 64px; }
