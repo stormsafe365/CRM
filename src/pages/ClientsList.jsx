@@ -15,6 +15,7 @@ import { readState } from '../lib/ssfuEngine'
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
 // in the right place. 'all' shows everything.
 const GROUPS = [
+  { key: 'all',           label: 'All',               match: () => true },
   { key: 'new_lead',      label: 'New Lead',          match: (c) => c.status === 'new_lead' },
   { key: 'contacted',     label: 'Attempting Contact', match: (c) => c.status === 'contacted' },
   { key: 'working',       label: 'Working Leads',     match: (c) => ['working', 'quoted', 'follow_up'].includes(c.status) },
@@ -22,7 +23,6 @@ const GROUPS = [
   { key: 'contract_sent', label: 'Contract Sent',     match: (c) => c.status === 'contract_sent' },
   { key: 'ordered',       label: 'Ordered',           match: (c) => c.status === 'ordered' },
   { key: 'dead',          label: 'Dead',              match: (c) => ['dead', 'lost', 'cancelled'].includes(c.status) },
-  { key: 'all',           label: 'All',               match: () => true },
 ]
 
 // The seven pipeline stages the inline "Change Stage" control offers.
@@ -71,11 +71,16 @@ export default function ClientsList() {
 
   // Filters
   const [searchParams, setSearchParams] = useSearchParams()
-  const requested = searchParams.get('view') || 'new_lead'
-  const group = GROUPS.some(g => g.key === requested) ? requested : 'new_lead'
+  const requested = searchParams.get('view') || 'all'
+  const group = GROUPS.some(g => g.key === requested) ? requested : 'all'
   const stageFilter = searchParams.get('stage') || null   // project-stage filter (only meaningful when view=ordered)
   const repFilter = searchParams.get('rep') || 'all'   // 'all' | a user id
   const [search, setSearch] = useState(searchParams.get('q') || '')
+  // Mirror the top-bar search (?q=…) into the filter. Navigating to /clients?q=…
+  // while already on this page doesn't remount, so the useState initializer alone
+  // would ignore it — this keeps the box + results in sync with the query.
+  const qParam = searchParams.get('q') || ''
+  useEffect(() => { setSearch(qParam) }, [qParam])
   const [buildingTypeFilter, setBuildingTypeFilter] = useState('all')
   const [sortBy, setSortBy] = useState('updated_desc')
   // Follow-Up HQ milestone store — drives the DERIVED project stage so this list
