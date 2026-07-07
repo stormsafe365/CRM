@@ -3544,11 +3544,11 @@ a.brand { text-decoration: none; color: inherit; }
 .cd-num { font-family: var(--font-head); font-size: 13px; font-weight: 400; color: var(--fg-2); }
 .cd-events { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .cd-event { font-size: 11px; padding: 3px 7px; border-radius: 4px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cd-event.task    { background: rgba(9,214,220,0.10); color: var(--cyan); border-left: 2px solid var(--cyan); }
-.cd-event.install { background: rgba(143,209,79,0.12); color: var(--lime); border-left: 2px solid var(--lime); }
-.cd-event.permit  { background: rgba(255,181,71,0.10); color: var(--warning); border-left: 2px solid var(--warning); }
-.cd-event.delivery{ background: rgba(160,107,255,0.10); color: #BD92FF; border-left: 2px solid #A06BFF; }
-.cd-event.storm   { background: rgba(255,92,92,0.10); color: var(--danger); border-left: 2px solid var(--danger); }
+.cd-event.task    { background: rgba(34,196,191,0.12);  color: #22c4bf; border-left: 2px solid #22c4bf; }
+.cd-event.install { background: rgba(97,216,158,0.12);  color: #61d89e; border-left: 2px solid #61d89e; }
+.cd-event.permit  { background: rgba(255,147,81,0.12);  color: #ff9351; border-left: 2px solid #ff9351; }
+.cd-event.delivery{ background: rgba(157,169,221,0.12); color: #9da9dd; border-left: 2px solid #9da9dd; }
+.cd-event.storm   { background: rgba(255,92,92,0.10);   color: var(--danger); border-left: 2px solid var(--danger); }
 .cd-more { font-size: 10px; color: var(--fg-3); margin-top: 2px; }
 
 /* Compact 7-day week strip (dashboard inline view) */
@@ -3838,11 +3838,13 @@ a.brand { text-decoration: none; color: inherit; }
 .dsh-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
 /* StatCard accent system — per-card accent top-line + hover glow/lift, and the
    value recolors to the accent on hover. Category accents mapped onto app tokens. */
-.dsh-kpi, .dsh-statcard { --sc-accent: var(--cyan); --sc-ring: rgba(9,214,220,.36); --sc-soft: rgba(9,214,220,.18); }
-.acc-cyan   { --sc-accent: var(--cyan);    --sc-ring: rgba(9,214,220,.36);   --sc-soft: rgba(9,214,220,.18); }
-.acc-green  { --sc-accent: var(--lime);    --sc-ring: rgba(143,209,79,.38);  --sc-soft: rgba(143,209,79,.18); }
-.acc-orange { --sc-accent: var(--warning); --sc-ring: rgba(255,181,71,.40);  --sc-soft: rgba(255,181,71,.20); }
-.acc-purple { --sc-accent: var(--violet);  --sc-ring: rgba(155,143,209,.46); --sc-soft: rgba(155,143,209,.22); }
+/* StatCard accents — Jenna's palette (#22c4bf teal · #61d89e green · #ff9351 orange · #9da9dd periwinkle) */
+.dsh-kpi, .dsh-statcard { --sc-accent: #22c4bf; --sc-ring: rgba(34,196,191,.38); --sc-soft: rgba(34,196,191,.20); }
+.acc-cyan   { --sc-accent: #22c4bf; --sc-ring: rgba(34,196,191,.38);  --sc-soft: rgba(34,196,191,.20); }
+.acc-green  { --sc-accent: #61d89e; --sc-ring: rgba(97,216,158,.40);  --sc-soft: rgba(97,216,158,.20); }
+.acc-orange { --sc-accent: #ff9351; --sc-ring: rgba(255,147,81,.42);  --sc-soft: rgba(255,147,81,.22); }
+.acc-purple { --sc-accent: #9da9dd; --sc-ring: rgba(157,169,221,.46); --sc-soft: rgba(157,169,221,.24); }
+.acc-yellow { --sc-accent: #ffeb99; --sc-ring: rgba(255,235,153,.44); --sc-soft: rgba(255,235,153,.22); }
 .dsh-kpi { position: relative; background: var(--card); border: 1px solid var(--line-soft);
   border-top: 2.5px solid var(--sc-accent); border-radius: var(--r-md); padding: 14px 16px 13px;
   text-decoration: none; overflow: hidden; animation: fadeUp .4s var(--ease) both;

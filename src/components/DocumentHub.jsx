@@ -33,7 +33,7 @@ const EYE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWid
 const TRASH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 
 // 6A category accents (rotating palette; All Files uses the brand teal) + short chip labels.
-const CAT_ACCENT = { all: '#14A6A0', quote: '#1cddd5', contract: '#4d9d78', rendering: '#ff8f49', layout: '#99acff', revisions: '#1cddd5', additional: '#4d9d78' }
+const CAT_ACCENT = { all: '#22c4bf', quote: '#61d89e', contract: '#ff9351', rendering: '#9da9dd', layout: '#ffeb99', revisions: '#22c4bf', additional: '#61d89e' }
 const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Extra' }
 const hexRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})` }
 const accentVars = (accent) => ({

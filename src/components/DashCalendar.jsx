@@ -151,8 +151,8 @@ export default function DashCalendar() {
         })}
       </div>
       <div className="cal-legend">
-        <span><i style={{ background: 'rgba(9,214,220,0.55)' }} />Follow-up</span>
-        <span><i style={{ background: 'rgba(143,209,79,0.65)' }} />Ordered job</span>
+        <span><i style={{ background: '#22c4bf' }} />Follow-up</span>
+        <span><i style={{ background: '#61d89e' }} />Ordered job</span>
         <span><i style={{ background: 'rgba(255,92,92,0.55)' }} />Overdue</span>
       </div>
     </>
@@ -185,8 +185,8 @@ export default function DashCalendar() {
         })}
       </div>
       <div className="cal-legend">
-        <span><i style={{ background: 'rgba(9,214,220,0.55)' }} />Follow-up</span>
-        <span><i style={{ background: 'rgba(143,209,79,0.65)' }} />Ordered job</span>
+        <span><i style={{ background: '#22c4bf' }} />Follow-up</span>
+        <span><i style={{ background: '#61d89e' }} />Ordered job</span>
         <span><i style={{ background: 'rgba(255,92,92,0.55)' }} />Overdue</span>
       </div>
     </>
