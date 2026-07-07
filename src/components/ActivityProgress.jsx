@@ -121,11 +121,11 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
     if (!patch) return
-    // Entering the ordered phase needs the order details (date, manufacturer,
-    // plans…) so Follow-Up HQ can build the timeline. If this step orders the
-    // lead but there's no order date yet, open the Mark-as-Ordered box to
-    // capture them instead of a silent status flip.
-    if (patch.status === 'ordered' && !client.order_date && onMarkOrdered) {
+    // "Deposit Received" (step 5) always opens the Mark-as-Ordered box so you can
+    // set the order date + follow-up timeframes before the lead lands in
+    // Follow-Up HQ. Other ordered steps open it too when the order details are
+    // still missing. Same box as the summary "Mark as Ordered" button.
+    if (onMarkOrdered && (i === 5 || (patch.status === 'ordered' && !client.order_date))) {
       onMarkOrdered()
       return
     }
@@ -193,10 +193,30 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
             {nextAction}
           </div>
         </div>
-        <button type="button" className="expand-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>
-          {open ? 'Collapse' : 'Expand Activity'}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="M6 9l6 6 6-6" /></svg>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
+          {onMarkOrdered && (
+            <button
+              type="button"
+              onClick={onMarkOrdered}
+              title={client.status === 'ordered' ? 'Edit order details' : 'Mark this lead as ordered'}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer',
+                padding: '9px 14px', borderRadius: 'var(--r-md)', fontFamily: 'var(--font-head, inherit)',
+                fontWeight: 700, fontSize: 12.5, letterSpacing: '.03em', whiteSpace: 'nowrap',
+                background: client.status === 'ordered' ? 'transparent' : 'var(--lime, #8FD14F)',
+                color: client.status === 'ordered' ? 'var(--cyan)' : '#08121d',
+                border: client.status === 'ordered' ? '1px solid rgba(9,214,220,0.45)' : 'none',
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+              {client.status === 'ordered' ? 'Edit Order' : 'Mark as Ordered'}
+            </button>
+          )}
+          <button type="button" className="expand-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+            {open ? 'Collapse' : 'Expand Activity'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        </div>
       </div>
 
       {/* Expanded: composer + full timeline */}
