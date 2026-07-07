@@ -126,6 +126,9 @@ export default function ClientDetail() {
       return
     }
     setClient(c => ({ ...c, ...patch }))
+    // Sliding to "Ordered" also needs the order details for the Follow-Up HQ
+    // timeline — open the Mark-as-Ordered box if we don't have them yet.
+    if (mapped === 'ordered' && !client.order_date) setOrdering(true)
   }
 
   // Quick-reschedule chips on the lead header — bump the legacy Next Follow-Up date.
@@ -292,7 +295,7 @@ export default function ClientDetail() {
           <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
         )}
 
-        <ActivityProgress client={client} showAudience={client.status === 'ordered'} />
+        <ActivityProgress client={client} showAudience={client.status === 'ordered'} onMarkOrdered={() => setOrdering(true)} />
 
         {client.status === 'ordered' && <OrderTimeline client={client} />}
 

@@ -67,7 +67,7 @@ function buildMilestones(client, hasQuote) {
   return STEP_LABELS.map((label, i) => ({ label, done: i <= rank }))
 }
 
-export default function ActivityProgress({ client, showAudience = false }) {
+export default function ActivityProgress({ client, showAudience = false, onMarkOrdered }) {
   const { users } = useUsers()
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
@@ -121,6 +121,14 @@ export default function ActivityProgress({ client, showAudience = false }) {
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
     if (!patch) return
+    // Entering the ordered phase needs the order details (date, manufacturer,
+    // plans…) so Follow-Up HQ can build the timeline. If this step orders the
+    // lead but there's no order date yet, open the Mark-as-Ordered box to
+    // capture them instead of a silent status flip.
+    if (patch.status === 'ordered' && !client.order_date && onMarkOrdered) {
+      onMarkOrdered()
+      return
+    }
     // Reaching any "ordered" milestone (Contract Signed, Deposit Received, …)
     // also moves the summary lead-temperature bar to Ordered, so the gauge and
     // the stepper stay in sync.
