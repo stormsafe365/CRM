@@ -111,12 +111,16 @@ export default function Dashboard() {
   }, [clients, weekAgoISO, monthStartISO])
 
   /* ---------- follow-ups ---------- */
+  // Ordered clients follow the Follow-Up HQ timeline (not clients.follow_up_date),
+  // and dead/lost/cancelled leads aren't chased — none should surface as an
+  // overdue lead follow-up in "Needs Attention".
+  const NO_LEAD_FU = ['ordered', 'dead', 'lost', 'cancelled']
   const overdue = useMemo(() =>
-    clients.filter(c => c.follow_up_date && c.follow_up_date < today)
+    clients.filter(c => c.follow_up_date && c.follow_up_date < today && !NO_LEAD_FU.includes(c.status))
       .sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date)),
     [clients, today])
   const dueToday = useMemo(() =>
-    clients.filter(c => c.follow_up_date === today), [clients, today])
+    clients.filter(c => c.follow_up_date === today && !NO_LEAD_FU.includes(c.status)), [clients, today])
   const pendingPay = useMemo(() =>
     clients.filter(c => c.status === 'ordered' && !c.payment_cleared), [clients])
 
