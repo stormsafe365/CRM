@@ -15,7 +15,7 @@ export default function LayoutTool() {
           <div className="sub">Place doors, windows, roll-ups &amp; framed openings on a dimensioned plan, then sign and print the approval sheet.</div>
         </div>
         <div className="right">
-          <a className="btn btn-ghost" href="/layout-sheet.html" target="_blank" rel="noreferrer">
+          <a className="btn btn-ghost" href="/layout/index.html" target="_blank" rel="noreferrer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6M10 14 21 3" /></svg>
             Open in new tab
           </a>
@@ -28,7 +28,7 @@ export default function LayoutTool() {
 
       <section className="tile" style={{ padding: 0, overflow: 'hidden' }}>
         <iframe
-          src="/layout-sheet.html"
+          src="/layout/index.html"
           title="StormSafe Building Approval Sheet"
           style={{ width: '100%', height: 'calc(100vh - 210px)', minHeight: 560, border: 0, display: 'block', background: 'var(--bg)' }}
         />

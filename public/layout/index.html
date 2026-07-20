@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StormSafe Steel — Opening Approval Sheet</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React 18 (production UMD, vendored locally so the tool works offline) -->
+  <script src="vendor/react.production.min.js"></script>
+  <script src="vendor/react-dom.production.min.js"></script>
+
+  <!-- pure data/logic layer -->
+  <script src="data.js"></script>
+
+  <!-- components: JSX pre-compiled with esbuild (no Babel in the browser) -->
+  <script src="tweaks-panel.js"></script>
+  <script src="PlanDiagram.js"></script>
+  <script src="Elevation.js"></script>
+  <script src="Schedule.js"></script>
+  <script src="Editor.js"></script>
+  <script src="Sheet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

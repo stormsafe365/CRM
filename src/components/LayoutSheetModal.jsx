@@ -13,7 +13,7 @@ import { uploadClientDoc } from '../lib/storage'
 import { htmlToPdfBlob } from '../lib/quoteCapture'
 import { toast } from '../lib/uiFx'
 
-const SRC = '/layout-sheet.html'
+const SRC = '/layout/index.html'
 
 export default function LayoutSheetModal({ client, onClose, onSaved }) {
   const iframeRef = useRef(null)
