@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="StormSafe Steel mark">
+  <defs>
+    <linearGradient id="steelMark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A6A7E"></stop>
+      <stop offset="0.5" stop-color="#9AA9BB"></stop>
+      <stop offset="1" stop-color="#3F4D60"></stop>
+    </linearGradient>
+    <radialGradient id="discMark" cx="0.5" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#1A3556"></stop>
+      <stop offset="1" stop-color="#0B1F3A"></stop>
+    </radialGradient>
+  </defs>
+  <g transform="translate(60 60)">
+    <circle r="58" fill="url(#steelMark)" stroke="#0B1F3A" stroke-width="2"></circle>
+    <circle r="48" fill="url(#discMark)"></circle>
+    <path d="M -34 -2 a 36 36 0 1 0 30 -32 a 28 28 0 1 1 -30 32 z" fill="#9AA9BB" opacity="0.55"></path>
+    <circle cx="0" cy="6" r="15" fill="#14A6A0"></circle>
+    <g transform="translate(0 4)" fill="#D4DBE3">
+      <rect x="-1.5" y="-2" width="3" height="22" rx="1"></rect>
+      <path d="M0 -2 C -11 -8 -20 -6 -24 -2 C -18 -11 -9 -15 0 -13 Z"></path>
+      <path d="M0 -2 C 11 -8 20 -6 24 -2 C 18 -11 9 -15 0 -13 Z"></path>
+      <path d="M0 -2 C -6 -13 -2 -24 4 -24 C 0 -17 -2 -11 0 -4 Z"></path>
+      <path d="M0 -2 C 6 -13 2 -24 -4 -24 C 0 -17 2 -11 0 -4 Z"></path>
+    </g>
+  </g>
+</svg>

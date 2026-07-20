@@ -45,7 +45,9 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
     try {
       const api = iframeRef.current?.contentWindow?.SS_LAYOUT
       if (typeof api?.getSheetHtml !== 'function') throw new Error('This builder can’t hand back a PDF — use its own export, then upload under Layout.')
-      const html = api.getSheetHtml()
+      setStatus('Rendering approval sheet…')
+      // Async: the builder switches to Approval Sheet mode and lets it paint first.
+      const html = await api.getSheetHtml()
       if (!html) throw new Error('Could not read the layout sheet.')
       setStatus('Generating PDF…')
       const blob = await htmlToPdfBlob(html)

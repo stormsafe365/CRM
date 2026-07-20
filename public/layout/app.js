@@ -72,6 +72,61 @@ function App() {
       finishes: { ...DEFAULT_FINISHES, ...base.finishes || {} }
     };
   });
+  const docInfoRef = React.useRef(docInfo);
+  docInfoRef.current = docInfo;
+  React.useEffect(() => {
+    function seedFromCRM(d) {
+      if (!d) return;
+      if (d.size) {
+        const m = String(d.size).match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)(?:\s*[xX×]\s*(\d+(?:\.\d+)?))?/);
+        if (m) {
+          const edits = { width: Number(m[1]), length: Number(m[2]) };
+          if (m[3]) edits.height = Number(m[3]);
+          setTweak(edits);
+        }
+      }
+      setDocInfo((prev) => ({
+        ...prev,
+        customer: d.customer || prev.customer,
+        address: d.address || prev.address
+      }));
+    }
+    function customerName() {
+      return docInfoRef.current && docInfoRef.current.customer || "";
+    }
+    async function getSheetHtml() {
+      setMode("sheet");
+      await new Promise((r) => setTimeout(r, 450));
+      const el = document.querySelector(".sheet");
+      if (!el) return "";
+      const base = location.href.replace(/[^/]*$/, "");
+      let css = "";
+      for (const link of Array.from(document.querySelectorAll('link[rel="stylesheet"]'))) {
+        try {
+          css += await (await fetch(link.href)).text() + "\n";
+        } catch (e) {
+        }
+      }
+      const imports = Array.from(css.matchAll(/@import\s+url\(['"]?([^'")]+)['"]?\)\s*;/g)).map((m) => m[1]);
+      for (const rel of imports) {
+        try {
+          css += await (await fetch(new URL(rel, base).href)).text() + "\n";
+        } catch (e) {
+        }
+      }
+      css = css.replace(/@import[^;]+;/g, "");
+      css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => "url(" + q + base);
+      return '<!doctype html><html><head><meta charset="utf-8"><style>' + css + "\nbody{margin:0;background:#fff}</style></head><body>" + el.outerHTML + "</body></html>";
+    }
+    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName };
+    return () => {
+      try {
+        delete window.SS_LAYOUT;
+      } catch (e) {
+        window.SS_LAYOUT = void 0;
+      }
+    };
+  }, [setTweak]);
   const building = (() => {
     const width = Number(t.width) || 0;
     const height = Number(t.height) || 0;

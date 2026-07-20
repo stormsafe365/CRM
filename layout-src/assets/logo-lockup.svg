@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" width="480" height="120" role="img" aria-label="StormSafe Steel">
+  <defs>
+    <linearGradient id="steelLockup" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A6A7E"></stop>
+      <stop offset="0.5" stop-color="#9AA9BB"></stop>
+      <stop offset="1" stop-color="#3F4D60"></stop>
+    </linearGradient>
+    <radialGradient id="discLockup" cx="0.5" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#1A3556"></stop>
+      <stop offset="1" stop-color="#0B1F3A"></stop>
+    </radialGradient>
+  </defs>
+
+  
+  <g transform="translate(60 60)">
+    <circle r="56" fill="url(#steelLockup)" stroke="#0B1F3A" stroke-width="2"></circle>
+    <circle r="46" fill="url(#discLockup)"></circle>
+    
+    <path d="M -32 -2 a 34 34 0 1 0 28 -30 a 26 26 0 1 1 -28 30 z" fill="#9AA9BB" opacity="0.55"></path>
+    
+    <circle cx="0" cy="6" r="14" fill="#14A6A0"></circle>
+    
+    <g transform="translate(0 4)" fill="#D4DBE3">
+      <rect x="-1.4" y="-2" width="2.8" height="20" rx="1"></rect>
+      <path d="M0 -2 C -10 -8 -18 -6 -22 -2 C -16 -10 -8 -14 0 -12 Z"></path>
+      <path d="M0 -2 C 10 -8 18 -6 22 -2 C 16 -10 8 -14 0 -12 Z"></path>
+      <path d="M0 -2 C -6 -12 -2 -22 4 -22 C 0 -16 -2 -10 0 -4 Z"></path>
+      <path d="M0 -2 C 6 -12 2 -22 -4 -22 C 0 -16 2 -10 0 -4 Z"></path>
+    </g>
+  </g>
+
+  
+  <g transform="translate(140 0)">
+    <text x="0" y="58" font-family="Oswald, &#39;Arial Narrow&#39;, sans-serif" font-weight="700" font-size="44" letter-spacing="2" fill="#0B1F3A">STORMSAFE</text>
+    <text x="0" y="92" font-family="Oswald, &#39;Arial Narrow&#39;, sans-serif" font-weight="500" font-size="22" letter-spacing="9" fill="#14A6A0">STEEL · FLORIDA</text>
+  </g>
+</svg>
