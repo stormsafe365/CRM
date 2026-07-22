@@ -11,11 +11,14 @@ import { supabase } from '../lib/supabase'
 
 const MFRS = ['CCI', 'CA', 'SBS']
 // keys match the calendar engine's PLAN_TYPES
+// earliest = when the Plan Status follow-up fires, measured from invoice paid
+// (HQ Follow-Up Timeline spec: ~7-biz-day plans → 7 days · 2–3 wk → 2.5 weeks ·
+// 4–6 wk → 4 weeks). Keep in sync with ssfuEngine.js PLAN_TYPES.
 const PLANS = {
   none:            { label: 'None (no plans)' },
-  masterfiles:     { label: 'Master files (~5–7 biz days)', earliest: '+5 biz days' },
-  generic:         { label: 'Generic plans (~2–3 wk)',      earliest: '+2 weeks' },
-  generic_stamped: { label: 'Generic stamped plans (~2–3 wk)', earliest: '+2 weeks' },
+  masterfiles:     { label: 'Master files (~7 biz days)',   earliest: '+7 days' },
+  generic:         { label: 'Generic plans (~2–3 wk)',      earliest: '+2.5 weeks' },
+  generic_stamped: { label: 'Generic stamped plans (~2–3 wk)', earliest: '+2.5 weeks' },
   sitespecific:    { label: 'Site-specific plans (~4–6 wk)', earliest: '+4 weeks' },
   asbuilt:         { label: 'As-built stamped plans (~4–6 wk)', earliest: '+4 weeks' },
 }
@@ -32,7 +35,7 @@ const addBiz = (date, n) => { let d = new Date(date), a = 0; while (a < n) { d.s
 const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
 // Wave 0 (dated now) + a plain-English list of what spawns as milestones clear.
-function buildPreview(orderStr, planKey, bucketStr, county, exempt, siteReady, foundation) {
+function buildPreview(orderStr, planKey, bucketStr, county, exempt, siteReady, foundation, permitting) {
   if (!orderStr) return { dated: [], later: [] }
   const order = parseLocal(orderStr)
   const p = PLANS[planKey] || PLANS.generic
@@ -42,9 +45,13 @@ function buildPreview(orderStr, planKey, bucketStr, county, exempt, siteReady, f
     dated.push({ d: addBiz(order, 7), type: 'pay', title: 'Confirm Invoice Paid', gate: true })
   }
   const later = []
+  const cty = county ? ` (${county} County)` : ''
+  const clientPermits = /client/i.test(permitting || '')
   later.push(planKey === 'none' ? 'No plans required → straight to permit / site' : `Plan Status — ${p.earliest || ''} after invoice paid`)
-  later.push(exempt ? 'Permit — none (exempt)' : `Permit — after plans${county ? ` (${county} County)` : ''}, repeat every 14 days`)
-  later.push(siteReady ? 'Site ready — site-prep skipped' : `Site Prep${foundation ? ` (${foundation})` : ''} — after plans`)
+  later.push(exempt ? 'Permit — none (exempt)'
+    : clientPermits ? `Permit — customer pulls their own${cty} · 3-wk check-in after plans`
+    : `Permit — we handle it${cty} · 2.5 wk after plans`)
+  later.push(siteReady ? 'Site ready — site-prep skipped' : `Site Prep${foundation ? ` (${foundation})` : ''} — 4-wk check-in after plans (client sends a photo when done)`)
   later.push(`Scheduling → Installation (${bucketStr} wk lead) → Progress → Completion — once permit & site clear`)
   return { dated, later }
 }
@@ -64,8 +71,8 @@ export default function OrderModal({ client, onClose, onSaved }) {
   const editing = client.status === 'ordered' || !!client.order_date
 
   const preview = useMemo(
-    () => buildPreview(orderDate, plan, bucket, county.trim(), exempt, siteReady, foundation),
-    [orderDate, plan, bucket, county, exempt, siteReady, foundation]
+    () => buildPreview(orderDate, plan, bucket, county.trim(), exempt, siteReady, foundation, exempt ? '' : permitting),
+    [orderDate, plan, bucket, county, exempt, siteReady, foundation, permitting]
   )
 
   async function save() {

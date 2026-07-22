@@ -6,10 +6,10 @@
 // Follow-Up HQ. Reads/writes the same localStorage key ('ssfu_v8'), so both
 // surfaces stay in sync.
 //
-// ⚠️ This mirrors the calendar's inline engine. If you change the chain logic in
-// follow-up-hq.html (PLAN_TYPES, the spawn functions, gate names), mirror it
-// here too. Kept as a separate copy on purpose: the calendar is a standalone
-// no-build HTML file in an iframe and can't import an ES module.
+// ⚠️ THIS is the live engine now. The old iframe calendar
+// (public/follow-up-hq.html) is legacy and no longer routed to — the native
+// /calendar page (FollowUpHQ.jsx) and the Order Timeline both run through this
+// module. Timeline windows follow Jenna's "HQ Follow-Up Timeline" spec (2026-07).
 
 export const LS_KEY = 'ssfu_v8'
 
@@ -25,16 +25,19 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const prettyDate = (iso) => { const d = parseISO(iso); return `${DOW[d.getDay()]} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}` }
 export const todayISO = () => toISO(new Date())
 
+// Follow-up window per plan type, measured from the day the plans invoice is
+// PAID (per Jenna's HQ Follow-Up Timeline spec, 2026-07): ~7-biz-day plans →
+// 7 days · 2–3-week plans → 2.5 weeks · 4–6-week plans → 4 weeks. Same windows
+// for CCI and CA — the tiers line up by turnaround.
 const PLAN_TYPES = {
-  none:            { label: 'No plans required',      earliest: null,        blurb: '' },
-  masterfiles:     { label: 'Master files',           earliest: { biz: 5 },  blurb: 'Master files run ~5–7 business days.' },
-  generic:         { label: 'Generic plans',          earliest: { days: 14 }, blurb: 'Generic plans run ~2–3 weeks.' },
-  generic_stamped: { label: 'Generic stamped plans',  earliest: { days: 14 }, blurb: 'Generic stamped plans run ~2–3 weeks.' },
+  none:            { label: 'No plans required',      earliest: null,         blurb: '' },
+  masterfiles:     { label: 'Master files',           earliest: { days: 7 },  blurb: 'Master files run ~7 business days.' },
+  generic:         { label: 'Generic plans',          earliest: { days: 18 }, blurb: 'Generic plans run ~2–3 weeks.' },
+  generic_stamped: { label: 'Generic stamped plans',  earliest: { days: 18 }, blurb: 'Generic stamped plans run ~2–3 weeks.' },
   sitespecific:    { label: 'Site-specific plans',    earliest: { days: 28 }, blurb: 'Site-specific plans run ~4–6 weeks.' },
   asbuilt:         { label: 'As-built stamped plans', earliest: { days: 28 }, blurb: 'As-built stamped plans run ~4–6 weeks.' },
   site:            { label: 'Site-specific plans',    earliest: { days: 28 }, blurb: 'Site-specific plans run ~4–6 weeks.' },
 }
-const FOUNDATION_DAYS = { 'Concrete': 21, 'Footers Only': 14, 'Asphalt': 10, 'Gravel': 7, 'Ground Install': 3, 'Directly to the ground': 3 }
 
 const planEarliestDate = (from, planKey) => {
   const p = PLAN_TYPES[planKey]
@@ -85,10 +88,18 @@ function spawnPlanStatus(state, c, from) {
 }
 function spawnAfterPlans(state, c, from) {
   const cty = c.county ? ` (${c.county} County)` : ''
-  if (!c.exempt && !fuExists(state, c.id, 'permit_approved'))
-    addFU(state, c, 'permit', addDays(from, 3), `Permit — submit & track the permit${cty}. Repeat every 14 days until approved. ✓ this when approved.`, { gate: 'permit_approved' })
+  if (!c.exempt && !fuExists(state, c.id, 'permit_approved')) {
+    // Who pulls the permit decides the window (HQ Follow-Up Timeline spec):
+    // we permit → 2.5 weeks after plans; customer permits → 3-week check-in
+    // (it's on them to tell us once permits are obtained).
+    const clientPermits = /client/i.test(c.permitting || '')
+    if (clientPermits)
+      addFU(state, c, 'permit', addDays(from, 21), `Permit Check-In — customer is pulling their own permit${cty}; it’s on them to tell us once it’s obtained. Check in for status. ✓ this when approved.`, { gate: 'permit_approved' })
+    else
+      addFU(state, c, 'permit', addDays(from, 18), `Permit — we’re handling permitting${cty}; follow up on submission & status. ✓ this when approved.`, { gate: 'permit_approved' })
+  }
   if (!c.siteReady && !fuExists(state, c.id, 'site_ready'))
-    addFU(state, c, 'site', addDays(from, FOUNDATION_DAYS[c.foundation] || 7), `Site Prep — get the site ready${c.foundation ? ` (${c.foundation})` : ''}: grading, pad, inspections & access. Must be ready before scheduling. ✓ this when ready.`, { gate: 'site_ready' })
+    addFU(state, c, 'site', addDays(from, 28), `Site Prep — client preps the site${c.foundation ? ` (${c.foundation})` : ''} and tells us + sends a photo when it’s done. Check in if nothing has come in by now. ✓ this when ready.`, { gate: 'site_ready' })
   checkSchedulingGate(state, c, from)
 }
 function checkSchedulingGate(state, c, from) {
