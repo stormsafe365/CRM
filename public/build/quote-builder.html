@@ -252,6 +252,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="Master Files">Master Files — $250</option>
         <option value="No Permit Required">No Permit Required — $0</option>
       </select></div>
+    <div id="plans-auto-note" class="anote hidden" style="margin:-2px 0 8px">Wall height over 14&prime; &mdash; <strong>Site Specific Plans required</strong> (CCI), regardless of county or property type.</div>
     <div class="row"><label>Permitting Service</label>
       <select id="permit-svc" onchange="rc()">
         <option value="none">None — Buyer pulls own permit</option>
@@ -401,7 +402,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 <div class="sec">
   <div class="st">4 — Wall Options</div>
   <div class="row"><label>Wall Style</label>
-    <select id="ws" onchange="rc()">
+    <select id="ws" onchange="_wsAutoVert=false;rc()">
       <option value="Horizontal">Horizontal</option>
       <option value="Vertical">Vertical</option>
     </select></div>
@@ -3875,6 +3876,14 @@ function doPerm(){
     var planType, cert;
     if(pt==='rc2r'||pt==='com'){ planType=MFR().autoHighPlan; cert='170 MPH'; }
     else { planType=CP[co]||MFR().defaultPlan; cert=HW.indexOf(co)>=0?'170 MPH':'150 MPH'; }
+    // CCI ONLY: any wall height over 14' requires Site Specific Plans, no matter
+    // the county or property type. Force the choice and lock it so it can't be
+    // switched to a cheaper plan by mistake.
+    var _bhTall = (parseFloat((G('bh') && G('bh').value) || 0) || 0) > 14;
+    var _cciTall = (ACTIVE_MFR === 'CCI' && _bhTall);
+    if(_cciTall) planType = 'Site Specific Plans';
+    var _paNote = G('plans-auto-note'); if(_paNote) _paNote.classList.toggle('hidden', !_cciTall);
+    var _paSel = G('plans-sel'); if(_paSel) _paSel.disabled = _cciTall;
     G('plans-sel').value = planType;
     G('cert-req').textContent = cert;
     // CA: update As Built/Master Files label to show correct price for property type
@@ -4095,6 +4104,7 @@ function populateLength(){
 
 
 var _prevOcWidth = -1; // last width doBld saw — resets the 4' OC upgrade on width change
+var _wsAutoVert = false; // true only while ws=Vertical came from the >30ft auto rule (not manual/restored)
 function doBld(){
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, f=[];
   var bt=G('btype').value;
@@ -4104,14 +4114,19 @@ function doBld(){
     populateLength();
   }
 
-  // Auto wall style — only width > 30ft forces vertical. Height ≥ 16ft shows warning only.
+  // Auto wall style — width > 30ft forces vertical; carports are horizontal.
+  // The auto rule may only undo ITS OWN auto-set value (_wsAutoVert): a manual
+  // or quote-restored Vertical upgrade must survive size changes — doBld runs
+  // on every width/height tweak and used to silently stomp the upgrade back to
+  // Horizontal (which then saved, losing the client's vertical walls).
   if(bt==='carport'){
-    G('ws').value='Horizontal';
+    G('ws').value='Horizontal'; _wsAutoVert=false;
   } else if(w>30){
-    G('ws').value='Vertical'; f.push(bdg('Auto: Vertical Walls (>30ft)','bb'));
+    if(G('ws').value!=='Vertical'){ G('ws').value='Vertical'; _wsAutoVert=true; }
+    f.push(bdg('Auto: Vertical Walls (>30ft)','bb'));
   } else if(w>0){
-    G('ws').value='Horizontal';
-    if(h>=16) f.push(bdg('⚠ Tall Building (≥16ft) — consider Vertical Walls','bo'));
+    if(_wsAutoVert){ G('ws').value='Horizontal'; _wsAutoVert=false; }
+    if(h>=16 && G('ws').value!=='Vertical') f.push(bdg('⚠ Tall Building (≥16ft) — consider Vertical Walls','bo'));
   }
 
   // CA 62'-70' wide provisional support
@@ -5212,11 +5227,16 @@ function gLT(){
         var ahi=ae.querySelector('.lt-acc-win-hi')?ae.querySelector('.lt-acc-win-hi').value:'std';
         accAdj+=aqty*(MFR().winPrices[ahi]||window._win_std||200);
       } else if(atype==='frameout'){
-        // Framed opening on the lean-to — priced from the manufacturer's
-        // frameout charts (CCI: Side Opening chart on the outer wall).
+        // Typed framed opening — same price as the Section 10 chart for the
+        // active manufacturer. Zero-priced customs (Custom Garage Door / Custom
+        // Walk-Through / Custom Frame Out) fall back to the width-based
+        // lean-to frame-out chart, matching how they're quoted by hand.
         var afoW=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
         var afoLoc=ae.querySelector('.lt-acc-loc')?ae.querySelector('.lt-acc-loc').value:'outer';
-        accAdj+=aqty*ltFrameoutPrice(afoW, afoLoc);
+        var afoKey=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+        var afoUnit=(afoKey&&AC_PRICES&&AC_PRICES[afoKey])||0;
+        if(!afoUnit) afoUnit=ltFrameoutPrice(afoW, afoLoc);
+        accAdj+=aqty*afoUnit;
       }
     });
     t+=u.total+accAdj;
@@ -5260,6 +5280,7 @@ function getValidRDPSizes(lt_w, lt_h, loc){
 function updateLTAccSize(accEntry){
   var lte=accEntry.closest('.lte'); if(!lte) return;
   var dims=getLTDims(lte);
+  refreshLTAccQty(accEntry); // qty offering tracks what fits on the chosen wall
   var typeEl=accEntry.querySelector('.lt-acc-type');
   var locEl=accEntry.querySelector('.lt-acc-loc');
   if(!typeEl||!locEl) return;
@@ -5303,6 +5324,71 @@ function refreshLTAccSizes(lte){
   lte.querySelectorAll('.lt-acc-e').forEach(function(ae){updateLTAccSize(ae);});
 }
 
+// ── Typed framed openings on lean-tos ────────────────────────────────────────
+// The lean-to "Framed Opening" offers the SAME per-type list Section 10 offers
+// (built live from the active manufacturer's AC_PRICES chart), priced the same.
+function ltFoTypeOptionsHTML(){
+  var keys=Object.keys(AC_PRICES||{}).filter(function(k){return k.indexOf('Framed Opening')===0;});
+  return keys.map(function(k){
+    var p=AC_PRICES[k];
+    return '<option value="'+k.replace(/"/g,'&quot;')+'">'+k.replace('Framed Opening — ','')+(p?' — $'+p:'')+'</option>';
+  }).join('');
+}
+// Default render size (+ window sill) per framed-opening subtype — mirrors the
+// Section 10 defaults (collectElevItems). noRender: the 45° angle cut is a
+// charge, not an opening — nothing to draw.
+function ltFoDefaults(label){
+  label=label||'';
+  if(label.indexOf('45')>=0) return {w:0,h:0,sill:false,noRender:true};
+  if(label.indexOf('Window')>=0) return {w:2.5,h:2.5,sill:true};
+  if(label.indexOf('Walk-Through')>=0) return {w:3,h:6.67,sill:false};
+  var m=label.match(/\((\d+)'(?:-(\d+)')?\s*Wide\)/);
+  if(m) return {w:parseInt(m[2]||m[1])||10,h:8,sill:false};
+  if(label.indexOf('Garage')>=0||label.indexOf('Side Opening')>=0) return {w:10,h:8,sill:false};
+  return {w:10,h:10,sill:false}; // custom frame out
+}
+function updLTAccFoType(sel){
+  var e=sel.closest('.lt-acc-e');
+  var d=ltFoDefaults(sel.value);
+  var szRow=e.querySelector('.lt-acc-fo-row');
+  if(szRow) szRow.style.display=d.noRender?'none':'';
+  // Adjustable sill only for WINDOW framed openings
+  var slRow=e.querySelector('.lt-acc-fo-sill-row');
+  if(slRow) slRow.style.display=(sel.value.indexOf('Window')>=0)?'':'none';
+  if(!d.noRender){
+    var wEl=e.querySelector('.lt-acc-fo-w'), hEl=e.querySelector('.lt-acc-fo-h');
+    if(wEl&&d.w) wEl.value=d.w;
+    if(hEl&&d.h) hEl.value=d.h;
+  }
+  updateLTAccSize(e); rc();
+}
+// ── Fit-based accessory quantity ─────────────────────────────────────────────
+// The qty dropdown offers as many as physically fit on the chosen wall
+// (~1' clearance per opening), instead of a hardcoded 1–3.
+function ltAccItemWidth(ae){
+  var t=(ae.querySelector('.lt-acc-type')||{}).value||'rollup';
+  if(t==='rollup'){var sz=((ae.querySelector('.lt-acc-size')||{}).value||'9x8').split('x');return parseFloat(sz[0])||9;}
+  if(t==='wtd') return 3;
+  if(t==='win') return 2.5;
+  return parseFloat((ae.querySelector('.lt-acc-fo-w')||{}).value)||10;
+}
+function ltAccWallLen(ae){
+  var lte=ae.closest('.lte'); if(!lte) return 0;
+  var loc=(ae.querySelector('.lt-acc-loc')||{}).value||'outer';
+  if(loc==='outer') return parseFloat((lte.querySelector('.ltl2')||{}).value)||0;
+  return getLTDims(lte).w;
+}
+function refreshLTAccQty(ae){
+  var qEl=ae.querySelector('.lt-acc-qty'); if(!qEl) return;
+  var iw=ltAccItemWidth(ae), wl=ltAccWallLen(ae);
+  var max=(iw>0&&wl>0)?Math.max(1,Math.floor(wl/(iw+1))):3;
+  max=Math.min(max,24); // sanity ceiling
+  var cur=parseInt(qEl.value)||1;
+  var html=''; for(var i=1;i<=max;i++) html+='<option value="'+i+'">'+i+'</option>';
+  qEl.innerHTML=html;
+  qEl.value=String(Math.min(cur,max));
+}
+
 function addLTAcc(entry){
   var list=entry.querySelector('.lt-acc-list');
   var d=document.createElement('div');
@@ -5320,11 +5406,15 @@ function addLTAcc(entry){
     '<select class="lt-acc-size" onchange="updLTAccRudSize(this);rc()"></select></div>'+
     '<div class="row lt-acc-color-row"'+(MFR().rudColors?'':' style="display:none"')+'><label>Door Color</label>'+
     '<select class="lt-acc-color" onchange="rc()">'+rudColorOptionsHTML()+'</select></div>'+
+    '<div class="row lt-acc-fo-type-row" style="display:none"><label>Opening Type</label>'+
+    '<select class="lt-acc-fo-type" onchange="updLTAccFoType(this)">'+ltFoTypeOptionsHTML()+'</select></div>'+
     '<div class="row lt-acc-fo-row" style="display:none"><label>Frame-Out Size (W &times; H ft)</label>'+
     '<div style="display:flex;gap:6px;width:100%">'+
-    '<input type="number" class="lt-acc-fo-w" min="1" max="20" step="0.5" value="10" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%" placeholder="W">'+
+    '<input type="number" class="lt-acc-fo-w" min="1" max="20" step="0.5" value="10" oninput="refreshLTAccQty(this.closest(\'.lt-acc-e\'));rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%" placeholder="W">'+
     '<input type="number" class="lt-acc-fo-h" min="1" max="16" step="0.5" value="10" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%" placeholder="H">'+
     '</div></div>'+
+    '<div class="row lt-acc-fo-sill-row" style="display:none"><label>Sill Height (ft)</label>'+
+    '<input type="number" class="lt-acc-fo-sill" value="4.17" min="0" max="14" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-acc-rud-ch-row" style="display:none"><label>Chain Hoist</label>'+
     '<select class="lt-acc-ch" onchange="rc()">'+
     '<option value="0">None</option><option value="1">1 (+$325)</option>'+
@@ -5378,6 +5468,9 @@ function updLTAccType(sel){
   e.querySelector('.lt-acc-wtd-row').style.display=sel.value==='wtd'?'':'none';
   e.querySelector('.lt-acc-win-row').style.display=sel.value==='win'?'':'none';
   var foRow=e.querySelector('.lt-acc-fo-row'); if(foRow) foRow.style.display=sel.value==='frameout'?'':'none';
+  var ftRow=e.querySelector('.lt-acc-fo-type-row'); if(ftRow) ftRow.style.display=sel.value==='frameout'?'':'none';
+  var _ltSl=e.querySelector('.lt-acc-fo-sill-row'); if(_ltSl&&sel.value!=='frameout') _ltSl.style.display='none';
+  if(sel.value==='frameout'){ var ftSel=e.querySelector('.lt-acc-fo-type'); if(ftSel) updLTAccFoType(ftSel); }
   updateLTAccSize(e);
   if(isRollup) refreshLTAccChSl(e);
   rc();
@@ -5718,11 +5811,17 @@ function aAC(){
       '<div class="row fo-ch-row"><label class="fo-ch-label">Opening Height (ft)</label>'+
       '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '</div>'+
+    '<div class="row fo-sill-row hidden"><label>Sill Height (ft)</label>'+
+    '<input type="number" class="fo-sill" value="4.17" min="0" max="14" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row fo-loc-row hidden"><label>Wall Location</label>'+
     '<select class="fo-loc" onchange="refreshPosLabels(this.closest(\'.ace\'));rc()">'+
     '<option>Front Gable End</option><option>Back Gable End</option>'+
     '<option>Left Eave Side</option><option>Right Eave Side</option>'+
     '</select></div>'+
+    // Display-only: how this framed opening's size shows on the Dimensioned Layout
+    // & Spacing sheet. No onchange / no rc() — never affects pricing or the model.
+    '<div class="row fo-dispunit-row hidden"><label>Layout Sheet Units</label>'+
+    '<select class="fo-disp-unit"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
     '<div class="pos-section fo-pos-section"></div>';
   d.appendChild(mkRm('.ace'));
   G('acl').appendChild(d);
@@ -5737,6 +5836,9 @@ function updACPrice(sel){
   if(foBox) foBox.classList.toggle('hidden',!isCustomSz);
   var isFO = sel.value.indexOf('Framed Opening') === 0;
   entry.querySelector('.fo-loc-row').classList.toggle('hidden', !isFO);
+  var _duRow=entry.querySelector('.fo-dispunit-row'); if(_duRow) _duRow.classList.toggle('hidden', !isFO);
+  // Adjustable sill only makes sense for WINDOW framed openings.
+  var _slRow=entry.querySelector('.fo-sill-row'); if(_slRow) _slRow.classList.toggle('hidden', !(isFO && sel.value.indexOf('Window')>=0));
   if(isFO){
     var qty = parseInt(entry.querySelector('.acq').value)||1;
     updatePosSection(entry, qty, 'Opening');
@@ -5753,6 +5855,13 @@ function foCustomFeet(el){
   var cw=parseFloat((el.querySelector('.fo-cw')||{}).value);
   var ch=parseFloat((el.querySelector('.fo-ch')||{}).value);
   return { w:(cw>0?cw*k:10), h:(ch>0?ch*k:8) };
+}
+// Sill height (ft) for a WINDOW framed opening — the entry's adjustable Sill
+// Height input (some jobs need windows higher than standard), falling back to
+// the standard 4'2". Placement only — never affects pricing.
+function foSillFt(el){
+  var s=parseFloat((el.querySelector('.fo-sill')||{}).value);
+  return (isFinite(s)&&s>=0)?s:4.16667;
 }
 // Update the width/height labels + input constraints to match the chosen unit.
 // Does NOT touch the entered numbers (used on init/restore).
@@ -6866,8 +6975,8 @@ function buildingPageHTML(prefixHTML){
     if(!locRow || locRow.classList.contains('hidden')) return;
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
-    var foW=2.5, foH=2.5, foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    var foW=2.5, foH=2.5, foYo=foSillFt(el);
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?foSillFt(el):0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -7057,7 +7166,7 @@ function collectQuoteData(){
     d.accs=[];
     el.querySelectorAll('.lt-acc-e').forEach(function(ae){
       var a={};
-      ['lt-acc-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(cls){
+      ['lt-acc-type','lt-acc-fo-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-fo-sill','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(cls){
         var f=ae.querySelector('.'+cls); if(f) a[cls]=f.value;
       });
       a.offs=Array.prototype.map.call(ae.querySelectorAll('.lt-acc-off'),function(i){return i.value;});
@@ -7072,7 +7181,7 @@ function collectQuoteData(){
     var d = {};
     // fo-loc = the wall a framed opening sits on; was missing, so loads reverted
     // every framed opening to the first wall (Front Gable End).
-    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-loc'].forEach(function(cls){
+    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-disp-unit','fo-sill','fo-loc'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
     // Position rows (placement along the wall) — same as doors/windows/roll-ups.
@@ -7306,12 +7415,19 @@ function restoreQuoteData(data){
       addLTAcc(el);
       var aes=el.querySelectorAll('.lt-acc-e'); var ae=aes[aes.length-1];
       var tEl=ae.querySelector('.lt-acc-type'); if(tEl&&a['lt-acc-type']!==undefined){ tEl.value=a['lt-acc-type']; updLTAccType(tEl); }
+      // Framed-opening subtype + W/H BEFORE qty: the fit-based qty list is
+      // computed from the opening width, so restore the real width first or a
+      // saved qty could get clamped against the 10' default.
+      var ftEl=ae.querySelector('.lt-acc-fo-type'); if(ftEl&&a['lt-acc-fo-type']!==undefined) ftEl.value=a['lt-acc-fo-type'];
+      ['lt-acc-fo-w','lt-acc-fo-h','lt-acc-fo-sill'].forEach(function(cls){
+        var f=ae.querySelector('.'+cls); if(f&&a[cls]!==undefined&&a[cls]!=='') f.value=a[cls];
+      });
       var locEl=ae.querySelector('.lt-acc-loc'); if(locEl&&a['lt-acc-loc']!==undefined) locEl.value=a['lt-acc-loc'];
+      updateLTAccSize(ae); // rebuilds size list + fit-based qty for the restored wall/size
       var qEl=ae.querySelector('.lt-acc-qty'); if(qEl&&a['lt-acc-qty']!==undefined) qEl.value=a['lt-acc-qty'];
-      updateLTAccSize(ae);
       var szEl=ae.querySelector('.lt-acc-size'); if(szEl&&a['lt-acc-size']!==undefined) szEl.value=a['lt-acc-size'];
       refreshLTAccChSl(ae); rebuildLTAccOffsets(ae);
-      ['lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi'].forEach(function(cls){
+      ['lt-acc-color','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi'].forEach(function(cls){
         var f=ae.querySelector('.'+cls); if(f&&a[cls]!==undefined) f.value=a[cls];
       });
       var pEl=ae.querySelector('.lt-acc-pos'); if(pEl&&a['lt-acc-pos']!==undefined){ pEl.value=a['lt-acc-pos']; updLTAccPos(pEl); }
@@ -7335,6 +7451,8 @@ function restoreQuoteData(data){
     if(typeof foApplyUnit==='function') foApplyUnit(el); // relabel ft/in (no conversion)
     // Wall location (was reverting framed openings to the first wall).
     var foLocEl=el.querySelector('.fo-loc'); if(foLocEl&&d['fo-loc']) foLocEl.value=d['fo-loc'];
+    var foDuEl=el.querySelector('.fo-disp-unit'); if(foDuEl&&d['fo-disp-unit']) foDuEl.value=d['fo-disp-unit'];
+    var foSlEl=el.querySelector('.fo-sill'); if(foSlEl&&d['fo-sill']!==undefined&&d['fo-sill']!=='') foSlEl.value=d['fo-sill'];
     // Rebuild + restore placement rows for framed openings (act starts with "Framed Opening").
     if(actEl && actEl.value.indexOf('Framed Opening')===0){
       var foQty=parseInt(d.acq)||1;
@@ -7744,8 +7862,12 @@ async function printQuote(){
         else if(atype==='frameout'){
           var afoW2=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
           var afoH2=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
-          var afp=ltFrameoutPrice(afoW2, aloc);
-          if(afp) rows+=row('  Lean-To: '+afoW2+'x'+afoH2+"' Framed Opening ("+alocLabel+')',aqty,afp,afp*aqty);
+          var afoKey2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+          var afp=(afoKey2&&AC_PRICES&&AC_PRICES[afoKey2])||0;
+          if(!afp) afp=ltFrameoutPrice(afoW2, aloc);
+          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(afoW2+'x'+afoH2+"' opening");
+          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+afoW2+'x'+afoH2+"'";
+          if(afp) rows+=row('  Lean-To: Framed Opening — '+afoLbl+afoSz+' ('+alocLabel+')',aqty,afp,afp*aqty);
         }
       });
       // Per-lean-to End Connection Fee (skip for free-standing)
@@ -8115,7 +8237,12 @@ function threeDPageHTML(imgs){
 
 // ── Dimensioned "spacing" drawing — clean black-on-white shop-drawing elevations
 //    showing exactly where each opening sits + distances. Optional PDF/contract page.
-function _dimFtIn(ft){ var ti=Math.round(ft*12), f=Math.floor(ti/12), i=ti%12; return i?(f+"'"+i+'"'):(f+"'"); }
+// Exact feet-inches — inches kept to 1/100" (decimal, trailing zeros trimmed) so
+// the sheet reflects the entered size/position precisely rather than snapping to
+// the nearest whole inch. e.g. 3.9583ft -> 3'11.5"  ·  51.0833ft -> 51'1"  ·  30ft -> 30'
+function _dimFtIn(ft){ var ti=parseFloat((ft*12).toFixed(2)), f=Math.floor(ti/12), i=parseFloat((ti-f*12).toFixed(2)); if(i>=12){f+=1;i=0;} return i?(f+"'"+i+'"'):(f+"'"); }
+// Exact inches label (decimal, trailing zeros trimmed). e.g. 3.9583ft -> 47.5"  ·  51.0833ft -> 613"
+function _dimIn(ft){ return parseFloat((ft*12).toFixed(2))+'"'; }
 
 // Collect the openings placed on each wall (same dispatch the elevations use).
 function collectElevItems(){
@@ -8139,13 +8266,14 @@ function collectElevItems(){
   document.querySelectorAll('.ace').forEach(function(el){
     var comp=el.querySelector('.act')?el.querySelector('.act').value:''; if(comp.indexOf('Framed Opening')<0) return;
     var locRow=el.querySelector('.fo-loc-row'); if(!locRow||locRow.classList.contains('hidden')) return;
-    var qty=parseInt(el.querySelector('.acq').value)||1, foW=2.5,foH=2.5,foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    var qty=parseInt(el.querySelector('.acq').value)||1, foW=2.5,foH=2.5,foYo=foSillFt(el);
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?foSillFt(el):0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door')>=0){foW=6;foH=6.67;foYo=0;}
     else if(comp.indexOf('Walk-Through')>=0){foW=3;foH=6.67;foYo=0;}
-    dispatch(el.querySelector('.fo-loc').value,0,W,L,function(a,fw){ getPosItems(el,qty,foW,fw,foH,'fo',foYo).forEach(function(it){a.push(it);}); });
+    var _duEl=el.querySelector('.fo-disp-unit'), _du=_duEl?_duEl.value:'ft';
+    dispatch(el.querySelector('.fo-loc').value,0,W,L,function(a,fw){ getPosItems(el,qty,foW,fw,foH,'fo',foYo).forEach(function(it){ it.dispUnit=_du; a.push(it); }); });
   });
   return {front:front,back:back,right:right,left:left,W:W,L:L};
 }
@@ -8174,9 +8302,12 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide){
   if(isGable&&peakHpx>0.5){ s+='<polygon points="'+X(0)+','+Y(wallH)+' '+X(faceW/2)+','+Y(peakH)+' '+X(faceW)+','+Y(wallH)+'" fill="'+(gchFront?'#e8edf2':'#ffffff')+'" stroke="#1f2937" stroke-width="1.6"/>'; }
   sorted.forEach(function(it){
     var yo=it.yo||0, ox=X(it.x), oy=Y(yo+it.h), ow=it.w*sc, oh=it.h*sc;
+    // Framed openings can opt into inch labels (display only — the spacing chain,
+    // overall width and wall height below always stay in feet-inches).
+    var _f=(it.type==='fo'&&it.dispUnit==='in')?_dimIn:_dimFtIn;
     s+='<rect x="'+ox+'" y="'+oy+'" width="'+ow.toFixed(1)+'" height="'+oh.toFixed(1)+'" fill="#eef2f7" stroke="#1d4ed8" stroke-width="1.2"/>';
-    s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+(oy+oh/2).toFixed(1)+'" font-size="9" fill="#0f172a" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="700">'+_dimFtIn(it.w)+'×'+_dimFtIn(it.h)+'</text>';
-    if(yo>0.1){ s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+((Y(0)+Y(yo))/2).toFixed(1)+'" font-size="7.5" fill="#475569" text-anchor="middle" dominant-baseline="middle" font-family="Arial">sill '+_dimFtIn(yo)+'</text>'; }
+    s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+(oy+oh/2).toFixed(1)+'" font-size="9" fill="#0f172a" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="700">'+_f(it.w)+'×'+_f(it.h)+'</text>';
+    if(yo>0.1){ s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+((Y(0)+Y(yo))/2).toFixed(1)+'" font-size="7.5" fill="#475569" text-anchor="middle" dominant-baseline="middle" font-family="Arial">sill '+_f(yo)+'</text>'; }
   });
   var dimY=PADT+totH+22;
   var stops=[0]; sorted.forEach(function(it){stops.push(it.x);stops.push(it.x+it.w);}); stops.push(faceW);
@@ -8462,8 +8593,8 @@ async function printContract(){
     if(!locRow || locRow.classList.contains('hidden')) return;
     var loc = el.querySelector('.fo-loc').value;
     var qty = parseInt(el.querySelector('.acq').value)||1;
-    var foW=2.5, foH=2.5, foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    var foW=2.5, foH=2.5, foYo=foSillFt(el);
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?foSillFt(el):0;}
     else if(comp.indexOf('Garage Door')>=0){var wm=comp.match(/(\d+)' Wide/);foW=wm?parseInt(wm[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm2=comp.match(/(\d+)' Wide/);foW=wm2?parseInt(wm2[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door') >= 0){ foW=6; foH=6.67; foYo=0; }
@@ -9054,11 +9185,14 @@ async function printContract(){
 
   // ── Header HTML (reused on every page) ──
   function _header(titleText, subText){
+    // CCI contract: keep the logo + contact line only — no "STORMSAFE STEEL"
+    // wordmark or tagline (per CCI branding). CA keeps the full header.
+    var _hCCI = (ACTIVE_MFR === 'CCI');
     return '<div class="c-hdr">'+
       '<img class="c-hdr-logo" src="'+LOGO+'" alt="StormSafe">'+
       '<div>'+
-        '<div class="c-hdr-brand-name">STORM<span>SAFE</span> STEEL</div>'+
-        '<div class="c-hdr-brand-tag">Where Durability Meets Peace of Mind</div>'+
+        (_hCCI ? '' : '<div class="c-hdr-brand-name">STORM<span>SAFE</span> STEEL</div>')+
+        (_hCCI ? '' : '<div class="c-hdr-brand-tag">Where Durability Meets Peace of Mind</div>')+
         '<div class="c-hdr-brand-contact">561-771-5555 &bull; connect@stormsafesteel.com &bull; stormsafesteel.com</div>'+
       '</div>'+
       '<div class="c-hdr-meta">'+
@@ -9261,11 +9395,56 @@ async function printContract(){
   var page2 = '';
 
   // ── PAGE 3: Full Terms & Conditions ──
+  // The CCI contract uses Carolina Carports Inc.'s own "Terms, Conditions, and
+  // Warranties" (reproduced verbatim from CCI's document, Rev. June 10, 2022).
+  // CA keeps StormSafe's terms in the false branch below.
+  var isCCI = (ACTIVE_MFR === 'CCI');
+  var ccTermsInner =
+    // Carolina Carports branding for their terms page. CC_LOGO is a data-URI set
+    // once the logo image is added; until then, the name shows on its own.
+    '<div style="text-align:center;margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid #e2e8f0">'+
+      (typeof CC_LOGO!=='undefined'&&CC_LOGO ? '<img src="'+CC_LOGO+'" alt="Carolina Carports" style="height:52px;width:auto;object-fit:contain;display:block;margin:0 auto 6px">' : '')+
+      '<div style="font-size:15pt;font-weight:800;letter-spacing:.5px;color:#111827">Carolina Carports, Inc.</div>'+
+    '</div>'+
+    '<p style="margin:0 0 8px;font-weight:700">Terms, Conditions, and Warranties</p>'+
+    '<p><strong>1. Products and Warranties.</strong> Buyer has been educated about CCI\'s various products and warranties.</p>'+
+    '<p><strong>2. Warranty Limitations.</strong></p>'+
+    '<p style="padding-left:16px"><strong>a. Unlevel Installation Site Voids Warranty.</strong> Warranties shall be immediately void if the foundation is not level prior to installation. Units installed on an installation site that is not level may be installed "as is."</p>'+
+    '<p style="padding-left:16px"><strong>b. Modification of Structure Voids Warranty.</strong> Warranties shall be immediately void if buyer alters the unit in any manner.</p>'+
+    '<p style="padding-left:16px"><strong>c. Baserail Leaks.</strong> CCI does not seal under the base of the unit and is not responsible for leaks under the baserail.</p>'+
+    '<p><strong>3. Pricing Terms.</strong></p>'+
+    '<p style="padding-left:16px"><strong>a. Price Subject to Change.</strong> CCI\'s prices are subject to change without notice.</p>'+
+    '<p style="padding-left:16px"><strong>b. Additional Charges.</strong></p>'+
+    '<p style="padding-left:32px"><strong>i. Labor Charge.</strong> Buyer will pay an additional labor charge of not less than fifty dollars ($50.00) if the installation contractor is required to dig, level, carry installation materials further than a reasonable distance or install the unit on any wall, dock, or over any existing structure.</p>'+
+    '<p style="padding-left:32px"><strong>ii. Service Charge.</strong> Buyer will pay a service charge of not less than two hundred dollars ($200.00) if the installation contractor must return to install an addition to an existing unit or if unit must be re-shipped due to customer error, unlevel jobsite or other similar issue.</p>'+
+    '<p style="padding-left:32px"><strong>iii. Taxes and Fees.</strong> Buyer agreed to pay all applicable sales or other taxes, unless exempt therefrom. Freight fees and surcharges may apply depending on location and size of order.</p>'+
+    '<p style="padding-left:32px"><strong>iv. Right to Correct.</strong> CCI shall have the right to correct any pricing or tax errors made by dealer. Prices for orders placed on hold will only be guaranteed for a 90 calendar day period. If an order is on hold for more than 90 days, customer may be subject to a price increase that equals CCI\'s current pricing at the time of delivery/installation.</p>'+
+    '<p><strong>4. Payment Terms.</strong></p>'+
+    '<p style="padding-left:16px"><strong>a. Down Payment.</strong> Buyer shall pay dealer a down payment equal to ___ of the retail price at the time of the sale. Buyer shall not pay dealer an amount exceeding the down payment. In the event Buyer pays dealer an amount exceeding the down payment, Buyer does so at his own risk with the understanding that Buyer is contractually obligated to remit payment of any remaining balance of the purchase price (the "Balance") as set forth below.</p>'+
+    '<p style="padding-left:16px"><strong>b. Balance.</strong> Buyer shall pay the balance to the installation contractor on the date of installation. Payment may be made by check or credit card. Payments made by credit card are subject to an additional fee equal to two percent (2%) of the balance paid by credit card.</p>'+
+    '<p style="padding-left:16px"><strong>c. Excess Down Payment.</strong> If Buyer pays more than the required Down Payment at the time of the sale, CCI must receive these funds from the dealer prior to installation or CCI will not schedule installation without payment from the Buyer.</p>'+
+    '<p style="padding-left:16px"><strong>d. No Refunds.</strong> In the event Buyer cancels the order, Buyer shall receive no refund of the down payment.</p>'+
+    '<p style="padding-left:16px"><strong>e. Security Interest.</strong> Buyer expressly agrees that the unit shall remain property of CCI until the purchase price under the agreement is paid in full. CCI hereby retains a purchase money security interest in the unit as set forth in Section 9 of the Uniform Commercial Code as enacted in the state where unit is being installed. Failure to pay the purchase price under the agreement will result in repossession of unit. Repossession does not relieve Buyer from liability for specific performance of the agreement.</p>'+
+    '<p><strong>5. Delivery and Installation; Limitation on Liability.</strong></p>'+
+    '<p style="padding-left:16px"><strong>a. Delayed Delivery.</strong> CCI is not responsible for changes in delivery dates caused by circumstances out of CCI\'s control, including but not limited to inclement weather conditions, installation contractor running behind, accidents, and acts of God.</p>'+
+    '<p style="padding-left:16px"><strong>b. Buyer Responsible for Locating Underground Utilities.</strong> Buyer is responsible for informing installation contractors of any underground/overhead cables, gas lines, utility hazards, or relevant matters prior to installation. This may require Buyer to contact the utility company to request that the locations of the Underground Utilities be marked. Buyer agrees to indemnify and hold CCI harmless for any damage done to lines, pipes, cables, or other utility instrumentalities during installation.</p>'+
+    '<p style="padding-left:16px"><strong>c. Buyer Responsible for Permits.</strong> Buyer shall be solely responsible for, and shall obtain, any necessary city or county permits prior to commencement of installation. Buyer agrees to indemnify and hold CCI harmless for violation of any city or county ordinance or code.</p>'+
+    '<p style="padding-left:16px"><strong>d. Limitation on Liability.</strong> CCI will not be liable to Buyer for punitive, indirect, incidental, special, or consequential damages resulting from any defect or deficiencies. CCI will not be liable for any misinformation provided by the dealers during the sale process.</p>'+
+    '<p style="padding-left:16px"><strong>e. Lead Times.</strong> Lead times are for estimation purposes only. Lead times will vary based on location, size of order, orders within a certain area, weather and other factors. No lead time is guaranteed. Orders under $5,000 are considered work-in orders and do not have an estimated lead time. CCI is not responsible for misinformation provided by the dealer regarding lead times.</p>'+
+    '<p><strong>6. Jurisdiction and Venue.</strong> The parties hereto: (i) consent to submit itself to the personal jurisdiction of any state or federal court sitting in the County of Surry, State of North Carolina, in any action or proceeding arising out of or relating to the Agreement, (ii) agree that all claims in respect of such action or proceeding may be heard and determined in any such court, (iii) agree that they shall not attempt to deny or defeat such personal jurisdiction by motion or other request for leave from any such court, and (iv) agree not to bring any action or proceeding arising out of or related to the Agreement in any other court. Each of the parties hereto waives any defense of inconvenient forum to the maintenance of any action or proceeding so brought and waives any bond, surety or other security that might be required of the other party with respect thereto.</p>'+
+    '<p><strong>7. Governing Law.</strong> This Agreement shall be interpreted and construed according to, and governed by, the laws of the State of North Carolina.</p>'+
+    '<p><strong>8. Cumulative Remedies.</strong> The rights and remedies under this Agreement are cumulative and are in addition to and not in substitution for any other rights and remedies available at law or in equity or otherwise.</p>'+
+    '<p><strong>9. Entire Agreement.</strong> The parties agree that this Agreement is the complete and exclusive statement of the agreement between the parties, and supersedes all prior written or oral communications, representations and agreements relating to the subject matter of this agreement.</p>'+
+    '<p><strong>10. Modification.</strong> The terms of this Agreement, save and except the price term in the event of a pricing error/change order, may be modified or amended only by a written instrument executed by the parties hereto.</p>'+
+    '<p><strong>11. Waiver; Enforceability.</strong> The waiver by any party of a breach or a default of any provision of this Agreement by the other party shall not be construed as a waiver of any succeeding breach of the same or any other provision, nor shall any delay or omission on the part of any party to exercise or avail itself of any right, power or privilege that it has, or may have hereunder, operate as a waiver of any right, power or privilege by such party. If one or more provisions of this Agreement are held to be illegal or unenforceable under applicable law, such illegal or unenforceable portion shall be limited or excluded to the minimum extent required so that this Agreement shall otherwise remain in full force and effect and enforceable.</p>'+
+    '<p><strong>12. Survival.</strong> Provisions of this Agreement which by their nature should apply beyond their terms will remain in force after any termination or expiration of this Agreement including, but not limited to, the following provisions: Warranties, Indemnification, Governing Law, and Survival.</p>'+
+    '<p style="text-align:right;margin-top:10px;color:#64748b">Rev. June 10, 2022</p>';
   var page3 =
     '<div class="page">'+
     _header('Terms &amp; Conditions','')+
 
     '<div class="c-tc-cols">'+
+    (isCCI ? ccTermsInner : (''+
 
       '<h3>Rejection of Order and Cancellation of Contract</h3>'+
       '<p>Seller reserves the right, at any time before installation of the Unit, to reject this Order or cancel this contract by notice in writing to Buyer. <strong>Upon giving such notice, Seller will NOT issue any refund of the deposit received from Buyer on this iteration of the contract. ALL DEPOSITS AND PAYMENTS ARE NON-REFUNDABLE.</strong> Buyer agrees that no refund shall be provided for such cancellation. Seller reserves the right to find another Factory who can fulfill the order. This applies to new orders and order revisions.</p>'+
@@ -9314,12 +9493,13 @@ async function printContract(){
       '<p>At the time of installation, should the site be determined obstructed or inaccessible due to permanent or temporary structures, Buyer will pay any and all consequential damages, including but not limited to return trip fees prior to reinstallation. <strong>Buyer agrees to pay minimum of $250.00 return trip for unsuitable site conditions.</strong></p>'+
 
       '<h3>Execution of Contract</h3>'+
-      '<p>Contract may be executed in multiple counterparts each of which shall be deemed an original and together shall constitute but one and the same Contract. Counterparts of this Contract may be exchanged via electronic facsimile machines or by PDF. An electronic facsimile or PDF of a party\'s signature shall be deemed to be an original signature for all purposes.</p>'+
+      '<p>Contract may be executed in multiple counterparts each of which shall be deemed an original and together shall constitute but one and the same Contract. Counterparts of this Contract may be exchanged via electronic facsimile machines or by PDF. An electronic facsimile or PDF of a party\'s signature shall be deemed to be an original signature for all purposes.</p>'
+    ))+
 
     '</div>'+
 
     '<div class="c-ack" style="margin-top:10px">'+
-      '<strong>ACKNOWLEDGMENT &mdash;</strong> I HAVE READ AND AGREED TO ALL THE TERMS AND CONDITIONS STATED ABOVE AS RELATING TO THE PURCHASE OF SAID STRUCTURE FROM STORMSAFE STEEL. I UNDERSTAND AND ACKNOWLEDGE THAT <strong>ALL PAYMENTS ARE NON-REFUNDABLE</strong> AND THAT <strong>NO CHANGES TO BUILDING DIMENSIONS ARE PERMITTED AFTER SIGNING THIS AGREEMENT.</strong>'+
+      '<strong>ACKNOWLEDGMENT &mdash;</strong> I HAVE READ AND AGREED TO ALL THE TERMS AND CONDITIONS STATED ABOVE AS RELATING TO THE PURCHASE OF SAID STRUCTURE FROM '+(isCCI?'CAROLINA CARPORTS':'STORMSAFE STEEL')+'. I UNDERSTAND AND ACKNOWLEDGE THAT <strong>ALL PAYMENTS ARE NON-REFUNDABLE</strong> AND THAT <strong>NO CHANGES TO BUILDING DIMENSIONS ARE PERMITTED AFTER SIGNING THIS AGREEMENT.</strong>'+
     '</div>'+
 
     '<div class="c-sig-block">'+
@@ -9799,6 +9979,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
           if(acc.type==='rollup'){var sz=(acc.size||'9x8').split('x');faceAccItems.push({type:'rollup',w:parseFloat(sz[0])||9,h:parseFloat(sz[1])||8,color:acc.color});}
           else if(acc.type==='wtd'){faceAccItems.push({type:'wtd',w:3,h:6.67});}
           else if(acc.type==='win'){faceAccItems.push({type:'win',w:2.5,h:2.5});}
+          else if(acc.type==='frameout'&&(acc.foType||'').indexOf('45')<0){faceAccItems.push({type:'frameout',w:acc.w||10,h:acc.h||10,sill:acc.sill||0});}
         }
       });
       if(faceAccItems.length){
@@ -9831,6 +10012,13 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
             s+='<line x1="'+(ix+iw/2)+'" y1="'+wiy+'" x2="'+(ix+iw/2)+'" y2="'+(wiy+wh)+'" stroke="'+tC+'" stroke-width="1.2"/>';
             s+='<line x1="'+ix+'" y1="'+(wiy+wh/2)+'" x2="'+(ix+iw)+'" y2="'+(wiy+wh/2)+'" stroke="'+tC+'" stroke-width="1.2"/>';
             s+='<rect x="'+(ix-1)+'" y="'+(wiy-1)+'" width="'+(iw+2)+'" height="'+(wh+2)+'" fill="none" stroke="'+tC+'" stroke-width="2.2"/>';
+          } else if(item.type==='frameout'){
+            // Framed opening (open cut). Window-type frame-outs carry a sill and
+            // sit at window height; door/garage types sit on the floor.
+            var fh=Math.min(item.h*sc,maxH), fy=oy-(item.sill||0)*sc-fh;
+            if(fy<yOuter+3) fy=yOuter+3;
+            s+='<rect x="'+ix+'" y="'+fy+'" width="'+iw+'" height="'+fh+'" fill="#2d2b27" opacity="0.82"/>';
+            s+='<rect x="'+(ix-1.5)+'" y="'+(fy-1.5)+'" width="'+(iw+3)+'" height="'+(fh+3)+'" fill="none" stroke="'+tC+'" stroke-width="2"/>';
           }
         }
         if(posMode==='offset'){
@@ -10506,6 +10694,13 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
           s+='<line x1="'+ix+'" y1="'+(wiy+wh/2)+'" x2="'+(ix+iw)+'" y2="'+(wiy+wh/2)+'" stroke="'+tC+'" stroke-width="1.2"/>';
           s+='<rect x="'+(ix-1)+'" y="'+(wiy-1)+'" width="'+(iw+2)+'" height="'+(wh+2)+'" fill="none" stroke="'+tC+'" stroke-width="2.2"/>';
           topY=wiy-1;
+        } else if(item.type==='frameout'){
+          // Framed opening (open cut). Window-type frame-outs carry a sill.
+          var fh=Math.min(item.h*sc,owMaxH), fy=oy-(item.sill||0)*sc-fh;
+          if(fy<oy-eltH+3) fy=oy-eltH+3;
+          s+='<rect x="'+ix+'" y="'+fy+'" width="'+iw+'" height="'+fh+'" fill="#2d2b27" opacity="0.82"/>';
+          s+='<rect x="'+(ix-1.5)+'" y="'+(fy-1.5)+'" width="'+(iw+3)+'" height="'+(fh+3)+'" fill="none" stroke="'+tC+'" stroke-width="2"/>';
+          topY=fy-1.5;
         }
         // Truss collision → red HEADER REQ'D bracket
         var hit=false;
@@ -10530,6 +10725,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
           if(acc.type==='rollup'){var sz=(acc.size||'9x8').split('x');entryItems.push({type:'rollup',w:parseFloat(sz[0])||9,h:parseFloat(sz[1])||8,color:acc.color});}
           else if(acc.type==='wtd'){entryItems.push({type:'wtd',w:3,h:6.67});}
           else if(acc.type==='win'){entryItems.push({type:'win',w:2.5,h:2.5});}
+          else if(acc.type==='frameout'&&(acc.foType||'').indexOf('45')<0){entryItems.push({type:'frameout',w:acc.w||10,h:acc.h||10,sill:acc.sill||0});}
         }
         if(!entryItems.length) return;
         var ePos=acc.pos||'auto';
@@ -10652,6 +10848,13 @@ function collectLTsForViews(){
       }
       else if(atype==='wtd'){var _wtdv=ae.querySelector('.lt-acc-wtd-hi')&&ae.querySelector('.lt-acc-wtd-hi').value;acc.hi=(_wtdv&&_wtdv!=='std');}
       else if(atype==='win'){var _winv=ae.querySelector('.lt-acc-win-hi')&&ae.querySelector('.lt-acc-win-hi').value;acc.hi=(_winv&&_winv!=='std');}
+      else if(atype==='frameout'){
+        acc.foType=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+        acc.w=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
+        acc.h=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
+        // Window frame-outs sit at their (adjustable) sill height; default 4'2"
+        acc.sill=(acc.foType.indexOf('Window')>=0)?(parseFloat((ae.querySelector('.lt-acc-fo-sill')||{}).value)||4.16667):0;
+      }
       ltAcc.push(acc);
     });
     var ltObj={w:lw,h:lh,pitch:pn,front:ltW.front,back:ltW.back,side:ltW.side,cont:isCont2,accessories:ltAcc};
@@ -10754,8 +10957,8 @@ function renderBuildingViews(){
     if(!locRow||locRow.classList.contains('hidden')) return;
     var loc=el.querySelector('.fo-loc').value;
     var qty=parseInt(el.querySelector('.acq').value)||1;
-    var foW=2.5,foH=2.5,foYo=4.16667;
-    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?4.16667:0;}
+    var foW=2.5,foH=2.5,foYo=foSillFt(el);
+    if(comp.indexOf('(Custom Size)')>=0){var _fos=foCustomFeet(el);foW=_fos.w;foH=_fos.h;foYo=(comp.indexOf('Window')>=0)?foSillFt(el):0;}
     else if(comp.indexOf('Garage Door')>=0){var wm3=comp.match(/(\d+)' Wide/);foW=wm3?parseInt(wm3[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Side Opening')>=0){var wm4=comp.match(/(\d+)' Wide/);foW=wm4?parseInt(wm4[1]):10;foH=8;foYo=0;}
     else if(comp.indexOf('Double Door')>=0){foW=6;foH=6.67;foYo=0;}

@@ -1730,7 +1730,10 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 }
 .qb-modal {
   margin: auto;
-  width: min(1280px, 100%);
+  /* Full available width — the 3D pane eats every extra pixel (the pricing
+     form is pinned at ~500px inside build.html), so wide monitors see the
+     whole eave side of a long building without zooming out. */
+  width: 100%;
   height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
