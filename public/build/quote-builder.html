@@ -3157,9 +3157,6 @@ var MANUFACTURERS = {
       '16x6':2200,'16x7':2300,'16x8':2300,'16x9':2400,'16x10':2400,'16x11':2500,'16x12':2500,'16x13':2600,'16x14':2600,'16x15':2700,'16x16':2700
     },
     rudPreferChain: true,
-    // CCI charges a FLAT side-connection fee for eave-attached lean-tos
-    // (Sensei: 'Side Connection Fees' $400). Gable connections keep the formula.
-    eaveConnFlat: 400,
     chain: 325, seal: 12.00,
     freeThresh: 10000, fastenerAlwaysFree: true,
     // ── Side Panel pricing (carport/GCH open sections) ───────────────────────
@@ -3282,7 +3279,8 @@ var MANUFACTURERS = {
       14:[3298,3660,4023,4385,4748,5110,5473,5835,6198,6560,6923,7285],
       16:[4588,5100,5613,6125,6638,7150,7663,8175,8688,9200,9713,10225],
       18:[5568,6180,6793,7405,8018,8630,9243,9855,10468,11080,11693,12305],
-      20:[6535,7260,7985,8710,9435,10160,10885,11610,12335,13060,13785,14510]
+      // 100' × 20' verified against Sensei (40x100x20): $14,520 both sides.
+      20:[6535,7260,7985,8710,9435,10160,10885,11610,12335,13060,13785,14520]
     },
     // ── Additional components / framed opening list ───────────────────────────
     acPrices: {
@@ -4425,10 +4423,37 @@ function getTrussInfo(){
   var count=Math.floor(l/spacing)+1;
   return {spacing:spacing, count:count};
 }
-function gConnectionFees(){
+// Connection fee for ONE lean-to. SINGLE SOURCE OF TRUTH — the pricing engine
+// (gConnectionFees) and the printed quote rows both call this. They used to
+// carry duplicate copies of the formula, which silently drifted apart (the
+// quote printed the old wide-span rate while the engine used the new one).
+// `attachedSide` = .lts value, `connLen` = the lean-to length running along the
+// attached wall (same for eave or gable connections).
+function connFeeFor(attachedSide, connLen){
   var bw=parseInt(G('bw').value)||0;
-  var bt=G('btype').value;
+  var bt=G('btype')?G('btype').value:'';
   var isWS=(bw>=32||bt==='widespan');
+  var isGable=(attachedSide==='Front Gable'||attachedSide==='Back Gable');
+  if(ACTIVE_MFR==='CCI' && !isGable){
+    // CCI eave connection — per lean, by lean length. Manufacturer-corrected
+    // 2026-07-24: two 60' leans → $600 total ($300 each, check-marked by
+    // CCI), two 100' leans → Sensei's $2,200 struck to $1,950 ($975 each).
+    // $300 floor, edge-rate extrapolation past 100'. (Sensei's own chart —
+    // 40'→$400 · 60'→$700 · 80'→$800 — over-charged and was dropped.)
+    return Math.max(300, Math.round(_ltsInterp(LTS_CONN, connLen)));
+  }
+  if(isGable){
+    // Gable-end connection: higher base ($700) — matches CCI Sensei (e.g., 30' gable connection = $750)
+    return 700+Math.ceil(Math.max(0,connLen-21)/5)*25;
+  }
+  if(isWS){
+    // CA wide-span connection (unverified formula — CCI uses the chart above)
+    return 300+Math.ceil(Math.max(0,connLen-20)/4)*25;
+  }
+  // CA eave side connection: $100 + $25/5' past 21'
+  return 100+Math.ceil(Math.max(0,connLen-21)/5)*25;
+}
+function gConnectionFees(){
   var total=0;
   document.querySelectorAll('.lte').forEach(function(el){
     var lw=parseInt(el.querySelector('.ltw').value)||0;
@@ -4437,19 +4462,7 @@ function gConnectionFees(){
     var typeEl=el.querySelector('.lt-type');
     if(typeEl&&typeEl.value==='freestanding') return; // free-standing doesn't connect to main building
     if(!lw||!ll) return;
-    // Connection length is ALWAYS the lean-to length (ll) — that's the dimension that
-    // runs ALONG the attached wall, regardless of whether the wall is an eave or gable.
-    var connLen=ll;
-    var isGable=(ls==='Front Gable'||ls==='Back Gable');
-    if(isWS){
-      total+=300+Math.ceil(Math.max(0,connLen-20)/4)*25;
-    } else if(isGable){
-      // Gable-end connection: higher base ($700) — matches CCI Sensei (e.g., 30' gable connection = $750)
-      total+=700+Math.ceil(Math.max(0,connLen-21)/5)*25;
-    } else {
-      // Eave side connection: CCI = flat fee (eaveConnFlat); CA = $100 + $25/5' past 21'
-      total+=(typeof MFR==='function'&&MFR().eaveConnFlat)?MFR().eaveConnFlat:(100+Math.ceil(Math.max(0,connLen-21)/5)*25);
-    }
+    total+=connFeeFor(ls, ll);
   });
   return total;
 }
@@ -4469,8 +4482,13 @@ function ecLookup(w,h){
   // Odd widths round UP to next even (CA/CCI only build even widths in wide-span)
   var wk = w>=32 ? (w%2===0?w:(w+1)) : eBkt(w);
   wk = Math.min(Math.max(wk,12),60);
-  var hk = Math.min(h,16);
-  return (EC[wk]||EC[30])[hk]||0;
+  // Height: use the chart's real 18'/20' columns. (Was capped at 16, which
+  // under-priced end closures on 18'-20' tall buildings — e.g. 40x100x20 ends
+  // charged $3,955 instead of $4,315, $720 under Sensei for the pair.)
+  var ecRow=(EC[wk]||EC[30]);
+  var hk=Math.min(h,20);
+  while(hk<20 && ecRow[hk]===undefined) hk++; // missing odd heights round UP
+  return ecRow[hk]||0;
 }
 function scLookup(h,l,w){
   var w2=w||parseInt(G('bw').value)||0;
@@ -4564,6 +4582,12 @@ var VERT_SIDE = {
   // 16' tall
   high:   {20:600, 25:720, 30:840, 35:960, 40:1080}
 };
+// Verified anchors BEYOND the 40' column (Sensei): interpolated to, then
+// edge-rate extrapolated past. high 60' = $1,680 (30x60x16 vertical, 2026-07-23
+// — the 35→40 chart rate under-priced long sides by $120 at 60').
+var VERT_SIDE_EXT = {
+  high: [[60,1680]]
+};
 // Per-end upcharge for gable ends — keyed by width
 // Widths 12-24 from sheet 1, widths 26-30 from sheet 2
 var VERT_END={}; // populated by initMfrPricing()
@@ -4574,7 +4598,14 @@ function vertSideUpcharge(h, l){
   var lk;
   if(l<=20) lk=20; else if(l<=25) lk=25; else if(l<=30) lk=30; else if(l<=35) lk=35; else if(l<=40) lk=40;
   else {
-    // Extrapolate: rate per ft from 35→40 columns
+    // Beyond the 40' column: pass through any verified longer anchors
+    // (VERT_SIDE_EXT), then edge-rate extrapolate. Falls back to the old
+    // 35→40 chart rate when a bucket has no verified anchors.
+    var ext=(typeof VERT_SIDE_EXT!=='undefined')?VERT_SIDE_EXT[bucket]:null;
+    if(ext&&ext.length){
+      var pts=[[40,row[40]]].concat(ext);
+      return Math.round(_ltsInterp(pts, l));
+    }
     var rate = (row[40]-row[35])/5;
     return Math.round(row[40] + rate*(l-40));
   }
@@ -5117,19 +5148,94 @@ function ltBasePrice(w,l){
   // Lean-to base price: $7.00/sqft (derived from CA/CCI lean-to pricing)
   return Math.round(w * l * 7.00);
 }
+// ── CCI lean-to pricing — dealer-handbook method, manufacturer-corrected ─────
+// Recalibrated 2026-07-24 against CCI's marked-up corrections of two Sensei
+// quotes (12x60x13 barn + two 12x60 continuous leans; 40x100x20 widespan +
+// two 12x100x12 step-down leans). Sensei's lean components were inflated and
+// then papered over with a "Manufacturer Discount" line; CCI's reviewer
+// re-priced every line from the dealer charts. The handbook method (a W-wide
+// attached lean = HALF of a 2W-wide standard building) reproduces every
+// corrected line from charts we already carry:
+//   size   = half the 2W base chart, same roof-style chart + length
+//            combinations as a real building ......... 12x60 → $4,295 exact
+//   height = half the 2W leg-height chart over the SAME length sections
+//            .......................... 10'/60' → $490 · 12'/100' → $1,195
+//   ends   = ecLookup(2W, legH) per PAIR, + VERT_END[2W] when panels are
+//            vertical ........ 24w/10' H → $1,435 · 24w/12' V+360 → $2,150
+//   side   = raw SC chart at (legH, L/2) + VERT_SIDE at the same column
+//            when vertical ...... 10'/60' H → $1,085 · 12'/60' V → $1,900
+// Continuous-roof and step-down leans price IDENTICALLY (one of each in the
+// corrected quotes, same formulas throughout).
+// On a commercial/widespan main the lean itself must be 170-certified and
+// prices off CCI's certified chart — the reviewer wrote "170 14g" beside the
+// corrected size ($7,692.50 = half-chart $7,142.50 + $550 on a 12x100).
+// Single verified point → $5.50/ft of lean length, pending CCI's certified
+// chart pages.
+var CCI_LT_CERT_RATE = 5.5;   // $/ft of lean length, commercial mains only
+// Side-connection fee PER LEAN, by lean length. CCI corrections: two 60'
+// leans → $600 total ($300 each, check-marked), two 100' leans → Sensei's
+// $2,200 struck to $1,950 ($975 each). $300 floor, edge-rate extrapolation
+// past 100'. (Replaces the Sensei-measured chart 40→400 … 100→1,100.)
+var LTS_CONN = [[60,300],[100,975]];
+// Effective panel orientation of the whole build: wide-span is always vertical;
+// standard buildings follow the Wall Style dropdown.
+function ltPanelsHorizontal(){
+  var bt=G('btype')?G('btype').value:'';
+  if(bt==='widespan') return false;
+  return (G('ws')?G('ws').value:'Vertical')!=='Vertical';
+}
+
+function _ltsInterp(pts, x){
+  if(!pts||!pts.length) return 0;
+  if(pts.length===1) return pts[0][1];
+  if(x<=pts[0][0]){
+    var r0=(pts[1][1]-pts[0][1])/(pts[1][0]-pts[0][0]);
+    return Math.max(0, pts[0][1]-r0*(pts[0][0]-x));
+  }
+  for(var i=1;i<pts.length;i++){
+    if(x<=pts[i][0]){
+      var t=(x-pts[i-1][0])/(pts[i][0]-pts[i-1][0]);
+      return pts[i-1][1]+t*(pts[i][1]-pts[i-1][1]);
+    }
+  }
+  var n=pts.length, rN=(pts[n-1][1]-pts[n-2][1])/(pts[n-1][0]-pts[n-2][0]);
+  return pts[n-1][1]+rN*(x-pts[n-1][0]);
+}
+// Closed outer side wall of a CCI attached lean: raw SC chart value at
+// (legH, L/2) — the length column is HALF the lean length, rounded UP to the
+// next chart column — plus the VERT_SIDE per-side upcharge at the same column
+// when panels are vertical. Exact at every verified point: 10'/60' horizontal
+// $1,085 (CCI) · 12'/60' horizontal $1,240 (Sensei) · 12'/60' vertical $1,900
+// (Sensei). Past the 40' column (leans over 80'), grow at the CCI-verified
+// rate: the corrected 12x100 vertical side ($3,100 = $2,560 + 10' × $54)
+// fixes $54/ft per $2,560 of 40'-column value, scaled proportionally for
+// other heights.
+function cciLtSideClosed(h,l,vertical){
+  var hk=Math.min(16,Math.max(6,Math.ceil(h||6)));
+  while(hk<16 && !SC[hk]) hk++;
+  var scRow=SC[hk]||SC[16];
+  var vb=h<=10?'low':(h<=15?'mid':'high');
+  var vsRow=VERT_SIDE[vb];
+  var colLen=l/2;
+  var SC_COLS=[20,25,30,35,40];
+  for(var i=0;i<SC_COLS.length;i++){
+    if(SC_COLS[i]>=colLen){
+      var c=SC_COLS[i];
+      return Math.round((scRow[c]||0)+(vertical?(vsRow[c]||0):0));
+    }
+  }
+  var base40=(scRow[40]||0)+(vertical?(vsRow[40]||0):0);
+  return Math.round(base40+(colLen-40)*54*(base40/2560));
+}
+
 // ── Per-lean-to unit price (base + height + walls; NOT accessories) ─────────
 // Single source of truth shared by the pricing engine (gLT) and the printed
 // quote rows, so the printed lines always sum to the Building Amount.
 //
 // CA / free-standing: original model (ltBasePrice + CA SH/2 + flat wall adders).
-// CCI attached leans: dealer handbook Barns split method, calibrated against
-// Sensei QTE-000262 (10x40x10 lean on a 30x40x14 vertical main):
-//   base   = HALF of the standard chart at (2W+2)-wide x L  -> $2,647.50 (ok)
-//   height = HALF of the main-width leg chart at the lean height -> $407.50 (ok)
-//   side closed = sides chart at (leanH, L, 2W)             -> $753 ~= 752.50 (ok)
-//   certified-gable end = $112.50 each ($225/pair)          (ok)
-//   closed end = HALF of ecLookup(2W, leanH) each (handbook ends-split)
-//   partial side panels keep the flat LT_SIDE_P adders.
+// CCI attached leans: dealer-handbook half-of-2W method, recalibrated
+// 2026-07-24 to CCI's manufacturer-corrected quotes — see the block comment
+// above CCI_LT_CERT_RATE for the formulas and the verified points.
 function ltUnit(el){
   var w=parseInt(el.querySelector('.ltw').value)||0;
   var l=parseInt(el.querySelector('.ltl2').value)||0;
@@ -5144,34 +5250,50 @@ function ltUnit(el){
   var ltWalls2=getLTWalls(el);
   var bp, heightAdj=0, encAdj;
   if(ACTIVE_MFR==='CCI' && !isFree){
-    var vw=2*w+2; if(vw%2) vw++;
+    // ── CCI dealer-handbook method (manufacturer-corrected 2026-07-24):
+    // a W-wide attached lean prices as HALF of a (2W)-wide standard building.
+    // Verified line-for-line against CCI's corrected 12x60-continuous and
+    // 12x100-step-down quotes; continuous and step-down price identically.
+    var vw=2*w; if(vw%2) vw++;
     var T=(G('rs')&&G('rs').value==='Regular')?PR:((G('rs')&&G('rs').value==='Boxed Eave')?PB:PV);
     var wi=WIDTHS.indexOf(vw);
+    // Length sections: one standard tier through 51', else the dealer
+    // combination (same rule as a real 2W-wide building).
+    var secs=[];
+    if(l<=51){ secs=[nearestStd(l)]; }
+    else if(MFR().standardCombinations){
+      var combos=MFR().standardCombinations, ks=Object.keys(combos).map(Number).sort(function(a,b){return a-b;});
+      for(var ci3=0;ci3<ks.length;ci3++){ if(ks[ci3]>=l){ secs=combos[ks[ci3]]; break; } }
+      if(!secs.length) secs=combos[ks[ks.length-1]];
+    }
     bp=0;
-    if(wi>=0){
-      if(l<=51){ bp=((T[nearestStd(l)]||[])[wi]||0)/2; }
-      else if(MFR().standardCombinations){
-        var combos=MFR().standardCombinations, ks=Object.keys(combos).map(Number).sort(function(a,b){return a-b;}), tk=null;
-        for(var ci3=0;ci3<ks.length;ci3++){ if(ks[ci3]>=l){ tk=ks[ci3]; break; } }
-        if(tk){ var pts=combos[tk], sm=0; for(var pj=0;pj<pts.length;pj++) sm+=(T[pts[pj]]||[])[wi]||0; bp=sm/2; }
-      }
-    }
+    if(wi>=0){ for(var sj=0;sj<secs.length;sj++) bp+=((T[secs[sj]]||[])[wi]||0); bp=bp/2; }
+    // Commercial / widespan main → the lean itself must be 170-certified and
+    // prices off CCI's certified chart ("170 14g" on the corrected quote):
+    // +$5.50/ft, single-point anchor (12x100 → +$550) pending CCI's
+    // certified-chart pages.
+    var _mwC=parseInt(G('bw').value)||0, _btC=G('btype')?G('btype').value:'';
+    if(_mwC>=32||_btC==='widespan') bp+=CCI_LT_CERT_RATE*l;
     bp=Math.round(bp*100)/100;
+    // Height: half of the (2W)-wide leg-height chart over the SAME length
+    // sections (10'/60' → $490 and 12'/100' → $1,195, both exact).
     if(h>6){
-      var mw=parseInt(G('bw').value)||0; if(mw%2) mw++;
-      var huT3=(mw<=24?HU_N:(mw<=30?HU_M:HU));
+      var huT3=(vw<=24?HU_N:(vw<=30?HU_M:HU));
       var hk3=h<=16?h:(h<=18?18:20);
-      var li3=LENGTHS.indexOf(nearestStd(Math.min(l,40)));
-      var huFull=(li3>=0)?((huT3[hk3]||huT3[16]||[])[li3]||0):0;
-      if(l>40 && huFull){
-        var hu21=(huT3[hk3]||huT3[16]||[])[LENGTHS.indexOf(21)]||0;
-        var hu41=(huT3[hk3]||huT3[16]||[])[LENGTHS.indexOf(41)]||0;
-        huFull=Math.round(hu41+(hu41-hu21)/20*(l-40));
-      }
-      heightAdj=Math.round(huFull/2*100)/100;
+      var huRow=huT3[hk3]||huT3[16]||[];
+      var huSum=0;
+      for(var hj=0;hj<secs.length;hj++){ var hli=LENGTHS.indexOf(secs[hj]); huSum+=(hli>=0?(huRow[hli]||0):0); }
+      heightAdj=Math.round(huSum/2*100)/100;
     }
-    var endP=function(v){ return v==='closed'?Math.round(ecLookup(vw,h)/2):(v==='gable'?112.5:0); };
-    var sideP=(ltWalls2.side==='closed')?scLookup(h,l,2*w):(LT_SIDE_P[ltWalls2.side]||0);
+    // Walls — sheeted parts follow the MAIN building's panel orientation.
+    // Ends: pair = ecLookup(2W, legH) + VERT_END[2W] when vertical; each
+    // closed end is half the pair ($1,435 H and $2,150 V pairs, both exact).
+    var _hzF=ltPanelsHorizontal();
+    var endPairS=ecLookup(vw,h)+(_hzF?0:vertEndUpcharge(vw));
+    var endP=function(v){ return v==='closed'?Math.round(endPairS/2):(v==='gable'?112.5:0); };
+    var sideP=(ltWalls2.side==='closed')
+      ? cciLtSideClosed(h,l,!_hzF)
+      : (LT_SIDE_P[ltWalls2.side]||0);
     encAdj=endP(ltWalls2.front)+endP(ltWalls2.back)+sideP;
   } else {
     bp=ltBasePrice(w,l);
@@ -5220,6 +5342,16 @@ function gLT(){
         var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
         var sealDw=parseInt((asz||'').split('x')[0])||0;
         accAdj+=asl*Math.round(sealDw*(window._seal||9.85));
+        // Eave header — ALWAYS required for a roll-up on the outer wall of an
+        // eave-attached lean-to: framing runs every 4'/5' OC and the smallest
+        // roll-up is 6' wide, so it can't miss a truss. Same width-bucketed
+        // chart as main-building eave-side roll-ups.
+        var _hLts=(el.querySelector('.lts')||{}).value||'';
+        var _hLoc=(ae.querySelector('.lt-acc-loc')||{}).value||'outer';
+        if((_hLts==='Left Eave'||_hLts==='Right Eave')&&_hLoc==='outer'){
+          var _hDw=parseInt((asz||'').split('x')[0])||0;
+          accAdj+=eaveHeaderCost(_hDw, parseInt(G('bw').value)||0)*aqty;
+        }
       } else if(atype==='wtd'){
         var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';
         accAdj+=aqty*(MFR().wtdPrices[ahi]||window._wtd_std||300);
@@ -5228,15 +5360,19 @@ function gLT(){
         accAdj+=aqty*(MFR().winPrices[ahi]||window._win_std||200);
       } else if(atype==='frameout'){
         // Typed framed opening — same price as the Section 10 chart for the
-        // active manufacturer. Zero-priced customs (Custom Garage Door / Custom
-        // Walk-Through / Custom Frame Out) fall back to the width-based
-        // lean-to frame-out chart, matching how they're quoted by hand.
-        var afoW=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
+        // active manufacturer (shared helper with the printed quote rows).
         var afoLoc=ae.querySelector('.lt-acc-loc')?ae.querySelector('.lt-acc-loc').value:'outer';
-        var afoKey=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
-        var afoUnit=(afoKey&&AC_PRICES&&AC_PRICES[afoKey])||0;
-        if(!afoUnit) afoUnit=ltFrameoutPrice(afoW, afoLoc);
-        accAdj+=aqty*afoUnit;
+        accAdj+=aqty*ltAccFoUnitPrice(ae, afoLoc);
+      }
+      // Side frames (wtd / win / frameout on the outer wall of an eave-attached
+      // lean-to; auto-set by the truss check, same rate as the main building).
+      if(atype!=='rollup'){
+        var _sfLts=(el.querySelector('.lts')||{}).value||'';
+        var _sfLoc=(ae.querySelector('.lt-acc-loc')||{}).value||'outer';
+        var _sfSel3=ae.querySelector('.lt-acc-sf');
+        if(_sfSel3&&(_sfLts==='Left Eave'||_sfLts==='Right Eave')&&_sfLoc==='outer'){
+          accAdj+=(parseInt(_sfSel3.value)||0)*(window._sf_dw||150);
+        }
       }
     });
     t+=u.total+accAdj;
@@ -5281,6 +5417,19 @@ function updateLTAccSize(accEntry){
   var lte=accEntry.closest('.lte'); if(!lte) return;
   var dims=getLTDims(lte);
   refreshLTAccQty(accEntry); // qty offering tracks what fits on the chosen wall
+  // Side Frame(s) dropdown: only for wtd/win/frameout (not the 45° charge) on
+  // the OUTER wall of an EAVE-attached lean-to — the wall that frames at OC.
+  var _sfRow=accEntry.querySelector('.lt-acc-sf-row');
+  if(_sfRow){
+    var _t=(accEntry.querySelector('.lt-acc-type')||{}).value||'rollup';
+    var _lts=(lte.querySelector('.lts')||{}).value||'';
+    var _eaveLT=(_lts==='Left Eave'||_lts==='Right Eave');
+    var _loc=(accEntry.querySelector('.lt-acc-loc')||{}).value||'outer';
+    var _is45=_t==='frameout'&&((((accEntry.querySelector('.lt-acc-fo-type')||{}).value)||'').indexOf('45')>=0);
+    var _showSf=_eaveLT&&_loc==='outer'&&_t!=='rollup'&&!_is45;
+    _sfRow.style.display=_showSf?'':'none';
+    if(!_showSf){ var _sfSel=accEntry.querySelector('.lt-acc-sf'); if(_sfSel) _sfSel.value='0'; }
+  }
   var typeEl=accEntry.querySelector('.lt-acc-type');
   var locEl=accEntry.querySelector('.lt-acc-loc');
   if(!typeEl||!locEl) return;
@@ -5414,7 +5563,7 @@ function addLTAcc(entry){
     '<input type="number" class="lt-acc-fo-h" min="1" max="16" step="0.5" value="10" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%" placeholder="H">'+
     '</div></div>'+
     '<div class="row lt-acc-fo-sill-row" style="display:none"><label>Sill Height (ft)</label>'+
-    '<input type="number" class="lt-acc-fo-sill" value="4.17" min="0" max="14" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+    '<input type="number" class="lt-acc-fo-sill" value="4.17" min="0" max="30" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-acc-rud-ch-row" style="display:none"><label>Chain Hoist</label>'+
     '<select class="lt-acc-ch" onchange="rc()">'+
     '<option value="0">None</option><option value="1">1 (+$325)</option>'+
@@ -5440,6 +5589,13 @@ function addLTAcc(entry){
     '<option value="outer">Outer Side Wall</option>'+
     '<option value="front">Front Gable End</option>'+
     '<option value="back">Back Gable End</option>'+
+    '</select></div>'+
+    // Side frames: outer wall of an eave-attached lean-to frames at the same
+    // 4'/5' OC as the building — walk doors / windows / frame-outs landing on a
+    // truss need one (auto-set). Roll-ups get the eave header automatically.
+    '<div class="row lt-acc-sf-row" style="display:none"><label>Side Frame(s)</label>'+
+    '<select class="lt-acc-sf" onchange="rc()">'+
+    '<option value="0">None</option><option value="1">1 (+$150)</option>'+
     '</select></div>'+
     '<div class="row"><label>Position</label>'+
     '<select class="lt-acc-pos" onchange="updLTAccPos(this);rc()">'+
@@ -5546,6 +5702,23 @@ function getLTWalls(el){
     frontClosed:(fv==='closed'), backClosed:(bv==='closed'), sideClosed:(sv==='closed'),
     frontP:(LT_END_P[fv]||0), backP:(LT_END_P[bv]||0), sideP:(LT_SIDE_P[sv]||0)
   };
+}
+// Sync the Sides & Ends UI (button highlight, custom-wall rows, accessories
+// section) to the entry's stored .lt-wm value. Used on quote RESTORE: setting
+// the hidden field alone left the buttons showing "Open" and hid the restored
+// accessories, so a reopened enclosed lean-to looked open/empty in the form
+// (pricing + 3D were correct — they read the hidden field).
+function applyLTWM(entry){
+  var val=(entry.querySelector('.lt-wm')||{}).value||'open';
+  var order={open:0,enclosed:1,custom:2};
+  var btns=entry.querySelectorAll('.lt-wm-btn');
+  btns.forEach(function(b){ b.style.background='#0d1820'; b.style.color='#7a9bb5'; b.style.borderColor='#2d4a6a'; });
+  var pick=btns[order[val]!==undefined?order[val]:0];
+  if(pick){ pick.style.background='#1C3557'; pick.style.color='#e8f0f8'; pick.style.borderColor='#1fcec4'; }
+  var cr=entry.querySelector('.lt-custom-rows');
+  if(cr) cr.style.display=(val==='custom')?'block':'none';
+  var accSec=entry.querySelector('.lt-acc-section');
+  if(accSec) accSec.style.display=(val==='open')?'none':'block';
 }
 function ltWMClick(span,val){
   var entry=span.closest('.lte');
@@ -5783,6 +5956,12 @@ function gAC(){
     var unitP=AC_PRICES[comp]!==undefined?AC_PRICES[comp]:0;
     if(comp==='Custom — see notes' || comp.indexOf('(Custom Size)')>=0) unitP=parseFloat(el.querySelector('.acp').value)||0;
     t+=unitP*qty;
+    // Side frames — eave-side framed openings that land on a truss (auto-set
+    // by the truss check, same rate as walk doors / windows).
+    if(comp.indexOf('Framed Opening')===0){
+      var _locEl=el.querySelector('.fo-loc'), _sfEl=el.querySelector('.fo-sf');
+      if(_locEl&&_sfEl&&isEaveSide(_locEl.value)) t+=(parseInt(_sfEl.value)||0)*(window._sf_dw||150);
+    }
   });
   return t;
 }
@@ -5807,16 +5986,22 @@ function aAC(){
       '<div class="row"><label>Measurement Unit</label>'+
       '<select class="fo-unit" onchange="foUnitChange(this)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
       '<div class="row fo-cw-row"><label class="fo-cw-label">Opening Width (ft)</label>'+
-      '<input type="number" class="fo-cw" placeholder="10" min="1" max="24" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+      '<input type="number" class="fo-cw" placeholder="10" min="1" max="24" step="0.5" oninput="foAutoCustomWinPrice(this.closest(\'.ace\'));rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
       '<div class="row fo-ch-row"><label class="fo-ch-label">Opening Height (ft)</label>'+
-      '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+      '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="foAutoCustomWinPrice(this.closest(\'.ace\'));rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '</div>'+
     '<div class="row fo-sill-row hidden"><label>Sill Height (ft)</label>'+
-    '<input type="number" class="fo-sill" value="4.17" min="0" max="14" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+    '<input type="number" class="fo-sill" value="4.17" min="0" max="30" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row fo-loc-row hidden"><label>Wall Location</label>'+
-    '<select class="fo-loc" onchange="refreshPosLabels(this.closest(\'.ace\'));rc()">'+
+    '<select class="fo-loc" onchange="refreshPosLabels(this.closest(\'.ace\'));foSfVis(this.closest(\'.ace\'));rc()">'+
     '<option>Front Gable End</option><option>Back Gable End</option>'+
     '<option>Left Eave Side</option><option>Right Eave Side</option>'+
+    '</select></div>'+
+    // Eave-side framed openings need side frames when they land on a truss —
+    // auto-set by the truss check (same as walk doors / windows).
+    '<div class="row fo-sf-row hidden"><label>Side Frame(s)</label>'+
+    '<select class="fo-sf" onchange="rc()">'+
+    '<option value="0">None</option><option value="1">1 (+$150)</option>'+
     '</select></div>'+
     // Display-only: how this framed opening's size shows on the Dimensioned Layout
     // & Spacing sheet. No onchange / no rc() — never affects pricing or the model.
@@ -5839,6 +6024,8 @@ function updACPrice(sel){
   var _duRow=entry.querySelector('.fo-dispunit-row'); if(_duRow) _duRow.classList.toggle('hidden', !isFO);
   // Adjustable sill only makes sense for WINDOW framed openings.
   var _slRow=entry.querySelector('.fo-sill-row'); if(_slRow) _slRow.classList.toggle('hidden', !(isFO && sel.value.indexOf('Window')>=0));
+  foSfVis(entry);
+  foAutoCustomWinPrice(entry);
   if(isFO){
     var qty = parseInt(entry.querySelector('.acq').value)||1;
     updatePosSection(entry, qty, 'Opening');
@@ -5856,12 +6043,58 @@ function foCustomFeet(el){
   var ch=parseFloat((el.querySelector('.fo-ch')||{}).value);
   return { w:(cw>0?cw*k:10), h:(ch>0?ch*k:8) };
 }
+// CCI custom WINDOW frame-outs price by size (manufacturer-corrected quotes,
+// 2026-07-24): up to 36"x36" → $75 (30x30 and 36x36 both confirmed at $75/ea),
+// anything larger in EITHER dimension → $150 (48x48 corrected 175→150; 60x72
+// and 24x72 confirmed/corrected to $150). Returns the rule price in dollars.
+function cciCustomWinPrice(wFt,hFt){
+  return (wFt<=3 && hFt<=3) ? 75 : 150;
+}
+// Unit price for a typed lean-to framed opening. SINGLE SOURCE — the pricing
+// engine (gLT) and the printed quote rows both call this. Section 10 chart
+// price for the chosen type; CCI custom WINDOWS price by size via
+// cciCustomWinPrice; other zero-priced customs (Custom Garage Door / Custom
+// Walk-Through / Custom Frame Out) fall back to the width-based lean-to
+// frame-out chart, matching how they're quoted by hand.
+function ltAccFoUnitPrice(ae, aloc){
+  var w=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
+  var h=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||8;
+  var key=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+  if(ACTIVE_MFR==='CCI' && key.indexOf('Window (Custom Size)')>=0) return cciCustomWinPrice(w,h);
+  var u=(key&&AC_PRICES&&AC_PRICES[key])||0;
+  if(!u) u=ltFrameoutPrice(w, aloc);
+  return u;
+}
+// Auto-fill the Custom Price box for a CCI custom-size WINDOW frame-out when
+// the size changes. Only overwrites the box when it's empty or still holding
+// a rule value (75/150) — a hand-entered price is left alone.
+function foAutoCustomWinPrice(entry){
+  if(ACTIVE_MFR!=='CCI'||!entry) return;
+  var comp=(entry.querySelector('.act')||{}).value||'';
+  if(comp.indexOf('Window (Custom Size)')<0) return;
+  var acp=entry.querySelector('.acp'); if(!acp) return;
+  var s=foCustomFeet(entry);
+  var rule=cciCustomWinPrice(s.w,s.h);
+  var cur=parseFloat(acp.value);
+  if(!acp.value || cur===75 || cur===150) acp.value=rule;
+}
 // Sill height (ft) for a WINDOW framed opening — the entry's adjustable Sill
 // Height input (some jobs need windows higher than standard), falling back to
 // the standard 4'2". Placement only — never affects pricing.
 function foSillFt(el){
   var s=parseFloat((el.querySelector('.fo-sill')||{}).value);
   return (isFinite(s)&&s>=0)?s:4.16667;
+}
+// Show the Side Frame(s) dropdown only for framed openings on an EAVE side —
+// that's where the wall framing runs every 4'/5' OC and an opening can land on
+// a truss (same rule as walk doors / windows).
+function foSfVis(entry){
+  var r=entry.querySelector('.fo-sf-row'); if(!r) return;
+  var comp=(entry.querySelector('.act')||{}).value||'';
+  var locEl=entry.querySelector('.fo-loc');
+  var show=comp.indexOf('Framed Opening')===0 && locEl && isEaveSide(locEl.value);
+  r.classList.toggle('hidden',!show);
+  if(!show){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
 }
 // Update the width/height labels + input constraints to match the chosen unit.
 // Does NOT touch the entered numbers (used on init/restore).
@@ -5884,6 +6117,7 @@ function foUnitChange(sel){
     if(!isNaN(v)) inp.value = inIn ? Math.round(v*12*100)/100 : Math.round((v/12)*100)/100;
   });
   foApplyUnit(entry);
+  foAutoCustomWinPrice(entry);
   rc();
 }
 function setAddDiscType(type){
@@ -7166,7 +7400,7 @@ function collectQuoteData(){
     d.accs=[];
     el.querySelectorAll('.lt-acc-e').forEach(function(ae){
       var a={};
-      ['lt-acc-type','lt-acc-fo-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-fo-sill','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(cls){
+      ['lt-acc-type','lt-acc-fo-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-fo-sill','lt-acc-sf','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(cls){
         var f=ae.querySelector('.'+cls); if(f) a[cls]=f.value;
       });
       a.offs=Array.prototype.map.call(ae.querySelectorAll('.lt-acc-off'),function(i){return i.value;});
@@ -7181,7 +7415,7 @@ function collectQuoteData(){
     var d = {};
     // fo-loc = the wall a framed opening sits on; was missing, so loads reverted
     // every framed opening to the first wall (Front Gable End).
-    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-disp-unit','fo-sill','fo-loc'].forEach(function(cls){
+    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-disp-unit','fo-sill','fo-sf','fo-loc'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
     // Position rows (placement along the wall) — same as doors/windows/roll-ups.
@@ -7408,6 +7642,9 @@ function restoreQuoteData(data){
     });
     // Trigger type change to show/hide correct rows
     if(d['lt-type']) ltTypeChange(el);
+    // Sync the Sides & Ends buttons + accessories-section visibility to the
+    // restored enclosure — an enclosed lean-to must not reopen looking "Open".
+    applyLTWM(el);
     // Restore lean-to accessories (doors / windows / frame-outs) with positions.
     // Order matters: set type + wall + qty FIRST so the size/chain/seal/offset
     // option lists are rebuilt before we set the saved values.
@@ -7594,6 +7831,11 @@ async function printQuote(){
   var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
   var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
+  // Lean-to connection fees — printed as their own rows below AND part of the
+  // Building Amount. (They were missing from the printed subtotal while the
+  // on-screen price included them, so a quote with lean-tos under-billed by
+  // the whole connection fee.)
+  var connFeePr=gConnectionFees();
   var anchorLegsQ=gAnchorLegs(), anchorPr=gAnchors();
   // Overhang for PDF
   var overhangPQ=0;
@@ -7616,7 +7858,7 @@ async function printQuote(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+connFeePr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // Build plans HTML now that sub is computed (CCI Site Specific = 5% of retail)
@@ -7856,6 +8098,13 @@ async function printQuote(){
           // Header seal add-on
           var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
           if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=Math.round(sw*(window._seal||9.85));rows+=row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
+          // Eave header — always required on the outer wall of an eave-attached lean-to
+          var _qhLts=(el.querySelector('.lts')||{}).value||'';
+          if((_qhLts==='Left Eave'||_qhLts==='Right Eave')&&aloc==='outer'){
+            var _qhDw=parseInt((asz||'').split('x')[0])||0;
+            var _qhP=eaveHeaderCost(_qhDw, parseInt(G('bw').value)||0);
+            if(_qhP) rows+=row('    Lean-To: Eave Header ('+_qhDw+"' door)",aqty,_qhP,_qhP*aqty);
+          }
         }
         else if(atype==='wtd'){var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';var ap=MFR().wtdPrices[ahi]||window._wtd_std||300;var wtdLbl=MFR().wtdTypes.find(function(t){return t.v===ahi;})||{label:ahi};rows+=row('  Lean-To: Walk-Through Door ('+wtdLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
         else if(atype==='win'){var ahi=ae.querySelector('.lt-acc-win-hi')?ae.querySelector('.lt-acc-win-hi').value:'std';var ap=MFR().winPrices[ahi]||window._win_std||200;var winLbl=MFR().winTypes.find(function(t){return t.v===ahi;})||{label:ahi};rows+=row('  Lean-To: Window ('+winLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
@@ -7863,23 +8112,23 @@ async function printQuote(){
           var afoW2=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
           var afoH2=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
           var afoKey2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
-          var afp=(afoKey2&&AC_PRICES&&AC_PRICES[afoKey2])||0;
-          if(!afp) afp=ltFrameoutPrice(afoW2, aloc);
+          var afp=ltAccFoUnitPrice(ae, aloc);
           var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(afoW2+'x'+afoH2+"' opening");
           var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+afoW2+'x'+afoH2+"'";
           if(afp) rows+=row('  Lean-To: Framed Opening — '+afoLbl+afoSz+' ('+alocLabel+')',aqty,afp,afp*aqty);
         }
+        // Side frames (wtd / win / frameout on the outer wall, truss auto-set)
+        if(atype!=='rollup'){
+          var _qsLts=(el.querySelector('.lts')||{}).value||'';
+          var _qsSf=ae.querySelector('.lt-acc-sf');
+          var _qsN=(_qsSf&&(_qsLts==='Left Eave'||_qsLts==='Right Eave')&&aloc==='outer')?(parseInt(_qsSf.value)||0):0;
+          if(_qsN>0){var _qsP=window._sf_dw||150;rows+=row('    Lean-To: Side Frame',_qsN,_qsP,_qsN*_qsP);}
+        }
       });
       // Per-lean-to End Connection Fee (skip for free-standing)
       if(!ltIsFree){
-        var _bwQ=parseInt(G('bw').value)||0;
-        var _btQ=G('btype').value;
-        var _isWSQ=(_bwQ>=32||_btQ==='widespan');
         var _isGableQ=(ls==='Front Gable'||ls==='Back Gable');
-        var _connFeeQ=0;
-        if(_isWSQ){ _connFeeQ=300+Math.ceil(Math.max(0,ll-20)/4)*25; }
-        else if(_isGableQ){ _connFeeQ=700+Math.ceil(Math.max(0,ll-21)/5)*25; }
-        else { _connFeeQ=(typeof MFR==='function'&&MFR().eaveConnFlat)?MFR().eaveConnFlat:(100+Math.ceil(Math.max(0,ll-21)/5)*25); }
+        var _connFeeQ=connFeeFor(ls, ll); // shared with gConnectionFees — no duplicate formula
         if(_connFeeQ>0){
           var _connLblQ=_isGableQ?'Lean-To: End Connection Fee ('+ls+', '+ll+"')":'Lean-To: Connection Fee ('+ls+', '+ll+"')";
           rows+=row('  '+_connLblQ,null,null,_connFeeQ);
@@ -7901,6 +8150,12 @@ async function printQuote(){
       if(foLocEl && foLocEl.value) compLabel += ' — ' + foLocEl.value;
     }
     if(unitP||comp==='Custom — see notes'||comp.indexOf('(Custom Size)')>=0) rows+=row(compLabel,qty,unitP||null,unitP*qty);
+    // Side frames for eave-side framed openings (truss auto-set)
+    if(comp.indexOf('Framed Opening')===0){
+      var _sfL=el.querySelector('.fo-loc'), _sfE=el.querySelector('.fo-sf');
+      var _sfN=(_sfL&&_sfE&&isEaveSide(_sfL.value))?(parseInt(_sfE.value)||0):0;
+      if(_sfN>0){var _sfP=window._sf_dw||150;rows+=row('    Side Frame',_sfN,_sfP,_sfN*_sfP);}
+    }
   });
   // 1' Overhang (CCI only)
   if(overhangPQ>0){
@@ -8500,6 +8755,11 @@ async function printContract(){
   var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
   var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
+  // Lean-to connection fees — printed as their own rows below AND part of the
+  // Building Amount. (They were missing from the printed subtotal while the
+  // on-screen price included them, so a quote with lean-tos under-billed by
+  // the whole connection fee.)
+  var connFeePr=gConnectionFees();
   var anchorLegsQ=gAnchorLegs(), anchorPr=gAnchors();
   var overhangPQ=0;
   var ohSelP=G('overhang-sel');
@@ -8520,7 +8780,7 @@ async function printContract(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+connFeePr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // ── Engineered Plans + Permit Service (both invoiced separately by engineering firm) ──
@@ -8761,6 +9021,12 @@ async function printContract(){
       if(foLocEl && foLocEl.value) compLabel+=' \u2014 '+foLocEl.value;
     }
     if(unitP||isCustomNote||isCustomSize) row(compLabel,qty,unitP||null,unitP*qty);
+    // Side frames for eave-side framed openings (truss auto-set)
+    if(comp.indexOf('Framed Opening')===0){
+      var _sfL2=el.querySelector('.fo-loc'), _sfE2=el.querySelector('.fo-sf');
+      var _sfN2=(_sfL2&&_sfE2&&isEaveSide(_sfL2.value))?(parseInt(_sfE2.value)||0):0;
+      if(_sfN2>0){var _sfP2=window._sf_dw||150;row('  Side Frame',_sfN2,_sfP2,_sfN2*_sfP2);}
+    }
   });
   if(insulPr){
     var iSel=G('insul-sel');
@@ -11608,30 +11874,49 @@ function runTrussChecks(){
     if(nsfEl) autoSetSfByTruss(nsfEl, hitCount, qty);
   });
 
-  // Framed openings
-  document.querySelectorAll('.fo-entry').forEach(function(el){
+  // Framed openings (Section 10 .ace entries) on eave sides — auto-set the
+  // Side Frame(s) dropdown per truss hit, same as walk doors / windows. (The
+  // old check targeted a '.fo-entry' class that never existed — dead code.)
+  document.querySelectorAll('.ace').forEach(function(el){
+    var comp = (el.querySelector('.act')||{}).value||'';
+    if(comp.indexOf('Framed Opening') !== 0) return;
     var loc = el.querySelector('.fo-loc');
-    if(!loc || !isEaveSide(loc.value)) {
+    var locRow = el.querySelector('.fo-loc-row');
+    var sfEl = el.querySelector('.fo-sf');
+    if(!loc || !locRow || locRow.classList.contains('hidden') || !isEaveSide(loc.value)){
       setTrussState(el, false, []);
+      if(sfEl) sfEl.value='0';
       return;
     }
-    var szEl = el.querySelector('.fo-sz');
-    var itemW = 4;
-    if(szEl){var sz = szEl.value.split('x'); itemW = parseFloat(sz[0]) || 4;}
-    var distFromFront = null;
-    var posRow = el.querySelector('.pos-section .pos-row');
-    if(posRow){
-      var inp = posRow.querySelector('input[type=number]');
-      var sideBtn = posRow.querySelector('.pos-toggle button.active');
-      var sideVal = sideBtn ? sideBtn.dataset.side : 'left';
-      var rawPos = inp ? parseFloat(inp.value) : NaN;
-      if(!isNaN(rawPos) && inp && inp.value!==''){
-        distFromFront = (sideVal==='left') ? rawPos : (L - rawPos - itemW);
+    // Same width derivation the elevation collectors use
+    var itemW = 2.5;
+    if(comp.indexOf('(Custom Size)')>=0){ itemW = foCustomFeet(el).w; }
+    else if(comp.indexOf('Garage Door')>=0 || comp.indexOf('Side Opening')>=0){ var _wm=comp.match(/(\d+)' Wide/); itemW=_wm?parseInt(_wm[1]):10; }
+    else if(comp.indexOf('Double Door')>=0){ itemW=6; }
+    else if(comp.indexOf('Walk-Through')>=0){ itemW=3; }
+    var qty = parseInt((el.querySelector('.acq')||{}).value)||1;
+    var posRows = el.querySelectorAll('.pos-section .pos-row');
+    var hitCount = 0, allHits = [];
+    for(var i=0;i<qty;i++){
+      var distFromFront = null, prow = posRows[i];
+      if(prow){
+        var inp = prow.querySelector('input[type=number]');
+        var sideBtn = prow.querySelector('.pos-toggle button.active');
+        var sideVal = sideBtn ? sideBtn.dataset.side : 'left';
+        var rawPos = inp ? parseFloat(inp.value) : NaN;
+        if(!isNaN(rawPos) && inp && inp.value!==''){
+          distFromFront = (sideVal==='left') ? rawPos : (L - rawPos - itemW);
+        }
       }
+      if(distFromFront===null){
+        var sp = (L - qty * itemW) / (qty + 1);
+        distFromFront = sp * (i + 1) + itemW * i;
+      }
+      var hits = checkTrussHitFromFront(distFromFront, itemW, L);
+      if(hits.length > 0){ hitCount++; allHits = allHits.concat(hits); }
     }
-    if(distFromFront === null) distFromFront = (L - itemW) / 2;
-    var hits = checkTrussHitFromFront(distFromFront, itemW, L);
-    setTrussState(el, hits.length > 0, hits);
+    setTrussState(el, hitCount > 0, allHits);
+    if(sfEl) autoSetSfByTruss(sfEl, hitCount, qty);
   });
 
   // Lean-to outer-wall accessories (same OC as main building applies along length L)
@@ -11661,6 +11946,10 @@ function runTrussChecks(){
         itemW = 3;
       } else if(atype==='win'){
         itemW = 2.5;
+      } else if(atype==='frameout'){
+        var _ft2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+        if(_ft2.indexOf('45')>=0){ setTrussState(ae, false, []); return; } // charge, not an opening
+        itemW = parseFloat((ae.querySelector('.lt-acc-fo-w')||{}).value)||10;
       } else {
         setTrussState(ae, false, []);
         return;
@@ -11696,12 +11985,16 @@ function runTrussChecks(){
           x += itemW + gap;
         }
       }
-      var anyHit = false, allHits = [];
+      var anyHit = false, allHits = [], hitCount = 0;
       positions.forEach(function(itemX){
         var hits = checkTrussHit(itemX, itemW, L);
-        if(hits.length>0){ anyHit = true; allHits = allHits.concat(hits); }
+        if(hits.length>0){ anyHit = true; hitCount++; allHits = allHits.concat(hits); }
       });
       setTrussState(ae, anyHit, allHits);
+      // Auto-set the Side Frame(s) dropdown (wtd/win/frameout; roll-ups get the
+      // eave header automatically instead).
+      var _sfSel2 = ae.querySelector('.lt-acc-sf');
+      if(_sfSel2 && atype!=='rollup') autoSetSfByTruss(_sfSel2, hitCount, aqty);
     });
   });
 
