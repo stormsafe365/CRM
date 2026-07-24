@@ -7144,11 +7144,12 @@ function buildingPageHTML(prefixHTML){
   // TBD detection: value is empty OR literal 'TBD' string
   function isColorSetPdf(id){ var el=G(id); return el && el.value && el.value!=='TBD'; }
   var colorsTBD=!isColorSetPdf('cr')||!isColorSetPdf('cw')||!isColorSetPdf('ct');
-  // TBD defaults: walls Light Gray, roof + trim White
-  var rHex = isColorSetPdf('cr') ? G('cr').value : '#F0EFE8';
+  // TBD defaults (Jenna 2026-07-24): roof Galvalume, walls Light Gray, trim
+  // Black, wainscot Charcoal — same preset combo as the 3D model.
+  var rHex = isColorSetPdf('cr') ? G('cr').value : '#B8BDC2';
   var wHex = isColorSetPdf('cw') ? G('cw').value : '#9EA5A8';
-  var tHex = isColorSetPdf('ct') ? G('ct').value : '#F0EFE8';
-  var waHex= isColorSetPdf('cwn') ? G('cwn').value : '#F0EFE8';
+  var tHex = isColorSetPdf('ct') ? G('ct').value : '#1A1A1A';
+  var waHex= isColorSetPdf('cwn') ? G('cwn').value : '#6B6360';
   var wainOn=(G('wain')&&G('wain').value==='yes');
   var wallStyle=G('ws')?G('ws').value:'Vertical';
 
@@ -11163,10 +11164,12 @@ function renderBuildingViews(){
   var pitch=parseInt(pitchText)||3;
 
   function isColorSet(id){ var el=G(id); return el && el.value && el.value!=='TBD'; }
-  var rHex=isColorSet('cr')?G('cr').value:'#F0EFE8';
+  // TBD defaults (Jenna 2026-07-24): roof Galvalume, walls Light Gray, trim
+  // Black, wainscot Charcoal — same preset combo as the 3D model.
+  var rHex=isColorSet('cr')?G('cr').value:'#B8BDC2';
   var wHex=isColorSet('cw')?G('cw').value:'#9EA5A8';
-  var tHex=isColorSet('ct')?G('ct').value:'#F0EFE8';
-  var waHex=isColorSet('cwn')?G('cwn').value:'#F0EFE8';
+  var tHex=isColorSet('ct')?G('ct').value:'#1A1A1A';
+  var waHex=isColorSet('cwn')?G('cwn').value:'#6B6360';
   var colorsTBD=!isColorSet('cr')||!isColorSet('cw')||!isColorSet('ct');
   var wainOn=(G('wain')&&G('wain').value==='yes');
   var wallStyle=G('ws')?G('ws').value:'Vertical';
