@@ -1,0 +1,181 @@
+// receiptHtml.js — branded payment-receipt document for StormSafe Steel.
+// Produces a self-contained HTML document (inline CSS, Google Fonts) that
+// renders to PDF through the same Electron print-to-PDF path as quotes and
+// contracts (lib/builderSave renderQuotePdf). Dark StormSafe brand: Orbitron
+// headers, Inter body, teal accents on #08121d — matches the quote PDF look.
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+))
+
+const money = (n) => {
+  const v = Number(n)
+  if (!isFinite(v)) return '—'
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const fmtDate = (iso) => {
+  if (!iso) return '—'
+  try {
+    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  } catch { return String(iso) }
+}
+
+/**
+ * data = {
+ *   client: { name, email, phone, city, state },
+ *   quote:  { quote_number, building_size, building_summary, total_amount },
+ *   receipt: { number, date (yyyy-mm-dd), amount, method, reference,
+ *              appliedTo, remaining, note }
+ * }
+ */
+export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
+  const paidInFull = receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0
+  const remainColor = paidInFull ? '#34d399' : '#e2e8f0'
+  const building = [quote.building_size, quote.building_summary].filter(Boolean).join(' — ')
+  const rows = [
+    ['Payment Date', fmtDate(receipt.date)],
+    ['Payment Method', receipt.method || '—'],
+    receipt.reference ? ['Reference #', receipt.reference] : null,
+    ['Applied To', receipt.appliedTo || 'Deposit'],
+    quote.quote_number ? ['Quote / Order #', quote.quote_number] : null,
+  ].filter(Boolean)
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${esc(receipt.number || 'Payment Receipt')} — StormSafe Steel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #08121d; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif; color: #e2e8f0;
+    width: 8.5in; min-height: 11in; margin: 0 auto; padding: 0.55in 0.6in;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    font-size: 10.5pt; line-height: 1.55;
+  }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid #22d3c8; }
+  .wordmark { font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 21pt; letter-spacing: .04em; text-transform: uppercase; }
+  .wordmark .safe { color: #22d3c8; }
+  .tagline { color: #94a3b8; font-size: 8.5pt; margin-top: 4px; letter-spacing: .02em; }
+  .doc-type { text-align: right; }
+  .doc-type .t { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 15pt; letter-spacing: .08em; text-transform: uppercase; color: #22d3c8; }
+  .doc-type .n { font-size: 9.5pt; color: #94a3b8; margin-top: 6px; }
+  .doc-type .n b { color: #e2e8f0; font-weight: 600; }
+
+  .paid-band { margin: 26px 0 22px; background: rgba(34,211,200,.10); border: 1px solid #22d3c8; border-radius: 10px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
+  .paid-band .lbl { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 10pt; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; }
+  .paid-band .sub { color: #94a3b8; font-size: 9pt; margin-top: 5px; }
+  .paid-band .amt { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 26pt; color: #22d3c8; letter-spacing: .02em; }
+
+  .cols { display: flex; gap: 20px; margin-bottom: 22px; }
+  .panel { flex: 1; background: #111827; border: 1px solid #2a3d55; border-radius: 10px; padding: 16px 18px; }
+  .panel h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; margin-bottom: 10px; }
+  .panel .big { font-size: 12pt; font-weight: 600; color: #e2e8f0; }
+  .panel .meta { color: #94a3b8; font-size: 9.5pt; margin-top: 2px; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #1e2d42; font-size: 9.5pt; }
+  .kv:last-child { border-bottom: 0; }
+  .kv .k { color: #94a3b8; }
+  .kv .v { color: #e2e8f0; font-weight: 600; text-align: right; }
+
+  .bldg { background: #111827; border: 1px solid #2a3d55; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; }
+  .bldg h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; margin-bottom: 6px; }
+  .bldg .d { font-size: 10.5pt; color: #e2e8f0; }
+
+  table.acct { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
+  table.acct th { font-family: 'Orbitron', sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; color: #94a3b8; text-align: left; padding: 8px 14px; border-bottom: 1px solid #2a3d55; }
+  table.acct th:last-child { text-align: right; }
+  table.acct td { padding: 9px 14px; border-bottom: 1px solid #1e2d42; font-size: 10.5pt; }
+  table.acct td:last-child { text-align: right; font-weight: 600; }
+  table.acct tr.pay td { color: #22d3c8; }
+  table.acct tr.rem td { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 11.5pt; border-bottom: 0; padding-top: 12px; }
+  table.acct tr.rem td:last-child { color: ${remainColor}; }
+
+  .note { background: #1a2436; border-left: 3px solid #22d3c8; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 9.5pt; color: #cbd5e1; margin-bottom: 22px; }
+
+  .foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid #1e2d42; display: flex; justify-content: space-between; align-items: flex-end; }
+  .foot .co { font-size: 8.5pt; color: #94a3b8; line-height: 1.7; }
+  .foot .co b { color: #e2e8f0; }
+  .foot .legal { font-size: 7.5pt; color: #64748b; text-align: right; max-width: 3.4in; }
+  .thanks { font-size: 10pt; color: #e2e8f0; margin: 4px 0 24px; }
+  .thanks b { color: #22d3c8; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <div class="wordmark">Storm<span class="safe">Safe</span> Steel</div>
+      <div class="tagline">Hurricane-Rated Steel Buildings · West Palm Beach, FL</div>
+    </div>
+    <div class="doc-type">
+      <div class="t">Payment Receipt</div>
+      <div class="n">Receipt <b>${esc(receipt.number || '—')}</b></div>
+      <div class="n">Issued <b>${esc(fmtDate(receipt.date))}</b></div>
+    </div>
+  </div>
+
+  <div class="paid-band">
+    <div>
+      <div class="lbl">${paidInFull ? 'Payment Received — Paid in Full' : 'Payment Received'}</div>
+      <div class="sub">Thank you, ${esc(client.name || 'valued customer')} — this payment has been applied to your order.</div>
+    </div>
+    <div class="amt">${money(receipt.amount)}</div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h3>Received From</h3>
+      <div class="big">${esc(client.name || '—')}</div>
+      ${client.email ? `<div class="meta">${esc(client.email)}</div>` : ''}
+      ${client.phone ? `<div class="meta">${esc(client.phone)}</div>` : ''}
+      ${(client.city || client.state) ? `<div class="meta">${esc([client.city, client.state].filter(Boolean).join(', '))}</div>` : ''}
+    </div>
+    <div class="panel">
+      <h3>Payment Details</h3>
+      ${rows.map(([k, v]) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}
+    </div>
+  </div>
+
+  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div></div>` : ''}
+
+  <table class="acct">
+    <tr><th>Account Summary</th><th>Amount</th></tr>
+    ${isFinite(Number(quote.total_amount)) ? `<tr><td>Order Total</td><td>${money(quote.total_amount)}</td></tr>` : ''}
+    <tr class="pay"><td>This Payment — ${esc(receipt.appliedTo || 'Deposit')}</td><td>&minus; ${money(receipt.amount)}</td></tr>
+    <tr class="rem"><td>Remaining Balance</td><td>${paidInFull ? 'PAID IN FULL' : money(receipt.remaining)}</td></tr>
+  </table>
+
+  ${receipt.note ? `<div class="note">${esc(receipt.note)}</div>` : ''}
+
+  <div class="thanks">Thank you for choosing <b>StormSafe Steel</b>. We look forward to building with you.</div>
+
+  <div class="foot">
+    <div class="co">
+      <b>StormSafe Steel</b><br>
+      8480 Okeechobee Blvd, Suite 5 · West Palm Beach, FL 33411<br>
+      (561) 771-5555 · ops@stormsafesteel.com · stormsafesteel.com
+    </div>
+    <div class="legal">
+      This document confirms receipt of the payment shown above and is not an
+      invoice. Remaining balances are due per your signed purchase agreement.
+      Prices subject to change based on steel market conditions and local
+      engineering requirements.
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+/** Receipt number: RCPT + quote number when present, else date-stamped. */
+export function makeReceiptNumber(quote) {
+  const base = quote?.quote_number ? String(quote.quote_number).replace(/^SS-?/, '') : null
+  const stamp = new Date()
+  const ymd = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}`
+  return base ? `RCPT-${base}-${ymd}` : `RCPT-${ymd}-${String(Date.now()).slice(-4)}`
+}
