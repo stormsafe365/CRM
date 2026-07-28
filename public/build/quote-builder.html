@@ -2811,6 +2811,10 @@ var MANUFACTURERS = {
       'No Permit Required':'No Permit Required — $0'
     },
     planOptions: '<option value="As Built Plans">As Built Stamped Plans — $400/500/750</option><option value="Generic Plans">Generic Stamped Plans — $250</option><option value="Master Files">Master Files — $250</option><option value="No Permit Required">No Permit Required — $0</option>',
+    permitSvc: [
+      {v:'building',     label:'Building Only — $100',    amt:100, lbl:'Building Only'},
+      {v:'building-pad', label:'Building &amp; Pad — $225', amt:225, lbl:'Building & Pad'}
+    ],
     planDisplayFn: function(planType, planCost) {
       return planType + ' — $' + planCost;
     },
@@ -3240,6 +3244,10 @@ var MANUFACTURERS = {
       'No Permit Required':'No Permit Required — $0'
     },
     planOptions: '<option value="Site Specific Plans">Site Specific Plans — 5% of Retail (min. $175)</option><option value="Generic Plans">Generic Plans (Stamped/Sealed) — $175</option><option value="Master Files">Master File Plans — $0</option><option value="No Permit Required">No Permit Required — $0</option>',
+    // CCI permitting service — flat $300 service fee (building permit).
+    permitSvc: [
+      {v:'building', label:'Building — $300', amt:300, lbl:'Building Permit Service'}
+    ],
     planDisplayFn: function(planType, planCost) {
       if(planType==='Master Files') return planType + ' — $0 (included)';
       if(planType==='Site Specific Plans') return MFR().planLabels['Site Specific Plans'] + ' = $' + planCost;
@@ -3556,6 +3564,15 @@ function initMfrPricing() {
   // Rebuild plans dropdown options
   var pSel = G('plans-sel');
   if(pSel) pSel.innerHTML = m.planOptions;
+  // Rebuild permitting-service options (per-manufacturer fees — CCI flat $300
+  // building service, CA $100 building / $225 building+pad)
+  var svcSel = G('permit-svc');
+  if(svcSel && m.permitSvc){
+    var curSvc = svcSel.value;
+    svcSel.innerHTML = '<option value="none">None — Buyer pulls own permit</option>' +
+      m.permitSvc.map(function(o){ return '<option value="'+o.v+'">'+o.label+'</option>'; }).join('');
+    svcSel.value = m.permitSvc.some(function(o){ return o.v===curSvc; }) ? curSvc : 'none';
+  }
   // Rebuild WTD type dropdowns in existing entries
   if(typeof mfrTypeOpts==='function'){
     document.querySelectorAll('.whi').forEach(function(sel){
@@ -8828,8 +8845,11 @@ async function printContract(){
     _planLabelC = _rawLbl2.split(' — ')[0].split(' - ')[0];
     _hasPlansC = true;
   }
-  var _permSvcAmtC = (_permSvcC === 'building') ? 100 : (_permSvcC === 'building-pad' ? 225 : 0);
-  var _permSvcLblC = (_permSvcC === 'building') ? 'Building Only' : (_permSvcC === 'building-pad' ? 'Building & Pad' : '');
+  // Fee + label from the active manufacturer's permitSvc list (CCI: flat $300
+  // building service; CA: $100 building / $225 building+pad).
+  var _svcDefC = (MFR().permitSvc||[]).find(function(o){ return o.v===_permSvcC; });
+  var _permSvcAmtC = _svcDefC ? _svcDefC.amt : 0;
+  var _permSvcLblC = _svcDefC ? (_svcDefC.lbl||'') : '';
   var _hasPermSvcC = (_permSvcAmtC > 0);
 
   var sheetFreeGA=(preSheetP>=10000&&bt2!=='widespan');
