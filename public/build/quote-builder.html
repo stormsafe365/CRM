@@ -3134,10 +3134,14 @@ var MANUFACTURERS = {
     // Per-size roll-up price overrides (clean WxH key) where CCI's chart
     // differs from the shared tables (entered from CA's sheet). Applies to the
     // standard/chain/merged tiers — NOT hi-impact.
-    // ── CCI roll-up door charts (June 2021 sheet, WHITE column) ──────────
-    // Uncertified = no hoist (+$325 hoist add-on per the sheet footnote).
-    // Certified   = chain hoist INCLUDED. StormSafe quotes certified doors,
-    // so the merged Roll-Up tier prefers the certified chart (rudPreferChain).
+    // ── CCI roll-up door charts (CCI_Garage Door Prices sheet, WHITE cols) ──
+    // rdpStd = Uncertified column · rdpChain = Certified column. Chain hoist
+    // is included ONLY for the sheet's yellow-highlighted SIZES (either tier):
+    // 13'+ tall any width, 12-wide at 12'+, and ALL 14/16-wide — see
+    // cciCertHoistIncluded. Every other size (certified included) adds a hoist
+    // at +$325. Colored doors price via rudColors tiers. StormSafe quotes
+    // certified doors, so the merged Roll-Up tier prefers rdpChain
+    // (rudPreferChain).
     rdpStd: {
       '6x6':500,'6x7':550,'6x8':550,'6x9':600,'6x10':600,'6x11':650,'6x12':650,'6x13':975,'6x14':975,'6x15':1025,'6x16':1025,
       '8x6':575,'8x7':600,'8x8':600,'8x9':650,'8x10':650,'8x11':700,'8x12':700,'8x13':1025,'8x14':1025,'8x15':1075,'8x16':1075,
@@ -5327,16 +5331,20 @@ function gLT(){
       var aqty=parseInt(ae.querySelector('.lt-acc-qty')?ae.querySelector('.lt-acc-qty').value:1)||1;
       if(atype==='rollup'){
         var asz=ae.querySelector('.lt-acc-size')?ae.querySelector('.lt-acc-size').value:'9x8';
-        accAdj+=getDoorPrice('standard',asz)*aqty;
+        // Merged Roll-Up tier — CCI sells the CERTIFIED door on leans too
+        // (CCI's corrected quote: lean 10x10 = certified $1,050).
+        accAdj+=getDoorPrice('rollup',asz)*aqty;
         // Door color upcharge (CCI flat / CA % of the door's listed price)
         var acoEl=ae.querySelector('.lt-acc-color');
         if(acoEl && MFR().rudColors){
           var _acd=MFR().rudColors.find(function(c){return c.v===acoEl.value;});
-          var _acUp=rudColorUpcharge(_acd,'standard',asz);
+          var _acUp=rudColorUpcharge(_acd,'rollup',asz);
           if(_acUp) accAdj+=_acUp*aqty;
         }
-        // Chain hoist add-on
+        // Chain hoist add-on — $0 when the size already includes one (CCI's
+        // yellow-highlighted sizes: 13'+ tall, 12-wide 12'+, all 14/16-wide).
         var ach=parseInt(ae.querySelector('.lt-acc-ch')&&ae.querySelector('.lt-acc-ch').value)||0;
+        if(doorHasChainIncluded('rollup',asz)) ach=0;
         accAdj+=ach*(window._chain||325);
         // Header seal add-on
         var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
@@ -5398,8 +5406,18 @@ function getLTDims(lte){
 //   - Front/Back gable end: door WIDTH ≤ lt_w - 2  (1' clearance each side)
 //                           door HEIGHT ≤ lt_h - 1  (some clearance at outer post)
 function getValidRDPSizes(lt_w, lt_h, loc){
+  // Lean-to roll-ups sell the SAME catalogue as the main building's merged
+  // Roll-Up tier: CCI (rudPreferChain) = the CERTIFIED chart (CCI's own
+  // corrected quote priced a lean 10x10 at certified $1,050, not uncertified
+  // $800); CA keeps its standard chart. Priced via getDoorPrice('rollup') so
+  // lean doors always match Section 10. ★ = chain hoist included (the
+  // yellow-highlighted sizes on CCI's door sheet — see cciCertHoistIncluded).
+  var preferChain=(typeof MFR==='function'&&!!MFR().rudPreferChain);
+  var keySet={};
+  Object.keys(RDP_STD).forEach(function(k){ keySet[k]=1; });
+  if(preferChain) Object.keys(RDP_CHAIN).forEach(function(rawK){ keySet[rawK.replace('*','')]=1; });
   var valid=[];
-  Object.keys(RDP_STD).sort(rudSizeSort).forEach(function(k){
+  Object.keys(keySet).sort(rudSizeSort).forEach(function(k){
     var p=k.split('x'),dw=parseFloat(p[0])||0,dh=parseFloat(p[1])||0;
     var ok=true;
     if(loc==='outer'){
@@ -5408,7 +5426,7 @@ function getValidRDPSizes(lt_w, lt_h, loc){
       if(dw>lt_w-2) ok=false;
       if(dh>lt_h-1) ok=false;
     }
-    if(ok) valid.push({key:k,price:rudPriceAdj('standard', k, RDP_STD[k])});
+    if(ok) valid.push({key:k,price:getDoorPrice('rollup',k),star:doorHasChainIncluded('rollup',k)});
   });
   return valid;
 }
@@ -5445,7 +5463,7 @@ function updateLTAccSize(accEntry){
       sizeEl.innerHTML='<option value="" disabled selected>No size fits — adjust lean-to dimensions or location</option>';
       addLTAccWarn(accEntry,'Lean-to is too small for any roll-up door at this location. Increase '+(loc==='outer'?'low-leg height':'lean-to width')+' or change location.');
     } else {
-      sizeEl.innerHTML=valid.map(function(v){return '<option value="'+v.key+'">'+v.key+' — '+fC(v.price)+'</option>';}).join('');
+      sizeEl.innerHTML=valid.map(function(v){return '<option value="'+v.key+'">'+v.key+(v.star?' ★':'')+' — '+fC(v.price)+'</option>';}).join('');
       if(valid.some(function(v){return v.key===cur;})) sizeEl.value=cur;
     }
   }
@@ -5638,17 +5656,25 @@ function updLTAccRudSize(sel){
 function refreshLTAccChSl(e){
   var qtyEl=e.querySelector('.lt-acc-qty');
   var qty=qtyEl?parseInt(qtyEl.value)||1:1;
-  // Chain hoist: 0..qty, $325 each
+  // Chain hoist: 0..qty, $325 each — except sizes that already INCLUDE one
+  // (CCI's yellow-highlighted chart rows: 13'+ tall, 12-wide 12'+, all
+  // 14/16-wide) — those lock to "Included" at $0.
   var chEl=e.querySelector('.lt-acc-ch');
   if(chEl){
-    var curCh=parseInt(chEl.value)||0;
-    chEl.innerHTML='<option value="0">None</option>';
-    for(var i=1;i<=qty;i++){
-      var o=document.createElement('option');
-      o.value=i; o.textContent=i+' (+$'+(i*(window._chain||325)).toLocaleString()+')';
-      chEl.appendChild(o);
+    var _sz=(e.querySelector('.lt-acc-size')||{}).value||'';
+    if(doorHasChainIncluded('rollup',_sz)){
+      chEl.innerHTML='<option value="0">Included ✓</option>';
+      chEl.value='0';
+    } else {
+      var curCh=parseInt(chEl.value)||0;
+      chEl.innerHTML='<option value="0">None</option>';
+      for(var i=1;i<=qty;i++){
+        var o=document.createElement('option');
+        o.value=i; o.textContent=i+' (+$'+(i*(window._chain||325)).toLocaleString()+')';
+        chEl.appendChild(o);
+      }
+      chEl.value=Math.min(curCh,qty)||0;
     }
-    chEl.value=Math.min(curCh,qty)||0;
   }
   // Header seal: 0..qty, based on door width × seal rate
   var slEl=e.querySelector('.lt-acc-sl');
@@ -8084,17 +8110,20 @@ async function printQuote(){
         var alocLabel=aloc==='outer'?'Outer Wall':(aloc==='front'?'Front End':'Back End');
         if(atype==='rollup'){
           var asz=ae.querySelector('.lt-acc-size')?ae.querySelector('.lt-acc-size').value:'9x8';
-          var ap=getDoorPrice('standard',asz);
-          rows+=row('  Lean-To: '+asz+' Roll-Up Door ('+alocLabel+')',aqty,ap,ap*aqty);
+          // Merged Roll-Up tier — matches gLT (CCI = certified chart)
+          var ap=getDoorPrice('rollup',asz);
+          var _achIncl=doorHasChainIncluded('rollup',asz);
+          rows+=row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')',aqty,ap,ap*aqty);
           // Door color upcharge (CCI flat / CA % of door price)
           var acoEl2=ae.querySelector('.lt-acc-color');
           if(acoEl2 && MFR().rudColors){
             var _acd2=MFR().rudColors.find(function(c){return c.v===acoEl2.value;});
-            var _acUp2=rudColorUpcharge(_acd2,'standard',asz);
+            var _acUp2=rudColorUpcharge(_acd2,'rollup',asz);
             if(_acd2 && _acUp2) rows+=row('    Lean-To: Door Color — '+_acd2.label,aqty,_acUp2,_acUp2*aqty);
           }
-          // Chain hoist add-on
+          // Chain hoist add-on ($0 line suppressed when the size includes one)
           var ach=parseInt(ae.querySelector('.lt-acc-ch')&&ae.querySelector('.lt-acc-ch').value)||0;
+          if(_achIncl) ach=0;
           if(ach>0){var cp=window._chain||325;rows+=row('    Lean-To: Chain Hoist',ach,cp,ach*cp);}
           // Header seal add-on
           var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
