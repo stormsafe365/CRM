@@ -105,7 +105,7 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
             {q.pdf_snapshot_url && <button className="qcard-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>View PDF</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
             {onGenerateContract && canContract && <button className="qcard-btn" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
-            {onReceipt && <button className="qcard-btn" onClick={() => onReceipt(q)}>Receipt</button>}
+            {onReceipt && <button className="qcard-btn" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
             {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
             {onDelete && <button className="qcard-btn danger" onClick={() => onDelete(q)}>Delete</button>}
           </div>

@@ -317,7 +317,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                       View PDF
                     </button>
                   )}
-                  <button onClick={() => setReceiptQuote(q)} className="link-btn">Receipt</button>
+                  <button onClick={() => setReceiptQuote(q)} className="link-btn">{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>
                   <button onClick={() => setEditingId(q.id)} className="link-btn">Edit</button>
                   <button onClick={() => setConfirmingDeleteId(q.id)} className="link-btn link-btn-danger">
                     Delete
@@ -424,7 +424,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
         {onGenerateContract && canContract && <button className="btn btn-ghost" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
-        {onReceipt && <button className="btn btn-ghost" onClick={() => onReceipt(q)}>Receipt</button>}
+        {onReceipt && <button className="btn btn-ghost" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
         {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
         {onDelete && <button className="btn btn-ghost" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>Delete</button>}
       </div>

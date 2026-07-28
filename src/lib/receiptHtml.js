@@ -34,19 +34,26 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   const paidInFull = receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0
   const remainColor = paidInFull ? '#34d399' : '#e2e8f0'
   const building = [quote.building_size, quote.building_summary].filter(Boolean).join(' — ')
+  // CCI orders: the building is sold by Carolina Carports, Inc. — the document
+  // is their BILL OF SALE (same liability treatment as the CCI contract), with
+  // StormSafe as the authorized dealer.
+  const isCCI = String(quote.manufacturer || '').toLowerCase() === 'cci'
+  const docTitle = isCCI ? 'Bill of Sale' : 'Payment Receipt'
   const rows = [
     ['Payment Date', fmtDate(receipt.date)],
     ['Payment Method', receipt.method || '—'],
     receipt.reference ? ['Reference #', receipt.reference] : null,
     ['Applied To', receipt.appliedTo || 'Deposit'],
     quote.quote_number ? ['Quote / Order #', quote.quote_number] : null,
+    isCCI ? ['Seller', 'Carolina Carports, Inc.'] : null,
+    isCCI ? ['Dealer', 'StormSafe Steel'] : null,
   ].filter(Boolean)
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>${esc(receipt.number || 'Payment Receipt')} — StormSafe Steel</title>
+<title>${esc(receipt.number || docTitle)} — ${isCCI ? 'Carolina Carports, Inc.' : 'StormSafe Steel'}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -66,8 +73,11 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   .tagline { color: #94a3b8; font-size: 8.5pt; margin-top: 4px; letter-spacing: .02em; }
   .doc-type { text-align: right; }
   .doc-type .t { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 15pt; letter-spacing: .08em; text-transform: uppercase; color: #22d3c8; }
+  .doc-type .st { font-family: 'Orbitron', sans-serif; font-weight: 600; font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: #94a3b8; margin-top: 3px; }
   .doc-type .n { font-size: 9.5pt; color: #94a3b8; margin-top: 6px; }
   .doc-type .n b { color: #e2e8f0; font-weight: 600; }
+  .seller { margin-top: 8px; font-size: 9pt; color: #cbd5e1; }
+  .seller b { color: #e2e8f0; }
 
   .paid-band { margin: 26px 0 22px; background: rgba(34,211,200,.10); border: 1px solid #22d3c8; border-radius: 10px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
   .paid-band .lbl { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 10pt; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; }
@@ -112,10 +122,12 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     <div>
       <div class="wordmark">Storm<span class="safe">Safe</span> Steel</div>
       <div class="tagline">Hurricane-Rated Steel Buildings · West Palm Beach, FL</div>
+      ${isCCI ? '<div class="seller">Building manufactured &amp; sold by <b>Carolina Carports, Inc.</b> — StormSafe Steel, Authorized Dealer</div>' : ''}
     </div>
     <div class="doc-type">
-      <div class="t">Payment Receipt</div>
-      <div class="n">Receipt <b>${esc(receipt.number || '—')}</b></div>
+      <div class="t">${docTitle}</div>
+      ${isCCI ? '<div class="st">Payment Receipt</div>' : ''}
+      <div class="n">${isCCI ? 'Document' : 'Receipt'} <b>${esc(receipt.number || '—')}</b></div>
       <div class="n">Issued <b>${esc(fmtDate(receipt.date))}</b></div>
     </div>
   </div>
@@ -142,7 +154,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     </div>
   </div>
 
-  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div></div>` : ''}
+  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div>${isCCI ? '<div class="d" style="color:#94a3b8;font-size:9pt;margin-top:3px">Manufacturer: Carolina Carports, Inc. (CCI)</div>' : ''}</div>` : ''}
 
   <table class="acct">
     <tr><th>Account Summary</th><th>Amount</th></tr>
@@ -162,20 +174,27 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
       (561) 771-5555 · ops@stormsafesteel.com · stormsafesteel.com
     </div>
     <div class="legal">
-      This document confirms receipt of the payment shown above and is not an
+      ${isCCI
+        ? `This bill of sale confirms receipt of the payment shown above toward
+      the building described, manufactured and sold by Carolina Carports, Inc.
+      (CCI). StormSafe Steel is an authorized Carolina Carports dealer.
+      Remaining balances are due per your signed Carolina Carports purchase
+      agreement and its terms &amp; conditions.`
+        : `This document confirms receipt of the payment shown above and is not an
       invoice. Remaining balances are due per your signed purchase agreement.
       Prices subject to change based on steel market conditions and local
-      engineering requirements.
+      engineering requirements.`}
     </div>
   </div>
 </body>
 </html>`
 }
 
-/** Receipt number: RCPT + quote number when present, else date-stamped. */
+/** Document number: BOS (CCI bill of sale) / RCPT + quote number, date-stamped. */
 export function makeReceiptNumber(quote) {
+  const prefix = String(quote?.manufacturer || '').toLowerCase() === 'cci' ? 'BOS' : 'RCPT'
   const base = quote?.quote_number ? String(quote.quote_number).replace(/^SS-?/, '') : null
   const stamp = new Date()
   const ymd = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}`
-  return base ? `RCPT-${base}-${ymd}` : `RCPT-${ymd}-${String(Date.now()).slice(-4)}`
+  return base ? `${prefix}-${base}-${ymd}` : `${prefix}-${ymd}-${String(Date.now()).slice(-4)}`
 }

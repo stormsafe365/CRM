@@ -29,6 +29,10 @@ const isoToday = () => {
 
 export default function ReceiptModal({ client, quote, onClose }) {
   const total = Number(quote?.total_amount) || 0
+  // CCI orders generate a Carolina Carports BILL OF SALE (seller = CCI,
+  // StormSafe = authorized dealer); everything else is a StormSafe receipt.
+  const isCCI = String(quote?.manufacturer || '').toLowerCase() === 'cci'
+  const docLabel = isCCI ? 'Bill of Sale' : 'Payment Receipt'
   const [form, setForm] = useState({
     amount: quote?.deposit_amount != null ? String(quote.deposit_amount) : '',
     date: isoToday(),
@@ -80,8 +84,8 @@ export default function ReceiptModal({ client, quote, onClose }) {
       // Open the finished receipt right away so it can be printed / attached.
       try { window.open(URL.createObjectURL(blob), '_blank') } catch { /* ignore */ }
       toast(saved
-        ? `Receipt ${number} saved to ${client.name || 'lead'} · Documents › Additional`
-        : 'Receipt generated (opened in a new window) — but saving to Documents failed.',
+        ? `${docLabel} ${number} saved to ${client.name || 'lead'} · Documents › Additional`
+        : `${docLabel} generated (opened in a new window) — but saving to Documents failed.`,
       saved ? 'success' : undefined)
       setBusy('')
       onClose()
@@ -93,7 +97,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
 
   return createPortal(
     <div
-      role="dialog" aria-modal="true" aria-label="Payment receipt"
+      role="dialog" aria-modal="true" aria-label={docLabel}
       style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(4,9,16,.62)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}
     >
@@ -102,9 +106,10 @@ export default function ReceiptModal({ client, quote, onClose }) {
         background: 'var(--card, #0D1929)', border: '1px solid var(--line, #294059)',
         borderRadius: 14, padding: 18, boxShadow: '0 18px 60px rgba(0,0,0,.5)',
       }}>
-        <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>Payment Receipt</h2>
+        <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>{docLabel}</h2>
         <p style={{ margin: '0 0 6px', color: 'var(--fg-3, #8598AC)', fontSize: 13 }}>
           {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}{total ? ` · Total $${total.toLocaleString()}` : ''}
+          {isCCI ? ' · Seller: Carolina Carports, Inc.' : ''}
         </p>
 
         <label style={LBL}>Amount Received ($) *</label>
@@ -152,7 +157,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn-secondary" disabled={!!busy} onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={!!busy} onClick={generate} style={{ fontWeight: 800 }}>
-            {busy || 'Generate Receipt'}
+            {busy || `Generate ${docLabel}`}
           </button>
         </div>
       </div>
