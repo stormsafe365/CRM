@@ -20,6 +20,15 @@ import FollowUpsCard from '../components/FollowUpsCard'
 import OrderTimeline from '../components/OrderTimeline'
 import LeadTempSlider from '../components/LeadTempSlider'
 import NotesSection from '../components/NotesSection'
+
+// "Click to text": open the RingCentral desktop app's SMS composer with the
+// number prefilled (rcapp:// is the scheme the RingCentral app registers).
+// The Electron shell forwards rcapp:/tel:/sms: links to the OS handler.
+function rcTextHref(phone) {
+  let d = String(phone || '').replace(/\D/g, '')
+  if (d.length === 10) d = '1' + d
+  return 'rcapp://r/sms?type=new&number=' + encodeURIComponent('+' + d)
+}
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
 
@@ -162,15 +171,20 @@ export default function ClientDetail() {
   if (!client) return <div className="muted">Client not found.</div>
 
   if (editing) {
+    // The /clients/<id> route renders full-bleed (.scroll.flush = overflow
+    // hidden) so the 2-column lead page can run its own column scrollbars —
+    // this plain edit page must bring its OWN scroll region or nothing scrolls.
     return (
-      <div style={{ padding: '24px 26px 48px', maxWidth: 920, margin: '0 auto' }}>
-        <div className="page-header">
-          <div>
-            <Link to="/clients" className="back-link">← Back to Leads</Link>
-            <h1>Edit Lead</h1>
+      <div style={{ height: '100%', overflowY: 'auto' }}>
+        <div style={{ padding: '24px 26px 48px', maxWidth: 920, margin: '0 auto' }}>
+          <div className="page-header">
+            <div>
+              <Link to="/clients" className="back-link">← Back to Leads</Link>
+              <h1>Edit Lead</h1>
+            </div>
           </div>
+          <ClientForm initial={client} onSubmit={handleUpdate} onCancel={() => setEditing(false)} submitLabel="Save Changes" />
         </div>
-        <ClientForm initial={client} onSubmit={handleUpdate} onCancel={() => setEditing(false)} submitLabel="Save Changes" />
       </div>
     )
   }
@@ -204,7 +218,7 @@ export default function ClientDetail() {
         </div>
 
         <div className="cp-contact">
-          {client.phone && <a className="cp-crow" href={`tel:${client.phone}`}>{stroke(<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />)}<span>{client.phone}</span></a>}
+          {client.phone && <a className="cp-crow" href={rcTextHref(client.phone)} title="Text via RingCentral">{stroke(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>)}<span>{client.phone}</span></a>}
           {client.email && <a className="cp-crow" href={`mailto:${client.email}`}>{stroke(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)}<span className="ell">{client.email}</span></a>}
           {addr && <div className="cp-crow">{stroke(<><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>)}<span>{addr}</span></div>}
           {client.source && <div className="cp-source">Lead Source · <b>{sourceLabel(client.source)}</b></div>}
@@ -295,7 +309,12 @@ export default function ClientDetail() {
           <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
         )}
 
-        <ActivityProgress client={client} showAudience={client.status === 'ordered'} onMarkOrdered={() => setOrdering(true)} />
+        <ActivityProgress
+          client={client}
+          showAudience={client.status === 'ordered'}
+          onMarkOrdered={() => setOrdering(true)}
+          onPatched={(patch) => setClient(c => ({ ...c, ...patch }))}
+        />
 
         {client.status === 'ordered' && <OrderTimeline client={client} />}
 

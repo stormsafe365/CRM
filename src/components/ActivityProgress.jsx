@@ -67,7 +67,7 @@ function buildMilestones(client, hasQuote) {
   return STEP_LABELS.map((label, i) => ({ label, done: i <= rank }))
 }
 
-export default function ActivityProgress({ client, showAudience = false, onMarkOrdered }) {
+export default function ActivityProgress({ client, showAudience = false, onMarkOrdered, onPatched }) {
   const { users } = useUsers()
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
@@ -106,17 +106,20 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
   // Clicking a step advances the client to that milestone. Maps the design's
   // linear stepper onto the app's real status / project_stage fields. The
   // 'Lead Created' step is fixed (always done), so it isn't clickable.
+  // Each step also moves the lead-temperature gauge to its matching stop, so
+  // the stepper, the Stage pill and the thermometer stay in lockstep (same
+  // 3-way coupling as Mark-as-Ordered).
   const STEP_PATCH = [
-    null,                                                 // 0 Lead Created (fixed)
-    { status: 'contacted' },                              // 1 Attempting to Contact
-    { status: 'working' },                                // 2 Quote Sent
-    { status: 'contract_sent' },                          // 3 Contract Sent
-    { status: 'ordered' },                                // 4 Contract Signed
-    { status: 'ordered', payment_cleared: true },         // 5 Deposit Received
-    { status: 'ordered', project_stage: 'engineering' },  // 6 Engineering
-    { status: 'ordered', project_stage: 'permitting' },   // 7 Permitting
-    { status: 'ordered', project_stage: 'scheduling' },   // 8 Scheduling
-    { status: 'ordered', project_stage: 'installed' },    // 9 Installed
+    null,                                                                  // 0 Lead Created (fixed)
+    { status: 'contacted', lead_temperature: 'warm' },                     // 1 Attempting to Contact
+    { status: 'working', lead_temperature: 'working' },                    // 2 Quote Sent → Working Leads
+    { status: 'contract_sent', lead_temperature: 'ready' },                // 3 Contract Sent
+    { status: 'ordered' },                                                 // 4 Contract Signed
+    { status: 'ordered', payment_cleared: true },                          // 5 Deposit Received
+    { status: 'ordered', project_stage: 'engineering' },                   // 6 Engineering
+    { status: 'ordered', project_stage: 'permitting' },                    // 7 Permitting
+    { status: 'ordered', project_stage: 'scheduling' },                    // 8 Scheduling
+    { status: 'ordered', project_stage: 'installed' },                     // 9 Installed
   ]
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
@@ -132,7 +135,11 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
     // Reaching any "ordered" milestone (Contract Signed, Deposit Received, …)
     // also moves the summary lead-temperature bar to Ordered, so the gauge and
     // the stepper stay in sync.
-    const finalPatch = patch.status === 'ordered' ? { ...patch, lead_temperature: 'ordered' } : patch
+    const finalPatch = patch.status === 'ordered' ? { ...patch, lead_temperature: 'ordered' } : { ...patch }
+    if (finalPatch.lead_temperature) {
+      finalPatch.lead_temp_updated_at = new Date().toISOString()
+      finalPatch.lead_temp_updated_by = user?.id ?? null
+    }
     const { error } = await supabase.from('clients').update(finalPatch).eq('id', client.id)
     if (error) {
       const m = (error.message || '').toLowerCase()
@@ -141,6 +148,10 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
         : error.message)
       return
     }
+    // Push the patch up so the page updates INSTANTLY (pill, thermometer, this
+    // stepper) — the realtime reload is a backstop, not something clicking a
+    // stage should have to wait on.
+    if (onPatched) onPatched(finalPatch)
     toast(`Stage updated to "${milestones[i].label}"`, 'success')
 
     // Marking "Quote Sent" offers to kick off the post-quote reminder cadence
