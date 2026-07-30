@@ -6286,6 +6286,25 @@ function rcManual(){
 
 function rc(){
   if(INPUT_MODE) return rcManual();
+  // Carport: an eave-side panel choice made on the Wall Options rows (wle/wre)
+  // belongs to the SIDE PANELS section — reps set panels there on standard
+  // buildings and reach for the same rows on a carport, where only
+  // sp-left/sp-right price and render. Adopt the value into the matching Side
+  // Panels dropdown (same value strings; Closed→closed) and reset the wall row
+  // to Open so there's ONE source of truth.
+  if(G('btype') && G('btype').value==='carport'){
+    var _cpAdopt=function(wallId, spId){
+      var wEl=G(wallId), sEl=G(spId); if(!wEl||!sEl) return;
+      var v=wEl.value;
+      if(v && v!=='Open'){
+        sEl.value=(v==='Closed')?'closed':v;
+        wEl.value='Open';
+        if(typeof updateSidePanelNote==='function') updateSidePanelNote();
+      }
+    };
+    _cpAdopt('wle','sp-left');
+    _cpAdopt('wre','sp-right');
+  }
   // Refresh the Additional End Wall internal note (its cost depends on w & h)
   if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
   // ── Width & height needed by 12GA tier, 4'OC gate, wainscot bucket, overhang bucket.
