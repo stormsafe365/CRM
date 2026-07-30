@@ -7384,10 +7384,14 @@ function collectQuoteData(){
   // Simple fields by ID
   var simpleIds = [
     'cn','cp','ce','city','county','state','zip',
-    'pt','agx','perm','plans-sel','btype','bw','bl','bh',
+    'pt','agx','perm','plans-sel','permit-svc','btype','bw','bl','bh',
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add',
+    // Wall Options — were NEVER saved, so a building with open gables/sides
+    // reloaded fully enclosed (doBldType resets walls to the type default and
+    // nothing restored them). Restore Step 2 now puts them back after that reset.
+    'wfg','wbg','wre','wle','add-end-wall',
     'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right',
     // Section 1 notes + contract page inputs — were missing, so they didn't persist.
     'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready'
