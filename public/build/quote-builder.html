@@ -9523,12 +9523,17 @@ async function printContract(){
     '';
 
   // ── Header HTML (reused on every page) ──
-  function _header(titleText, subText){
+  function _header(titleText, subText, logoOverride){
     // CCI contract: keep the logo + contact line only — no "STORMSAFE STEEL"
     // wordmark or tagline (per CCI branding). CA keeps the full header.
+    // `logoOverride` swaps the StormSafe badge for another logo (the CCI terms
+    // page shows Carolina Carports' logo — their terms, their branding). The
+    // CC logo is wide (510x110), so the override gets its own proportions.
     var _hCCI = (ACTIVE_MFR === 'CCI');
     return '<div class="c-hdr">'+
-      '<img class="c-hdr-logo" src="'+LOGO+'" alt="StormSafe">'+
+      (logoOverride
+        ? '<img class="c-hdr-logo" src="'+logoOverride+'" alt="Carolina Carports" style="width:190px;height:46px;object-fit:contain;object-position:left center">'
+        : '<img class="c-hdr-logo" src="'+LOGO+'" alt="StormSafe">')+
       '<div>'+
         (_hCCI ? '' : '<div class="c-hdr-brand-name">STORM<span>SAFE</span> STEEL</div>')+
         (_hCCI ? '' : '<div class="c-hdr-brand-tag">Where Durability Meets Peace of Mind</div>')+
@@ -9742,10 +9747,10 @@ async function printContract(){
   // CA keeps StormSafe's terms in the false branch below.
   var isCCI = (ACTIVE_MFR === 'CCI');
   var ccTermsInner =
-    // Carolina Carports branding for their terms page — official logo (data
-    // URI above) over the company name.
+    // Carolina Carports name heads their terms; the CCI LOGO lives in the page
+    // header (passed to _header below), replacing the StormSafe badge there —
+    // stacking both logos on one page read as clutter.
     '<div style="text-align:center;margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid #e2e8f0">'+
-      (typeof CC_LOGO!=='undefined'&&CC_LOGO ? '<img src="'+CC_LOGO+'" alt="Carolina Carports" style="height:52px;width:auto;object-fit:contain;display:block;margin:0 auto 6px">' : '')+
       '<div style="font-size:15pt;font-weight:800;letter-spacing:.5px;color:#111827">Carolina Carports, Inc.</div>'+
     '</div>'+
     '<p style="margin:0 0 8px;font-weight:700">Terms, Conditions, and Warranties</p>'+
@@ -9783,7 +9788,7 @@ async function printContract(){
     '<p style="text-align:right;margin-top:10px;color:#64748b">Rev. June 10, 2022</p>';
   var page3 =
     '<div class="page">'+
-    _header('Terms &amp; Conditions','')+
+    _header('Terms &amp; Conditions','', (isCCI && typeof CC_LOGO!=='undefined' && CC_LOGO) ? CC_LOGO : null)+
 
     '<div class="c-tc-cols">'+
     (isCCI ? ccTermsInner : (''+
