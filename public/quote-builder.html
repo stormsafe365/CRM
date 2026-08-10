@@ -2330,7 +2330,7 @@ var MANUFACTURERS = {
       {n:'Copper Penny',  c:'KM2Y49352',h:'#C47F2A'}
     ],
     // ── Scalar pricing ───────────────────────────────────────────────────────
-    wtd_std: 300, wtd_hi: 600,
+    wtd_std: 400, wtd_hi: 600,
     win_std: 200, win_hi: 590,
     chain: 325, seal: 9.85,
     freeThresh: 10000, fastenerAlwaysFree: false,
@@ -2466,7 +2466,7 @@ var MANUFACTURERS = {
     // only the 22-wide figure is confirmed.
     halfGablePrice: 1015,
     // ── Walk-Through Door types ───────────────────────────────────────────────
-    wtdPrices: {std:300, hi:600},
+    wtdPrices: {std:400, hi:600},
     wtdTypes: [
       {v:'std',    label:'Standard (36×80)'},
       {v:'hi',     label:'Hi-Impact'},
@@ -3360,6 +3360,8 @@ function doPerm(){
     var planType, cert;
     if(pt==='rc2r'||pt==='com'){ planType=MFR().autoHighPlan; cert='170 MPH'; }
     else { planType=CP[co]||MFR().defaultPlan; cert=HW.indexOf(co)>=0?'170 MPH':'150 MPH'; }
+    // 4' OC framing always certifies up to 170 MPH regardless of county
+    if(cert==='150 MPH' && getTrussOC()===4) cert='170 MPH';
     G('plans-sel').value = planType;
     G('cert-req').textContent = cert;
     // CA: update As Built/Master Files label to show correct price for property type
@@ -4202,7 +4204,7 @@ function gWTD(){
     var el=els[i];
     var qty=parseInt(el.querySelector('.wqt').value)||0;
     var wtdType=el.querySelector('.whi').value;
-    t+=qty*(MFR().wtdPrices[wtdType]||window._wtd_std||300);
+    t+=qty*(MFR().wtdPrices[wtdType]||window._wtd_std||400);
     var sfEl=el.querySelector('.wsf');
     sf+=sfEl?parseInt(sfEl.value)||0:0;
   }
@@ -4495,7 +4497,7 @@ function gLT(){
         accAdj+=asl*Math.round(sealDw*(window._seal||9.85));
       } else if(atype==='wtd'){
         var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';
-        accAdj+=aqty*(MFR().wtdPrices[ahi]||window._wtd_std||300);
+        accAdj+=aqty*(MFR().wtdPrices[ahi]||window._wtd_std||400);
       } else if(atype==='win'){
         var ahi=ae.querySelector('.lt-acc-win-hi')?ae.querySelector('.lt-acc-win-hi').value:'std';
         accAdj+=aqty*(MFR().winPrices[ahi]||window._win_std||200);
@@ -5464,6 +5466,8 @@ function sy(){
   var _tiCert = getTrussInfo();
   if(_tiCert && _tiCert.spacing===5 && cert.indexOf('170 MPH')===0){
     cert = '150 MPH';
+  } else if(_tiCert && _tiCert.spacing===4 && cert==='150 MPH'){
+    cert = '170 MPH';
   }
   G('sc').textContent=cert;
   var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0, h=parseInt(G('bh').value)||6;
@@ -6796,7 +6800,7 @@ function printQuote(){
   // Walk-through doors
   document.querySelectorAll('.we').forEach(function(el){
     var qty=parseInt(el.querySelector('.wqt').value)||1;
-    var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||300;
+    var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||400;
     // Build label from manufacturer's type config (so black, 6-panel, hi-impact variants all show correctly)
     var _wtypeDef=(MFR().wtdTypes||[]).find(function(t){return t.v===wtdTypeP;});
     var _wtypeLbl=_wtypeDef?_wtypeDef.label:'36" \xD7 80" Walk Through Door';
@@ -6849,7 +6853,7 @@ function printQuote(){
           var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
           if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=Math.round(sw*(window._seal||9.85));rows+=row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
         }
-        else if(atype==='wtd'){var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';var ap=MFR().wtdPrices[ahi]||window._wtd_std||300;var wtdLbl=MFR().wtdTypes.find(function(t){return t.v===ahi;})||{label:ahi};rows+=row('  Lean-To: Walk-Through Door ('+wtdLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
+        else if(atype==='wtd'){var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';var ap=MFR().wtdPrices[ahi]||window._wtd_std||400;var wtdLbl=MFR().wtdTypes.find(function(t){return t.v===ahi;})||{label:ahi};rows+=row('  Lean-To: Walk-Through Door ('+wtdLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
         else if(atype==='win'){var ahi=ae.querySelector('.lt-acc-win-hi')?ae.querySelector('.lt-acc-win-hi').value:'std';var ap=MFR().winPrices[ahi]||window._win_std||200;var winLbl=MFR().winTypes.find(function(t){return t.v===ahi;})||{label:ahi};rows+=row('  Lean-To: Window ('+winLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
       });
       // Per-lean-to End Connection Fee (skip for free-standing)
@@ -7535,7 +7539,7 @@ function printContract(){
   });
   document.querySelectorAll('.we').forEach(function(el){
     var qty=parseInt(el.querySelector('.wqt').value)||1;
-    var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||300;
+    var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||400;
     var _wtypeDef=(MFR().wtdTypes||[]).find(function(t){return t.v===wtdTypeP;});
     var _wtypeLbl=_wtypeDef?_wtypeDef.label:'36" \xD7 80" Walk Through Door';
     var _wRowLbl=(_wtypeLbl.indexOf('36')>=0)?_wtypeLbl+' Walk Through Door':'36" \xD7 80" Walk Through Door'+(wtdTypeP==='hi'?' (Hi-Impact)':'');
