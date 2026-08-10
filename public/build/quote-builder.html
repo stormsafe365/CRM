@@ -8542,11 +8542,25 @@ function threeDPageHTML(imgs){
       (src?'<div style="width:100%;aspect-ratio:'+aspect+';overflow:hidden;background:#08121d"><img src="'+src+'" style="width:100%;height:100%;object-fit:cover;display:block"></div>':'')+
     '</div>';
   }
+  var _rsV=G('rs')?G('rs').value:'—';
+  var _fuV=(G('framing-upgrade')&&G('framing-upgrade').value==='12')?'12 Gauge':'14 Gauge';
+  var _ocV=(function(){try{return getTrussOC()+"' On Center";}catch(e){return '';}})();
+  var _shV=G('ssheeting')?G('ssheeting').textContent:'—';
+  var _scV=G('sc')?G('sc').textContent:'—';
+  function _chip(lb,vl){ return '<div style="background:#111d28;border:1px solid #243c50;border-radius:6px;padding:10px 12px"><div style="font-size:7.5pt;color:#1fcec4;letter-spacing:1.5px;text-transform:uppercase;font-weight:800;margin-bottom:4px">'+lb+'</div><div style="font-size:10.5pt;color:#e8eef4;font-weight:700">'+vl+'</div></div>'; }
+  var _specGrid='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">'+
+    _chip('Size',W+"' W × "+L+"' L × "+H+"' H")+
+    _chip('Roof',_rsV+' · '+pitch+':12 Pitch')+
+    _chip('Walls',wallStyle)+
+    _chip('Framing',_fuV+(_ocV?' · '+_ocV:''))+
+    _chip('Sheeting',_shV)+
+    _chip('Wind Certification',_scV)+
+  '</div>';
   var pg1 = page(
     hdr('3D Building Rendering')+
     '<div style="background:#111d28;border-radius:6px;overflow:hidden;border:1px solid #243c50;page-break-inside:avoid;break-inside:avoid">'+
-      '<img src="'+imgs.iso+'" style="display:block;margin:0 auto;max-width:100%;max-height:760px;width:auto;height:auto;background:#08121d">'+
-    '</div>'+caption
+      '<div style="width:100%;aspect-ratio:1.5;overflow:hidden;background:#08121d"><img src="'+imgs.iso+'" style="width:100%;height:100%;object-fit:cover;display:block"></div>'+
+    '</div>'+caption+_specGrid
   );
   var pg2 = page(
     hdr('Elevation Views')+
