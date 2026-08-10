@@ -8542,37 +8542,28 @@ function threeDPageHTML(imgs){
       (src?'<div style="width:100%;aspect-ratio:'+aspect+';overflow:hidden;background:#08121d"><img src="'+src+'" style="width:100%;height:100%;object-fit:cover;display:block"></div>':'')+
     '</div>';
   }
-  var _rsV=G('rs')?G('rs').value:'—';
-  var _fuV=(G('framing-upgrade')&&G('framing-upgrade').value==='12')?'12 Gauge':'14 Gauge';
-  var _ocV=(function(){try{return getTrussOC()+"' On Center";}catch(e){return '';}})();
-  var _shV=G('ssheeting')?G('ssheeting').textContent:'—';
-  var _scV=G('sc')?G('sc').textContent:'—';
-  function _chip(lb,vl){ return '<div style="background:#111d28;border:1px solid #243c50;border-radius:6px;padding:10px 12px"><div style="font-size:7.5pt;color:#1fcec4;letter-spacing:1.5px;text-transform:uppercase;font-weight:800;margin-bottom:4px">'+lb+'</div><div style="font-size:10.5pt;color:#e8eef4;font-weight:700">'+vl+'</div></div>'; }
-  var _specGrid='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">'+
-    _chip('Size',W+"' W × "+L+"' L × "+H+"' H")+
-    _chip('Roof',_rsV+' · '+pitch+':12 Pitch')+
-    _chip('Walls',wallStyle)+
-    _chip('Framing',_fuV+(_ocV?' · '+_ocV:''))+
-    _chip('Sheeting',_shV)+
-    _chip('Wind Certification',_scV)+
-  '</div>';
+  function _vbox(src,label,hpx){
+    return '<div style="background:#111d28;border-radius:6px;overflow:hidden;border:1px solid #243c50;page-break-inside:avoid;break-inside:avoid;margin-top:14px">'+
+      (label?'<div style="background:#1C2E3F;color:#fff;font-size:10pt;font-weight:800;letter-spacing:2px;text-align:center;padding:6px">'+label+'</div>':'')+
+      '<div style="height:'+hpx+'px;display:flex;align-items:center;justify-content:center;background:#08121d">'+
+        (src?'<img src="'+src+'" style="max-width:100%;max-height:100%;width:auto;height:auto;display:block">':'')+
+      '</div>'+
+    '</div>';
+  }
   var pg1 = page(
     hdr('3D Building Rendering')+
-    '<div style="background:#111d28;border-radius:6px;overflow:hidden;border:1px solid #243c50;page-break-inside:avoid;break-inside:avoid">'+
-      '<div style="width:100%;aspect-ratio:1.5;overflow:hidden;background:#08121d"><img src="'+imgs.iso+'" style="width:100%;height:100%;object-fit:cover;display:block"></div>'+
-    '</div>'+caption+_specGrid
+    _vbox(imgs.iso,null,420)+
+    _vbox(imgs.left,'RIGHT EAVE SIDE',310)+
+    caption
   );
   var pg2 = page(
     hdr('Elevation Views')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
-      cell(imgs.front,'FRONT',gAsp)+cell(imgs.back,'BACK',gAsp)+
+      _vbox(imgs.front,'FRONT',290)+_vbox(imgs.back,'BACK',290)+
     '</div>'+
-    // The capture keyed 'right'/'left' is swapped vs the program's eave naming
-    // (Left Eave Side maps to the +X wall), so a "Left Eave Side" component lands
-    // in imgs.right. Pair each label with the correct image: RIGHT EAVE ← imgs.left,
-    // LEFT EAVE ← imgs.right. (Live view + ISO are already correct; only these were.)
-    '<div style="margin-top:14px">'+cell(imgs.left,'RIGHT EAVE',eAsp)+'</div>'+
-    '<div style="margin-top:14px">'+cell(imgs.right,'LEFT EAVE',eAsp)+'</div>'+
+    // Capture 'right'/'left' keys are swapped vs the program's eave naming:
+    // RIGHT EAVE = imgs.left (shown on page 1), LEFT EAVE = imgs.right.
+    _vbox(imgs.right,'LEFT EAVE SIDE',310)+
     caption
   );
   return pg1 + pg2;
