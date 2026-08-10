@@ -345,7 +345,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="row" id="sheeting-row"><label>Sheeting Gauge</label>
     <select id="sheeting-upgrade" onchange="rc()">
       <option value="standard">Standard (29GA walls / 26GA roof — FL standard)</option>
-      <option value="upgrade">Full 26 Gauge walls (+10% of base if under $10k)</option>
+      <option value="upgrade">Full 26 Gauge walls (+10% of subtotal if under $10k)</option>
     </select>
   </div>
   <div class="row" id="framing-row"><label>Framing Gauge</label>
@@ -369,7 +369,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="6:12" id="pitch-612-opt" style="display:none">Upgrade — 6:12</option>
     </select></div>
   <div class="row" style="margin-top:-3px"><label>Pitch Selected</label><span class="av" id="pitch">3:12</span></div>
-  <div id="sheeting-note" class="hidden anote" style="margin-bottom:6px">Full 26 gauge sheeting upgrade — +10% of base building price</div>
+  <div id="sheeting-note" class="hidden anote" style="margin-bottom:6px">Full 26 gauge sheeting upgrade — +10% of the building subtotal</div>
   <div id="sheeting-free-note" class="hidden anote" style="margin-bottom:6px">&#10003; Free Upgrade — Full 26-Gauge Sheeting (order &ge; $10,000)</div>
   <div id="fastener-free-note" class="hidden anote" style="margin-bottom:6px">&#10003; Free Upgrade — Color Match Fasteners (order &ge; $10,000)</div>
   <div class="row" id="fastener-add-row">
@@ -6411,7 +6411,7 @@ function rc(){
     G('sheeting-upgrade').disabled=false;
   }
   // sheetFree buildings: ZERO charge. Under $10k manual upgrade: +10% of base.
-  var sheetUpgrade=(!sheetFree && G('sheeting-upgrade').value==='upgrade' && bt3!=='widespan') ? Math.round(base*0.10) : 0;
+  var sheetUpgrade=(!sheetFree && G('sheeting-upgrade').value==='upgrade' && bt3!=='widespan') ? preSheetSub*0.10 : 0;
   var sfnEl=G('sheeting-free-note'); if(sfnEl) sfnEl.classList.toggle('hidden',!sheetFree);
   // Fastener free: ANY building (including widespan) where full subtotal >= $10k
   // Uses subPreFastener so doors/upgrades/etc. all count toward the threshold
@@ -6524,7 +6524,7 @@ function rc(){
   }
   // Sheeting upgrade line in breakdown
   var pshEl=G('psh');
-  if(pshEl) pshEl.textContent=sheetUpgrade?fC(sheetUpgrade):'—';
+  if(pshEl) pshEl.textContent=sheetUpgrade?fD(sheetUpgrade):'—';
   // Show/hide sheeting note
   var sheetNoteEl=G('sheeting-note');
   if(sheetNoteEl) sheetNoteEl.classList.toggle('hidden',!sheetUpgrade||sheetFree);
@@ -7921,7 +7921,7 @@ async function printQuote(){
   var sidePanelPQ=gSidePanels();
   var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
   var sheetFreeP=(preSheetP>=(window._freeThresh||10000)&&bt3p!=='widespan');
-  var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan') ? Math.round(base*0.10) : 0;
+  var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan') ? preSheetP*0.10 : 0;
   // Fastener free: any building where full pre-fastener subtotal >= $10k (no widespan exclusion)
   var subPreFastenerP=preSheetP+sheetUpgrade;
   var fastenerFreeP=(window._fastenerAlwaysFree||subPreFastenerP>=(window._freeThresh||10000));
@@ -7967,7 +7967,7 @@ async function printQuote(){
       '<td class="muted">'+(qty!==null?qty:'—')+'</td>'+
       '<td class="muted">'+(unit?fC(unit):'—')+'</td>'+
       '<td class="amt" style="'+(amt===0?'color:#16a34a;font-weight:700':'')+'">'+
-      (amt===0?'$0':fC(amt))+'</td>'+
+      (amt===0?'$0':(amt%1?fD(amt):fC(amt)))+'</td>'+
       '</tr>';
   }
   var rows='';
@@ -8051,7 +8051,7 @@ async function printQuote(){
     if(wrev==='Open') rows+=row('Right Eave Side — Open (No Sheeting)',null,null,0);
   }
   if(vertWallUpgP) rows+=row('Vertical Wall Upgrade',null,null,vertWallUpgP);
-  if(sheetUpgrade) rows+=row('26-Gauge Sheeting Upgrade (+10%)',null,null,sheetUpgrade);
+  if(sheetUpgrade) rows+=row('26-Gauge Sheeting Upgrade (+10% of subtotal)',null,null,sheetUpgrade);
   if(sheetFreeP) rows+=row('26-Gauge Full Sheeting Upgrade — Free Upgrade ✓',null,null,0);
   if(fastenerFreeP) rows+=row('Color Match Fasteners — Free Upgrade ✓',null,null,0);
   else if(fastenerPQ>0) rows+=row('Color Match Fasteners',null,null,fastenerPQ);
@@ -8847,7 +8847,7 @@ async function printContract(){
   var sidePanelPQ=gSidePanels();
   var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
   var sheetFreeP=(preSheetP>=(window._freeThresh||10000)&&bt3p!=='widespan');
-  var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan')?Math.round(base*0.10):0;
+  var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan')?preSheetP*0.10:0;
   var subPreFastenerP=preSheetP+sheetUpgrade;
   var fastenerFreeP=(window._fastenerAlwaysFree||subPreFastenerP>=(window._freeThresh||10000));
   var disc=parseFloat(G('disc').value)||0;
@@ -9021,7 +9021,7 @@ async function printContract(){
     if(wrev==='Open') row('Right Eave Side — Open (No Sheeting)',null,null,0);
   }
   if(vertWallUpgP) row('Vertical Wall Upgrade',null,null,vertWallUpgP);
-  if(sheetUpgrade) row('26-Gauge Sheeting Upgrade (+10%)',null,null,sheetUpgrade);
+  if(sheetUpgrade) row('26-Gauge Sheeting Upgrade (+10% of subtotal)',null,null,sheetUpgrade);
   if(sheetFreeP) row('26-Gauge Full Sheeting Upgrade — Free Upgrade ✓',null,null,0);
   if(fastenerFreeP) row('Color Match Fasteners — Free Upgrade ✓',null,null,0);
   else if(fastenerPQ>0) row('Color Match Fasteners',null,null,fastenerPQ);
@@ -11768,7 +11768,7 @@ function textQuote(){
   if(ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){var ocR2=(OC4V2[4]-OC4V2[3])/5;ocU=Math.round(OC4V2[4]+ocR2*(lv-40));}else{ocU=OC4V2[oci2];}}
   var preSheet=base+leg+framingUpgP+ocU+pitchUpgrade+walls2+vertU+rd.rud+wd.wtd+wn.win+rd.sf+wd.sf+wn.sf+lapP+wainP+ltP+acP+insP;
   var sheetFree=(preSheet>=(window._freeThresh||10000)&&bt3!=='widespan');
-  var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?Math.round(base*0.10):0;
+  var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
   var fastenerFree=((preSheet+sheetU)>=(window._freeThresh||10000));
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
   var sub=preSheet+sheetU+fastenerP;
