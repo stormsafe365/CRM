@@ -2330,8 +2330,12 @@ var MANUFACTURERS = {
       {n:'Copper Penny',  c:'KM2Y49352',h:'#C47F2A'}
     ],
     // ── Scalar pricing ───────────────────────────────────────────────────────
-    wtd_std: 400, wtd_hi: 600,
-    win_std: 200, win_hi: 590,
+    // July 15, 2026 certified sheet (CA memo): per-size certified garage-door
+    // prices replace the shared STD/CHAIN tables; 12x12+ include the hoist.
+    certRud: {'6x6':1095,'8x8':1095,'9x8':1295,'10x8':1395,'10x10':1395,'12x12':1995,'14x14':2595,'16x16':2995},
+    certHoist: {'12x12':true,'14x14':true,'16x16':true},
+    wtd_std: 395, wtd_hi: 600,
+    win_std: 200, win_hi: 395,
     chain: 325, seal: 9.85,
     freeThresh: 10000, fastenerAlwaysFree: false,
     // ── Side Panel pricing (carport/GCH open sections) ───────────────────────
@@ -2466,16 +2470,16 @@ var MANUFACTURERS = {
     // only the 22-wide figure is confirmed.
     halfGablePrice: 1015,
     // ── Walk-Through Door types ───────────────────────────────────────────────
-    wtdPrices: {std:400, hi:600},
+    wtdPrices: {std:395, hi:600},
     wtdTypes: [
-      {v:'std',    label:'Standard (36×80)'},
+      {v:'std',    label:'Certified 36×80 (FL)'},
       {v:'hi',     label:'Hi-Impact'},
     ],
     // ── Window types (value, label, fw=width-in, fh=height-in) ───────────────
-    winPrices: {std:200, hi:590},
+    winPrices: {std:200, hi:395},
     winTypes: [
       {v:'std', label:'Standard 30×30',    fw:30, fh:30},
-      {v:'hi',  label:'Hi-Impact 30×30',   fw:30, fh:30},
+      {v:'hi',  label:'High-Impact 30×30 (FL code)',   fw:30, fh:30},
     ],
   },
   CCI: {
@@ -4086,6 +4090,10 @@ function gWalls(){
   return Math.round(t);
 }
 function getDoorPrice(type, size){
+  // CA July 15, 2026 certified sheet replaces the shared STD/CHAIN tables
+  var _cert=(typeof MFR==='function' && MFR().certRud)||null;
+  var _certClean=size && size.charAt(0)==='*' ? size.substring(1) : size;
+  if(type!=='hiimpact' && _cert && _cert[_certClean]!=null) return _cert[_certClean];
   if(type==='standard') return RDP_STD[size]||0;
   if(type==='chain') return RDP_CHAIN[size]||RDP_CHAIN['*'+size]||0;
   if(type==='hiimpact') return RDP_HI[size]||RDP_HI['*'+size]||0;
@@ -4101,6 +4109,11 @@ function getDoorPrice(type, size){
 //   • Hide the manual "Chain Hoist" add-on row (already included)
 //   • Label the printed quote as "Roll-Up w/ Chain Hoist" instead of "Roll-Up Door"
 function doorHasChainIncluded(type, size){
+  // CA certified sheet: hoist included only on the flagged sizes (12x12+)
+  if(type!=='hiimpact'){
+    var _cert=(typeof MFR==='function' && MFR().certRud)||null;
+    if(_cert && _cert[size]!=null) return !!((MFR().certHoist||{})[size]);
+  }
   if(type==='chain') return true;            // legacy explicit chain type
   if(type==='hiimpact') return true;         // hi-impact doors always include hoist
   if(type==='rollup'){
@@ -5632,6 +5645,14 @@ function updateRUDSizes(dtypeEl){
     //   ⚠ Lift   = reach lift required on site (* prefix in CHAIN key)
     chRow.style.display=''; slRow.style.display='';
     var sizeMap = {};   // dedupe map: size → {price, chainIncluded, lift}
+    var certT = (typeof MFR==='function' && MFR().certRud)||null;
+    if(certT){
+      // CA July 15, 2026 certified sheet — the menu is EXACTLY these sizes.
+      Object.keys(certT).forEach(function(k){
+        if(!fits(k)) return;
+        sizeMap[k] = {price: certT[k], chainIncluded: !!((MFR().certHoist||{})[k]), lift: false};
+      });
+    } else {
     Object.keys(RDP_STD).forEach(function(k){
       if(!fits(k)) return;
       sizeMap[k] = {price: RDP_STD[k], chainIncluded: false, lift: false};
@@ -5643,6 +5664,7 @@ function updateRUDSizes(dtypeEl){
       if(sizeMap[clean]) return;     // STD already covers this size; keep STD price
       sizeMap[clean] = {price: RDP_CHAIN[rawK], chainIncluded: true, lift: lift};
     });
+    }
     // Sort by (area asc, then width asc) so smaller doors come first
     var keys = Object.keys(sizeMap).sort(function(a,b){
       var ap=a.split('x'),bp=b.split('x');
