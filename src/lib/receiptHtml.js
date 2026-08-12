@@ -1,8 +1,9 @@
 // receiptHtml.js — branded payment-receipt document for StormSafe Steel.
 // Produces a self-contained HTML document (inline CSS, Google Fonts) that
 // renders to PDF through the same Electron print-to-PDF path as quotes and
-// contracts (lib/builderSave renderQuotePdf). Dark StormSafe brand: Orbitron
-// headers, Inter body, teal accents on #08121d — matches the quote PDF look.
+// contracts (lib/builderSave renderQuotePdf). Print-friendly light theme:
+// white page, Orbitron headers, Inter body, teal accents — clients print
+// these, so the page background must stay white (no ink-heavy dark fills).
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -32,7 +33,7 @@ const fmtDate = (iso) => {
  */
 export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   const paidInFull = receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0
-  const remainColor = paidInFull ? '#34d399' : '#e2e8f0'
+  const remainColor = paidInFull ? '#059669' : '#0f172a'
   const building = [quote.building_size, quote.building_summary].filter(Boolean).join(' — ')
   // CCI orders: the building is sold by Carolina Carports, Inc. — the document
   // is their BILL OF SALE (same liability treatment as the CCI contract), with
@@ -60,61 +61,61 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
 <style>
   @page { size: letter; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { background: #08121d; }
+  html, body { background: #ffffff; }
   body {
-    font-family: 'Inter', system-ui, sans-serif; color: #e2e8f0;
+    font-family: 'Inter', system-ui, sans-serif; color: #0f172a;
     width: 8.5in; min-height: 11in; margin: 0 auto; padding: 0.55in 0.6in;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
     font-size: 10.5pt; line-height: 1.55;
   }
   .head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid #22d3c8; }
-  .wordmark { font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 21pt; letter-spacing: .04em; text-transform: uppercase; }
-  .wordmark .safe { color: #22d3c8; }
-  .tagline { color: #94a3b8; font-size: 8.5pt; margin-top: 4px; letter-spacing: .02em; }
+  .wordmark { font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 21pt; letter-spacing: .04em; text-transform: uppercase; color: #0f172a; }
+  .wordmark .safe { color: #0d9488; }
+  .tagline { color: #64748b; font-size: 8.5pt; margin-top: 4px; letter-spacing: .02em; }
   .doc-type { text-align: right; }
-  .doc-type .t { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 15pt; letter-spacing: .08em; text-transform: uppercase; color: #22d3c8; }
-  .doc-type .st { font-family: 'Orbitron', sans-serif; font-weight: 600; font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: #94a3b8; margin-top: 3px; }
-  .doc-type .n { font-size: 9.5pt; color: #94a3b8; margin-top: 6px; }
-  .doc-type .n b { color: #e2e8f0; font-weight: 600; }
-  .seller { margin-top: 8px; font-size: 9pt; color: #cbd5e1; }
-  .seller b { color: #e2e8f0; }
+  .doc-type .t { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 15pt; letter-spacing: .08em; text-transform: uppercase; color: #0d9488; }
+  .doc-type .st { font-family: 'Orbitron', sans-serif; font-weight: 600; font-size: 8.5pt; letter-spacing: .12em; text-transform: uppercase; color: #64748b; margin-top: 3px; }
+  .doc-type .n { font-size: 9.5pt; color: #64748b; margin-top: 6px; }
+  .doc-type .n b { color: #0f172a; font-weight: 600; }
+  .seller { margin-top: 8px; font-size: 9pt; color: #475569; }
+  .seller b { color: #0f172a; }
 
-  .paid-band { margin: 26px 0 22px; background: rgba(34,211,200,.10); border: 1px solid #22d3c8; border-radius: 10px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
-  .paid-band .lbl { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 10pt; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; }
-  .paid-band .sub { color: #94a3b8; font-size: 9pt; margin-top: 5px; }
-  .paid-band .amt { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 26pt; color: #22d3c8; letter-spacing: .02em; }
+  .paid-band { margin: 26px 0 22px; background: rgba(34,211,200,.08); border: 1px solid #22d3c8; border-radius: 10px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
+  .paid-band .lbl { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 10pt; letter-spacing: .1em; text-transform: uppercase; color: #0f766e; }
+  .paid-band .sub { color: #64748b; font-size: 9pt; margin-top: 5px; }
+  .paid-band .amt { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 26pt; color: #0d9488; letter-spacing: .02em; }
 
   .cols { display: flex; gap: 20px; margin-bottom: 22px; }
-  .panel { flex: 1; background: #111827; border: 1px solid #2a3d55; border-radius: 10px; padding: 16px 18px; }
-  .panel h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; margin-bottom: 10px; }
-  .panel .big { font-size: 12pt; font-weight: 600; color: #e2e8f0; }
-  .panel .meta { color: #94a3b8; font-size: 9.5pt; margin-top: 2px; }
-  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #1e2d42; font-size: 9.5pt; }
+  .panel { flex: 1; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px 18px; }
+  .panel h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #0f766e; margin-bottom: 10px; }
+  .panel .big { font-size: 12pt; font-weight: 600; color: #0f172a; }
+  .panel .meta { color: #64748b; font-size: 9.5pt; margin-top: 2px; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #e2e8f0; font-size: 9.5pt; }
   .kv:last-child { border-bottom: 0; }
-  .kv .k { color: #94a3b8; }
-  .kv .v { color: #e2e8f0; font-weight: 600; text-align: right; }
+  .kv .k { color: #64748b; }
+  .kv .v { color: #0f172a; font-weight: 600; text-align: right; }
 
-  .bldg { background: #111827; border: 1px solid #2a3d55; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; }
-  .bldg h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #1ab5ab; margin-bottom: 6px; }
-  .bldg .d { font-size: 10.5pt; color: #e2e8f0; }
+  .bldg { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; }
+  .bldg h3 { font-family: 'Orbitron', sans-serif; font-size: 8.5pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #0f766e; margin-bottom: 6px; }
+  .bldg .d { font-size: 10.5pt; color: #0f172a; }
 
   table.acct { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
-  table.acct th { font-family: 'Orbitron', sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; color: #94a3b8; text-align: left; padding: 8px 14px; border-bottom: 1px solid #2a3d55; }
+  table.acct th { font-family: 'Orbitron', sans-serif; font-size: 8pt; letter-spacing: .1em; text-transform: uppercase; color: #64748b; text-align: left; padding: 8px 14px; border-bottom: 1px solid #cbd5e1; }
   table.acct th:last-child { text-align: right; }
-  table.acct td { padding: 9px 14px; border-bottom: 1px solid #1e2d42; font-size: 10.5pt; }
+  table.acct td { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; font-size: 10.5pt; }
   table.acct td:last-child { text-align: right; font-weight: 600; }
-  table.acct tr.pay td { color: #22d3c8; }
+  table.acct tr.pay td { color: #0d9488; }
   table.acct tr.rem td { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 11.5pt; border-bottom: 0; padding-top: 12px; }
   table.acct tr.rem td:last-child { color: ${remainColor}; }
 
-  .note { background: #1a2436; border-left: 3px solid #22d3c8; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 9.5pt; color: #cbd5e1; margin-bottom: 22px; }
+  .note { background: #f0fdfa; border-left: 3px solid #0d9488; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 9.5pt; color: #334155; margin-bottom: 22px; }
 
-  .foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid #1e2d42; display: flex; justify-content: space-between; align-items: flex-end; }
-  .foot .co { font-size: 8.5pt; color: #94a3b8; line-height: 1.7; }
-  .foot .co b { color: #e2e8f0; }
+  .foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
+  .foot .co { font-size: 8.5pt; color: #64748b; line-height: 1.7; }
+  .foot .co b { color: #0f172a; }
   .foot .legal { font-size: 7.5pt; color: #64748b; text-align: right; max-width: 3.4in; }
-  .thanks { font-size: 10pt; color: #e2e8f0; margin: 4px 0 24px; }
-  .thanks b { color: #22d3c8; }
+  .thanks { font-size: 10pt; color: #0f172a; margin: 4px 0 24px; }
+  .thanks b { color: #0d9488; }
 </style>
 </head>
 <body>
@@ -154,7 +155,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     </div>
   </div>
 
-  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div>${isCCI ? '<div class="d" style="color:#94a3b8;font-size:9pt;margin-top:3px">Manufacturer: Carolina Carports, Inc. (CCI)</div>' : ''}</div>` : ''}
+  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div>${isCCI ? '<div class="d" style="color:#64748b;font-size:9pt;margin-top:3px">Manufacturer: Carolina Carports, Inc. (CCI)</div>' : ''}</div>` : ''}
 
   <table class="acct">
     <tr><th>Account Summary</th><th>Amount</th></tr>
