@@ -2859,19 +2859,14 @@ var MANUFACTURERS = {
       {v:'coalBlack',       label:'Coal Black (+25%)',      hex:'#15171A', price:344}
     ],
     // ── Scalar pricing ───────────────────────────────────────────────────────
-    // ── Master Price Book 7/16/26 (supersedes the 7/15 sheets): CA roll-up
-    // doors are now a FOUR-LINE catalog. Hoist: m750 none offered; m3652 add
-    // +$325 at 10x10 and below, included above; m3100/m3100im always included.
-    // Lift: Genie required at 14'+ tall or 16'+ wide (any line).
+    // ── Master Price Book 7/16/26 door catalog, presented as the familiar
+    // three-option menu (owner preference): Certified = the book's M3652 line,
+    // Non-Certified = M750 (no hoist offered), High-Impact = M3100 IM.
+    // (The book's M3100 hoist-included line is not offered in the menu.)
     rudCatalog: {
-      m750: {label:'M750 Budget Roll-Up (non-certified)', hoist:'none',
-        prices:{'6x6':750,'6x7':770,'6x8':790,'8x7':825,'8x8':950,'8x9':1000,'8x10':1200,'9x8':1025,'9x9':1075,'9x10':1200,'10x7':950,'10x8':1100,'10x9':1100,'10x10':1250}},
-      m3652: {label:'M3652 Certified Windlock (nylon)', hoist:'small-add',
-        prices:{'8x8':1325,'8x9':1425,'8x10':1500,'8x12':1650,'8x14':1850,'9x8':1400,'9x9':1475,'9x10':1575,'9x12':1775,'9x14':1950,'10x8':1475,'10x9':1550,'10x10':1650,'10x12':1825,'10x14':2025,'12x8':1550,'12x9':1650,'12x10':1725,'12x12':1950,'12x14':2175,'14x8':1675,'14x9':1775,'14x10':1900,'14x12':2100,'14x14':2350,'16x8':1825,'16x9':1950,'16x10':2050,'16x12':2300,'16x14':2600,'18x8':1950,'18x9':2075,'18x10':2175,'18x12':2475,'18x14':2675}},
-      m3100: {label:'M3100 Certified Windlock (hoist incl.)', hoist:'incl',
-        prices:{'8x8':1425,'8x9':1550,'8x10':1625,'8x12':1800,'8x14':2050,'8x16':2200,'8x18':2375,'9x8':1525,'9x9':1600,'9x10':1725,'9x12':1950,'9x14':2150,'9x16':2375,'9x18':2575,'10x8':1600,'10x9':1700,'10x10':1800,'10x12':2025,'10x14':2250,'10x16':2450,'10x18':2650,'12x8':1700,'12x9':1800,'12x10':1925,'12x12':2175,'12x14':2425,'12x16':2850,'12x18':2925,'14x8':1825,'14x9':1975,'14x10':2125,'14x12':2375,'14x14':2675,'14x16':2900,'14x18':3100,'16x8':2025,'16x9':2150,'16x10':2300,'16x12':2600,'16x14':2950,'16x16':3200,'18x8':2200,'18x9':2325,'18x10':2475,'18x12':2825,'18x14':3075,'20x8':2500,'20x9':2675,'20x10':2850,'20x12':3200,'20x14':3600}},
-      m3100im: {label:'M3100 IM Impact Rated (coastal/stem-wall)', hoist:'incl',
-        prices:{'8x8':1600,'8x9':1650,'8x10':1810,'8x12':2000,'8x14':2275,'8x16':2400,'8x18':2450,'9x8':1720,'9x9':1725,'9x10':1900,'9x12':2150,'9x14':2375,'9x16':2550,'9x18':2675,'10x8':1740,'10x9':1800,'10x10':1920,'10x12':2225,'10x14':2410,'10x16':2650,'10x18':2850,'12x8':1880,'12x9':1925,'12x10':2120,'12x12':2350,'12x14':2650,'12x16':3000,'12x18':3050,'14x8':2030,'14x9':2100,'14x10':2300,'14x12':2600,'14x14':2890,'14x16':3100,'14x18':3240,'16x8':2150,'16x9':2300,'16x10':2425,'16x12':2750,'16x14':3100,'16x16':3350,'16x18':3575,'18x8':2200,'18x9':2350,'18x10':2500,'18x12':2850,'18x14':3125,'18x16':3500,'18x18':3900,'20x8':2525,'20x9':2700,'20x10':2875,'20x12':3225,'20x14':3650,'20x16':3950,'20x18':4250}},
+      rollup: {label:'Roll-Up Doors — Certified', hoist:'small-add', prices:{"8x8":1325,"8x9":1425,"8x10":1500,"8x12":1650,"8x14":1850,"9x8":1400,"9x9":1475,"9x10":1575,"9x12":1775,"9x14":1950,"10x8":1475,"10x9":1550,"10x10":1650,"10x12":1825,"10x14":2025,"12x8":1550,"12x9":1650,"12x10":1725,"12x12":1950,"12x14":2175,"14x8":1675,"14x9":1775,"14x10":1900,"14x12":2100,"14x14":2350,"16x8":1825,"16x9":1950,"16x10":2050,"16x12":2300,"16x14":2600,"18x8":1950,"18x9":2075,"18x10":2175,"18x12":2475,"18x14":2675}},
+      noncert: {label:'Roll-Up Doors — Non-Certified', hoist:'none', prices:{"6x6":750,"6x7":770,"6x8":790,"8x7":825,"8x8":950,"8x9":1000,"8x10":1200,"9x8":1025,"9x9":1075,"9x10":1200,"10x7":950,"10x8":1100,"10x9":1100,"10x10":1250}},
+      hiimpact: {label:'High-Impact Roll-Up Doors', hoist:'incl', prices:{"8x8":1600,"8x9":1650,"8x10":1810,"8x12":2000,"8x14":2275,"8x16":2400,"8x18":2450,"9x8":1720,"9x9":1725,"9x10":1900,"9x12":2150,"9x14":2375,"9x16":2550,"9x18":2675,"10x8":1740,"10x9":1800,"10x10":1920,"10x12":2225,"10x14":2410,"10x16":2650,"10x18":2850,"12x8":1880,"12x9":1925,"12x10":2120,"12x12":2350,"12x14":2650,"12x16":3000,"12x18":3050,"14x8":2030,"14x9":2100,"14x10":2300,"14x12":2600,"14x14":2890,"14x16":3100,"14x18":3240,"16x8":2150,"16x9":2300,"16x10":2425,"16x12":2750,"16x14":3100,"16x16":3350,"16x18":3575,"18x8":2200,"18x9":2350,"18x10":2500,"18x12":2850,"18x14":3125,"18x16":3500,"18x18":3900,"20x8":2525,"20x9":2700,"20x10":2875,"20x12":3225,"20x14":3650,"20x16":3950,"20x18":4250}},
     },
     wtd_std: 300, wtd_hi: 600,
     win_std: 200, win_hi: 590,
@@ -6879,7 +6874,7 @@ function aRUD(){
     '<div class="row"><label>Door Type</label>'+
     '<select class="rdtype" onchange="updateRUDSizes(this)">'+
     (MFR().rudCatalog
-      ? Object.keys(MFR().rudCatalog).map(function(ck){return '<option value="'+ck+'"'+(ck==='m3652'?' selected':'')+'>'+MFR().rudCatalog[ck].label+'</option>';}).join('')
+      ? Object.keys(MFR().rudCatalog).map(function(ck){return '<option value="'+ck+'"'+(ck==='rollup'?' selected':'')+'>'+MFR().rudCatalog[ck].label+'</option>';}).join('')
       : '<option value="rollup">Roll-Up Doors</option>'+
         '<option value="hiimpact" class="rdtype-hiimpact"'+(MFR().hiImpactRollup?'':' style="display:none"')+'>High-Impact Roll-Up Doors</option>')+
     '</select></div>'+
@@ -6971,7 +6966,22 @@ function updateRUDSizes(dtypeEl){
     return dh <= maxH && dw <= maxW;
   }
 
-  if(dtype==='rollup'){
+  // CA Master Price Book catalog lines — the menu is exactly that line's
+  // size matrix. Non-certified offers no hoist at all (row hidden).
+  var _cat=(typeof MFR==='function' && MFR().rudCatalog)||null;
+  if(_cat && _cat[dtype]){
+    var _line=_cat[dtype];
+    chRow.style.display=(_line.hoist==='none')?'none':'';
+    slRow.style.display='';
+    Object.keys(_line.prices).sort(rudSizeSort).forEach(function(k){
+      if(!fits(k)) return;
+      var _inc=doorHasChainIncluded(dtype,k);
+      var _lift=doorNeedsLift(dtype,k);
+      var o=document.createElement('option'); o.value=k;
+      o.textContent=k+(_inc?' ★':'')+(_lift?' ⚠ Lift Req':'')+' — '+fC(_line.prices[k]);
+      szSel.appendChild(o);
+    });
+  } else if(dtype==='rollup'){
     // Merged Roll-Up table: STD sizes (no chain hoist) + CHAIN sizes (chain hoist
     // included in price). For sizes that exist in both tables, prefer STD price
     // (smaller / manually operable). Markers in the dropdown:
@@ -6980,22 +6990,7 @@ function updateRUDSizes(dtypeEl){
     chRow.style.display=''; slRow.style.display='';
     var sizeMap = {};   // dedupe map: size → {price, chainIncluded, lift}
     var preferChain = (typeof MFR==='function' && !!MFR().rudPreferChain);
-    // CA Master Price Book 7/16/26 catalog lines — the menu is exactly that
-    // line's size matrix. M750 offers no hoist at all (row hidden).
-    var _cat=(typeof MFR==='function' && MFR().rudCatalog)||null;
-    if(_cat && _cat[dtype]){
-      var _line=_cat[dtype];
-      chRow.style.display=(_line.hoist==='none')?'none':'';
-      slRow.style.display='';
-      Object.keys(_line.prices).sort(rudSizeSort).forEach(function(k){
-        if(!fits(k)) return;
-        var _inc=doorHasChainIncluded(dtype,k);
-        var _lift=doorNeedsLift(dtype,k);
-        var o=document.createElement('option'); o.value=k;
-        o.textContent=k+(_inc?' ★':'')+(_lift?' ⚠ Lift Req':'')+' — '+fC(_line.prices[k]);
-        szSel.appendChild(o);
-      });
-    } else if(preferChain){
+    if(preferChain){
       // CCI: the merged tier IS the certified chart; only the auto-hoisted
       // sizes (cciCertHoistIncluded) carry the ★ / included flag — the rest are
       // hoist-optional. Any size missing falls back to the uncertified chart.
