@@ -8877,12 +8877,20 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
       s+='<polygon points="'+bandPts+'" fill="'+wC+'"/>';
       s+='<polygon points="'+bandPts+'" fill="none" stroke="'+vtC+'" stroke-width="1" opacity="0.5"/>';
     } else if(ltHalfEnd){
-      var midX=(x0+x1)/2, yMid=(yInner+yOuter)/2;
-      var halfPts=(side==='left')
-        ? midX+','+oy+' '+midX+','+yMid+' '+x1+','+yInner+' '+x1+','+oy
-        : x0+','+oy+' '+x0+','+yInner+' '+midX+','+yMid+' '+midX+','+oy;
-      s+='<polygon points="'+halfPts+'" fill="'+wC+'"/>';
-      s+='<polygon points="'+halfPts+'" fill="none" stroke="'+vtC+'" stroke-width="1" opacity="0.5"/>';
+      // Half End: OUTER (low) half sheeted floor-to-roof; tall inner half is
+      // the drive-in opening, with a header band from the low-eave line to
+      // the roof above it (matches Sensei).
+      var midX=(x0+x1)/2, yMid=(yInner+yOuter)/2, yLh=oy-ltH_px;
+      var outPts=(side==='left')
+        ? x0+','+oy+' '+x0+','+yOuter+' '+midX+','+yMid+' '+midX+','+oy
+        : midX+','+oy+' '+midX+','+yMid+' '+x1+','+yOuter+' '+x1+','+oy;
+      var hdrPts=(side==='left')
+        ? midX+','+yMid+' '+x1+','+yInner+' '+x1+','+yLh+' '+midX+','+yLh
+        : x0+','+yInner+' '+midX+','+yMid+' '+midX+','+yLh+' '+x0+','+yLh;
+      s+='<polygon points="'+outPts+'" fill="'+wC+'"/>';
+      s+='<polygon points="'+outPts+'" fill="none" stroke="'+vtC+'" stroke-width="1" opacity="0.5"/>';
+      s+='<polygon points="'+hdrPts+'" fill="'+wC+'"/>';
+      s+='<polygon points="'+hdrPts+'" fill="none" stroke="'+vtC+'" stroke-width="1" opacity="0.5"/>';
     }
     if(ltEndClosed){
       // Closed end: fill trapezoid with wall color + siding lines
