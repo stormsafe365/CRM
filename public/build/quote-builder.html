@@ -6078,6 +6078,8 @@ function aLT(){
     '</select></div>'+
     '<div class="row"><label>Length (ft)</label>'+
     '<input type="number" class="ltl2" placeholder="e.g. 30" min="10" max="300" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+    '<div class="row lt-off-row" title="Only matters when the lean-to is shorter than the wall it sits on"><label>Starts At (ft from front / left corner)</label>'+
+    '<input type="number" class="ltoff" placeholder="0 = at the corner" min="0" step="1" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-lowleg-row"><label>Low Leg Height (ft)</label>'+
     '<select class="lth" onchange="updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
     '<option value="6">6\'</option><option value="7">7\'</option><option value="8">8\'</option>'+
@@ -6157,6 +6159,9 @@ function ltTypeChange(entry){
   // Toggle Attached Side row
   var attachRow=entry.querySelector('.lt-attach-row');
   if(attachRow) attachRow.style.display=isFree?'none':'';
+  // Placement offset only applies when attached to a wall
+  var offRow=entry.querySelector('.lt-off-row');
+  if(offRow) offRow.style.display=isFree?'none':'';
   // Toggle Low Leg vs Tall Side height rows
   var lowRow=entry.querySelector('.lt-lowleg-row');
   var tallRow=entry.querySelector('.lt-tallside-row');
@@ -7685,7 +7690,7 @@ function collectQuoteData(){
   data.leantos = [];
   document.querySelectorAll('.lte.entry').forEach(function(el){
     var d = {};
-    ['lts','ltw','ltl2','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
+    ['lts','ltw','ltl2','ltoff','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
     // Lean-to accessories (roll-up / walk / window / frame-out on the lean-to) + their offsets
@@ -7930,7 +7935,7 @@ function restoreQuoteData(data){
     aLT();
     var entries=document.querySelectorAll('.lte.entry');
     var el=entries[entries.length-1];
-    ['lts','ltw','ltl2','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
+    ['lts','ltw','ltl2','ltoff','lth','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(cls){
       var fld=el.querySelector('.'+cls); if(fld&&d[cls]!==undefined) fld.value=d[cls];
     });
     // Trigger type change to show/hide correct rows
