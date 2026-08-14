@@ -4482,7 +4482,12 @@ function gLeg(){
   }
   var hk=h<=10?10:(h<=12?12:(h<=14?14:(h<=16?16:(h<=18?18:20))));
   // Wide span (32-60ft): SH table indexed by WIDTH up to 52ft, then EXT_SH for l>44
-  if(w>=32){
+  // CCI TALL LEGS (17'-20') ON STANDARD WIDTHS also price from the SH chart
+  // (indexed by LENGTH like all CCI SH lookups): the HU_N/HU_M grids' 17-20
+  // rows were extrapolations, not CCI book data — CCI kicked back a 30x40x20
+  // priced $4,896 off the grid; their correct charge $7,190 = SH[20][40']
+  // exactly (verified 8/14/26). Heights ≤16 keep the Sensei-verified grids.
+  if(w>=32 || (ACTIVE_MFR==='CCI' && h>=17)){
     // Index axis and ext threshold from manufacturer config
     if(l>MFR().shExtThresh){
       var extRow=EXT_SH[hk]||EXT_SH[16]||[];
