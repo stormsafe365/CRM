@@ -2440,7 +2440,7 @@ var MANUFACTURERS = {
     // Non-Certified = M750 (no hoist offered), High-Impact = M3100 IM.
     // (The book's M3100 hoist-included line is not offered in the menu.)
     rudCatalog: {
-      rollup: {label:'Roll-Up Doors — Certified', hoist:'small-add', prices:{"8x8":1325,"8x9":1425,"8x10":1500,"8x12":1650,"8x14":1850,"9x8":1400,"9x9":1475,"9x10":1575,"9x12":1775,"9x14":1950,"10x8":1475,"10x9":1550,"10x10":1650,"10x12":1825,"10x14":2025,"12x8":1550,"12x9":1650,"12x10":1725,"12x12":1950,"12x14":2175,"14x8":1675,"14x9":1775,"14x10":1900,"14x12":2100,"14x14":2350,"16x8":1825,"16x9":1950,"16x10":2050,"16x12":2300,"16x14":2600,"18x8":1950,"18x9":2075,"18x10":2175,"18x12":2475,"18x14":2675}},
+      rollup: {label:'Roll-Up Doors — Certified', hoist:'small-add', prices:{"8x8":1325,"8x9":1425,"8x10":1500,"8x12":1650,"8x14":1850,"9x8":1400,"9x9":1475,"9x10":1575,"9x12":1775,"9x14":1950,"10x8":1475,"10x9":1550,"10x10":1650,"10x12":1825,"10x14":2025,"12x8":1550,"12x9":1650,"12x10":1725,"12x12":1950,"12x14":2175,"14x8":1675,"14x9":1775,"14x10":1900,"14x12":2100,"14x14":2350,"16x8":1825,"16x9":1950,"16x10":2050,"16x12":2300,"16x14":2600,"18x8":1950,"18x9":2075,"18x10":2175,"18x12":2475,"18x14":2675,'18x16':4520}},
       noncert: {label:'Roll-Up Doors — Non-Certified', hoist:'none', prices:{"6x6":750,"6x7":770,"6x8":790,"8x7":825,"8x8":950,"8x9":1000,"8x10":1200,"9x8":1025,"9x9":1075,"9x10":1200,"10x7":950,"10x8":1100,"10x9":1100,"10x10":1250}},
       hiimpact: {label:'High-Impact Roll-Up Doors', hoist:'incl', prices:{"8x8":1600,"8x9":1650,"8x10":1810,"8x12":2000,"8x14":2275,"8x16":2400,"8x18":2450,"9x8":1720,"9x9":1725,"9x10":1900,"9x12":2150,"9x14":2375,"9x16":2550,"9x18":2675,"10x8":1740,"10x9":1800,"10x10":1920,"10x12":2225,"10x14":2410,"10x16":2650,"10x18":2850,"12x8":1880,"12x9":1925,"12x10":2120,"12x12":2350,"12x14":2650,"12x16":3000,"12x18":3050,"14x8":2030,"14x9":2100,"14x10":2300,"14x12":2600,"14x14":2890,"14x16":3100,"14x18":3240,"16x8":2150,"16x9":2300,"16x10":2425,"16x12":2750,"16x14":3100,"16x16":3350,"16x18":3575,"18x8":2200,"18x9":2350,"18x10":2500,"18x12":2850,"18x14":3125,"18x16":3500,"18x18":3900,"20x8":2525,"20x9":2700,"20x10":2875,"20x12":3225,"20x14":3650,"20x16":3950,"20x18":4250}},
     },
@@ -3740,7 +3740,7 @@ function doBld(){
   }
 
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
-  if(h>=16) f.push(bdg('Ladder Legs Required','bo'));
+  if(h>=16) f.push(w>31?bdg('Ladder Legs Required','bo'):bdg('Standard Double Legs','bb'));
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
@@ -5605,7 +5605,7 @@ function rc(){
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses','bb'));
-  if(h>=16) f.push(bdg('Ladder Legs','bo'));
+  if(h>=16) f.push(w>31?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
   // Show free perks badge when base >= $10k
