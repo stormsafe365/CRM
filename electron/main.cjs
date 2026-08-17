@@ -8,7 +8,7 @@
 //
 // Data still lives in Supabase (cloud), reached over https/wss like always.
 
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -28,6 +28,30 @@ ipcMain.handle('ss:render-pdf', async (_evt, html) => {
   } finally {
     try { w.destroy(); } catch { /* ignore */ }
   }
+});
+
+// Native window.confirm()/alert() in the renderer trigger a long-standing
+// Electron/Chromium bug on Windows: after the dialog closes, text inputs across
+// the whole window stop accepting KEYBOARD input (mouse keeps working) until
+// the window is blurred and refocused. The CRM confirms on stage changes,
+// deletes, cadence prompts, etc., so this froze the activity composer.
+// Fix: swap them for main-process dialogs (no bug) + an explicit focus nudge.
+ipcMain.on('ss:confirm', (e, msg) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = dialog.showMessageBoxSync(win, {
+    type: 'question', buttons: ['OK', 'Cancel'], defaultId: 0, cancelId: 1,
+    title: 'StormSafe CRM', message: String(msg ?? ''),
+  });
+  setImmediate(() => { if (win && !win.isDestroyed()) win.webContents.focus(); });
+  e.returnValue = r === 0;
+});
+ipcMain.on('ss:alert', (e, msg) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  dialog.showMessageBoxSync(win, {
+    type: 'info', buttons: ['OK'], title: 'StormSafe CRM', message: String(msg ?? ''),
+  });
+  setImmediate(() => { if (win && !win.isDestroyed()) win.webContents.focus(); });
+  e.returnValue = true;
 });
 
 const isDev = !app.isPackaged && process.env.ELECTRON_SERVE_DIST !== '1';
@@ -139,6 +163,18 @@ async function createWindow() {
       return { action: 'deny' };
     }
     return { action: 'allow' };
+  });
+
+  // Replace the page's native confirm/alert with the main-process versions
+  // (see the ss:confirm/ss:alert handlers above for why). Runs on every load
+  // so it survives reloads; no renderer code changes needed.
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`
+      if (window.electronAPI && window.electronAPI.confirmSync) {
+        window.confirm = (m) => window.electronAPI.confirmSync(m);
+        window.alert = (m) => { window.electronAPI.alertSync(m); };
+      }
+    `).catch(() => { /* page navigated away mid-inject — harmless */ });
   });
 
   if (isDev) mainWindow.webContents.openDevTools();
