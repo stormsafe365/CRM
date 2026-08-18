@@ -4197,6 +4197,28 @@ function gVertUpgrade(){
   return Math.round(t);
 }
 
+// Wainscot — SINGLE SOURCE for rc(), both PDF paths and the text copy.
+// (Each previously duplicated the bucket math, so the CCI-tall $12.50/lf rate
+// showed in the app but the printed contract still charged the old bucket.)
+function gWainscot(){
+  if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return 0;
+  var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
+  if(!w||!l) return 0;
+  // CCI TALL (17'+): commercial wainscot = $12.50/lf of CLOSED wall.
+  // CCI corrected Tejada 30x40x20 fully-enclosed to $1,750 = 140 lf × $12.50
+  // exactly (8/17/26). PROVISIONAL single-point rate.
+  if(ACTIVE_MFR==='CCI' && h>=17){
+    var _wlf=0;
+    if(G('wfg').value==='Closed')_wlf+=w;
+    if(G('wbg').value==='Closed')_wlf+=w;
+    if(G('wre').value==='Closed')_wlf+=l;
+    if(G('wle').value==='Closed')_wlf+=l;
+    return _wlf>0?Math.round(12.5*_wlf):0;
+  }
+  var _wb=MFR().wainscotBuckets(w), _wc=0;
+  for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
+  return _wb.vals[_wc];
+}
 function gWalls(){
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
@@ -5422,27 +5444,7 @@ function rc(){
   if(pSelRC && pSelRC.options[0]) pSelRC.options[0].text='Standard '+stdPitchRC+' (auto)';
   // Wainscot only applies when walls are vertical (enclosed eave sides)
   var wallsVertical = G('ws').value==='Vertical';
-  var wainP=0;
-  if(G('wain').value==='yes' && wallsVertical){
-    // Wainscot buckets from manufacturer config
-    var _wainB=MFR().wainscotBuckets(w);
-    var WAIN_COLS=_wainB.cols;
-    var WAIN_VALS=_wainB.vals;
-    var wci=0; for(var wi2=0;wi2<WAIN_COLS.length;wi2++){if(WAIN_COLS[wi2]<=l)wci=wi2;else break;}
-    wainP=WAIN_VALS[wci];
-    // CCI TALL (17'+): commercial wainscot = $12.50/lf of CLOSED wall.
-    // CCI corrected Tejada 30x40x20 fully-enclosed wainscot to $1,750
-    // = 140 lf × $12.50 exactly (8/17/26). PROVISIONAL single-point rate —
-    // recheck against CCI's next tall wainscot correction.
-    if(ACTIVE_MFR==='CCI' && h>=17){
-      var _wlf=0;
-      if(G('wfg').value==='Closed')_wlf+=w;
-      if(G('wbg').value==='Closed')_wlf+=w;
-      if(G('wre').value==='Closed')_wlf+=l;
-      if(G('wle').value==='Closed')_wlf+=l;
-      if(_wlf>0) wainP=Math.round(12.5*_wlf);
-    }
-  }
+  var wainP=gWainscot();
   var leanToTotal=gLT();
   var connFeeTotal=gConnectionFees();
   var addCompTotal=gAC();
@@ -6869,9 +6871,7 @@ function printQuote(){
   // Pitch upgrade for PDF
   var pitchSelValP = G('pitch-sel') ? G('pitch-sel').value : 'standard';
   var pitchUpgradeP = MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
-  var _wainBP=MFR().wainscotBuckets(wPrint||0),WAIN_COLS2=_wainBP.cols,WAIN_VALS2=_wainBP.vals;
-  var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
-  var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
+  var wainP=gWainscot();
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
   // Overhang for PDF
   var overhangPQ=0;
@@ -7591,9 +7591,7 @@ function printContract(){
   }
   var pitchSelValP=G('pitch-sel')?G('pitch-sel').value:'standard';
   var pitchUpgradeP=MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
-  var _wainBP=MFR().wainscotBuckets(wPrint||0),WAIN_COLS2=_wainBP.cols,WAIN_VALS2=_wainBP.vals;
-  var wci2=0; for(var wi3=0;wi3<WAIN_COLS2.length;wi3++){if(WAIN_COLS2[wi3]<=lv)wci2=wi3;else break;}
-  var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_VALS2[wci2]:0;
+  var wainP=gWainscot();
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
   var overhangPQ=0;
   var ohSelP=G('overhang-sel');
@@ -10405,9 +10403,7 @@ function textQuote(){
   var pitchUpgrade=MFR().pitchUpgradeFn(base, wv||0, lv||0, pitchSelVal);
   var lapP=G('lap').value==='yes'?Math.round(base*0.10):0;
   var wallsVert=G('ws').value==='Vertical';
-  var _wainB2=MFR().wainscotBuckets(wv||0),WAIN_C2=_wainB2.cols,WAIN_V2=_wainB2.vals;
-  var wci2=0;for(var w3=0;w3<WAIN_C2.length;w3++){if(WAIN_C2[w3]<=lv)wci2=w3;else break;}
-  var wainP=(G('wain').value==='yes'&&wallsVert)?WAIN_V2[wci2]:0;
+  var wainP=gWainscot();
   var ltP=gLT(),acP=gAC(),insP=gInsul();
   var ocSel2=G('oc-spacing'),ocVal2=ocSel2?ocSel2.value:'5oc',ocU=0;
   if(ACTIVE_MFR!=='CA'&&ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'&&fuVal!=='12'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){var ocR2=(OC4V2[4]-OC4V2[3])/5;ocU=Math.round(OC4V2[4]+ocR2*(lv-40));}else{ocU=OC4V2[oci2];}}
