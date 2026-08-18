@@ -259,6 +259,18 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="building">Building Only — $100</option>
         <option value="building-pad">Building &amp; Pad — $225</option>
       </select></div>
+    <div class="row"><label>Certify Wind Load To</label>
+      <select id="cert-ovr" onchange="doPerm();rc()">
+        <option value="auto">Auto (county / framing rule)</option>
+        <option value="105">105 MPH</option>
+        <option value="120">120 MPH</option>
+        <option value="130">130 MPH</option>
+        <option value="140">140 MPH</option>
+        <option value="150">150 MPH</option>
+        <option value="160">160 MPH</option>
+        <option value="170">170 MPH</option>
+        <option value="180">180 MPH</option>
+      </select></div>
     <div class="row"><label>Wind Certification</label><span class="av" id="cert-req">—</span></div>
     <div class="anote">Plans and permitting service (if selected) are invoiced separately by the engineering firm after deposit is placed. Not included in building total.</div>
   </div>
@@ -4023,6 +4035,9 @@ function doPerm(){
     else { planType=CP[co]||MFR().defaultPlan; cert=HW.indexOf(co)>=0?'170 MPH':'150 MPH'; }
     // 4' OC framing always certifies up to 170 MPH regardless of county
     if(cert==='150 MPH' && getTrussOC()===4) cert='170 MPH';
+    // Manual override — the rep sets exactly what this order certifies to
+    // (e.g. CCI certified the Tejada order at 160, not the auto rule's value).
+    var _cOv=G('cert-ovr'); if(_cOv && _cOv.value!=='auto') cert=_cOv.value+' MPH';
     // CCI ONLY: any wall height over 14' requires Site Specific Plans, no matter
     // the county or property type. Force the choice and lock it so it can't be
     // switched to a cheaper plan by mistake.
@@ -6861,6 +6876,8 @@ function sy(){
   } else if(_tiCert && _tiCert.spacing===4 && cert==='150 MPH'){
     cert = '170 MPH';
   }
+  // Manual override wins everywhere (summary + both PDF paths read G('sc'))
+  var _cOv2=G('cert-ovr'); if(_cOv2 && _cOv2.value!=='auto') cert=_cOv2.value+' MPH';
   G('sc').textContent=cert;
   var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0, h=parseInt(G('bh').value)||6;
   G('ssz').textContent=(w&&l)?(w+"'W \xD7 "+l+"'L \xD7 "+h+"'H"):'—';
@@ -7652,7 +7669,7 @@ function collectQuoteData(){
   // Simple fields by ID
   var simpleIds = [
     'cn','cp','ce','city','county','state','zip',
-    'pt','agx','perm','plans-sel','permit-svc','btype','bw','bl','bh',
+    'pt','agx','perm','cert-ovr','plans-sel','permit-svc','btype','bw','bl','bh',
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add',
