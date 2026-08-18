@@ -3286,9 +3286,9 @@ var MANUFACTURERS = {
       '10x6':950,'10x7':950,'10x8':950,'10x9':1050,'10x10':1050,'10x11':1800,'10x12':1800,'10x13':1900,'10x14':1900,'10x15':2000,'10x16':2000,
       '12x6':1600,'12x7':1700,'12x8':1700,'12x9':1800,'12x10':1800,'12x11':1900,'12x12':1900,'12x13':2000,'12x14':2000,'12x15':2200,'12x16':2200,
       '14x6':2100,'14x7':2200,'14x8':2200,'14x9':2300,'14x10':2300,'14x11':2400,'14x12':2400,'14x13':2500,'14x14':2500,'14x15':2600,'14x16':2600,
-      // 16x16 = 2800 per CCI's corrected Tejada quote 8/17/26 ($4,192 bundle
-      // = door 2800 + seal 192 + opener 1100 + black 100); was 2700.
-      '16x6':2200,'16x7':2300,'16x8':2300,'16x9':2400,'16x10':2400,'16x11':2500,'16x12':2500,'16x13':2600,'16x14':2600,'16x15':2700,'16x16':2800
+      // (16x16 stays 2700 — CCI's corrected Tejada $4,192 bundle resolves as
+      // door 2700 + seal 192 + opener 1200 (12'+ tier) + black 100.)
+      '16x6':2200,'16x7':2300,'16x8':2300,'16x9':2400,'16x10':2400,'16x11':2500,'16x12':2500,'16x13':2600,'16x14':2600,'16x15':2700,'16x16':2700
     },
     rudPreferChain: true,
     chain: 325, seal: 12.00,
@@ -4997,6 +4997,13 @@ function doorNeedsLift(type, size){
   }
   return false;
 }
+// CCI automatic opener unit price by door size: $1,100; 12'+ doors (either
+// dimension) $1,200 — owner 8/17/26; resolves CCI's corrected Tejada 16x16
+// bundle exactly (2700 + seal 192 + opener 1200 + black 100 = 4192).
+function ropUnit(sz){
+  var _p=String(sz||'').split('x');
+  return ((parseFloat(_p[0])||0)>=12||(parseFloat(_p[1])||0)>=12)?(window._opener12||1200):(window._opener||1100);
+}
 function gRUD(){
   var t=0, sf=0;
   var els=document.querySelectorAll('.re');
@@ -5026,10 +5033,10 @@ function gRUD(){
     var sealQty=sealEl?parseInt(sealEl.value)||0:0;
     var sealDw=parseInt((sz||'').split('x')[0])||0;
     t+=sealQty*Math.round(sealDw*(window._seal||9.85));
-    // Automatic opener — CCI only, $1,100 per door
+    // Automatic opener — CCI only: $1,100/door, $1,200 for 12'+ doors
     var opnEl=el.querySelector('.rop');
     var opnQty=opnEl?parseInt(opnEl.value)||0:0;
-    if(ACTIVE_MFR==='CCI'&&opnQty) t+=opnQty*(window._opener||1100);
+    if(ACTIVE_MFR==='CCI'&&opnQty) t+=opnQty*ropUnit(sz);
     // 45° angle cut: $85 per door
     var r45El=el.querySelector('.r45');
     if(r45El && r45El.value==='yes') t+=85*qty;
@@ -6915,7 +6922,7 @@ function aRUD(){
         '<option value="hiimpact" class="rdtype-hiimpact"'+(MFR().hiImpactRollup?'':' style="display:none"')+'>High-Impact Roll-Up Doors</option>')+
     '</select></div>'+
     '<div class="row"><label>Door Size</label>'+
-    '<select class="rsz" onchange="chkDoorLift(this)"></select></div>'+
+    '<select class="rsz" onchange="chkDoorLift(this);syncQtyOpts(this.closest(\'.re\').querySelector(\'.rqt\'))"></select></div>'+
     '<div class="row"><label>Quantity</label>'+
     '<select class="rqt" onchange="syncQtyOpts(this)">'+
     '<option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>'+
@@ -7213,11 +7220,11 @@ function syncQtyOpts(qtyEl){
     }
     chEl.value=Math.min(curCh,qty)||0;
   }
-  // Update automatic opener options (CCI, $1,100/door)
+  // Update automatic opener options (CCI: $1,100/door, $1,200 for 12'+ doors)
   var opEl=entry.querySelector('.rop');
   if(opEl){
     var curOp=parseInt(opEl.value)||0;
-    var opUnit=window._opener||1100;
+    var opUnit=ropUnit((entry.querySelector('.rsz')||{}).value);
     opEl.innerHTML='<option value="0">None</option>';
     for(var i=1;i<=qty;i++){
       var o=document.createElement('option');
@@ -8348,7 +8355,7 @@ async function printQuote(){
     }
     var opnPEl=el.querySelector('.rop');
     if(ACTIVE_MFR==='CCI'&&opnPEl&&parseInt(opnPEl.value)>0){
-      var oq=parseInt(opnPEl.value); var op=window._opener||1100; rows+=row('Automatic Door Opener',oq,op,oq*op);
+      var oq=parseInt(opnPEl.value); var op=ropUnit(sz); rows+=row('Automatic Door Opener',oq,op,oq*op);
     }
     var r45El=el.querySelector('.r45');
     if(r45El&&r45El.value==='yes'){ rows+=row('45\u00B0 Angle Cut',qty,85,85*qty); }
@@ -9324,7 +9331,7 @@ async function printContract(){
     var slEl=el.querySelector('.rsl');
     if(slEl&&parseInt(slEl.value)>0){ var sq=parseInt(slEl.value); var sdw=parseInt((sz||'').split('x')[0])||0; var sp=Math.round(sdw*(window._seal||9.85)); row('Brush Seal (Tops & Sides)',sq,sp,sq*sp); }
     var opnPEl2=el.querySelector('.rop');
-    if(ACTIVE_MFR==='CCI'&&opnPEl2&&parseInt(opnPEl2.value)>0){ var oq2=parseInt(opnPEl2.value); var op2=window._opener||1100; row('Automatic Door Opener',oq2,op2,oq2*op2); }
+    if(ACTIVE_MFR==='CCI'&&opnPEl2&&parseInt(opnPEl2.value)>0){ var oq2=parseInt(opnPEl2.value); var op2=ropUnit(sz); row('Automatic Door Opener',oq2,op2,oq2*op2); }
     var r45El=el.querySelector('.r45');
     if(r45El&&r45El.value==='yes'){ row('45\u00B0 Angle Cut',qty,85,85*qty); }
     var rcoEl=el.querySelector('.rco');
@@ -11865,7 +11872,7 @@ function renderAllPricingTables(){
       {label:'Window — Standard 30×30', key:'win-std', get:function(){return 200;}, set:function(v){window._win_std=v;}},
       {label:'Window — Hi-Impact 30×30', key:'win-hi', get:function(){return window._win_hi||MFR().win_hi;}, set:function(v){window._win_hi=v;}},
       {label:'Chain Hoist Add-On (per door)', key:'chain', get:function(){return 325;}, set:function(v){window._chain=v;}},
-      {label:'Automatic Opener (per roll-up door, CCI)', key:'opener', get:function(){return window._opener||1100;}, set:function(v){window._opener=v;}},
+      {label:'Automatic Opener (roll-up doors under 12ft, CCI; 12ft+ doors are $1,200)', key:'opener', get:function(){return window._opener||1100;}, set:function(v){window._opener=v;}},
       {label:'Brush Seal rate ($/ft of door width)', key:'seal', get:function(){return window._seal||9.85;}, set:function(v){window._seal=v;}},
       {label:'Side Frame — with Roll-Up Door (per opening)', key:'sf-rud', get:function(){return window._sf_rud||325;}, set:function(v){window._sf_rud=v;}},
       {label:'Side Frame — without Roll-Up Door (per opening)', key:'sf-dw', get:function(){return window._sf_dw||425;}, set:function(v){window._sf_dw=v;}},
