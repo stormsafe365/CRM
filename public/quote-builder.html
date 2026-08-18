@@ -3281,7 +3281,7 @@ var RDP_CHAIN = {
   '12x8':1380,'12x10':1750,'12x12':1900,'*12x14':2000,'*12x15':2150,'*12x16':2400,
   '*14x8':2200,'*14x10':2300,'*14x12':2400,'*14x14':2500,'*14x16':2650,
   '*15x10':2375,'*15x12':2425,'*15x15':2600,
-  '*16x7':2200,'*16x8':2350,'*16x10':2425,'*16x12':2475,'*16x14':2550,'*16x16':2700,
+  '*16x7':2200,'*16x8':2350,'*16x10':2425,'*16x12':2475,'*16x14':2550,'*16x16':2800,
   '*18x8':3450,'*18x10':3670,'*18x13':3865,'*18x14':4125,'*18x16':4520,'*18x18':5175,
   '*20x10':4130,'*20x12':4650,'*20x14':5175,'*20x16':5765
 };
@@ -3740,7 +3740,7 @@ function doBld(){
   }
 
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
-  if(h>=16) f.push(w>31?bdg('Ladder Legs Required','bo'):bdg('Standard Double Legs','bb'));
+  if(h>=17) f.push(bdg('Ladder Legs Required','bo')); else if(h===16) f.push(bdg('Standard Double Legs','bb'));
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
@@ -4017,11 +4017,19 @@ function ecLookup(w,h){
   }
   // EC: widths 12-30 use bucketed width, widths 32-60 use actual even width
   // Odd widths round UP to next even (CA/CCI only build even widths in wide-span)
-  var wk = w>=32 ? (w%2===0?w:(w+1)) : eBkt(w);
+  // CCI TALL BUILDINGS (17'+): ends close from the COMMERCIAL brochure — the
+  // chart's minimum 32' column for standard widths. CCI corrected the Tejada
+  // 30x40x20: ends pair $7,670 = 2 × EC[32][20] exactly (8/17/26 email:
+  // ">16 ft legs price ladder legs from the commercial brochure along with
+  // closing the sides and ends").
+  var _cciTallEC = ACTIVE_MFR==='CCI' && h>=17;
+  var wk = w>=32 ? (w%2===0?w:(w+1)) : (_cciTallEC ? 32 : eBkt(w));
   wk = Math.min(Math.max(wk,12),60);
-  // Standard widths price ends to 16' tall; wide-span (32+) charts go to 20'.
-  var hk = Math.min(h, w>=32?20:16);
-  return (EC[wk]||EC[30])[hk]||0;
+  // Standard widths price ends to 16' tall; wide-span (32+)/CCI-tall charts go to 20'.
+  var hk = Math.min(h, (w>=32||_cciTallEC)?20:16);
+  var _ecRow=(EC[wk]||EC[30]);
+  while(hk<20 && _ecRow[hk]===undefined) hk++; // missing odd heights round UP
+  return _ecRow[hk]||0;
 }
 function scLookup(h,l,w){
   var w2=w||parseInt(G('bw').value)||0;
@@ -4038,7 +4046,10 @@ function scLookup(h,l,w){
   }
   var hk=h<=8?8:(h<=10?10:(h<=12?12:(h<=14?14:(h<=16?16:(h<=18?18:20)))));
   // Wide span (32-60ft): use BSC table indexed by WIDTH, return per-side (BSC/2)
-  if(w2>=32){
+  // CCI TALL (17'+) on standard widths: sides also close from the COMMERCIAL
+  // chart, indexed by LENGTH — CCI corrected Tejada 30x40x20 sides pair to
+  // $5,810 = BSC[20][40'] exactly (8/17/26).
+  if(w2>=32 || (ACTIVE_MFR==='CCI' && h>=17)){
     var SH_COLS=[20,24,28,32,36,40,44,48,52];
     var BSC={8:[1030,1235,1440,1645,1850,2050,2255,2460,2665],
              10:[1175,1405,1630,1870,2100,2350,2580,2810,3035],
@@ -4153,6 +4164,9 @@ function gVertUpgrade(){
   if(ws!=='Vertical') return 0;
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
+  // CCI TALL (17'+): commercial-brochure closure pricing is orientation-blind —
+  // CCI 8/17/26: "If they want horizontal siding, the price remains the same."
+  if(ACTIVE_MFR==='CCI' && h>=17) return 0;
   if(w % 2 === 1) w++; // Round odd widths UP (45→46) for pricing lookups
   var t=0;
   var fgv=G('wfg').value, bgv=G('wbg').value, rev=G('wre').value, lev=G('wle').value;
@@ -5394,6 +5408,18 @@ function rc(){
     var WAIN_VALS=_wainB.vals;
     var wci=0; for(var wi2=0;wi2<WAIN_COLS.length;wi2++){if(WAIN_COLS[wi2]<=l)wci=wi2;else break;}
     wainP=WAIN_VALS[wci];
+    // CCI TALL (17'+): commercial wainscot = $12.50/lf of CLOSED wall.
+    // CCI corrected Tejada 30x40x20 fully-enclosed wainscot to $1,750
+    // = 140 lf × $12.50 exactly (8/17/26). PROVISIONAL single-point rate —
+    // recheck against CCI's next tall wainscot correction.
+    if(ACTIVE_MFR==='CCI' && h>=17){
+      var _wlf=0;
+      if(G('wfg').value==='Closed')_wlf+=w;
+      if(G('wbg').value==='Closed')_wlf+=w;
+      if(G('wre').value==='Closed')_wlf+=l;
+      if(G('wle').value==='Closed')_wlf+=l;
+      if(_wlf>0) wainP=Math.round(12.5*_wlf);
+    }
   }
   var leanToTotal=gLT();
   var connFeeTotal=gConnectionFees();
@@ -5605,7 +5631,7 @@ function rc(){
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses','bb'));
-  if(h>=16) f.push(w>31?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));
+  if(h>=17) f.push(bdg('Ladder Legs','bo')); else if(h===16) f.push(bdg('Standard Double Legs','bb'));
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
   // Show free perks badge when base >= $10k
