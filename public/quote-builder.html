@@ -400,14 +400,18 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <select id="lap" onchange="rc()"><option value="no">No</option><option value="yes">Yes — Horizontal Walls (+10%)</option></select></div>
   <div class="row"><label>Wainscot</label>
     <select id="wain" onchange="rc()"><option value="no">No</option><option value="yes">Yes</option></select></div>
-  <!-- Additional End Wall: internal cost line (shown in live summary, hidden from customer quote) -->
-  <div class="row"><label>Additional End Wall</label>
+  <!-- Storage / Additional End Wall: a full interior partition end wall (Sensei
+       "End Storage" / IdeaRoom storage divider). Priced = ecLookup(w,h), the same
+       chart as a closed end — verified vs Sensei CA 8/24/26 (30x55x16 → $2,930 =
+       EC[30][16], invariant to building length AND partition position). Charged
+       on the quote. Storage doors are added like any other door (Components). -->
+  <div class="row"><label>Storage / Add'l End Wall</label>
     <select id="add-end-wall" onchange="updateAddEndWallDisplay();rc()">
       <option value="no">None</option>
-      <option value="yes">Added</option>
+      <option value="yes">End Storage &mdash; Partition Wall</option>
     </select></div>
   <div id="add-end-wall-cost" class="enote" style="margin:4px 0 8px;display:none;font-size:10px;background:#1a1e0a;border-left-color:#f0c040;color:#f59e0b">
-    <strong>Internal note:</strong> Additional End Wall added &mdash; cost <span id="add-end-wall-cost-val">$0</span>. Not shown on customer quote.
+    <strong>Storage partition:</strong> <span id="add-end-wall-cost-val">$0</span>
   </div>
   <div class="row"><label>Front Gable</label>
     <select id="wfg" onchange="rc();syncFrontGableToGch()">
@@ -703,6 +707,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <tr><td class="pk">Lap Siding (+10%)</td><td class="pv" id="plp">—</td></tr>
       <tr><td class="pk">26GA Sheeting Upgrade</td><td class="pv" id="psh">—</td></tr>
       <tr><td class="pk">Wainscot</td><td class="pv" id="pwi">—</td></tr>
+      <tr><td class="pk">Storage Partition</td><td class="pv" id="paew">—</td></tr>
       <tr><td class="pk">Insulation</td><td class="pv" id="pins">—</td></tr>
       <tr><td class="pk">Lean-Tos</td><td class="pv" id="plt">—</td></tr>
       <tr><td class="pk">Additional Components</td><td class="pv" id="pac">—</td></tr>
@@ -4511,12 +4516,14 @@ function syncFrontGableToGch(){
 // For non-GCH building types, "Added" is shown for the user's reference but is NOT
 // added to the customer-facing quote (per user request — internal note only).
 function gAddEndWall(){
+  // CHARGED line since 8/24/26 (was internal-note-only). = ecLookup(w,h), verified
+  // vs Sensei CA End Storage (30x16 → $2,930 = EC[30][16]; length/position-invariant).
   var el=G('add-end-wall');
   if(!el || el.value!=='yes') return 0;
+  if(G('btype') && G('btype').value==='gch') return 0; // divider already in Utility Storage
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6;
   if(!w||!h) return 0;
   // ecLookup returns the cost of a full end-close (same as the "Back End Closed" line).
-  // For 24w × 10h on CCI this is ~$1,435.
   return (typeof ecLookup==='function') ? ecLookup(w, h) : 0;
 }
 function updateAddEndWallDisplay(){
@@ -4527,21 +4534,20 @@ function updateAddEndWallDisplay(){
   var on=(el.value==='yes');
   noteEl.style.display = on ? '' : 'none';
   if(on && valEl){
-    var c = gAddEndWall();
-    valEl.textContent = '$' + c.toLocaleString();
-    // For GCH, this divider is already counted inside Utility Storage; clarify the note
     var bt=G('btype')?G('btype').value:'';
     var noteBodyEl=noteEl.querySelector('strong');
     if(noteBodyEl && noteBodyEl.parentNode){
       var span=noteBodyEl.parentNode;
       if(bt==='gch'){
-        span.innerHTML = '<strong>Internal note (GCH):</strong> Divider end wall &mdash; cost ' +
-                         '<span id="add-end-wall-cost-val">$' + c.toLocaleString() + '</span>. ' +
-                         'Already included in <em>Utility Storage</em> line. Not a duplicate charge.';
+        span.innerHTML = '<strong>GCH:</strong> the divider end wall is already included in the ' +
+                         '<em>Utility Storage</em> line &mdash; no extra charge here.';
       } else {
-        span.innerHTML = '<strong>Internal note:</strong> Additional End Wall added &mdash; cost ' +
-                         '<span id="add-end-wall-cost-val">$' + c.toLocaleString() + '</span>. ' +
-                         'Not shown on customer quote.';
+        var c = gAddEndWall();
+        span.innerHTML = '<strong>End Storage partition:</strong> ' +
+                         '<span id="add-end-wall-cost-val">$' + c.toLocaleString() + '</span>' +
+                         ' &mdash; full interior end wall, priced like a closed end. Position along ' +
+                         'the length is the customer’s choice (no price change). Add storage ' +
+                         'doors below like any other door.';
       }
     }
   }
@@ -5407,7 +5413,7 @@ function rcManual(){
   setT('pwl',walls); setT('prd',rud); setT('pwd',wtd); setT('pwn',win);
   setT('psp',sp); setT('plt',lt); setT('pac',addl);
   // Categories that don't exist in INPUT mode (folded into the fields above / custom lines)
-  ['pvw','psf','plp','pwi','pins','pconn','poh','psh'].forEach(function(id){ var e=G(id); if(e) e.textContent='\u2014'; });
+  ['pvw','psf','plp','pwi','paew','pins','pconn','poh','psh'].forEach(function(id){ var e=G(id); if(e) e.textContent='\u2014'; });
   var spRow=G('sp-summary-row'); if(spRow) spRow.style.display=sp?'':'none';
   var ohRow=G('overhang-summary-row'); if(ohRow) ohRow.style.display='none';
   var connBox=G('conn-fee-box'); if(connBox) connBox.style.display='none';
@@ -5513,6 +5519,7 @@ function rc(){
   // Wainscot only applies when walls are vertical (enclosed eave sides)
   var wallsVertical = G('ws').value==='Vertical';
   var wainP=gWainscot();
+  var aewP=gAddEndWall();
   var leanToTotal=gLT();
   var connFeeTotal=gConnectionFees();
   var addCompTotal=gAC();
@@ -5537,7 +5544,7 @@ function rc(){
   // Sheeting: 26GA roof always free in FL.
   // 26GA walls FREE when total order >= $10,000 (auto-upgrade, no charge ever).
   // Under $10k: 29GA walls standard; optional +10% upgrade.
-  var preSheetSub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+wainP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+overhangP+sidePanelP;
+  var preSheetSub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+overhangP+sidePanelP;
   // CA 8/10/2026 policy: 26GA is ALWAYS a 10% upgrade — no free threshold.
   // CCI keeps its Sensei-verified free-at-$10k behavior.
   var sheetFree=(ACTIVE_MFR!=='CA' && preSheetSub>=(window._freeThresh||10000) && bt3!=='widespan');
@@ -5564,7 +5571,7 @@ function rc(){
   var perm=G('perm').value, co=G('county').textContent, pt=G('pt').value;
 
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP;
+  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP;
   var da=Math.round(sub*(disc/100));
   var ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100));
@@ -5618,6 +5625,7 @@ function rc(){
   G('psf').textContent=sf?fC(sf):'—';
   G('plp').textContent=lapP?fC(lapP):'—';
   G('pwi').textContent=wainP?fC(wainP):'—';
+  if(G('paew')) G('paew').textContent=aewP?fC(aewP):'—';
   // Insulation
   var pinsEl=G('pins'); if(pinsEl) pinsEl.textContent=insulTotal?fC(insulTotal):'—';
   // Lean-tos and additional components
@@ -7339,6 +7347,7 @@ function printQuote(){
   var pitchSelValP = G('pitch-sel') ? G('pitch-sel').value : 'standard';
   var pitchUpgradeP = MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
   var wainP=gWainscot();
+  var aewP=gAddEndWall();
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
   // Overhang for PDF
   var overhangPQ=0;
@@ -7351,7 +7360,7 @@ function printQuote(){
     else if(ohSelP.value==='both') overhangPQ=ohRP.sides+ohRP.ends;
   }
   var sidePanelPQ=gSidePanels();
-  var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
+  var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+aewP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
   var sheetFreeP=(ACTIVE_MFR!=='CA'&&preSheetP>=(window._freeThresh||10000)&&bt3p!=='widespan');
   var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan') ? preSheetP*0.10 : 0;
   // Fastener free: any building where full pre-fastener subtotal >= $10k (no widespan exclusion)
@@ -7361,7 +7370,7 @@ function printQuote(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // Build plans HTML now that sub is computed (CCI Site Specific = 5% of retail)
@@ -7491,6 +7500,7 @@ function printQuote(){
   if(bt3p==='widespan') rows+=row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
+  if(aewP) rows+=row('End Storage — Interior Partition Wall',null,null,aewP);
 
   // Roll-up doors
   document.querySelectorAll('.re').forEach(function(el){
@@ -8059,6 +8069,7 @@ function printContract(){
   var pitchSelValP=G('pitch-sel')?G('pitch-sel').value:'standard';
   var pitchUpgradeP=MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
   var wainP=gWainscot();
+  var aewP=gAddEndWall();
   var leanToPr=gLT(), addCompPr=gAC(), insulPr=gInsul();
   var overhangPQ=0;
   var ohSelP=G('overhang-sel');
@@ -8070,7 +8081,7 @@ function printContract(){
     else if(ohSelP.value==='both') overhangPQ=ohRP.sides+ohRP.ends;
   }
   var sidePanelPQ=gSidePanels();
-  var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
+  var preSheetP=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+wainP+aewP+leanToPr+addCompPr+insulPr+overhangPQ+sidePanelPQ;
   var sheetFreeP=(ACTIVE_MFR!=='CA'&&preSheetP>=(window._freeThresh||10000)&&bt3p!=='widespan');
   var sheetUpgrade=(!sheetFreeP && G('sheeting-upgrade').value==='upgrade' && bt3p!=='widespan')?preSheetP*0.10:0;
   var subPreFastenerP=preSheetP+sheetUpgrade;
@@ -8079,7 +8090,7 @@ function printContract(){
   var tax=parseFloat(G('tax').value)||0;
   var agEx=(G('agx')&&G('agx').value==='yes');
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
-  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
+  var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
   if(INPUT_MODE) sub=manualSubtotal();
 
   // ── Engineered Plans + Permit Service (both invoiced separately by engineering firm) ──
@@ -8250,6 +8261,7 @@ function printContract(){
   if(bt3p==='widespan') row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
+  if(aewP) row('End Storage — Interior Partition Wall',null,null,aewP);
 
   document.querySelectorAll('.re').forEach(function(el){
     var dtype=el.querySelector('.rdtype')?el.querySelector('.rdtype').value:'standard';
@@ -10871,10 +10883,11 @@ function textQuote(){
   var lapP=G('lap').value==='yes'?Math.round(base*0.10):0;
   var wallsVert=G('ws').value==='Vertical';
   var wainP=gWainscot();
+  var aewP=gAddEndWall();
   var ltP=gLT(),acP=gAC(),insP=gInsul();
   var ocSel2=G('oc-spacing'),ocVal2=ocSel2?ocSel2.value:'5oc',ocU=0;
   if(ACTIVE_MFR!=='CA'&&ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'&&fuVal!=='12'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){var ocR2=(OC4V2[4]-OC4V2[3])/5;ocU=Math.round(OC4V2[4]+ocR2*(lv-40));}else{ocU=OC4V2[oci2];}}
-  var preSheet=base+leg+framingUpgP+ocU+pitchUpgrade+walls2+vertU+rd.rud+wd.wtd+wn.win+rd.sf+wd.sf+wn.sf+lapP+wainP+ltP+acP+insP;
+  var preSheet=base+leg+framingUpgP+ocU+pitchUpgrade+walls2+vertU+rd.rud+wd.wtd+wn.win+rd.sf+wd.sf+wn.sf+lapP+wainP+aewP+ltP+acP+insP;
   var sheetFree=(ACTIVE_MFR!=='CA'&&preSheet>=(window._freeThresh||10000)&&bt3!=='widespan');
   var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
   var fastenerFree=((preSheet+sheetU)>=(window._freeThresh||10000));
@@ -10909,6 +10922,7 @@ function textQuote(){
   m+=(fuVal==='12'?'12GA':'14GA')+' Framing \u2022 '+(sheetFree||bt3==='widespan'?'26GA':'Standard Sheeting')+'\n\n';
   if(doorLines.length){m+='\u{1F6AA} DOORS & WINDOWS\n';doorLines.forEach(function(d){m+='\u2022 '+d+'\n';});m+='\n';}
   if(insText!=='None')m+='\u2744\uFE0F Insulation: '+insText+'\n\n';
+  if(aewP)m+='End Storage \u2014 interior partition wall\n\n';
   m+='\u{1F3A8} COLORS\nRoof: '+roofColor+'\nWalls: '+wallColor+'\nTrim: '+trimColor+'\n\n';
   m+='\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
   m+='\u{1F4B0} TOTAL:  '+fD(tot-addDA)+'\n';
