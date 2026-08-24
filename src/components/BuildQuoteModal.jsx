@@ -8,6 +8,7 @@
 // fallback. Pricing/PDF come straight from the program — never re-derived here.
 
 import { useEffect, useRef, useState } from 'react'
+import SaveToLeadPicker from './SaveToLeadPicker'
 import { uploadClientDocBlob } from '../lib/storage'
 import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
 import { harvestAndSaveQuote, renderQuotePdf } from '../lib/builderSave'
@@ -31,6 +32,10 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const iframeRef = useRef(null)
   const savingRef = useRef(false)
   const [status, setStatus] = useState('')
+  // Opened WITHOUT a lead (e.g. Dashboard → New Quote): Save to Lead opens the
+  // shared picker to attach to an existing lead or create a new one on the spot.
+  const [picker, setPicker] = useState(false)
+  const [savedTo, setSavedTo] = useState(null) // lead name after a picker save
 
   // The QTEPRO program lives in build.html's LEFT-pane iframe. Reach it (same-origin).
   function getProgramWindow() {
@@ -45,7 +50,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     if (savingRef.current) return
     const pg = getProgramWindow()
     if (!pg) { toast('The builder is still loading — give it a moment and try again.'); return }
-    if (!client?.id) { toast('Open this from a lead to save the quote.'); return }
+    if (!client?.id) { setPicker(true); return } // no lead yet → pick or create one
     savingRef.current = true
     setStatus('Reading quote…')
     try {
@@ -212,14 +217,16 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         <div className="qb-bar">
           <div className="qb-bar-title">
             {restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : '3D Builder'}
-            {client?.name && <span className="qb-bar-client"> · {client.name}</span>}
+            {(client?.name || savedTo) && <span className="qb-bar-client"> · {client?.name || savedTo}</span>}
           </div>
           {status
             ? <div className="qb-bar-status">{status}</div>
             : <div className="qb-bar-status" style={{ flex: 1, textAlign: 'center', opacity: 0.7 }}>
                 {restoreData
                   ? <>Adjust the build, then <b>Save to Lead</b> to update this quote.</>
-                  : <>Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.</>}
+                  : client?.id
+                    ? <>Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.</>
+                    : <>Build &amp; price, then hit <b>Save to Lead</b> — attach it to a lead or create a new one.</>}
               </div>}
           <div className="qb-bar-actions">
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
@@ -229,6 +236,14 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         </div>
         <iframe ref={iframeRef} src={SRC} title="StormSafe 3D Builder" allow="fullscreen" className="qb-iframe" />
       </div>
+      {picker && (
+        <SaveToLeadPicker
+          getProgramWindow={getProgramWindow}
+          getBuildWin={() => iframeRef.current?.contentWindow}
+          onClose={() => setPicker(false)}
+          onSaved={({ clientName }) => setSavedTo(clientName)}
+        />
+      )}
     </div>
   )
 }
