@@ -402,7 +402,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <select id="wain" onchange="rc()"><option value="no">No</option><option value="yes">Yes</option></select></div>
   <!-- Storage / Additional End Wall: a full interior partition end wall (Sensei
        "End Storage" / IdeaRoom storage divider). Priced = ecLookup(w,h), the same
-       chart as a closed end — verified vs Sensei CA 8/24/26 (30x55x16 → $2,930 =
+       chart as a closed end — verified vs Sensei CCI 8/24/26 (30x55x16 → $2,930 =
        EC[30][16], invariant to building length AND partition position). Charged
        on the quote. Storage doors are added like any other door (Components). -->
   <div class="row"><label>Storage / Add'l End Wall</label>
@@ -4517,17 +4517,18 @@ function syncFrontGableToGch(){
 // sections, and the cost is ALREADY accounted for inside Utility Storage in gWalls().
 // For non-GCH building types, "Added" is shown for the user's reference but is NOT
 // added to the customer-facing quote (per user request — internal note only).
-// ── CA Left/Right (LENGTHWISE) storage chart ────────────────────────────────
-// Sampled 1:1 from StormSafe's Sensei account (Carolina Carports, FL) 8/24/26 —
-// the full 20'-100' × 8'-16' grid plus the 17'-20' tall rows. Facts verified:
+// ── CCI (CAROLINA CARPORTS) Left/Right (LENGTHWISE) storage chart ───────────
+// Sampled 1:1 from StormSafe's Sensei account (Carolina Carports Inc, FL)
+// 8/24/26 — the full 20'-100' × 8'-16' grid plus 17'-20' tall rows. Verified:
 //   • width-independent (26w = 30w) and position-independent (storage width
 //     dropdown never changes the price)
 //   • rows 8-16 are HORIZONTAL-wall prices; VERTICAL walls add LR_VERT_ADD by
 //     length (height-independent — verified at h9, h12 and h16)
 //   • 17'-20' rows are vertical-wall prices (Sensei forces vertical at 17+)
 //   • h10 duplicates h9, h13 duplicates h12 (chart pairs, verified full rows)
-// CCI has NO verified lengthwise-storage chart yet — lrStorageLookup returns 0
-// for CCI and the UI warns the rep to price it manually.
+// CA (Carports Anywhere) has NO verified lengthwise-storage chart — their own
+// IdeaRoom configurator doesn't offer lengthwise storage on enclosed buildings.
+// lrStorageLookup returns 0 for CA and the UI warns the rep to price manually.
 var LR_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
 var LR_STORAGE={
   8:[1130,1690,2190,1960,2260,2820,3380,3880,4380,3950,4450,5010,4520,6070,6570,6200,6760],
@@ -4546,7 +4547,7 @@ var LR_STORAGE={
 };
 var LR_VERT_ADD=[300,450,570,540,600,750,900,1020,1140,1050,1170,1320,1200,1590,1710,1650,1800];
 function lrStorageLookup(l,h){
-  if(ACTIVE_MFR!=='CA') return 0; // CCI lengthwise storage not verified — see comment above
+  if(ACTIVE_MFR!=='CCI') return 0; // CA (Carports Anywhere) lengthwise storage not verified — see above
   if(!l||!h) return 0;
   var hk=Math.min(Math.max(h,8),20);
   var row=LR_STORAGE[hk]; if(!row) return 0;
@@ -4599,14 +4600,14 @@ function updateAddEndWallDisplay(){
                          '<em>Utility Storage</em> line &mdash; no extra charge here.';
       } else if(v==='left'||v==='right'){
         var cl = gAddEndWall();
-        if(ACTIVE_MFR!=='CA'){
-          span.innerHTML = '<strong style="color:#f87171">Left/Right storage is priced for CA only.</strong> ' +
-                           'CCI has no verified lengthwise-storage chart yet &mdash; $0 added. ' +
+        if(ACTIVE_MFR!=='CCI'){
+          span.innerHTML = '<strong style="color:#f87171">Left/Right storage is priced for CCI (Carolina) only.</strong> ' +
+                           'Carports Anywhere has no verified lengthwise-storage chart &mdash; $0 added. ' +
                            'Use End Storage, or price the lengthwise wall manually.';
         } else {
           span.innerHTML = '<strong>'+(v==='left'?'Left':'Right')+' Storage partition:</strong> ' +
                            '<span id="add-end-wall-cost-val">$' + cl.toLocaleString() + '</span>' +
-                           ' &mdash; interior wall running the FULL building length (Sensei-matched CA chart; ' +
+                           ' &mdash; interior wall running the FULL building length (Sensei-matched CCI chart; ' +
                            'vertical walls auto-add the vertical rate). Storage width is the customer’s ' +
                            'choice &mdash; no price change. Add storage doors below like any other door.';
         }
