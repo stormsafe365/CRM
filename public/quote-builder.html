@@ -409,6 +409,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <select id="add-end-wall" onchange="updateAddEndWallDisplay();rc()">
       <option value="no">None</option>
       <option value="yes">End Storage &mdash; Partition Wall</option>
+      <option value="left">Left Storage &mdash; Lengthwise Partition</option>
+      <option value="right">Right Storage &mdash; Lengthwise Partition</option>
     </select></div>
   <div id="add-end-wall-cost" class="enote" style="margin:4px 0 8px;display:none;font-size:10px;background:#1a1e0a;border-left-color:#f0c040;color:#f59e0b">
     <strong>Storage partition:</strong> <span id="add-end-wall-cost-val">$0</span>
@@ -4515,14 +4517,67 @@ function syncFrontGableToGch(){
 // sections, and the cost is ALREADY accounted for inside Utility Storage in gWalls().
 // For non-GCH building types, "Added" is shown for the user's reference but is NOT
 // added to the customer-facing quote (per user request — internal note only).
+// ── CA Left/Right (LENGTHWISE) storage chart ────────────────────────────────
+// Sampled 1:1 from StormSafe's Sensei account (Carolina Carports, FL) 8/24/26 —
+// the full 20'-100' × 8'-16' grid plus the 17'-20' tall rows. Facts verified:
+//   • width-independent (26w = 30w) and position-independent (storage width
+//     dropdown never changes the price)
+//   • rows 8-16 are HORIZONTAL-wall prices; VERTICAL walls add LR_VERT_ADD by
+//     length (height-independent — verified at h9, h12 and h16)
+//   • 17'-20' rows are vertical-wall prices (Sensei forces vertical at 17+)
+//   • h10 duplicates h9, h13 duplicates h12 (chart pairs, verified full rows)
+// CCI has NO verified lengthwise-storage chart yet — lrStorageLookup returns 0
+// for CCI and the UI warns the rep to price it manually.
+var LR_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
+var LR_STORAGE={
+  8:[1130,1690,2190,1960,2260,2820,3380,3880,4380,3950,4450,5010,4520,6070,6570,6200,6760],
+  9:[1400,1910,2315,2400,2800,3310,3820,4225,4630,4710,5115,5625,5600,6540,6945,7130,7640],
+  10:[1400,1910,2315,2400,2800,3310,3820,4225,4630,4710,5115,5625,5600,6540,6945,7130,7640],
+  11:[1585,2015,2555,2740,3170,3600,4030,4570,5110,5185,5725,6155,6340,7125,7665,7630,8060],
+  12:[1885,2340,2800,3250,3770,4225,4680,5140,5600,6110,6570,7025,7540,7940,8400,8905,9360],
+  13:[1885,2340,2800,3250,3770,4225,4680,5140,5600,6110,6570,7025,7540,7940,8400,8905,9360],
+  14:[2040,2450,2930,3520,4080,4490,4900,5380,5860,6530,7010,7420,8160,8310,8790,9390,9800],
+  15:[2195,2560,3060,3790,4390,4755,5120,5620,6120,6950,7450,7815,8780,8680,9180,9875,10240],
+  16:[2350,2670,3190,4060,4700,5020,5340,5860,6380,7370,7890,8210,9400,9050,9570,10360,10680],
+  17:[2805,3230,3890,4870,5610,6035,6460,7120,7780,8840,9500,9925,11220,11010,11670,12495,12920],
+  18:[2960,3340,4020,5140,5920,6300,6680,7360,8040,9260,9940,10320,11840,11380,12060,12980,13360],
+  19:[3130,4500,5645,5440,6260,7630,9000,10145,11290,10760,11905,13275,12520,15790,16935,16630,18000],
+  20:[3400,4720,5770,5880,6800,8120,9440,10490,11540,11520,12570,13890,13600,16260,17310,17560,18880]
+};
+var LR_VERT_ADD=[300,450,570,540,600,750,900,1020,1140,1050,1170,1320,1200,1590,1710,1650,1800];
+function lrStorageLookup(l,h){
+  if(ACTIVE_MFR!=='CA') return 0; // CCI lengthwise storage not verified — see comment above
+  if(!l||!h) return 0;
+  var hk=Math.min(Math.max(h,8),20);
+  var row=LR_STORAGE[hk]; if(!row) return 0;
+  function colVal(arr){
+    if(l<=20) return arr[0];
+    if(l>=100){ var rate=(arr[16]-arr[15])/5; return Math.round(arr[16]+rate*(l-100)); }
+    return arr[Math.ceil((l-20)/5)]; // odd lengths round UP to the next 5' column
+  }
+  var price=colVal(row);
+  // Vertical walls: add the per-length vertical rate (17'+ rows already vertical)
+  if(hk<=16 && G('ws') && G('ws').value==='Vertical') price+=colVal(LR_VERT_ADD);
+  return price;
+}
+function aewLabel(){
+  var el=G('add-end-wall'); var v=el?el.value:'no';
+  if(v==='left') return 'Left Storage — Lengthwise Partition Wall';
+  if(v==='right') return 'Right Storage — Lengthwise Partition Wall';
+  return 'End Storage — Interior Partition Wall';
+}
 function gAddEndWall(){
-  // CHARGED line since 8/24/26 (was internal-note-only). = ecLookup(w,h), verified
-  // vs Sensei CA End Storage (30x16 → $2,930 = EC[30][16]; length/position-invariant).
   var el=G('add-end-wall');
-  if(!el || el.value!=='yes') return 0;
+  if(!el) return 0;
+  var v=el.value;
+  if(v!=='yes'&&v!=='left'&&v!=='right') return 0;
   if(G('btype') && G('btype').value==='gch') return 0; // divider already in Utility Storage
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6;
   if(!w||!h) return 0;
+  if(v==='left'||v==='right'){
+    var l=parseInt(G('bl').value)||0;
+    return lrStorageLookup(l,h);
+  }
   // ecLookup returns the cost of a full end-close (same as the "Back End Closed" line).
   return (typeof ecLookup==='function') ? ecLookup(w, h) : 0;
 }
@@ -4531,7 +4586,8 @@ function updateAddEndWallDisplay(){
   var noteEl=G('add-end-wall-cost');
   var valEl=G('add-end-wall-cost-val');
   if(!el || !noteEl) return;
-  var on=(el.value==='yes');
+  var v=el.value;
+  var on=(v==='yes'||v==='left'||v==='right');
   noteEl.style.display = on ? '' : 'none';
   if(on && valEl){
     var bt=G('btype')?G('btype').value:'';
@@ -4541,6 +4597,19 @@ function updateAddEndWallDisplay(){
       if(bt==='gch'){
         span.innerHTML = '<strong>GCH:</strong> the divider end wall is already included in the ' +
                          '<em>Utility Storage</em> line &mdash; no extra charge here.';
+      } else if(v==='left'||v==='right'){
+        var cl = gAddEndWall();
+        if(ACTIVE_MFR!=='CA'){
+          span.innerHTML = '<strong style="color:#f87171">Left/Right storage is priced for CA only.</strong> ' +
+                           'CCI has no verified lengthwise-storage chart yet &mdash; $0 added. ' +
+                           'Use End Storage, or price the lengthwise wall manually.';
+        } else {
+          span.innerHTML = '<strong>'+(v==='left'?'Left':'Right')+' Storage partition:</strong> ' +
+                           '<span id="add-end-wall-cost-val">$' + cl.toLocaleString() + '</span>' +
+                           ' &mdash; interior wall running the FULL building length (Sensei-matched CA chart; ' +
+                           'vertical walls auto-add the vertical rate). Storage width is the customer’s ' +
+                           'choice &mdash; no price change. Add storage doors below like any other door.';
+        }
       } else {
         var c = gAddEndWall();
         span.innerHTML = '<strong>End Storage partition:</strong> ' +
@@ -7500,7 +7569,7 @@ function printQuote(){
   if(bt3p==='widespan') rows+=row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
-  if(aewP) rows+=row('End Storage — Interior Partition Wall',null,null,aewP);
+  if(aewP) rows+=row(aewLabel(),null,null,aewP);
 
   // Roll-up doors
   document.querySelectorAll('.re').forEach(function(el){
@@ -8261,7 +8330,7 @@ function printContract(){
   if(bt3p==='widespan') row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
-  if(aewP) row('End Storage — Interior Partition Wall',null,null,aewP);
+  if(aewP) row(aewLabel(),null,null,aewP);
 
   document.querySelectorAll('.re').forEach(function(el){
     var dtype=el.querySelector('.rdtype')?el.querySelector('.rdtype').value:'standard';
@@ -10922,7 +10991,7 @@ function textQuote(){
   m+=(fuVal==='12'?'12GA':'14GA')+' Framing \u2022 '+(sheetFree||bt3==='widespan'?'26GA':'Standard Sheeting')+'\n\n';
   if(doorLines.length){m+='\u{1F6AA} DOORS & WINDOWS\n';doorLines.forEach(function(d){m+='\u2022 '+d+'\n';});m+='\n';}
   if(insText!=='None')m+='\u2744\uFE0F Insulation: '+insText+'\n\n';
-  if(aewP)m+='End Storage \u2014 interior partition wall\n\n';
+  if(aewP)m+=aewLabel()+'\n\n';
   m+='\u{1F3A8} COLORS\nRoof: '+roofColor+'\nWalls: '+wallColor+'\nTrim: '+trimColor+'\n\n';
   m+='\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
   m+='\u{1F4B0} TOTAL:  '+fD(tot-addDA)+'\n';
