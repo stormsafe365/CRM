@@ -753,7 +753,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <button class="sbtn" type="button" onclick="printQuote()" style="background:#9fc839;color:#080f14">SAVE / PRINT PDF</button>
     <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
-    <button class="sbtn" type="button" onclick="saveQuote()" style="background:#ffffff;color:#080f14">SAVE QUOTE</button>
+    <button class="sbtn" type="button" onclick="printRevisionForm()" style="background:#fbbf24;color:#080f14">REVISION FORM</button>
+    <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#fbbf24;color:#080f14">REVISED LAYOUT</button>
     <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
   </div>
 </div>
@@ -3755,7 +3756,9 @@ function doBld(){
   }
 
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
-  if(h>=17) f.push(bdg('Ladder Legs Required','bo')); else if(h===16) f.push(bdg('Standard Double Legs','bb'));
+  // Leg style at 16'+: CA ladders only on 32'+ widths; CCI ladders at 17'+ any
+  // width (8/17/26 CCI email — Tejada 30x40x20). 16' legs = standard double legs.
+  if(h>=16){var _ldr=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?(h>=17):(w>31); f.push(_ldr?bdg('Ladder Legs Required','bo'):bdg('Standard Double Legs','bb'));}
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
@@ -5223,16 +5226,26 @@ function aAC(){
     '<input type="number" class="acp" placeholder="0" min="0" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="fo-custom-size-box hidden" style="margin:4px 0 8px;padding:8px;background:#0d2a36;border-left:3px solid #1fcec4;border-radius:0 5px 5px 0">'+
       '<div style="font-size:11px;font-weight:700;color:#1fcec4;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Custom Opening Size</div>'+
-      '<div class="row fo-cw-row"><label>Opening Width (ft)</label>'+
-      '<input type="number" class="fo-cw" placeholder="10" min="1" max="24" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
-      '<div class="row fo-ch-row"><label>Opening Height (ft)</label>'+
-      '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+      '<div class="row"><label>Measurement Unit</label>'+
+      '<select class="fo-unit" onchange="foUnitChange(this)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
+      '<div class="row fo-cw-row"><label class="fo-cw-label">Opening Width (ft)</label>'+
+      '<input type="number" class="fo-cw" placeholder="10" min="1" max="24" step="0.5" oninput="foAutoCustomWinPrice(this.closest(\'.ace\'));rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+      '<div class="row fo-ch-row"><label class="fo-ch-label">Opening Height (ft)</label>'+
+      '<input type="number" class="fo-ch" placeholder="8" min="1" max="16" step="0.5" oninput="foAutoCustomWinPrice(this.closest(\'.ace\'));rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '</div>'+
+    '<div class="row fo-sill-row hidden"><label>Sill Height (ft)</label>'+
+    '<input type="number" class="fo-sill" value="4.17" min="0" max="30" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row fo-loc-row hidden"><label>Wall Location</label>'+
-    '<select class="fo-loc" onchange="refreshPosLabels(this.closest(\'.ace\'));rc()">'+
+    '<select class="fo-loc" onchange="refreshPosLabels(this.closest(\'.ace\'));foSfVis(this.closest(\'.ace\'));rc()">'+
     '<option>Front Gable End</option><option>Back Gable End</option>'+
     '<option>Left Eave Side</option><option>Right Eave Side</option>'+
     '</select></div>'+
+    '<div class="row fo-sf-row hidden"><label>Side Frame(s)</label>'+
+    '<select class="fo-sf" onchange="rc()">'+
+    '<option value="0">None</option><option value="1">1 (+$150)</option>'+
+    '</select></div>'+
+    '<div class="row fo-dispunit-row hidden"><label>Layout Sheet Units</label>'+
+    '<select class="fo-disp-unit"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
     '<div class="pos-section fo-pos-section"></div>';
   d.appendChild(mkRm('.ace'));
   G('acl').appendChild(d);
@@ -5247,6 +5260,10 @@ function updACPrice(sel){
   if(foBox) foBox.classList.toggle('hidden',!isCustomSz);
   var isFO = sel.value.indexOf('Framed Opening') === 0;
   entry.querySelector('.fo-loc-row').classList.toggle('hidden', !isFO);
+  var _duRow=entry.querySelector('.fo-dispunit-row'); if(_duRow) _duRow.classList.toggle('hidden', !isFO);
+  var _slRow=entry.querySelector('.fo-sill-row'); if(_slRow) _slRow.classList.toggle('hidden', !(isFO && sel.value.indexOf('Window')>=0));
+  foSfVis(entry);
+  foAutoCustomWinPrice(entry);
   if(isFO){
     var qty = parseInt(entry.querySelector('.acq').value)||1;
     updatePosSection(entry, qty, 'Opening');
@@ -5263,6 +5280,57 @@ function setAddDiscType(type){
   if(btnD){ btnD.style.background=isDollar?'#1B8A8A':'#fff'; btnD.style.color=isDollar?'#fff':'#64748b'; btnD.style.borderColor=isDollar?'#1B8A8A':'#cbd5e1'; }
   if(btnP){ btnP.style.background=!isDollar?'#1B8A8A':'#fff'; btnP.style.color=!isDollar?'#fff':'#64748b'; btnP.style.borderColor=!isDollar?'#1B8A8A':'#cbd5e1'; }
   var inp=G('add-disc'); if(inp){ inp.step=isDollar?'50':'0.5'; inp.max=isDollar?'99999':'100'; }
+  rc();
+}
+function foCustomFeet(el){
+  var u=el.querySelector('.fo-unit'); var k=(u&&u.value==='in')?(1/12):1;
+  var cw=parseFloat((el.querySelector('.fo-cw')||{}).value);
+  var ch=parseFloat((el.querySelector('.fo-ch')||{}).value);
+  return { w:(cw>0?cw*k:10), h:(ch>0?ch*k:8) };
+}
+function cciCustomWinPrice(wFt,hFt){
+  return (wFt<=3 && hFt<=3) ? 75 : 150;
+}
+function foAutoCustomWinPrice(entry){
+  if(ACTIVE_MFR!=='CCI'||!entry) return;
+  var comp=(entry.querySelector('.act')||{}).value||'';
+  if(comp.indexOf('Window (Custom Size)')<0) return;
+  var acp=entry.querySelector('.acp'); if(!acp) return;
+  var s=foCustomFeet(entry);
+  var rule=cciCustomWinPrice(s.w,s.h);
+  var cur=parseFloat(acp.value);
+  if(!acp.value || cur===75 || cur===150) acp.value=rule;
+}
+function foSillFt(el){
+  var s=parseFloat((el.querySelector('.fo-sill')||{}).value);
+  return (isFinite(s)&&s>=0)?s:4.16667;
+}
+function foSfVis(entry){
+  var r=entry.querySelector('.fo-sf-row'); if(!r) return;
+  var comp=(entry.querySelector('.act')||{}).value||'';
+  var locEl=entry.querySelector('.fo-loc');
+  var show=comp.indexOf('Framed Opening')===0 && locEl && isEaveSide(locEl.value);
+  r.classList.toggle('hidden',!show);
+  if(!show){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
+}
+function foApplyUnit(entry){
+  var u=entry.querySelector('.fo-unit'); var inIn=u&&u.value==='in';
+  var cwl=entry.querySelector('.fo-cw-label'), chl=entry.querySelector('.fo-ch-label');
+  if(cwl) cwl.textContent='Opening Width ('+(inIn?'in':'ft')+')';
+  if(chl) chl.textContent='Opening Height ('+(inIn?'in':'ft')+')';
+  var cw=entry.querySelector('.fo-cw'), ch=entry.querySelector('.fo-ch');
+  if(cw){ cw.step=inIn?'1':'0.5'; cw.max=inIn?'288':'24'; cw.placeholder=inIn?'120':'10'; }
+  if(ch){ ch.step=inIn?'1':'0.5'; ch.max=inIn?'192':'16'; ch.placeholder=inIn?'96':'8'; }
+}
+function foUnitChange(sel){
+  var entry=sel.closest('.ace'); if(!entry) return;
+  var inIn=sel.value==='in';
+  [entry.querySelector('.fo-cw'), entry.querySelector('.fo-ch')].forEach(function(inp){
+    if(!inp) return; var v=parseFloat(inp.value);
+    if(!isNaN(v)) inp.value = inIn ? Math.round(v*12*100)/100 : Math.round((v/12)*100)/100;
+  });
+  foApplyUnit(entry);
+  foAutoCustomWinPrice(entry);
   rc();
 }
 function updFOPosIfNeeded(entry){
@@ -5655,7 +5723,7 @@ function rc(){
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses','bb'));
-  if(h>=17) f.push(bdg('Ladder Legs','bo')); else if(h===16) f.push(bdg('Standard Double Legs','bb'));
+  if(h>=16){var _ldr2=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?(h>=17):(w>31); f.push(_ldr2?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));}
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
   // Show free perks badge when base >= $10k
@@ -6539,9 +6607,13 @@ function collectQuoteData(){
   data.addcomps = [];
   document.querySelectorAll('.ace.entry').forEach(function(el){
     var d = {};
-    ['act','acq','acp','fo-cw','fo-ch'].forEach(function(cls){
+    ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-disp-unit','fo-sill','fo-sf','fo-loc'].forEach(function(cls){
       var f=el.querySelector('.'+cls); if(f) d[cls]=f.value;
     });
+    var pos=[]; el.querySelectorAll('.pos-section .pos-row').forEach(function(row){
+      var inp=row.querySelector('input'); var btn=row.querySelector('.pos-toggle button.active');
+      pos.push({val:inp?inp.value:'', side:btn?btn.dataset.side:'left'});
+    }); d.positions=pos;
     data.addcomps.push(d);
   });
 
@@ -6613,6 +6685,382 @@ function saveQuote(){
   }, 600);
 
   toast('✓ Quote saved: '+filename, 'ok');
+}
+
+function printRevisionForm(){
+  if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
+  var cn=G('cn').value||'—', cp=G('cp').value||'—', ce=G('ce').value||'—';
+  var rep=G('rep').value||'—';
+  var w=G('bw').value, l=G('bl').value, h=G('bh').value;
+  var city=G('city').textContent, county=G('county').textContent;
+  var location=(city!=='—')?(city+', '+county+', FL'):'—';
+  var cert=G('sc').textContent;
+  var btEl=G('btype'); var buildType=btEl?btEl.options[btEl.selectedIndex].text:'—';
+  var roofStyle=G('rs').value, wallStyle=G('ws').value, pitch=G('pitch').textContent;
+  var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
+  var framingGA=fuVal==='12'?'12 Gauge':'14 Gauge';
+  var now=new Date();
+  var todayStr=(now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
+  var compRows='';
+  document.querySelectorAll('.re').forEach(function(el){
+    var sz=el.querySelector('.rsz').value||'10x8';
+    var loc=el.querySelector('.rloc').value;
+    var qty=parseInt(el.querySelector('.rqt').value)||1;
+    compRows+='<tr><td>Roll-Up Door '+sz+'</td><td>'+qty+'</td><td>'+loc+'</td></tr>';
+  });
+  document.querySelectorAll('.we').forEach(function(el){
+    var loc=el.querySelector('.wloc').value;
+    compRows+='<tr><td>Walk-Through Door</td><td>1</td><td>'+loc+'</td></tr>';
+  });
+  document.querySelectorAll('.ne').forEach(function(el){
+    var loc=el.querySelector('.nloc').value;
+    var qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;
+    compRows+='<tr><td>Window</td><td>'+qty+'</td><td>'+loc+'</td></tr>';
+  });
+  document.querySelectorAll('.ace').forEach(function(el){
+    var comp=el.querySelector('.act')?el.querySelector('.act').value:'';
+    if(!comp||comp==='Custom — see notes') return;
+    var qty=parseInt(el.querySelector('.acq').value)||1;
+    var loc=el.querySelector('.fo-loc')?el.querySelector('.fo-loc').value:'—';
+    var sizeNote='';
+    if(comp.indexOf('(Custom Size)')>=0){
+      var s=foCustomFeet(el);
+      var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
+      if(dispIn) sizeNote=' ('+Math.round(s.w*12)+'" x '+Math.round(s.h*12)+'")';
+      else sizeNote=" ("+s.w.toFixed(1)+"' x "+s.h.toFixed(1)+"')";
+    }
+    compRows+='<tr><td>'+comp+sizeNote+'</td><td>'+qty+'</td><td>'+loc+'</td></tr>';
+  });
+  if(!compRows) compRows='<tr><td colspan="3" style="color:#8aa3b5;font-style:italic">No components on current quote</td></tr>';
+  var blankChangeRows='';
+  for(var ri=0;ri<8;ri++){
+    blankChangeRows+='<tr><td style="height:28px;border-bottom:1px solid #2a3d55"></td><td style="border-bottom:1px solid #2a3d55"></td><td style="border-bottom:1px solid #2a3d55"></td></tr>';
+  }
+  var pwin=window.open('','_blank');
+  if(!pwin){ toast('Popup blocked — please allow popups','err'); return; }
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>Revision Order — '+cn+'</title>'+
+  '<style>'+
+  '@page{size:letter;margin:0.5in}'+
+  '*{margin:0;padding:0;box-sizing:border-box}'+
+  'body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#e2e8f0;background:#080f14;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+  '.page{max-width:7.5in;margin:0 auto;padding:20px 0}'+
+  'h1{font-family:Arial,sans-serif;font-size:22px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;margin:0}'+
+  'h1 span{color:#22d3c8}'+
+  'h2{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#22d3c8;margin:18px 0 8px;border-bottom:1px solid #1e2d42;padding-bottom:4px}'+
+  '.hdr{background:#0d1925;border:1px solid #1e2d42;border-radius:8px;padding:16px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}'+
+  '.hdr-right{text-align:right;font-size:10px;color:#8aa3b5;line-height:1.6}'+
+  '.badge{display:inline-block;background:#22d3c8;color:#080f14;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 10px;border-radius:3px}'+
+  '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;margin-bottom:4px}'+
+  '.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 24px;margin-bottom:4px}'+
+  '.field{margin-bottom:8px}'+
+  '.field label{display:block;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:2px}'+
+  '.field .val{font-size:12px;color:#e2e8f0;font-weight:600}'+
+  '.field .blank{border-bottom:1px solid #94a3b8;min-height:18px;margin-top:2px}'+
+  'table{width:100%;border-collapse:collapse;margin-bottom:4px}'+
+  'th{text-align:left;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b;padding:6px 8px;border-bottom:2px solid #1e2d42}'+
+  'td{font-size:11px;padding:5px 8px;border-bottom:1px solid #111827;color:#e2e8f0}'+
+  '.sect{background:#0d1925;border:1px solid #1e2d42;border-radius:6px;padding:14px 16px;margin-bottom:14px}'+
+  '.sig-block{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:16px}'+
+  '.sig{text-align:center}'+
+  '.sig .line{border-bottom:1px solid #94a3b8;height:36px;margin-bottom:4px}'+
+  '.sig .lab{font-size:9px;color:#64748b;font-weight:700;letter-spacing:.08em;text-transform:uppercase}'+
+  '.terms{font-size:9px;color:#8aa3b5;line-height:1.6;margin-top:10px}'+
+  '.terms p{margin-bottom:6px}'+
+  '.price-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}'+
+  '.price-row.total{border-top:2px solid #22d3c8;margin-top:6px;padding-top:8px;font-weight:800;font-size:14px;color:#fff}'+
+  '.price-row .blank-amt{border-bottom:1px solid #94a3b8;width:120px;display:inline-block;height:16px}'+
+  '.rev-badge{background:rgba(251,191,36,.15);color:#fbbf24;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.3)}'+
+  '@media print{body{background:#080f14}.page{padding:0}}'+
+  '</style></head><body><div class="page">';
+  html+='<div class="hdr">';
+  html+='<div><h1>Storm<span>Safe</span> Steel</h1><div style="margin-top:6px"><span class="badge">Revision Order</span></div></div>';
+  html+='<div class="hdr-right">561-771-5555<br>West Palm Beach, FL<br>stormsafesteel.com<br><br><b>Date:</b> '+todayStr+'</div>';
+  html+='</div>';
+  html+='<div class="sect"><h2>Order Reference</h2>';
+  html+='<div class="grid2">';
+  html+='<div class="field"><label>Client Name</label><div class="val">'+cn+'</div></div>';
+  html+='<div class="field"><label>Phone</label><div class="val">'+cp+'</div></div>';
+  html+='<div class="field"><label>Email</label><div class="val">'+ce+'</div></div>';
+  html+='<div class="field"><label>Sales Rep</label><div class="val">'+rep+'</div></div>';
+  html+='<div class="field"><label>Original Quote / Order Date</label><div class="blank"></div></div>';
+  html+='<div class="field"><label>Revision #</label><div class="blank"></div></div>';
+  html+='</div></div>';
+  html+='<div class="sect"><h2>Building Specifications</h2>';
+  html+='<div class="grid3">';
+  html+='<div class="field"><label>Type</label><div class="val">'+buildType+'</div></div>';
+  html+='<div class="field"><label>Size</label><div class="val">'+w+"'W &times; "+l+"'L &times; "+h+"'H</div></div>";
+  html+='<div class="field"><label>Location</label><div class="val">'+location+'</div></div>';
+  html+='<div class="field"><label>Wind Cert</label><div class="val">'+cert+'</div></div>';
+  html+='<div class="field"><label>Framing</label><div class="val">'+framingGA+'</div></div>';
+  html+='<div class="field"><label>Roof / Wall</label><div class="val">'+roofStyle+' / '+wallStyle+'</div></div>';
+  html+='</div></div>';
+  html+='<div class="sect"><h2>Current Components (as-quoted)</h2>';
+  html+='<table><thead><tr><th>Component</th><th>Qty</th><th>Wall</th></tr></thead>';
+  html+='<tbody>'+compRows+'</tbody></table></div>';
+  html+='<div class="sect"><h2>Changes Requested &nbsp;<span class="rev-badge">Fill In Below</span></h2>';
+  html+='<table><thead><tr><th style="width:55%">Description of Change</th><th style="width:20%">Add / Remove / Modify</th><th style="width:25%">Price Adjustment ($)</th></tr></thead>';
+  html+='<tbody>'+blankChangeRows+'</tbody></table></div>';
+  html+='<div class="sect"><h2>Price Summary</h2>';
+  html+='<div class="price-row"><span>Original Contract Price</span><span>$ <span class="blank-amt"></span></span></div>';
+  html+='<div class="price-row"><span>Total Additions (+)</span><span>$ <span class="blank-amt"></span></span></div>';
+  html+='<div class="price-row"><span>Total Credits (−)</span><span>$ <span class="blank-amt"></span></span></div>';
+  html+='<div class="price-row total"><span>Revised Contract Price</span><span>$ <span class="blank-amt"></span></span></div>';
+  html+='</div>';
+  html+='<div class="sect"><h2>Terms &amp; Conditions</h2>';
+  html+='<div class="terms">';
+  html+='<p>1. This Revision Order modifies the original agreement between the customer and StormSafe Steel. All terms of the original contract remain in effect except as specifically amended herein.</p>';
+  html+='<p>2. Price adjustments are based on current steel market pricing at the time of this revision. Changes may affect lead time.</p>';
+  html+='<p>3. Structural or dimensional changes may require updated engineering and permitting. Any additional engineering or permit fees are the responsibility of the customer.</p>';
+  html+='<p>4. Once signed, this revision order is binding. Changes after production begins may incur additional cost and delay.</p>';
+  html+='</div></div>';
+  html+='<div class="sect" style="page-break-inside:avoid"><h2>Approval &amp; Sign-Off on Revised Layout</h2>';
+  html+='<div style="font-size:11px;color:#94a3b8;line-height:1.6;margin-bottom:12px">I have reviewed the changes described above, the revised pricing, and the updated building layout. I approve this revision for production.</div>';
+  html+='<div class="sig-block">';
+  html+='<div class="sig"><div class="line"></div><div class="lab">Customer Signature</div></div>';
+  html+='<div class="sig"><div class="line"></div><div class="lab">Date</div></div>';
+  html+='<div class="sig"><div class="line"></div><div class="lab">Print Name</div></div>';
+  html+='<div class="sig"><div class="line"></div><div class="lab">Phone</div></div>';
+  html+='</div>';
+  html+='<div class="sig-block" style="margin-top:20px">';
+  html+='<div class="sig"><div class="line"></div><div class="lab">StormSafe Rep Signature</div></div>';
+  html+='<div class="sig"><div class="line"></div><div class="lab">Date</div></div>';
+  html+='</div></div>';
+  html+='</div></body></html>';
+  pwin.document.write(html);
+  pwin.document.close();
+  setTimeout(function(){ pwin.print(); }, 400);
+}
+
+async function printRevisedLayout(){
+  if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
+  var pwin=window.open('','_blank');
+  if(!pwin){ toast('Popup blocked — please allow popups','err'); return; }
+  try { pwin.document.write('<!doctype html><html><body style="margin:0;background:#fff;color:#94a3b8;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px">Generating revised layout…</body></html>'); } catch(e){}
+  var imgs3D=null;
+  try {
+    var cap=(window.parent&&window.parent.__ssCapture3D)||window.__ssCapture3D;
+    if(typeof cap==='function'){ imgs3D=await cap(); }
+  } catch(e){ console.warn('3D capture failed',e); }
+  var cn=G('cn').value||'—', cp=G('cp').value||'—', ce=G('ce').value||'—';
+  var rep=G('rep').value||'—';
+  var w=G('bw').value, l=G('bl').value, h=G('bh').value;
+  var city=G('city').textContent, county=G('county').textContent;
+  var location=(city!=='—')?(city+', '+county+', FL'):'—';
+  var cert=G('sc').textContent;
+  var btEl=G('btype'); var buildType=btEl?btEl.options[btEl.selectedIndex].text:'—';
+  var roofStyle=G('rs').value, wallStyle=G('ws').value;
+  var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
+  var framingGA=fuVal==='12'?'12 Gauge':'14 Gauge';
+  var now=new Date();
+  var todayStr=(now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
+  var walls={Front:[],Back:[],Left:[],Right:[]};
+  function wallKey(loc){
+    if(/front/i.test(loc)) return 'Front';
+    if(/back/i.test(loc)) return 'Back';
+    if(/left/i.test(loc)) return 'Left';
+    if(/right/i.test(loc)) return 'Right';
+    return 'Front';
+  }
+  var tagNum=1;
+  document.querySelectorAll('.re').forEach(function(el){
+    var sz=el.querySelector('.rsz').value||'10x8';
+    var loc=el.querySelector('.rloc').value;
+    var qty=parseInt(el.querySelector('.rqt').value)||1;
+    var posRows=el.querySelectorAll('.pos-row');
+    for(var i=0;i<qty;i++){
+      var pos='Auto-spaced';
+      if(posRows[i]){
+        var inp=posRows[i].querySelector('input');
+        var side=posRows[i].querySelector('.pos-toggle button.active');
+        if(inp&&inp.value) pos=inp.value+"' from "+(side?side.textContent.trim():'left');
+      }
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Roll-Up Door', size:sz.replace('x',"' × ")+"'", pos:pos});
+    }
+  });
+  document.querySelectorAll('.we').forEach(function(el){
+    var loc=el.querySelector('.wloc').value;
+    var posRows=el.querySelectorAll('.pos-row');
+    var pos='Auto-spaced';
+    if(posRows[0]){
+      var inp=posRows[0].querySelector('input');
+      var side=posRows[0].querySelector('.pos-toggle button.active');
+      if(inp&&inp.value) pos=inp.value+"' from "+(side?side.textContent.trim():'left');
+    }
+    walls[wallKey(loc)].push({tag:tagNum++, type:'Walk-Through Door', size:"3' × 7'", pos:pos});
+  });
+  document.querySelectorAll('.ne').forEach(function(el){
+    var loc=el.querySelector('.nloc').value;
+    var qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;
+    var posRows=el.querySelectorAll('.pos-row');
+    for(var i=0;i<qty;i++){
+      var pos='Auto-spaced';
+      if(posRows[i]){
+        var inp=posRows[i].querySelector('input');
+        var side=posRows[i].querySelector('.pos-toggle button.active');
+        if(inp&&inp.value) pos=inp.value+"' from "+(side?side.textContent.trim():'left');
+      }
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Window', size:"3' × 4'", pos:pos});
+    }
+  });
+  document.querySelectorAll('.ace').forEach(function(el){
+    var comp=el.querySelector('.act')?el.querySelector('.act').value:'';
+    if(!comp||comp==='Custom — see notes') return;
+    var qty=parseInt(el.querySelector('.acq').value)||1;
+    var loc=el.querySelector('.fo-loc')?el.querySelector('.fo-loc').value:'Front Gable End';
+    var sizeNote='';
+    if(comp.indexOf('(Custom Size)')>=0){
+      var s=foCustomFeet(el);
+      var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
+      if(dispIn) sizeNote=Math.round(s.w*12)+'" × '+Math.round(s.h*12)+'"';
+      else sizeNote=s.w.toFixed(1)+"' × "+s.h.toFixed(1)+"'";
+    }
+    var posRows=el.querySelectorAll('.pos-row');
+    for(var i=0;i<qty;i++){
+      var pos='Auto-spaced';
+      if(posRows[i]){
+        var inp=posRows[i].querySelector('input');
+        var side=posRows[i].querySelector('.pos-toggle button.active');
+        if(inp&&inp.value) pos=inp.value+"' from "+(side?side.textContent.trim():'left');
+      }
+      walls[wallKey(loc)].push({tag:tagNum++, type:comp, size:sizeNote||'—', pos:pos});
+    }
+  });
+  var colors={
+    'Roll-Up Door':'#2563eb','Walk-Through Door':'#0e9488','Window':'#f59e0b',
+    'Framed Opening (Custom Size)':'#7c3aed','Hi-Impact Window':'#f59e0b'
+  };
+  function typeColor(t){
+    for(var k in colors){ if(t.indexOf(k)>=0||k.indexOf(t)>=0) return colors[k]; }
+    return '#7c3aed';
+  }
+  var schedHTML='';
+  ['Front','Back','Left','Right'].forEach(function(wn){
+    var items=walls[wn];
+    if(!items.length) return;
+    schedHTML+='<tr class="wall-hdr"><td colspan="5">'+wn+' Wall</td></tr>';
+    items.forEach(function(it){
+      var c=typeColor(it.type);
+      schedHTML+='<tr>'+
+        '<td><span class="otag" style="background:'+c+'">'+it.tag+'</span></td>'+
+        '<td class="type-cell">'+it.type+'</td>'+
+        '<td>'+it.size+'</td>'+
+        '<td>'+it.pos+'</td>'+
+        '<td></td></tr>';
+    });
+  });
+  if(!schedHTML) schedHTML='<tr><td colspan="5" style="text-align:center;color:#8aa3b5;font-style:italic;padding:18px">No openings configured</td></tr>';
+  var blankLines='';
+  for(var i=0;i<6;i++) blankLines+='<div class="ch-line"></div>';
+
+  var elevHTML = dimSpacingPageHTML();
+
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>Revised Layout — '+cn+'</title>'+
+  '<style>'+
+  '@page{size:letter;margin:0.5in}'+
+  '*{margin:0;padding:0;box-sizing:border-box}'+
+  'body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#0f1b2d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+  '.page{max-width:7.5in;margin:0 auto;padding:10px 0}'+
+  '.hdr{background:#08121d;color:#fff;display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-radius:6px 6px 0 0;border-bottom:4px solid #fbbf24}'+
+  '.hdr h1{font-family:Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}'+
+  '.hdr h1 span{color:#22d3c8}'+
+  '.hdr .rt{text-align:right;font-size:10px;color:#9fb3c4;line-height:1.5}'+
+  '.rev-badge{display:inline-block;background:rgba(251,191,36,.2);color:#b8860b;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.35);margin-top:5px}'+
+  '.info{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 20px;border:1px solid #c9d4e0;padding:12px 16px;margin-bottom:14px}'+
+  '.info .f{margin-bottom:4px}'+
+  '.info .f label{display:block;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:1px}'+
+  '.info .f .v{font-size:12px;font-weight:600;color:#0f1b2d}'+
+  '.info .f .blank{border-bottom:1px solid #94a3b8;min-height:16px}'+
+  'h2{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#0f1b2d;margin:14px 0 8px;padding-bottom:5px;border-bottom:2px solid #0f1b2d}'+
+  '.specs{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:14px;padding:8px 14px;background:#f4f7fa;border:1px solid #e4eaf1;border-radius:5px}'+
+  '.sp{text-align:center;min-width:60px}'+
+  '.sp .n{font-size:16px;font-weight:800;color:#0f1b2d}'+
+  '.sp .n .u{font-size:10px;font-weight:600;color:#64748b}'+
+  '.sp .l{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-top:1px}'+
+  'table{width:100%;border-collapse:collapse;margin-bottom:12px}'+
+  'th{background:#08121d;color:#fff;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:7px 8px;text-align:left}'+
+  'td{padding:6px 8px;border-bottom:1px solid #e4eaf1;font-size:11px;vertical-align:middle}'+
+  'tr:nth-child(even) td{background:#f8fafc}'+
+  '.wall-hdr td{background:#e2e8f0;font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#0f1b2d;padding:6px 8px;border-bottom:2px solid #c9d4e0}'+
+  '.otag{display:inline-flex;width:22px;height:22px;border-radius:50%;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#fff}'+
+  '.type-cell{font-weight:700}'+
+  '.changes{margin:14px 0}'+
+  '.ch-line{border-bottom:1px solid #c9d4e0;height:24px}'+
+  '.signoff{background:#f4f7fa;border:1px solid #c9d4e0;border-left:4px solid #fbbf24;border-radius:5px;padding:14px 16px;margin-top:14px}'+
+  '.signoff .ack{font-size:11px;color:#3c4a5e;line-height:1.5;margin-bottom:10px}'+
+  '.signoff .ack strong{color:#0f1b2d}'+
+  '.sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}'+
+  '.sig .ln{border-bottom:1.5px solid #0f1b2d;height:28px;margin-bottom:4px}'+
+  '.sig .cap{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b}'+
+  '.disclaimer{font-size:9px;color:#64748b;line-height:1.5;margin-top:14px;padding-top:10px;border-top:1px solid #e4eaf1}'+
+  '.disclaimer b{color:#0f1b2d}'+
+  '.render-sec{margin:14px 0}'+
+  '.rcard{background:#08121d;border-radius:6px;overflow:hidden;border:1px solid #1e2d42;margin-bottom:10px;page-break-inside:avoid}'+
+  '.rcard .rlbl{background:#1C2E3F;color:#fff;font-size:10px;font-weight:800;letter-spacing:2px;text-align:center;padding:5px}'+
+  '.rcard img{width:100%;display:block;object-fit:contain;background:#08121d}'+
+  '.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}'+
+  '@media print{.page{padding:0}}'+
+  '</style></head><body><div class="page">';
+  html+='<div class="hdr">';
+  html+='<div><h1>Storm<span>Safe</span> Steel</h1><div class="rev-badge">Revised Layout Approval</div></div>';
+  html+='<div class="rt">561-771-5555<br>West Palm Beach, FL<br>stormsafesteel.com<br><b>'+todayStr+'</b></div>';
+  html+='</div>';
+  html+='<div class="info">';
+  html+='<div class="f"><label>Customer</label><div class="v">'+cn+'</div></div>';
+  html+='<div class="f"><label>Phone</label><div class="v">'+cp+'</div></div>';
+  html+='<div class="f"><label>Sales Rep</label><div class="v">'+rep+'</div></div>';
+  html+='<div class="f"><label>Revision #</label><div class="blank"></div></div>';
+  html+='<div class="f"><label>Original Approval Date</label><div class="blank"></div></div>';
+  html+='<div class="f"><label>Revision Date</label><div class="v">'+todayStr+'</div></div>';
+  html+='</div>';
+  html+='<div class="specs">';
+  html+='<div class="sp"><div class="n">'+w+"'<span class=\"u\"> W</span></div><div class=\"l\">Width</div></div>";
+  html+='<div class="sp"><div class="n">'+l+"'<span class=\"u\"> L</span></div><div class=\"l\">Length</div></div>";
+  html+='<div class="sp"><div class="n">'+h+"'</div><div class=\"l\">Eave</div></div>";
+  html+='<div class="sp"><div class="n">'+cert+'</div><div class="l">Wind</div></div>';
+  html+='<div class="sp"><div class="n">'+framingGA.replace(' Gauge','')+'<span class="u"> GA</span></div><div class="l">Framing</div></div>';
+  html+='</div>';
+  // 3D Building Rendering
+  if(imgs3D && imgs3D.iso){
+    html+='<h2>3D Building Rendering</h2>';
+    html+='<div class="render-sec">';
+    html+='<div class="rcard"><img src="'+imgs3D.iso+'" style="max-height:320px;margin:0 auto"></div>';
+    html+='<div class="rgrid">';
+    if(imgs3D.front) html+='<div class="rcard"><div class="rlbl">FRONT</div><img src="'+imgs3D.front+'"></div>';
+    if(imgs3D.back) html+='<div class="rcard"><div class="rlbl">BACK</div><img src="'+imgs3D.back+'"></div>';
+    if(imgs3D.left) html+='<div class="rcard"><div class="rlbl">RIGHT SIDE</div><img src="'+imgs3D.left+'"></div>';
+    if(imgs3D.right) html+='<div class="rcard"><div class="rlbl">LEFT SIDE</div><img src="'+imgs3D.right+'"></div>';
+    html+='</div></div>';
+  }
+
+  // 2D Elevation Views (opening positions with dimensions)
+  html+='</div>'; // close .page
+  html+=elevHTML;
+  html+='<div class="page" style="page-break-before:always">';
+
+  // Opening Schedule
+  html+='<h2>Opening Schedule — Revised Layout</h2>';
+  html+='<table><thead><tr><th style="width:35px">#</th><th>Type</th><th>Size</th><th>Position</th><th style="width:80px">Notes</th></tr></thead>';
+  html+='<tbody>'+schedHTML+'</tbody></table>';
+  html+='<h2>Summary of Layout Changes</h2>';
+  html+='<div class="changes">'+blankLines+'</div>';
+  html+='<div class="signoff">';
+  html+='<div class="ack"><strong>Sign-off on revised layout.</strong> I have reviewed the revised opening locations, sizes, and layout changes described above. I approve this revised layout for production. Changes after production begins may incur additional cost and delay.</div>';
+  html+='<div class="sig-grid">';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">Customer Signature</div></div>';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">Date</div></div>';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">Print Name</div></div>';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">Phone</div></div>';
+  html+='</div>';
+  html+='<div class="sig-grid" style="margin-top:16px">';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">StormSafe Rep Signature</div></div>';
+  html+='<div class="sig"><div class="ln"></div><div class="cap">Date</div></div>';
+  html+='</div></div>';
+  html+='<div class="disclaimer"><b>This revised layout supersedes the original approval.</b> Please verify all opening changes before signing. Once this revision is approved, openings are framed to these updated locations. Structural or dimensional changes may require updated engineering and permitting. Positions are measured to the nearest edge of each opening from the noted reference corner.</div>';
+  html+='</div></body></html>';
+  pwin.document.open();
+  pwin.document.write(html);
+  pwin.document.close();
+  setTimeout(function(){ pwin.print(); }, 400);
 }
 
 function loadQuote(input){
@@ -6763,8 +7211,27 @@ function restoreQuoteData(data){
     var actEl=el.querySelector('.act'); if(actEl&&d.act){ actEl.value=d.act; updACPrice(actEl); }
     var acqEl=el.querySelector('.acq'); if(acqEl&&d.acq) acqEl.value=d.acq;
     var acpEl=el.querySelector('.acp'); if(acpEl&&d.acp) acpEl.value=d.acp;
+    var foUnEl=el.querySelector('.fo-unit'); if(foUnEl&&d['fo-unit']) foUnEl.value=d['fo-unit'];
     var foCwEl=el.querySelector('.fo-cw'); if(foCwEl&&d['fo-cw']) foCwEl.value=d['fo-cw'];
     var foChEl=el.querySelector('.fo-ch'); if(foChEl&&d['fo-ch']) foChEl.value=d['fo-ch'];
+    if(typeof foApplyUnit==='function') foApplyUnit(el);
+    var foLocEl=el.querySelector('.fo-loc'); if(foLocEl&&d['fo-loc']) foLocEl.value=d['fo-loc'];
+    var foDuEl=el.querySelector('.fo-disp-unit'); if(foDuEl&&d['fo-disp-unit']) foDuEl.value=d['fo-disp-unit'];
+    var foSlEl=el.querySelector('.fo-sill'); if(foSlEl&&d['fo-sill']!==undefined&&d['fo-sill']!=='') foSlEl.value=d['fo-sill'];
+    var foSfEl=el.querySelector('.fo-sf'); if(foSfEl&&d['fo-sf']) foSfEl.value=d['fo-sf'];
+    if(actEl && actEl.value.indexOf('Framed Opening')===0){
+      var foQty=parseInt(d.acq)||1;
+      updatePosSection(el, foQty, 'Opening');
+      if(typeof refreshPosLabels==='function') refreshPosLabels(el);
+      var foRows=el.querySelectorAll('.pos-section .pos-row');
+      (d.positions||[]).forEach(function(p,i){
+        if(!foRows[i]) return;
+        var inp=foRows[i].querySelector('input'); if(inp) inp.value=p.val||'';
+        foRows[i].querySelectorAll('.pos-toggle button').forEach(function(b){
+          b.classList.toggle('active', b.dataset.side===(p.side||'left'));
+        });
+      });
+    }
   });
 
   // Step 10: trigger all update functions in correct order
