@@ -26,7 +26,7 @@ const SAVE_BTN = {
   fontWeight: 800,
 }
 
-export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false, autoRevision = false }) {
+export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false }) {
   // When reopening a saved builder quote, its full state lives in payload_json.
   const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
@@ -96,9 +96,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       toast(
         ok ? (autoContract
               ? `Loaded quote ${initialQuote?.quote_number || ''} — generating contract…`.trim()
-              : autoRevision
-                ? `Loaded quote ${initialQuote?.quote_number || ''} — opening revision form…`.trim()
-                : `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim())
+              : `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim())
            : "Couldn't fully load this quote's saved build — please rebuild or check the console.",
         ok ? 'success' : undefined,
       )
@@ -108,21 +106,6 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       if (ok && autoContract) {
         setStatus('Generating contract…')
         setTimeout(() => { saveContractThenPrint(getProgramWindow()) }, 1400)
-      }
-      // "Revision Form" from a quote card: open the program's Revision Order form
-      // (fill-in revision # / description of changes / revised price + customer
-      // sign-off) over the restored build — used when a signed order changes
-      // (colors, doors, size). Same repricing delay as the contract flow.
-      if (ok && autoRevision) {
-        setStatus('Opening revision form…')
-        setTimeout(() => {
-          setStatus('')
-          const pgNow = getProgramWindow()
-          try {
-            if (pgNow && typeof pgNow.printRevisionForm === 'function') pgNow.printRevisionForm()
-            else toast('The builder is still loading — use its REVISION FORM button once it settles.')
-          } catch (e) { toast('Could not open the revision form.'); console.warn('revision form failed', e) }
-        }, 1400)
       }
     }, 500)
     return () => clearInterval(t)

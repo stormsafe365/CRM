@@ -13,6 +13,7 @@ import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
 import ColorSheetModal from './ColorSheetModal'
+import RevisionModal from './RevisionModal'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
@@ -32,7 +33,6 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [editingId, setEditingId] = useState(null)
   const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
   const [autoContract, setAutoContract] = useState(false) // opened via "Generate Contract" → auto-run contract flow
-  const [autoRevision, setAutoRevision] = useState(false) // opened via "Revision Form" → auto-open the revision order form
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
@@ -206,18 +206,10 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   }
 
   // "Revision Form" from a quote card — for changes to an already-signed order
-  // (colors, doors, size). Reopens the quote in the builder and auto-opens the
-  // program's Revision Order form (fill-in revision # / changes / revised price,
-  // customer sign-off). Same restore path as Generate Contract.
-  function handleRevisionForm(quote) {
-    if (!isBuilderQuote(quote)) {
-      setError('This quote was added manually, so there’s no build to load. Build it in the 3D quote builder first.')
-      return
-    }
-    setEditQuote(quote)
-    setAutoRevision(true)
-    setBuilding(true)
-  }
+  // (colors, doors, size). Opens the typed RevisionModal: the rep fills the
+  // change rows on screen and gets a finished PDF (no handwriting).
+  const [revisionQuote, setRevisionQuote] = useState(null)
+  const handleRevisionForm = setRevisionQuote
 
   // Delete straight from the deck / spread card (the list view has its own inline confirm).
   function confirmDeleteQuote(quote) {
@@ -268,9 +260,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           client={client ?? { id: clientId }}
           initialQuote={editQuote}
           autoContract={autoContract}
-          autoRevision={autoRevision}
           onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
-          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoRevision(false) }}
+          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false) }}
         />
       )}
 
@@ -342,7 +333,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                   )}
                   <button onClick={() => setReceiptQuote(q)} className="link-btn">{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>
                   <button onClick={() => setColorQuote(q)} className="link-btn">Color Sheet</button>
-                  {isBuilderQuote(q) && <button onClick={() => handleRevisionForm(q)} className="link-btn">Revision Form</button>}
+                  <button onClick={() => handleRevisionForm(q)} className="link-btn">Revision Order</button>
                   <button onClick={() => setEditingId(q.id)} className="link-btn">Edit</button>
                   <button onClick={() => setConfirmingDeleteId(q.id)} className="link-btn link-btn-danger">
                     Delete
@@ -382,6 +373,14 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           client={client ?? { id: clientId }}
           quote={colorQuote}
           onClose={() => setColorQuote(null)}
+        />
+      )}
+
+      {revisionQuote && (
+        <RevisionModal
+          client={client ?? { id: clientId }}
+          quote={revisionQuote}
+          onClose={() => setRevisionQuote(null)}
         />
       )}
 
@@ -457,7 +456,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
         {onGenerateContract && canContract && <button className="btn btn-ghost" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
-        {onRevisionForm && canContract && <button className="btn btn-ghost" onClick={() => onRevisionForm(q)}>Revision Form</button>}
+        {onRevisionForm && <button className="btn btn-ghost" onClick={() => onRevisionForm(q)}>Revision Order</button>}
         {onReceipt && <button className="btn btn-ghost" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
         {onColorSheet && <button className="btn btn-ghost" onClick={() => onColorSheet(q)}>Color Sheet</button>}
         {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
