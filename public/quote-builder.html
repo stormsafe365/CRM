@@ -548,9 +548,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   </div>
   <div id="wain-col-row" class="crow hidden">
     <label>Wainscot Color</label>
-    <select id="cwn" onchange="setSwatch('cwn','swn')"><option value="">— select color —</option></select>
+    <select id="cwn" onchange="setSwatch('cwn','swn');rc()"><option value="">— select color —</option></select>
     <div class="csw" id="swn"></div>
   </div>
+  <div id="wain-print-note" class="anote hidden" style="margin:-2px 0 8px">Print panel wainscot: <strong>+25%</strong> on the wainscot price · vertical panels only · 29GA today — 26GA &amp; FL-approved versions “coming soon” per CCI memo 3/9/26.</div>
 </div>
 
 <!-- 12. SITE INFO -->
@@ -708,7 +709,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <tr><td class="pk">Side Frames (auto)</td><td class="pv" id="psf">—</td></tr>
       <tr><td class="pk">Lap Siding (+10%)</td><td class="pv" id="plp">—</td></tr>
       <tr><td class="pk">26GA Sheeting Upgrade</td><td class="pv" id="psh">—</td></tr>
-      <tr><td class="pk">Wainscot</td><td class="pv" id="pwi">—</td></tr>
+      <tr><td class="pk" id="pwi-k">Wainscot</td><td class="pv" id="pwi">—</td></tr>
       <tr><td class="pk">Storage Partition</td><td class="pv" id="paew">—</td></tr>
       <tr><td class="pk">Insulation</td><td class="pv" id="pins">—</td></tr>
       <tr><td class="pk">Lean-Tos</td><td class="pv" id="plt">—</td></tr>
@@ -959,8 +960,20 @@ function rebuildColorDropdowns(){
       opt.textContent = colors[j].n + (colors[j].c ? ' (' + colors[j].c + ')' : '');
       sel.appendChild(opt);
     }
+    // Wainscot only: CCI print panels (memo 3/9/26) — +25% wainscot options.
+    var prints = (ids[i]==='cwn' && typeof MFR==='function' && MFR().wainscotPrints) ? MFR().wainscotPrints : null;
+    if(prints){
+      for(var pj=0;pj<prints.length;pj++){
+        var po = document.createElement('option');
+        po.value = prints[pj].h;
+        po.textContent = prints[pj].n + ' — Print Panel (+25%)';
+        po.setAttribute('data-print','1');
+        po.setAttribute('data-code','PRINT-'+prints[pj].k);
+        sel.appendChild(po);
+      }
+    }
     // Restore previous selection if it still exists in new palette
-    var stillValid = (prevVal === 'TBD') || colors.some(function(c){return c.h===prevVal;});
+    var stillValid = (prevVal === 'TBD') || colors.some(function(c){return c.h===prevVal;}) || (prints && prints.some(function(c){return c.h===prevVal;}));
     sel.value = stillValid ? prevVal : 'TBD';
     // Refresh swatch
     var swId = swMap[ids[i]];
@@ -2848,6 +2861,17 @@ var MANUFACTURERS = {
       {n:'Sandstone',     h:'#CCBC9D'},
       {n:'Pebble Beige',  h:'#D6C8A5'}
     ],
+    // ── Print-panel wainscot (CCI "New Product" memo 3/9/26) ─────────────
+    // Wainscoting/two-tone only, VERTICAL panels only, 29GA today (26GA and
+    // FL-approved versions "coming soon"). Price = +25% on the wainscot charge
+    // for the portion where applied. Hexes are representative tones, UNIQUE vs
+    // the CCI palette so saved quotes (cwn stores the hex) restore correctly.
+    wainscotPrints: [
+      {n:'Black Wood',   h:'#46443F', k:'BLACKWOOD'},
+      {n:'Rich Wood',    h:'#B0A183', k:'RICHWOOD'},
+      {n:'Rustic Brick', h:'#7A6046', k:'RUSTICBRICK'},
+      {n:'Stone Wall',   h:'#A8A69E', k:'STONEWALL'}
+    ],
     // ── Scalar pricing ───────────────────────────────────────────────────────
     wtd_std: 400, wtd_hi: 600,
     win_std: 200, win_hi: 600,
@@ -4210,6 +4234,12 @@ function gVertUpgrade(){
 // Wainscot — SINGLE SOURCE for rc(), both PDF paths and the text copy.
 // (Each previously duplicated the bucket math, so the CCI-tall $12.50/lf rate
 // showed in the app but the printed contract still charged the old bucket.)
+// CCI print-panel wainscot (memo 3/9/26): the selected cwn option, if a print.
+function wainscotPrintOpt(){
+  var el=G('cwn'); if(!el||el.selectedIndex<0) return null;
+  var o=el.options[el.selectedIndex];
+  return (o && o.getAttribute && o.getAttribute('data-print')) ? o : null;
+}
 function gWainscot(){
   if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return 0;
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
@@ -4223,11 +4253,11 @@ function gWainscot(){
     if(G('wbg').value==='Closed')_wlf+=w;
     if(G('wre').value==='Closed')_wlf+=l;
     if(G('wle').value==='Closed')_wlf+=l;
-    return _wlf>0?Math.round(12.5*_wlf):0;
+    return _wlf>0?Math.round(12.5*_wlf*(wainscotPrintOpt()?1.25:1)):0;
   }
   var _wb=MFR().wainscotBuckets(w), _wc=0;
   for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
-  return _wb.vals[_wc];
+  return Math.round(_wb.vals[_wc]*(wainscotPrintOpt()?1.25:1));
 }
 function gWalls(){
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
@@ -5695,6 +5725,8 @@ function rc(){
   G('psf').textContent=sf?fC(sf):'—';
   G('plp').textContent=lapP?fC(lapP):'—';
   G('pwi').textContent=wainP?fC(wainP):'—';
+  var _pwk=G('pwi-k'); if(_pwk) _pwk.textContent = (wainP && wainscotPrintOpt()) ? 'Wainscot — Print Panel (+25%)' : 'Wainscot';
+  var _wpn=G('wain-print-note'); if(_wpn) _wpn.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes'));
   if(G('paew')) G('paew').textContent=aewP?fC(aewP):'—';
   // Insulation
   var pinsEl=G('pins'); if(pinsEl) pinsEl.textContent=insulTotal?fC(insulTotal):'—';
