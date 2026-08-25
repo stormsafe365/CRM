@@ -704,6 +704,13 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="No">No</option>
     </select>
   </div>
+  <div class="row"><label>Honor Signed Pricing — Original Building Subtotal ($)</label>
+    <input type="number" id="ct-honor" step="0.01" min="0" placeholder="Blank = current pricing" onchange="rc()">
+  </div>
+  <div class="row"><label>Original Agreement #</label>
+    <input id="ct-honor-ref" placeholder="e.g. SS-2026-20350" onchange="rc()">
+  </div>
+  <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4"><strong style="color:#cbd5e1">Reissuing a contract on a signed order</strong> (adding colors, etc.): enter the signed contract's <strong>Building Subtotal</strong> and agreement #. The reprint keeps today's line items, adds one "honoring signed agreement" adjustment row, and the totals, deposit and plans fee recompute to the signed contract's numbers exactly.</div>
   <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">These fields appear on the printed contract only. Section 1 (Client Information) fills the city/state/zip portion automatically.</div>
 </div>
 
@@ -7797,7 +7804,7 @@ function collectQuoteData(){
     'wfg','wbg','wre','wle','add-end-wall',
     'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right',
     // Section 1 notes + contract page inputs — were missing, so they didn't persist.
-    'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready'
+    'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref'
   ];
   simpleIds.forEach(function(id){
     var el = G(id);
@@ -9651,6 +9658,19 @@ async function printContract(){
   var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+connFeePr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
 
+  // ── Honor signed pricing (contract reissue) ───────────────────────────────
+  // Reissuing a contract for an already-signed order (e.g. adding colors after
+  // pricing rules changed): the rep enters the ORIGINAL contract's Building
+  // Subtotal + agreement # in Section 14. One labeled adjustment row closes
+  // the gap between today's chart pricing and the signed subtotal, and every
+  // downstream number (discount, tax, deposit, additional discount, plans fee)
+  // recomputes from the honored subtotal — reproducing the signed contract's
+  // figures exactly.
+  var honorAmtC=parseFloat(G('ct-honor')?G('ct-honor').value:0)||0;
+  var honorRefC=(G('ct-honor-ref')&&G('ct-honor-ref').value?G('ct-honor-ref').value:'').replace(/^\s+|\s+$/g,'');
+  var honorAdjC=0;
+  if(honorAmtC>0){ honorAdjC=Math.round(honorAmtC-sub); sub=Math.round(honorAmtC); }
+
   // ── Engineered Plans + Permit Service (both invoiced separately by engineering firm) ──
   // Show on contract only when "permit required" is Yes. Permitting service is optional.
   var _planTypeC = G('plans-sel') ? G('plans-sel').value : '';
@@ -9912,9 +9932,12 @@ async function printContract(){
 
   // ── Build line items HTML ──
   if(INPUT_MODE){ lineItems.length=0; manualLineItems().forEach(function(it){ lineItems.push({desc:it.desc, qty:null, unit:null, amt:it.amt}); }); }
+  if(honorAdjC!==0){
+    lineItems.push({desc:'<strong>Price Adjustment \u2014 Honoring Signed Agreement'+(honorRefC?' '+_esc(honorRefC):'')+'</strong><br><span style="font-size:6.5pt;color:#64748b">Current chart pricing honored at the original signed contract amount</span>', qty:null, unit:null, amt:honorAdjC});
+  }
   var rowsHTML='';
   lineItems.forEach(function(it){
-    var amtStr=it.amt===0?'<span style="color:#15803d;font-weight:800">INCLUDED</span>':fC(it.amt);
+    var amtStr=it.amt===0?'<span style="color:#15803d;font-weight:800">INCLUDED</span>':(it.amt<0?'\u2212'+fC(-it.amt):fC(it.amt));
     rowsHTML+='<tr>'+
       '<td class="li-desc">'+it.desc+'</td>'+
       '<td class="li-c">'+(it.qty!==null?it.qty:'—')+'</td>'+
