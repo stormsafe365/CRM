@@ -25,7 +25,7 @@ const calIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const userIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 const imgIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></svg>
 
-export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onReceipt, onColorSheet }) {
+export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onRevisionForm, onReceipt, onColorSheet }) {
   const [idx, setIdx] = useState(0)
   const n = quotes.length
 
@@ -105,6 +105,7 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
             {q.pdf_snapshot_url && <button className="qcard-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>View PDF</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
             {onGenerateContract && canContract && <button className="qcard-btn" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
+            {onRevisionForm && canContract && <button className="qcard-btn" onClick={() => onRevisionForm(q)}>Revision Form</button>}
             {onReceipt && <button className="qcard-btn" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
             {onColorSheet && <button className="qcard-btn" onClick={() => onColorSheet(q)}>Color Sheet</button>}
             {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
