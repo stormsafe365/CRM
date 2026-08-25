@@ -44,25 +44,36 @@ export const CA_COLORS = [
   { n: 'Copper Penny', c: 'KM2Y49352', h: '#C47F2A' },
 ]
 
+// Hexes resampled 2026-08-25 from CCI's official color chart photo.
 export const CCI_COLORS = [
-  { n: 'White', h: '#F4F1EC' },
-  { n: 'Galvalume', h: '#B8BDC2' },
-  { n: 'Black', h: '#1A1A1A' },
-  { n: 'Quaker Gray', h: '#52524F' },
-  { n: 'Pewter Gray', h: '#7A7D7F' },
-  { n: 'Earth Brown', h: '#4F3A2E' },
-  { n: 'Evergreen', h: '#1F4231' },
-  { n: 'Slate Blue', h: '#3A5E7A' },
-  { n: 'King Blue', h: '#1B7AB4' },
-  { n: 'Cardinal Red', h: '#D62A1F' },
-  { n: 'Barn Red', h: '#A2392B' },
-  { n: 'Merlot', h: '#5D2A2E' },
-  { n: 'Burgundy', h: '#4B1A23' },
-  { n: 'Tan', h: '#B7986A' },
-  { n: 'Clay', h: '#A99172' },
-  { n: 'Sandstone', h: '#CCBC9D' },
-  { n: 'Pebble Beige', h: '#D6C8A5' },
+  { n: 'White', h: '#F2F1EA' },
+  { n: 'Galvalume', h: '#B9BCBB' },
+  { n: 'Black', h: '#1D1E20' },
+  { n: 'Quaker Gray', h: '#57534A' },
+  { n: 'Pewter Gray', h: '#8A8A88' },
+  { n: 'Earth Brown', h: '#74472A' },
+  { n: 'Evergreen', h: '#2C5745' },
+  { n: 'Slate Blue', h: '#4A7191' },
+  { n: 'King Blue', h: '#2591CE' },
+  { n: 'Cardinal Red', h: '#D8291D' },
+  { n: 'Barn Red', h: '#A63A20' },
+  { n: 'Merlot', h: '#5C2320' },
+  { n: 'Burgundy', h: '#46201F' },
+  { n: 'Tan', h: '#B18F6C' },
+  { n: 'Clay', h: '#A8977E' },
+  { n: 'Sandstone', h: '#D2C4A0' },
+  { n: 'Pebble Beige', h: '#DBD1B0' },
 ]
+
+/** Pre-resample CCI hexes (what older saved quotes carry) → corrected hexes. */
+const CCI_LEGACY_HEX = {
+  '#f4f1ec': '#F2F1EA', '#b8bdc2': '#B9BCBB', '#1a1a1a': '#1D1E20',
+  '#52524f': '#57534A', '#7a7d7f': '#8A8A88', '#4f3a2e': '#74472A',
+  '#1f4231': '#2C5745', '#3a5e7a': '#4A7191', '#1b7ab4': '#2591CE',
+  '#d62a1f': '#D8291D', '#a2392b': '#A63A20', '#5d2a2e': '#5C2320',
+  '#4b1a23': '#46201F', '#b7986a': '#B18F6C', '#a99172': '#A8977E',
+  '#ccbc9d': '#D2C4A0', '#d6c8a5': '#DBD1B0',
+}
 
 /** Palette + display identity for a quote's manufacturer. */
 export function paletteFor(manufacturer) {
@@ -74,8 +85,9 @@ export function paletteFor(manufacturer) {
 
 /** Match a saved builder color value (hex like '#6B6360') back to a palette entry. */
 export function matchSavedColor(list, savedHex) {
-  const v = String(savedHex || '').trim().toLowerCase()
+  let v = String(savedHex || '').trim().toLowerCase()
   if (!v || v === 'tbd') return null
+  if (CCI_LEGACY_HEX[v]) v = CCI_LEGACY_HEX[v].toLowerCase()
   return list.find((c) => c.h.toLowerCase() === v) || null
 }
 

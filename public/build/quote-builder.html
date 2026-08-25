@@ -1048,6 +1048,7 @@ function rebuildColorDropdowns(){
     var sel = G(ids[i]);
     if(!sel) continue;
     var prevVal = sel.value;
+    if(typeof CCI_LEGACY_HEX!=='undefined' && CCI_LEGACY_HEX[prevVal]) prevVal = CCI_LEGACY_HEX[prevVal];
     sel.innerHTML = '';
     var tbd = document.createElement('option');
     tbd.value = 'TBD'; tbd.textContent = 'TBD';
@@ -3277,24 +3278,27 @@ var MANUFACTURERS = {
       return 0;
     },
     // ── Building color palette (per CCI color chart) ──────────────────────────
+    // Hexes resampled 2026-08-25 from CCI's official color chart photo
+    // (mid-panel tones). Old hexes live on in CCI_LEGACY_HEX so saved quotes
+    // (cr/cw/ct/cwn store the hex) restore to the same color.
     colors: [
-      {n:'White',         h:'#F4F1EC'},
-      {n:'Galvalume',     h:'#B8BDC2'},
-      {n:'Black',         h:'#1A1A1A'},
-      {n:'Quaker Gray',   h:'#52524F'},
-      {n:'Pewter Gray',   h:'#7A7D7F'},
-      {n:'Earth Brown',   h:'#4F3A2E'},
-      {n:'Evergreen',     h:'#1F4231'},
-      {n:'Slate Blue',    h:'#3A5E7A'},
-      {n:'King Blue',     h:'#1B7AB4'},
-      {n:'Cardinal Red',  h:'#D62A1F'},
-      {n:'Barn Red',      h:'#A2392B'},
-      {n:'Merlot',        h:'#5D2A2E'},
-      {n:'Burgundy',      h:'#4B1A23'},
-      {n:'Tan',           h:'#B7986A'},
-      {n:'Clay',          h:'#A99172'},
-      {n:'Sandstone',     h:'#CCBC9D'},
-      {n:'Pebble Beige',  h:'#D6C8A5'}
+      {n:'White',         h:'#F2F1EA'},
+      {n:'Galvalume',     h:'#B9BCBB'},
+      {n:'Black',         h:'#1D1E20'},
+      {n:'Quaker Gray',   h:'#57534A'},
+      {n:'Pewter Gray',   h:'#8A8A88'},
+      {n:'Earth Brown',   h:'#74472A'},
+      {n:'Evergreen',     h:'#2C5745'},
+      {n:'Slate Blue',    h:'#4A7191'},
+      {n:'King Blue',     h:'#2591CE'},
+      {n:'Cardinal Red',  h:'#D8291D'},
+      {n:'Barn Red',      h:'#A63A20'},
+      {n:'Merlot',        h:'#5C2320'},
+      {n:'Burgundy',      h:'#46201F'},
+      {n:'Tan',           h:'#B18F6C'},
+      {n:'Clay',          h:'#A8977E'},
+      {n:'Sandstone',     h:'#D2C4A0'},
+      {n:'Pebble Beige',  h:'#DBD1B0'}
     ],
     // ── Print-panel wainscot (CCI "New Product" memo 3/9/26) ─────────────
     // Wainscoting/two-tone only, VERTICAL panels only, 29GA today (26GA and
@@ -8366,6 +8370,16 @@ function loadQuote(input){
   reader.readAsText(file);
 }
 
+// CCI palette resample (2026-08-25): old on-screen hexes → corrected ones.
+// Saved quotes store the hex as the select VALUE — translate on restore.
+var CCI_LEGACY_HEX = {
+  '#F4F1EC':'#F2F1EA', '#B8BDC2':'#B9BCBB', '#1A1A1A':'#1D1E20',
+  '#52524F':'#57534A', '#7A7D7F':'#8A8A88', '#4F3A2E':'#74472A',
+  '#1F4231':'#2C5745', '#3A5E7A':'#4A7191', '#1B7AB4':'#2591CE',
+  '#D62A1F':'#D8291D', '#A2392B':'#A63A20', '#5D2A2E':'#5C2320',
+  '#4B1A23':'#46201F', '#B7986A':'#B18F6C', '#A99172':'#A8977E',
+  '#CCBC9D':'#D2C4A0', '#D6C8A5':'#DBD1B0'
+};
 function restoreQuoteData(data){
   if(!data||!data.fields) return;
   var f = data.fields;
@@ -8397,7 +8411,11 @@ function restoreQuoteData(data){
     var el = G(id);
     if(!el) return;
     if(el.tagName==='INPUT'&&el.type==='checkbox') el.checked=!!f[id];
-    else if(el.tagName==='SELECT'||el.tagName==='INPUT'||el.tagName==='TEXTAREA') el.value=f[id];
+    else if(el.tagName==='SELECT'||el.tagName==='INPUT'||el.tagName==='TEXTAREA'){
+      el.value=f[id];
+      // Old CCI palette hex no longer an option → its corrected replacement.
+      if(el.tagName==='SELECT' && el.value!==String(f[id]) && CCI_LEGACY_HEX[f[id]]) el.value=CCI_LEGACY_HEX[f[id]];
+    }
   });
 
   // Step 3: restore span display fields (city/county/state)
