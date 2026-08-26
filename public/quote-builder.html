@@ -594,6 +594,17 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </div>
     <div style="font-size:10px;color:#94a3b8;margin-top:3px">Reduces deposit. Set "On Quote" to Show to display the discount line + valid-through date on the customer quote.</div>
   </div>
+  <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px"><label>Manufacturer Adjustment</label>
+    <div style="display:flex;gap:5px;align-items:center">
+      <select id="adj-type" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px;font-size:12px;color:#1C3557;font-weight:600;background:#fff">
+        <option value="ded">Deduction (−)</option>
+        <option value="add">Addition (+)</option>
+      </select>
+      <input id="adj-amt" type="number" value="" min="0" step="1" placeholder="0" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;flex:1">
+    </div>
+    <input id="adj-note" placeholder="Reason — prints on quote &amp; contract (e.g. CCI: side walls charged at 13' vs 16')" oninput="rc()" style="margin-top:5px;border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%;box-sizing:border-box">
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Adjusts the BUILDING price (flows through discount, tax &amp; deposit like a cheaper/dearer building) — unlike the Additional Discount, which reduces the deposit. For manufacturer-approved custom pricing.</div>
+  </div>
   <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px">
     <label>Zoning Checklist</label>
     <select id="zoning-show" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff">
@@ -723,6 +734,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <tr><td class="pk">Additional Components</td><td class="pv" id="pac">—</td></tr>
       <tr id="sp-summary-row" style="display:none"><td class="pk">Side Panels</td><td class="pv" id="psp">—</td></tr>
       <tr id="overhang-summary-row" style="display:none"><td class="pk">1' Overhang</td><td class="pv" id="poh">—</td></tr>
+      <tr id="adj-summary-row" style="display:none"><td class="pk" id="padj-k">Manufacturer Adjustment</td><td class="pv" id="padj">—</td></tr>
       <tr class="dr"><td class="pk" id="dlbl">Discount (0%)</td><td class="pv" id="pds">—</td></tr>
       <tr class="ad"><td class="pk">Building Price (After Discount)</td><td class="pv" id="pad">—</td></tr>
       <tr class="tr2"><td class="pk" id="tlbl">Sales Tax (6%)</td><td class="pv" id="ptx">—</td></tr>
@@ -5562,6 +5574,19 @@ function rcManual(){
   if(G('building-panel') && G('building-panel').style.display==='block' && typeof renderBuildingViews==='function') renderBuildingViews();
 }
 
+// Manufacturer-approved custom price adjustment (Section 13). "ded" type
+// returns a NEGATIVE amount. Included in the PRE-DISCOUNT subtotal of every
+// pricing path (rc / quote / contract / text summary).
+function gAdj(){
+  var a=parseFloat(G('adj-amt')?G('adj-amt').value:0)||0;
+  if(a<=0) return 0;
+  var t=G('adj-type')?G('adj-type').value:'ded';
+  return t==='add'?Math.round(a):-Math.round(a);
+}
+function gAdjLabel(){
+  var n=(G('adj-note')&&G('adj-note').value?G('adj-note').value:'').replace(/^\s+|\s+$/g,'').replace(/[<>]/g,'');
+  return 'Manufacturer Adjustment'+(n?' — '+n:'');
+}
 // Carport: a Wall Options eave-row choice IS a Side Panels choice — copy it
 // into the priced sp-left/sp-right select before repricing (values match;
 // Closed/Open map to closed/open). No-op on other building types.
@@ -5655,6 +5680,7 @@ function rc(){
   // Wainscot only applies when walls are vertical (enclosed eave sides)
   var wallsVertical = G('ws').value==='Vertical';
   var wainP=gWainscot();
+  var adjP=gAdj();
   var aewP=gAddEndWall();
   var leanToTotal=gLT();
   var connFeeTotal=gConnectionFees();
@@ -5707,7 +5733,7 @@ function rc(){
   var perm=G('perm').value, co=G('county').textContent, pt=G('pt').value;
 
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP;
+  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP+adjP;
   var da=Math.round(sub*(disc/100));
   var ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100));
@@ -5783,6 +5809,11 @@ function rc(){
   if(pspEl) pspEl.textContent=sidePanelP?fC(sidePanelP):'—';
   // Update side panel note
   updateSidePanelNote();
+  // Manufacturer Adjustment summary row (Section 13)
+  var adjRowEl=G('adj-summary-row'); var padjEl=G('padj'); var padjK=G('padj-k');
+  if(adjRowEl) adjRowEl.style.display=adjP?'':'none';
+  if(padjEl) padjEl.textContent=adjP?(adjP<0?'−'+fC(-adjP):fC(adjP)):'—';
+  if(padjK) padjK.textContent=gAdjLabel();
   // Insulation show/hide detail
   var insulSel2=G('insul-sel');
   var insulDetail=G('insul-detail');
@@ -6680,7 +6711,7 @@ function collectQuoteData(){
     'pt','agx','perm','cert-ovr','plans-sel','btype','bw','bl','bh',
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
-    'insul-sel','foundation','fastener-add',
+    'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note',
     'gch-enc','gch-open','gch-gable','gch-panels','gch-sides','overhang-sel','sp-qty','sp-half','sp-sides'
   ];
   simpleIds.forEach(function(id){
@@ -7520,6 +7551,7 @@ function printQuote(){
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
   var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
   if(INPUT_MODE) sub=manualSubtotal();
+  var adjPQ=gAdj(); sub+=adjPQ;
 
   // Build plans HTML now that sub is computed (CCI Site Specific = 5% of retail)
   if(perm==='yes'){
@@ -7556,7 +7588,7 @@ function printQuote(){
       '<td class="muted">'+(qty!==null?qty:'—')+'</td>'+
       '<td class="muted">'+(unit?fC(unit):'—')+'</td>'+
       '<td class="amt" style="'+(amt===0?'color:#16a34a;font-weight:700':'')+'">'+
-      (amt===0?'$0':(amt%1?fD(amt):fC(amt)))+'</td>'+
+      (amt===0?'$0':(amt<0?'−'+(amt%1?fD(-amt):fC(-amt)):(amt%1?fD(amt):fC(amt))))+'</td>'+
       '</tr>';
   }
   var rows='';
@@ -7648,6 +7680,7 @@ function printQuote(){
   if(bt3p==='widespan') rows+=row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
+  if(typeof adjPQ!=='undefined'&&adjPQ) rows+=row(gAdjLabel(),null,null,adjPQ);
   if(aewP) rows+=row(aewLabel(),null,null,aewP);
 
   // Roll-up doors
@@ -8240,6 +8273,7 @@ function printContract(){
   var fastenerPQ=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFreeP)?150:0;
   var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ;
   if(INPUT_MODE) sub=manualSubtotal();
+  var adjPC=gAdj(); sub+=adjPC;
 
   // ── Honor signed pricing (contract reissue) ───────────────────────────────
   // Reissuing a contract for an already-signed order (e.g. adding colors after
@@ -8422,6 +8456,7 @@ function printContract(){
   if(bt3p==='widespan') row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
+  if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
   if(aewP) row(aewLabel(),null,null,aewP);
 
   document.querySelectorAll('.re').forEach(function(el){
@@ -11056,7 +11091,7 @@ function textQuote(){
   var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
   var fastenerFree=((preSheet+sheetU)>=(window._freeThresh||10000));
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=preSheet+sheetU+fastenerP;
+  var sub=preSheet+sheetU+fastenerP+gAdj();
   var da=Math.round(sub*(disc/100)),ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100)),tot=ad+ta;
   var grossDep=Math.round(ad*((window._depPct||17)/100));
