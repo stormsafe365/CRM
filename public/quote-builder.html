@@ -430,12 +430,12 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="Half Closed">Half Closed (6&prime; Panel)</option>
     </select></div>
   <div class="row"><label>Right Eave Side</label>
-    <select id="wre" onchange="rc()">
+    <select id="wre" onchange="cpWallChanged('wre','sp-right');rc()">
       <option value="Closed">Closed</option>
       <option value="Open">Open</option>
     </select></div>
   <div class="row"><label>Left Eave Side</label>
-    <select id="wle" onchange="rc()">
+    <select id="wle" onchange="cpWallChanged('wle','sp-left');rc()">
       <option value="Closed">Closed</option>
       <option value="Open">Open</option>
     </select></div>
@@ -5562,8 +5562,33 @@ function rcManual(){
   if(G('building-panel') && G('building-panel').style.display==='block' && typeof renderBuildingViews==='function') renderBuildingViews();
 }
 
+// Carport: a Wall Options eave-row choice IS a Side Panels choice — copy it
+// into the priced sp-left/sp-right select before repricing (values match;
+// Closed/Open map to closed/open). No-op on other building types.
+function cpWallChanged(wallId, spId){
+  if(!G('btype')||G('btype').value!=='carport') return;
+  var wEl=G(wallId), sEl=G(spId); if(!wEl||!sEl) return;
+  var v=wEl.value;
+  sEl.value=(v==='Closed')?'closed':(v==='Open')?'open':v;
+  if(typeof updateSidePanelNote==='function') updateSidePanelNote();
+}
 function rc(){
   if(INPUT_MODE) return rcManual();
+  // Carport: the Wall Options eave rows (wle/wre) mirror the Side Panels
+  // selects (the priced/rendered source of truth) so the dropdown always
+  // shows what's active; direct wall-row edits sync via cpWallChanged.
+  if(G('btype') && G('btype').value==='carport' && G('sp-left')){
+    var _cpMirror=function(wallId, spId){
+      var wEl=G(wallId), sEl=G(spId); if(!wEl||!sEl) return;
+      var sv=sEl.value;
+      var mv=(sv==='closed')?'Closed':(sv==='open')?'Open':sv;
+      if(wEl.value!==mv){
+        for(var _mi=0;_mi<wEl.options.length;_mi++){ if(wEl.options[_mi].value===mv){ wEl.value=mv; break; } }
+      }
+    };
+    _cpMirror('wle','sp-left');
+    _cpMirror('wre','sp-right');
+  }
   // Refresh the Additional End Wall internal note (its cost depends on w & h)
   if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
   // ── Width & height needed by 12GA tier, 4'OC gate, wainscot bucket, overhang bucket.
