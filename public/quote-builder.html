@@ -595,15 +595,22 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div style="font-size:10px;color:#94a3b8;margin-top:3px">Reduces deposit. Set "On Quote" to Show to display the discount line + valid-through date on the customer quote.</div>
   </div>
   <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px"><label>Manufacturer Adjustment</label>
-    <div style="display:flex;gap:5px;align-items:center">
-      <select id="adj-type" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px;font-size:12px;color:#1C3557;font-weight:600;background:#fff">
-        <option value="ded">Deduction (−)</option>
-        <option value="add">Addition (+)</option>
-      </select>
-      <input id="adj-amt" type="number" value="" min="0" step="1" placeholder="0" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;flex:1">
+    <div style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="adj-on" onchange="adjToggle()" style="width:16px;height:16px;cursor:pointer;flex:none">
+      <span style="font-size:12px;color:#555">Apply a manufacturer-approved price adjustment</span>
     </div>
-    <input id="adj-note" placeholder="Reason — prints on quote &amp; contract (e.g. CCI: side walls charged at 13' vs 16')" oninput="rc()" style="margin-top:5px;border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%;box-sizing:border-box">
-    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Adjusts the BUILDING price (flows through discount, tax &amp; deposit like a cheaper/dearer building) — unlike the Additional Discount, which reduces the deposit. For manufacturer-approved custom pricing.</div>
+    <input type="hidden" id="adj-on-h" value="no">
+    <div id="adj-fields" class="hidden" style="margin-top:6px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="adj-type" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 4px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;flex:0 0 96px;width:96px">
+          <option value="ded">− Deduct</option>
+          <option value="add">+ Add</option>
+        </select>
+        <input id="adj-amt" type="number" value="" min="0" step="1" placeholder="Amount ($)" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;flex:1;min-width:0">
+      </div>
+      <input id="adj-note" placeholder="Reason — prints on quote &amp; contract (e.g. CCI: side walls charged at 13' vs 16')" oninput="rc()" style="margin-top:5px;border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%;box-sizing:border-box">
+      <div style="font-size:10px;color:#94a3b8;margin-top:3px">Adjusts the BUILDING price (flows through discount, tax &amp; deposit like a cheaper/dearer building) — unlike the Additional Discount, which reduces the deposit.</div>
+    </div>
   </div>
   <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px">
     <label>Zoning Checklist</label>
@@ -5577,7 +5584,14 @@ function rcManual(){
 // Manufacturer-approved custom price adjustment (Section 13). "ded" type
 // returns a NEGATIVE amount. Included in the PRE-DISCOUNT subtotal of every
 // pricing path (rc / quote / contract / text summary).
+function adjToggle(){
+  var cb=G('adj-on'), h=G('adj-on-h');
+  if(h) h.value=(cb&&cb.checked)?'yes':'no';
+  rc();
+}
 function gAdj(){
+  var _h=G('adj-on-h');
+  if(_h&&_h.value!=='yes') return 0;
   var a=parseFloat(G('adj-amt')?G('adj-amt').value:0)||0;
   if(a<=0) return 0;
   var t=G('adj-type')?G('adj-type').value:'ded';
@@ -5809,6 +5823,12 @@ function rc(){
   if(pspEl) pspEl.textContent=sidePanelP?fC(sidePanelP):'—';
   // Update side panel note
   updateSidePanelNote();
+  // Manufacturer Adjustment: checkbox + fields reflect the persisted state
+  // (restoreQuoteData sets the hidden input; this keeps the UI in step).
+  var _adjH=G('adj-on-h'), _adjCb=G('adj-on'), _adjF=G('adj-fields');
+  var _adjOn=!!(_adjH&&_adjH.value==='yes');
+  if(_adjCb&&_adjCb.checked!==_adjOn)_adjCb.checked=_adjOn;
+  if(_adjF)_adjF.classList.toggle('hidden',!_adjOn);
   // Manufacturer Adjustment summary row (Section 13)
   var adjRowEl=G('adj-summary-row'); var padjEl=G('padj'); var padjK=G('padj-k');
   if(adjRowEl) adjRowEl.style.display=adjP?'':'none';
@@ -6711,7 +6731,7 @@ function collectQuoteData(){
     'pt','agx','perm','cert-ovr','plans-sel','btype','bw','bl','bh',
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
-    'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note',
+    'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note','adj-on-h',
     'gch-enc','gch-open','gch-gable','gch-panels','gch-sides','overhang-sel','sp-qty','sp-half','sp-sides'
   ];
   simpleIds.forEach(function(id){
