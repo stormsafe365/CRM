@@ -8150,6 +8150,8 @@ function collectQuoteData(){
     // nothing restored them). Restore Step 2 now puts them back after that reset.
     'wfg','wbg','wre','wle','add-end-wall',
     'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right',
+    // Free-standing lean-to (fslean) controls — pitch + walls drive the price.
+    'fs-pitch','fs-walls-mode','fs-wf','fs-wb','fs-wt','fs-wl2','fs-orient',
     // Section 1 notes + contract page inputs — were missing, so they didn't persist.
     'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref'
   ];
@@ -8760,6 +8762,15 @@ function restoreQuoteData(data){
       if(el.tagName==='SELECT' && el.value!==String(f[id]) && CCI_LEGACY_HEX[f[id]]) el.value=CCI_LEGACY_HEX[f[id]];
     }
   });
+
+  // Step 2b: fslean custom-walls sub-panel visibility follows the restored mode
+  if(G('btype').value==='fslean' && typeof fsWallsModeChanged==='function'){
+    var _fsm=G('fs-walls-mode');
+    var _fsc=G('fs-walls-custom');
+    if(_fsc) _fsc.style.display=(_fsm&&_fsm.value==='custom')?'block':'none';
+    var _fso=G('fs-orient-row');
+    if(_fso) _fso.style.display=(_fsm&&_fsm.value==='open')?'none':'';
+  }
 
   // Step 3: restore span display fields (city/county/state)
   ['city','county','state'].forEach(function(id){

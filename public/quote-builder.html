@@ -7013,7 +7013,8 @@ function collectQuoteData(){
     'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note','adj-on-h',
-    'gch-enc','gch-open','gch-gable','gch-panels','gch-sides','overhang-sel','sp-qty','sp-half','sp-sides'
+    'gch-enc','gch-open','gch-gable','gch-panels','gch-sides','overhang-sel','sp-qty','sp-half','sp-sides',
+    'fs-pitch','fs-walls-mode','fs-wf','fs-wb','fs-wt','fs-wl2','fs-orient'
   ];
   simpleIds.forEach(function(id){
     var el = G(id);
@@ -7591,6 +7592,15 @@ function restoreQuoteData(data){
     if(el.tagName==='INPUT'&&el.type==='checkbox') el.checked=!!f[id];
     else if(el.tagName==='SELECT'||el.tagName==='INPUT') el.value=f[id];
   });
+
+  // Step 2b: fslean custom-walls sub-panel visibility follows the restored mode
+  if(G('btype').value==='fslean'){
+    var _fsm=G('fs-walls-mode');
+    var _fsc=G('fs-walls-custom');
+    if(_fsc) _fsc.style.display=(_fsm&&_fsm.value==='custom')?'block':'none';
+    var _fso=G('fs-orient-row');
+    if(_fso) _fso.style.display=(_fsm&&_fsm.value==='open')?'none':'';
+  }
 
   // Step 3: restore span display fields (city/county/state)
   ['city','county','state'].forEach(function(id){
