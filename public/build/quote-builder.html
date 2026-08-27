@@ -287,6 +287,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="widespan" id="bt-widespan">Wide Span (32'–70' wide)</option>
       <option value="carport">Carport (12'–30' wide, open)</option>
       <option value="gch">Garage Carport Hybrid (GCH)</option>
+      <option value="fslean" id="bt-fslean">Free-Standing Lean-To / Single Slope (CCI)</option>
     </select></div>
   <div class="row"><label>Width (ft)</label>
     <select id="bw" onchange="doBld()" disabled>
@@ -304,6 +305,56 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="15">15</option><option value="16">16</option><option value="17">17</option>
       <option value="18">18</option><option value="20">20</option>
     </select></div>
+  <!-- Free-standing lean-to (single slope): pitch + FSB walls. Handbook p.24: the
+       order must SAY it's a free-standing lean-to or the customer receives a carport. -->
+  <div id="fs-section" style="display:none">
+    <div class="pnote" style="margin:4px 0 8px;font-size:10px"><strong>Single-slope unit.</strong> Height above = the TALL side. Low side = tall &minus; round(width &times; pitch / 12). CCI requires the order to state <strong>FREE-STANDING LEAN-TO</strong> (otherwise they build a carport).</div>
+    <div class="row"><label>Roof Pitch</label>
+      <select id="fs-pitch" onchange="rc()">
+        <option value="2">2:12 (standard)</option>
+        <option value="3">3:12 (no charge)</option>
+      </select></div>
+    <div class="row"><label>Walls</label>
+      <select id="fs-walls-mode" onchange="fsWallsModeChanged()">
+        <option value="open">Open (lean-to only, no sheeting)</option>
+        <option value="enclosed">Fully Enclosed</option>
+        <option value="custom">Custom (per wall)</option>
+      </select></div>
+    <div id="fs-walls-custom" style="display:none">
+      <div class="row"><label>Front End</label>
+        <select id="fs-wf" onchange="rc()">
+          <option value="open">Open</option><option value="gable">Gable Only (+$225)</option>
+          <option value="extgable">Extended Gable (+$450)</option>
+          <option value="quarter">1/4 Closed</option><option value="half">1/2 Closed (Half End)</option>
+          <option value="threequarter">3/4 Closed</option><option value="closed" selected>Closed</option>
+        </select></div>
+      <div class="row"><label>Back End</label>
+        <select id="fs-wb" onchange="rc()">
+          <option value="open">Open</option><option value="gable">Gable Only (+$225)</option>
+          <option value="extgable">Extended Gable (+$450)</option>
+          <option value="quarter">1/4 Closed</option><option value="half">1/2 Closed (Half End)</option>
+          <option value="threequarter">3/4 Closed</option><option value="closed" selected>Closed</option>
+        </select></div>
+      <div class="row"><label>Tall Side</label>
+        <select id="fs-wt" onchange="rc()">
+          <option value="open">Open</option><option value="quarter">1/4 Closed</option>
+          <option value="half">1/2 Closed</option><option value="threequarter">3/4 Closed</option>
+          <option value="closed" selected>Closed</option>
+        </select></div>
+      <div class="row"><label>Low Side</label>
+        <select id="fs-wl2" onchange="rc()">
+          <option value="open">Open</option><option value="quarter">1/4 Closed</option>
+          <option value="half">1/2 Closed</option><option value="threequarter">3/4 Closed</option>
+          <option value="closed" selected>Closed</option>
+        </select></div>
+    </div>
+    <div id="fs-orient-row" class="row" style="display:none"><label>Panel Orientation</label>
+      <select id="fs-orient" onchange="rc()">
+        <option value="horizontal">Horizontal (standard)</option>
+        <option value="vertical">Vertical (+$150/end, +$240&ndash;$420/side)</option>
+      </select></div>
+    <div id="fs-note" class="enote hidden" style="margin:6px 0;font-size:10px"></div>
+  </div>
   <!-- GCH: Length split (Enclosed + Open side by side) + Front Gable + Side Panels -->
   <div id="gch-section" style="display:none">
     <div class="pnote" style="margin:4px 0 8px;font-size:10px">Pick the enclosed storage length — the open carport fills the rest of the total length. Options step in truss-spacing increments (4' or 5' OC).</div>
@@ -3642,6 +3693,11 @@ function switchMfr(key){
   var wsOpt = document.getElementById('bt-widespan');
   if(wsOpt){
     wsOpt.textContent = (key === 'CA') ? "Wide Span (32'–70' wide)" : "Wide Span (32'–100' wide)";
+    // Free-standing lean-to is a CCI product (Sensei 2.0 charts). CA keeps the
+    // legacy lean-to attachment flow only.
+    var fsOpt=document.getElementById('bt-fslean');
+    if(fsOpt){ fsOpt.style.display=(key==='CCI')?'':'none';
+      if(key!=='CCI' && G('btype').value==='fslean'){ G('btype').value=''; doBldType(); } }
   }
   initMfrPricing();
   // Rebuild existing additional-component entries with the new manufacturer's list
@@ -4143,6 +4199,8 @@ function doBldType(){
   // GCH section show/hide
   var gchSec=G('gch-section');
   if(gchSec) gchSec.style.display=(bt==='gch')?'block':'none';
+  var fsSec=G('fs-section');
+  if(fsSec) fsSec.style.display=(bt==='fslean')?'block':'none';
   // Length row is ALWAYS visible (including for GCH — total length is shown alongside enc/open)
   var lengthRow=G('length-row');
   if(lengthRow) lengthRow.style.display='';
@@ -4156,12 +4214,14 @@ function doBldType(){
   // the max width above the separator and caused confusion). Both even and odd widths
   // are valid; max width clearly visible as the last item.
   var widths=[];
+  // Free-standing lean-to: CCI builds 6-24 even widths (odd = custom quote)
+  if(bt==='fslean'){ for(var wf=6; wf<=24; wf+=2) widths.push(wf); }
   // GCH uses same width range as standard (12-30)
   var start = (bt==='widespan') ? 32 : 12;
   // CA supports up to 70' wide (specific verified configs only).
   // CCI supports up to 100' wide (commercial pricing released Apr 30, 2026).
   var end   = (bt==='widespan') ? (ACTIVE_MFR==='CA' ? 70 : 100) : 30;
-  for(var w=start; w<=end; w++) widths.push(w);
+  if(bt!=='fslean') for(var w=start; w<=end; w++) widths.push(w);
 
   widths.forEach(function(w){
     var o=document.createElement('option'); o.value=w; o.textContent=w+"'"; bwSel.appendChild(o);
@@ -4186,6 +4246,12 @@ function doBldType(){
   } else if(bt==='carport'){
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Open'; });
     var addEW2=G('add-end-wall'); if(addEW2) addEW2.value='no';
+  } else if(bt==='fslean'){
+    // fslean walls live in the fs-section selects; the standard wall rows are
+    // not used for pricing (gWalls returns fsWalls()) — park them Open so the
+    // summary/prints never claim sheeted walls that aren't charged.
+    ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Open'; });
+    var addEWf=G('add-end-wall'); if(addEWf) addEWf.value='no';
   } else {
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Closed'; });
     var addEW3=G('add-end-wall'); if(addEW3) addEW3.value='no';
@@ -4311,6 +4377,14 @@ function gchEncChange(){ updateGchOpen(); rc(); }
 function populateLength(){
   var blSel=G('bl');
   blSel.innerHTML='<option value="">— select —</option>';
+  if(G('btype').value==='fslean'){
+    // Sensei-verified envelope: 20-100 in 5' steps (longer = quote via CCI)
+    for(var lf=20; lf<=100; lf+=5){
+      var of=document.createElement('option'); of.value=lf; of.textContent=lf+"'"; blSel.appendChild(of);
+    }
+    blSel.disabled=false;
+    return;
+  }
   // Even multiples of 5: 20,25,30...300
   var evens5=[];
   for(var l=20; l<=300; l+=5) evens5.push(l);
@@ -4431,6 +4505,19 @@ function doBld(){
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
+  if(bt==='fslean'){
+    window._fsInterpUsed=false;
+    var lowB=fsLowSide();
+    f.push(bdg('FREE-STANDING LEAN-TO — single slope','bv'));
+    if(w&&h) f.push(bdg('Tall side '+h+"' / low side "+lowB+"' ("+fsPitch()+':12 pitch)','bb'));
+    if(h&&h<9) f.push(bdg('⚠ CCI minimum tall side is 9′ — raise the height','bo'));
+    if(w&&h&&lowB<7) f.push(bdg('⚠ Low side under 7′ — CCI blocks this (raise height, narrow width, or 2:12 pitch)','bo'));
+    if(w&&(w%2)) f.push(bdg('⚠ Odd width — CCI custom quote','bo'));
+    var fuF=G('framing-upgrade');
+    if(fuF&&fuF.value==='12'&&fsWidthKey(w)===16&&(parseInt(G('bl').value)||0)===40) f.push(bdg('⚠ Sensei charges $1,220 for 12GA at exactly 16×40 — verify with CCI','bo'));
+    if(fsCertMph()>=160) f.push(bdg('170 MPH + 4ft Wind Cert — $'+fsCert().toLocaleString()+' (in base)','bb'));
+    else f.push(bdg('150 MPH Wind Cert — included','bb'));
+  }
   G('bld-flags').innerHTML=f.join('');
   // Show manual override panel for buildings longer than 53ft
   var lCur=parseInt(G('bl').value)||0;
@@ -4466,9 +4553,147 @@ function nearestWS(l){
   for(var i=0;i<WS_TIERS.length;i++){ if(WS_TIERS[i]>=l) return WS_TIERS[i]; }
   return WS_TIERS[WS_TIERS.length-1];
 }
+// ── CCI FREE-STANDING LEAN-TO / SINGLE SLOPE ────────────────────────────
+// Sensei 2.0 probe 2026-08-27 (docs/cci-freestanding-complete-2026-08-27.md).
+// Handbook p.24: priced like a carport at the TALL side height; 6-12w = the
+// 12-wide carport column exactly. Base is 150 MPH certified; 170+4ft is the
+// FS_CERT ladder. Length nodes; round UP to next node like all CCI lookups.
+var FS_L=[20,25,30,35,40,45,50,55,60,70,80,90,100];
+var FS_BASE={
+  12:[1895,2395,2895,3395,3795,4290,4790,5290,5790,6790,7590,8685,9685],
+  14:[1995,2495,3095,3595,4095,4490,4990,5590,6190,7190,8190,9285,10285],
+  16:[2595,3295,3995,4595,5295,5890,6590,7290,7990,9190,10590,11985,13185],
+  18:[3495,4295,5195,6095,6995,7790,8590,9490,10390,12190,13990,15585,17385],
+  20:[3595,4395,5295,6195,7095,7990,8790,9690,10590,12390,14190,15885,17685],
+  22:[3695,4595,5495,6395,7295,8290,9190,10090,10990,12790,14590,16485,18285],
+  24:[3795,4695,5695,6595,7495,8490,9390,10390,11390,13190,14990,17085,18885]};
+// Height adder by TALL-side tier (width-independent, verified 12/14/16/24w).
+// Tiers pair {11,12}{13,14}{15,16}{17,18}{19,20}. Cells marked i in the doc
+// (L70/90/100 for tiers 9/10/18/20) are interpolated from the measured 11-12
+// row's shape — flagged in the UI via fsInterpUsed.
+var FS_H={
+  9:[325,395,470,540,610,720,790,865,940,1080,1220,1425,1555],
+  10:[430,530,625,720,815,960,1060,1155,1250,1435,1630,1905,2080],
+  12:[865,1035,1210,1380,1555,1900,2070,2245,2420,2760,3110,3630,3970],
+  14:[1535,1845,2150,2460,2765,3380,3690,3995,4300,4920,5530,6450,7070],
+  16:[2450,2895,3340,3785,4235,5345,5790,6235,6680,7570,8470,10020,10910],
+  18:[3360,3840,4320,4800,5280,7200,7680,8160,8640,9585,10560,12325,13480],
+  20:[3790,5115,5830,6510,7190,8905,10230,10945,11660,13000,14380,16785,18355]};
+var FS_H_INTERP={9:[9,11,12],10:[9,11,12],18:[9,11,12],20:[9,11,12]}; // FS_L indexes interpolated
+var FS_CERT=[300,325,350,375,400,625,650,675,700,750,800,1050,1100];       // 170MPH+4ft, 14GA
+var FS_G12=[210,240,270,300,330,385,435,490,540,600,660,765,870];          // 12GA (25-55/70/90 interp)
+var FS_G12CERT=[150,240,330,420,510,550,585,625,660,840,1020,1095,1170];   // 170 cert when 12GA
+// FSB wall charts (horizontal metal). Ends by width col [12,14,16,18,20,22,24]
+// per tall-height tier; sides by the side's OWN height at L nodes [20,40,60].
+var FS_END_W=[12,14,16,18,20,22,24];
+var FS_END={
+  9:[685,815,1040,1185,1325,1470,1755],       // scaled from 14w (815) — provisional except 14w
+  11:[1010,1200,1535,1745,1955,2165,2585],
+  14:[1370,1625,1925,2185,2440,2695,3205]};
+var FS_SIDE={
+  7:[275,537.5,775], 8:[330,645,930], 9:[330,645,930], 10:[385,752.5,1085],
+  11:[440,860,1240], 12:[440,860,1240], 13:[550,1075,1550], 14:[550,1075,1550]};
+var FS_SIDE_L=[20,40,60];
+var FS_GABLE=225, FS_EXTGABLE=450, FS_END_VERT=150; // gable flat any width; vertical end adder
+var FS_INS_ROOF_RATE=1.6071;   // $/sqft of W×L (450@14×20, 900@14×40 — linear verified)
+var FS_INS_WALL_RATE=1.539;    // $/sqft wall area — single Sensei point, provisional
+window._fsInterpUsed=false;    // set by lookups when a provisional cell priced this quote
+function fsLenIdx(l){ for(var i=0;i<FS_L.length;i++){ if(FS_L[i]>=l) return i; } return FS_L.length-1; }
+function fsWidthKey(w){ if(w<=12) return 12; if(w>24) return 24; return (w%2)?(w+1):w; } // odds -> next even (custom — flagged in doBld)
+function fsTier(h){ if(h<=9) return 9; if(h===10) return 10; if(h<=12) return 12; if(h<=14) return 14; if(h<=16) return 16; if(h<=18) return 18; return 20; }
+function fsPitch(){ var p=G('fs-pitch'); return p&&p.value==='3'?3:2; }
+function fsLowSide(){ var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||0; if(!w||!h) return 0; return h-Math.round(w*fsPitch()/12); }
+function fsCertMph(){
+  // Effective certification for pricing: rep override wins; else FL high-wind
+  // county rule (same source the plans logic uses); else 150.
+  var ov=G('cert-ovr'); if(ov && ov.value!=='auto') return parseInt(ov.value)||150;
+  var co=G('county')?G('county').value:'';
+  return (typeof HW!=='undefined' && HW.indexOf(co)>=0)?170:150;
+}
+function fsG12(){ // 12GA adder (0 when 14GA)
+  var fu=G('framing-upgrade'); if(!fu||fu.value!=='12') return 0;
+  var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0; if(!l) return 0;
+  // Sensei charges exactly $1,220 at 16×40 (reproduced 3×). We match the price
+  // authority; doBld shows a verify-with-CCI note on that combo.
+  if(fsWidthKey(w)===16 && l===40) return 1220;
+  return FS_G12[fsLenIdx(l)];
+}
+function fsCert(){ // certification charge (170+4ft ladder; 150/uncert = $0)
+  var l=parseInt(G('bl').value)||0; if(!l) return 0;
+  if(fsCertMph()<160) return 0;
+  var fu=G('framing-upgrade');
+  return (fu&&fu.value==='12')?FS_G12CERT[fsLenIdx(l)]:FS_CERT[fsLenIdx(l)];
+}
+function fsSidePrice(sideH, l){
+  var row=FS_SIDE[Math.max(7,Math.min(14,sideH))]; if(!row) return 0;
+  if(sideH<7||sideH>14) window._fsInterpUsed=true;
+  // linear between the 20/40/60 nodes; beyond 60 extend the 40→60 per-foot rate
+  if(l<=20) return row[0];
+  if(l<=40) return row[0]+(row[1]-row[0])*(l-20)/20;
+  if(l<=60) return row[1]+(row[2]-row[1])*(l-40)/20;
+  window._fsInterpUsed=true;
+  return row[2]+(row[2]-row[1])/20*(l-60);
+}
+function fsVertSideAdd(l){ // vertical orientation adder per side (240@20, 420@40, +9/ft after)
+  if(l<=20) return 240;
+  if(l<=40) return 240+(l-20)*9;
+  window._fsInterpUsed=true;
+  return 420+(l-40)*9;
+}
+function fsEndPrice(w, tallH){
+  var tier=(tallH<=10)?((tallH<=9)?9:10):((tallH<=12)?11:14);
+  var ci=0; for(var i=0;i<FS_END_W.length;i++){ if(FS_END_W[i]>=fsWidthKey(w)){ ci=i; break; } ci=i; }
+  if(tier===10){ window._fsInterpUsed=true; return Math.round(((FS_END[9][ci]+FS_END[11][ci])/2)/5)*5; }
+  if(tier===9 && fsWidthKey(w)!==14) window._fsInterpUsed=true;
+  return FS_END[tier][ci];
+}
+function fsFrac(v){ return v==='closed'?1:v==='threequarter'?0.75:v==='half'?0.5:v==='quarter'?0.25:0; }
+function fsWallsModeChanged(){
+  var m=G('fs-walls-mode')?G('fs-walls-mode').value:'open';
+  var cu=G('fs-walls-custom'); if(cu) cu.style.display=(m==='custom')?'block':'none';
+  var orow=G('fs-orient-row'); if(orow) orow.style.display=(m==='open')?'none':'';
+  rc();
+}
+function fsWalls(){
+  var m=G('fs-walls-mode')?G('fs-walls-mode').value:'open';
+  if(m==='open') return 0;
+  var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0, h=parseInt(G('bh').value)||0;
+  if(!w||!l||!h) return 0;
+  var lowH=fsLowSide();
+  if(h>=15){
+    // Enclosed freestanding over 14' tall: wall charts unverified — CCI quote.
+    window._fsWallsGate=true;
+    return 0;
+  }
+  window._fsWallsGate=false;
+  var vert=G('fs-orient')&&G('fs-orient').value==='vertical';
+  var f=(m==='enclosed')?'closed':(G('fs-wf')?G('fs-wf').value:'closed');
+  var b=(m==='enclosed')?'closed':(G('fs-wb')?G('fs-wb').value:'closed');
+  var t=(m==='enclosed')?'closed':(G('fs-wt')?G('fs-wt').value:'closed');
+  var lo=(m==='enclosed')?'closed':(G('fs-wl2')?G('fs-wl2').value:'closed');
+  var endBase=fsEndPrice(w,h)+(vert?FS_END_VERT:0);
+  var total=0;
+  [f,b].forEach(function(v){
+    if(v==='gable') total+=FS_GABLE;
+    else if(v==='extgable') total+=FS_EXTGABLE;
+    else total+=fsFrac(v)*endBase;
+  });
+  var vAdd=vert?fsVertSideAdd(l):0;
+  total+=fsFrac(t)*(fsSidePrice(h,l)+vAdd);
+  total+=fsFrac(lo)*(fsSidePrice(Math.max(7,lowH),l)+vAdd);
+  return Math.round(total*100)/100;
+}
 function gBase(){
   var w=parseInt(G('bw').value), l=parseInt(G('bl').value);
   if(!w||!l) return 0;
+  if(G('btype').value==='fslean'){
+    // Base row (150 MPH certified) + the 170+4ft cert ladder when the county /
+    // rep override calls for 170 — folded here so every downstream total,
+    // deposit and print stays correct without a new breakdown row. The cert
+    // amount is surfaced on its own line in the prints and the doBld badge.
+    var fb=FS_BASE[fsWidthKey(w)];
+    return (fb?fb[fsLenIdx(l)]:0)+fsCert();
+  }
   // CA/CCI only build EVEN widths in wide-span (and standard) — odd widths in
   // the dropdown reflect customer-requested sizes but price as the next even
   // (e.g., 45' priced as 46'). Display value (G('bw').value) is left alone.
@@ -4554,6 +4779,15 @@ function gBase(){
   return Math.round(pLast + ratePerFt*(l-lastTier));
 }
 function gLeg(){
+  if(G('btype').value==='fslean'){
+    var lF=parseInt(G('bl').value)||0, hF=parseInt(G('bh').value)||0;
+    if(!lF||!hF) return 0;
+    var tierF=fsTier(Math.max(9,hF));
+    var idxF=fsLenIdx(lF);
+    var interp=FS_H_INTERP[tierF];
+    if(interp && interp.indexOf(idxF)>=0) window._fsInterpUsed=true;
+    return (FS_H[tierF]||FS_H[12])[idxF]||0;
+  }
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value);
   if(h<=6||!l||!w) return 0;
   if(w % 2 === 1) w++; // Round odd widths UP (45→46) for pricing lookups
@@ -4939,6 +5173,7 @@ function gWainscot(){
   return Math.round(_wb.vals[_wc]*(wainscotPrintOpt()?1.25:1));
 }
 function gWalls(){
+  if(G('btype').value==='fslean') return fsWalls();
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
   if(w % 2 === 1) w++; // Round odd widths UP (45→46) for pricing lookups
@@ -5123,6 +5358,9 @@ function gRUD(){
     var loc=el.querySelector('.rloc').value;
     var ea=(loc==='Left Eave Side'||loc==='Right Eave Side');
     var unitPrice=getDoorPrice(dtype,sz);
+    // Free-standing building (Sensei FS catalog): standard roll-up is a flat
+    // $750 (no size editor in Sensei; larger/certified sizes — verify w/ CCI).
+    if(G('btype').value==='fslean') unitPrice=750;
     t+=unitPrice*qty;
     // Chain hoist add-on: only for sizes that don't already include a chain hoist.
     // (Legacy 'standard' = never has chain hoist included.
@@ -5226,6 +5464,15 @@ function gInsul(){
   if(bt==='gch'){
     var encL=parseInt(G('gch-enc').value)||0;
     if(encL>0 && encL<l) insulL=encL;
+  }
+  if(G('btype').value==='fslean'){
+    // Sensei FS rates: Full Roof $1.6071/sqft of W×L (linear-verified);
+    // walls portion ~$1.539/sqft wall area (single point — provisional).
+    var fsRoof=Math.round(w*insulL*FS_INS_ROOF_RATE);
+    if(insulSel.value!=='roof-walls') return fsRoof;
+    var lowIH=Math.max(1,fsLowSide());
+    var fsWallArea=insulL*h+insulL*lowIH+2*w*((h+lowIH)/2);
+    return fsRoof+Math.round(fsWallArea*FS_INS_WALL_RATE);
   }
   var roofCost=Math.round((w+2)*insulL*INSUL_RATE);
   var wallCost=0;
@@ -6740,7 +6987,9 @@ function rc(){
   var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
   var framingUpgrade=0;
   if(fuVal==='12'){
-    if(bt3==='widespan'){
+    if(bt3==='fslean'){
+      framingUpgrade=fsG12();
+    } else if(bt3==='widespan'){
       // Wide span: fixed CA price by length column
       var GA12C=[20,25,30,35,40,44,48,52],GA12V=[360,480,600,720,840,1560,1680,1800];
       var gci=0; for(var gi=0;gi<GA12C.length;gi++){if(GA12C[gi]<=l)gci=gi;else break;}
@@ -6817,7 +7066,7 @@ function rc(){
   var preSheetSub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+overhangP+sidePanelP;
   // CA 8/10/2026 policy: 26GA is ALWAYS a 10% upgrade — no free threshold.
   // CCI keeps its Sensei-verified free-at-$10k behavior.
-  var sheetFree=(ACTIVE_MFR!=='CA' && preSheetSub>=(window._freeThresh||10000) && bt3!=='widespan');
+  var sheetFree=(ACTIVE_MFR!=='CA' && preSheetSub>=(window._freeThresh||10000) && bt3!=='widespan' && bt3!=='fslean');
   if(sheetFree){
     G('sheeting-upgrade').value='upgrade';
     G('sheeting-upgrade').disabled=true;
@@ -6827,6 +7076,16 @@ function rc(){
   // sheetFree buildings: ZERO charge. Under $10k manual upgrade: +10% of base.
   var sheetUpgrade=(!sheetFree && G('sheeting-upgrade').value==='upgrade' && bt3!=='widespan') ? preSheetSub*0.10 : 0;
   var sfnEl=G('sheeting-free-note'); if(sfnEl) sfnEl.classList.toggle('hidden',!sheetFree);
+  var fsN=G('fs-note');
+  if(fsN){
+    var fsMsgs=[];
+    if(bt3==='fslean'){
+      if(window._fsWallsGate) fsMsgs.push('⚠ Enclosed free-standing over 14′ tall: wall pricing not verified — get a CCI quote (walls charged $0 here).');
+      if(window._fsInterpUsed) fsMsgs.push('⚠ Part of this price uses interpolated chart cells (long lengths / provisional walls) — verify with CCI before contract.');
+    }
+    fsN.classList.toggle('hidden',fsMsgs.length===0);
+    fsN.innerHTML=fsMsgs.join('<br>');
+  }
   // The free-26GA $10k threshold is the PRE-TAX, pre-discount building price
   // (preSheetSub) — NOT the taxed grand total. Show reps where this build
   // stands so a "$10,224 w/ tax" building reading 29GA isn't a mystery.
@@ -8941,6 +9200,11 @@ async function printQuote(){
   if(fastenerFreeP) rows+=row('Color Match Fasteners — Free Upgrade ✓',null,null,0);
   else if(fastenerPQ>0) rows+=row('Color Match Fasteners',null,null,fastenerPQ);
   if(bt3p==='widespan') rows+=row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
+  if(bt3p==='fslean'){
+    rows+=row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
+    rows+=row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
+    if(fsCert()>0) rows+=row('170 MPH + 4ft Wind Certification (included in base)',null,null,0);
+  }
   if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
   if(typeof adjPQ!=='undefined'&&adjPQ) rows+=row(gAdjLabel(),null,null,adjPQ);
@@ -9945,6 +10209,11 @@ async function printContract(){
   if(fastenerFreeP) row('Color Match Fasteners — Free Upgrade ✓',null,null,0);
   else if(fastenerPQ>0) row('Color Match Fasteners',null,null,fastenerPQ);
   if(bt3p==='widespan') row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
+  if(bt3p==='fslean'){
+    row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
+    row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
+    if(fsCert()>0) row('170 MPH + 4ft Wind Certification (included in base)',null,null,0);
+  }
   if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
   if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
