@@ -44,5 +44,8 @@ export function useUsers() {
 export function userLabel(users, id) {
   if (!id) return '—'
   const u = users.find(x => x.id === id)
-  return u?.display_name ?? u?.email ?? '—'
+  // An id with no matching user = assigned under an account the app no longer
+  // knows (e.g. re-created login). Say so instead of a blank dash, so stale
+  // assignments are visible and can be fixed.
+  return u?.display_name ?? u?.email ?? (users.length ? 'Unknown rep' : '—')
 }

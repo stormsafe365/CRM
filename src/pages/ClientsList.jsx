@@ -139,20 +139,31 @@ export default function ClientsList() {
 
   // Rep tabs: All Leads + one per user, by primary rep. Built from the real
   // users list so it reads "Jenna's Leads" / "Joshua's Leads" automatically.
+  // Every user ALWAYS gets a tab (a zero-count tab is information, not
+  // clutter) — the old count>0 pruning made the whole row vanish whenever no
+  // lead carried a recognizable rep, which read as the feature disappearing
+  // (user report 2026-08-25). Leads with no rep, or a rep id the app doesn't
+  // know (e.g. assigned under an old account), collect in an Unassigned tab
+  // so they can be found and reassigned from the lead's Assigned Rep control.
   const firstNameOf = (u) => (u.display_name || u.email || 'Rep').split(/[\s@]/)[0]
   const liveClients = clients.filter(c => !c.deleted_at)
+  const isUnassigned = (c) => !c.primary_rep || !users.some(u => u.id === c.primary_rep)
+  const unassignedCount = users.length ? liveClients.filter(isUnassigned).length : 0
   const repTabs = [
     { key: 'all', label: 'All StormSafe Leads', count: liveClients.length },
-    // Only reps who actually own leads get a tab — keeps stray/empty accounts
-    // (e.g. a duplicate login) from cluttering the row.
     ...users
-      .map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: liveClients.filter(c => c.primary_rep === u.id).length }))
-      .filter(t => t.count > 0),
+      .map(u => ({ key: u.id, label: `${firstNameOf(u)}'s Leads`, count: liveClients.filter(c => c.primary_rep === u.id).length })),
+    ...(unassignedCount > 0 ? [{ key: 'none', label: 'Unassigned', count: unassignedCount }] : []),
   ]
   // Everything below is scoped to the selected rep first, then by status.
   const repScoped = useMemo(
-    () => (repFilter === 'all' ? clients : clients.filter(c => c.primary_rep === repFilter)),
-    [clients, repFilter]
+    () => (repFilter === 'all'
+      ? clients
+      : repFilter === 'none'
+        ? clients.filter(isUnassigned)
+        : clients.filter(c => c.primary_rep === repFilter)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clients, repFilter, users]
   )
 
   // Sliding active-tab indicator (Emil-style spring). Measure the active
