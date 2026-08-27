@@ -383,6 +383,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="row" style="margin-top:-3px"><label>Pitch Selected</label><span class="av" id="pitch">3:12</span></div>
   <div id="sheeting-note" class="hidden anote" style="margin-bottom:6px">Full 26 gauge sheeting upgrade — +10% of the building subtotal</div>
   <div id="sheeting-free-note" class="hidden anote" style="margin-bottom:6px">&#10003; Free Upgrade — Full 26-Gauge Sheeting (order &ge; $10,000)</div>
+  <div id="sheeting-thresh-note" class="hidden anote" style="margin-bottom:6px">—</div>
   <div id="fastener-free-note" class="hidden anote" style="margin-bottom:6px">&#10003; Free Upgrade — Color Match Fasteners (order &ge; $10,000)</div>
   <div class="row" id="fastener-add-row">
     <label>Color Match Fasteners</label>
@@ -6826,6 +6827,19 @@ function rc(){
   // sheetFree buildings: ZERO charge. Under $10k manual upgrade: +10% of base.
   var sheetUpgrade=(!sheetFree && G('sheeting-upgrade').value==='upgrade' && bt3!=='widespan') ? preSheetSub*0.10 : 0;
   var sfnEl=G('sheeting-free-note'); if(sfnEl) sfnEl.classList.toggle('hidden',!sheetFree);
+  // The free-26GA $10k threshold is the PRE-TAX, pre-discount building price
+  // (preSheetSub) — NOT the taxed grand total. Show reps where this build
+  // stands so a "$10,224 w/ tax" building reading 29GA isn't a mystery.
+  window._sheetFree=sheetFree;
+  var stnEl=G('sheeting-thresh-note');
+  if(stnEl){
+    var _stnShow=(ACTIVE_MFR!=='CA' && bt3!=='widespan' && !sheetFree);
+    stnEl.classList.toggle('hidden',!_stnShow);
+    if(_stnShow){
+      var _gap=(window._freeThresh||10000)-preSheetSub;
+      stnEl.innerHTML='Free 26GA at <strong>$10,000+ building price</strong> (pre-tax, pre-discount) — this build: <strong>'+fC(Math.round(preSheetSub))+'</strong>'+(_gap>0?' ('+fC(Math.ceil(_gap))+' to go)':'');
+    }
+  }
   // Fastener free: ANY building (including widespan) where full subtotal >= $10k
   // Uses subPreFastener so doors/upgrades/etc. all count toward the threshold
   var subPreFastener=preSheetSub+sheetUpgrade;
@@ -6957,7 +6971,7 @@ function rc(){
   if(sheetNoteEl) sheetNoteEl.classList.toggle('hidden',!sheetUpgrade||sheetFree);
   // Update sheeting text in summary panel
   var bt2s=G('btype').value;
-  var sheetFreeS=(gBase()+gLeg()+gWalls()>=10000&&G('btype').value!=='widespan');
+  var sheetFreeS=!!window._sheetFree;
   var sheetTxt=bt2s==='widespan'?'26 Gauge':(G('sheeting-upgrade').value==='upgrade'?(sheetFreeS?'26 Gauge (Free — base ≥$10k)':'26 Gauge (Upgraded)'):'29GA walls / 26GA roof');
   var ssEl=G('ssheeting'); if(ssEl) ssEl.textContent=bt2s?sheetTxt:'—';
   G('pds').textContent=da?('-'+fC(da)):'—';
@@ -7091,7 +7105,7 @@ function sy(){
   var fuVal2=G('framing-upgrade')?G('framing-upgrade').value:'14';
   G('sframing').textContent=bt2?(fuVal2==='12'?'12 Gauge (Upgraded)':'14 Gauge'):'—';
   var sheetUpgVal=G('sheeting-upgrade').value;
-  var sheetFreeD=(gBase()+gLeg()+gWalls()>=10000&&bt2!=='widespan');
+  var sheetFreeD=!!window._sheetFree;
   var sheetDisplay=bt2==='widespan'?'26 Gauge':(sheetUpgVal==='upgrade'?(sheetFreeD?'26 Gauge (Free ✓)':'26 Gauge (Upgraded)'):'29GA walls / 26GA roof');
   G('ssheeting').textContent=bt2?sheetDisplay:'—';
   var rcEl=G('cr');
