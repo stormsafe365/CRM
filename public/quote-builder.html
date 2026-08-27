@@ -303,7 +303,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div id="fs-section" style="display:none">
     <div class="pnote" style="margin:4px 0 8px;font-size:10px"><strong>Single-slope unit.</strong> Height above = the TALL side. Low side = tall &minus; round(width &times; pitch / 12). CCI requires the order to state <strong>FREE-STANDING LEAN-TO</strong> (otherwise they build a carport).</div>
     <div class="row"><label>Roof Pitch</label>
-      <select id="fs-pitch" onchange="rc()">
+      <select id="fs-pitch" onchange="doBld()">
         <option value="2">2:12 (standard)</option>
         <option value="3">3:12 (no charge)</option>
       </select></div>
@@ -3841,6 +3841,16 @@ function doBld(){
   var pitchSel = G('pitch-sel');
   var pitchVal = pitchSel ? pitchSel.value : 'standard';
   var p = (pitchVal==='4:12' || pitchVal==='5:12') ? pitchVal : stdPitch;
+  // Free-standing single-slope: pitch comes ONLY from the fs-section selector
+  // (2:12 standard / 3:12 optional, both no charge). The legacy Roof Pitch row
+  // (auto/4:12/5:12) is hidden and parked on 'standard' so it can never show a
+  // conflicting pitch or charge an upgrade.
+  var _pRowB=pitchSel?(pitchSel.closest?pitchSel.closest('.row'):null):null;
+  if(_pRowB) _pRowB.style.display=(bt==='fslean')?'none':'';
+  if(bt==='fslean'){
+    if(pitchSel) pitchSel.value='standard';
+    p=(typeof fsPitch==='function'&&fsPitch()===3)?'3:12':'2:12';
+  }
   G('pitch').textContent=p; G('spc').textContent=p;
   // Update the standard option label so user sees the auto-pitch for current width
   if(pitchSel && pitchSel.options[0]){
@@ -5931,11 +5941,14 @@ function rc(){
   //   CA: 50% of base building price
   //   CCI: tier-based table by width × length (much lower than CA's formula)
   var pitchSelVal = G('pitch-sel') ? G('pitch-sel').value : 'standard';
+  if(bt3==='fslean') pitchSelVal='standard'; // fs pitch is 2:12/3:12, both $0 — never an upgrade
   var pitchUpgrade = MFR().pitchUpgradeFn(base, parseInt(G('bw').value)||0, parseInt(G('bl').value)||0, pitchSelVal);
+  if(bt3==='fslean') pitchUpgrade=0;
   // Update pitch display spans live when dropdown changes
   var wForPitch = parseInt(G('bw').value)||0;
   var stdPitchRC = wForPitch>31?'2:12':'3:12';
   var pitchDisplay = MFR().pitchDisplay(pitchSelVal) || stdPitchRC;
+  if(bt3==='fslean') pitchDisplay=(typeof fsPitch==='function'&&fsPitch()===3)?'3:12':'2:12';
   if(G('pitch')) G('pitch').textContent=pitchDisplay;
   if(G('spc')) G('spc').textContent=pitchDisplay;
   // Keep standard option label in sync
