@@ -4531,6 +4531,19 @@ function wainscotPrintOpt(){
 }
 // Window quote-line label from the manufacturer's winTypes list — fixes the old
 // hardcoded 30"×30" label that printed a 30×36 Hi-Impact ($995) as "30" × 30" Window".
+// CCI 12-gauge framing upgrade, widths 26-30 — Sensei-sampled 8/31/26 (30-wide,
+// verified width-independent 26-30 and height-independent h12/h20). The CA book
+// series (360-840 +24/ft) UNDER-charged CCI (e.g. L40: Sensei 890 vs book 840;
+// L50: 1,060 vs extrapolated 1,080). Steps +120/5' with +50 flats at 45' & 85'.
+// >100' extrapolates +120/5'; odd lengths round UP to the next column.
+var CCI_GA12_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
+var CCI_GA12_V=[410,530,650,770,890,940,1060,1180,1300,1420,1540,1660,1780,1830,1950,2070,2190];
+function cci12GA(l){
+  if(l>=100) return Math.round(2190+24*(l-100));
+  var i=CCI_GA12_L.length-1;
+  for(var k=0;k<CCI_GA12_L.length;k++){ if(CCI_GA12_L[k]>=l){i=k;break;} }
+  return CCI_GA12_V[i];
+}
 function winRowLabel(v){
   var arr=(MFR().winTypes||[]);
   for(var i=0;i<arr.length;i++){ if(arr[i].v===v) return arr[i].label+' Window'; }
@@ -5953,7 +5966,9 @@ function rc(){
       // 360-840 for 26-30 wide (single series each — no separate 4'OC rate).
       var GA12SV=w<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcis=0; for(var gis=0;gis<GA12S.length;gis++){if(GA12S[gis]<=l)gcis=gis;else break;}
-      if(l>40){
+      if(ACTIVE_MFR==='CCI' && w>24){
+        framingUpgrade=cci12GA(l); // Sensei-sampled CCI series (see cci12GA)
+      } else if(l>40){
         var ga12rate=(GA12SV[4]-GA12SV[3])/5;
         framingUpgrade=Math.round(GA12SV[4]+ga12rate*(l-40));
       } else {
@@ -7866,7 +7881,8 @@ function printQuote(){
       var wPQ=parseInt(G('bw').value)||0;
       var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
-      if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
+      if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
+      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
       else{framingUpgP=GA12SPV[gcisp];}
     }
   }
@@ -8597,7 +8613,8 @@ function printContract(){
       var wPQ=parseInt(G('bw').value)||0;
       var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
-      if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
+      if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
+      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
       else{framingUpgP=GA12SPV[gcisp];}
     }
   }
@@ -11445,7 +11462,7 @@ function textQuote(){
   var bt3=G('btype').value,lv=parseInt(l)||0,wv=parseInt(w)||0;
   var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
   var framingUpgP=0;
-  if(fuVal==='12'){if(bt3==='widespan'){var GA12C2=[20,25,30,35,40,44,48,52],GA12V2=[360,480,600,720,840,1560,1680,1800];var gci2=0;for(var gi2=0;gi2<GA12C2.length;gi2++){if(GA12C2[gi2]<=lv)gci2=gi2;else break;}framingUpgP=GA12V2[gci2];}else{var GA12S2=[20,25,30,35,40];var GA12SV2=wv<=24?[210,240,270,300,330]:[360,480,600,720,840];var gcis2=0;for(var gis2=0;gis2<GA12S2.length;gis2++){if(GA12S2[gis2]<=lv)gcis2=gis2;else break;}if(lv>40){var ga12r2=(GA12SV2[4]-GA12SV2[3])/5;framingUpgP=Math.round(GA12SV2[4]+ga12r2*(lv-40));}else{framingUpgP=GA12SV2[gcis2];}}}
+  if(fuVal==='12'){if(bt3==='widespan'){var GA12C2=[20,25,30,35,40,44,48,52],GA12V2=[360,480,600,720,840,1560,1680,1800];var gci2=0;for(var gi2=0;gi2<GA12C2.length;gi2++){if(GA12C2[gi2]<=lv)gci2=gi2;else break;}framingUpgP=GA12V2[gci2];}else{var GA12S2=[20,25,30,35,40];var GA12SV2=wv<=24?[210,240,270,300,330]:[360,480,600,720,840];var gcis2=0;for(var gis2=0;gis2<GA12S2.length;gis2++){if(GA12S2[gis2]<=lv)gcis2=gis2;else break;}if(ACTIVE_MFR==='CCI'&&wv>24){framingUpgP=cci12GA(lv);}else if(lv>40){var ga12r2=(GA12SV2[4]-GA12SV2[3])/5;framingUpgP=Math.round(GA12SV2[4]+ga12r2*(lv-40));}else{framingUpgP=GA12SV2[gcis2];}}}
   var pitchSelVal=G('pitch-sel')?G('pitch-sel').value:'standard';
   var pitchUpgrade=MFR().pitchUpgradeFn(base, wv||0, lv||0, pitchSelVal);
   var lapP=G('lap').value==='yes'?Math.round(base*0.10):0;
