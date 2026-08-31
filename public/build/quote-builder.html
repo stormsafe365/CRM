@@ -3631,12 +3631,15 @@ var MANUFACTURERS = {
       {v:'hiwind',      label:'Man Door (Hi-Wind Rated) 36×80',  style:'std',     color:'white'},
     ],
     // ── Window types ───────────────────────────────────────────────────────────────────────────────
-    winPrices: {std:200, w3036:225, b3030:250, b3036:275, hi:895, hi3036:995},
+    // hw (High Wind Rated 30×30, $675) added 8/31/26 — Sensei's mid tier between
+    // std ($200) and Hi-Impact ($895); owner-confirmed from Sensei's window list.
+    winPrices: {std:200, w3036:225, b3030:250, b3036:275, hw:675, hi:895, hi3036:995},
     winTypes: [
       {v:'std',    label:'White 30×30',                     fw:30, fh:30, color:'white'},
       {v:'w3036',  label:'White 30×36',                     fw:30, fh:36, color:'white'},
       {v:'b3030',  label:'Black 30×30 (non-impact areas)',  fw:30, fh:30, color:'black'},
       {v:'b3036',  label:'Black 30×36 (non-impact areas)',  fw:30, fh:36, color:'black'},
+      {v:'hw',     label:'High Wind Rated 30×30',           fw:30, fh:30, color:'white'},
       {v:'hi',     label:'Hi-Impact 30×30',                 fw:30, fh:30, color:'white'},
       {v:'hi3036', label:'Hi-Impact 30×36',                 fw:30, fh:36, color:'white'},
     ],
@@ -4968,6 +4971,15 @@ function ecLookup(w,h){
     if(w===70 && h===20) return 6115;
     return 0;
   }
+  // CCI TALL STANDARD WIDTHS (<32'): Sensei now prices these ends ABOVE the
+  // commercial min-32 column that CCI's corrected Tejada quote used (8/17/26,
+  // EC[32]: 18'→3,655 / 20'→3,835). Measured live in Sensei 8/31/26 on 30-wide,
+  // vertical: 18'→$3,760, 20'→$4,020 — identical at 30x40 and 30x50, and at
+  // 2/12, 3/12 and 6/12 pitch (length- and pitch-independent). Owner: match
+  // Sensei (Fraga 30x50x20 quote). Odd heights round UP like the chart.
+  if(ACTIVE_MFR==='CCI' && h>=17 && w<32){
+    return h<=18 ? 3760 : 4020;
+  }
   // EC: widths 12-30 use bucketed width, widths 32-60 use actual even width
   // Odd widths round UP to next even (CA/CCI only build even widths in wide-span)
   // CCI TALL BUILDINGS (17'+): ends close from the COMMERCIAL brochure — the
@@ -5163,20 +5175,41 @@ function wainscotPrintOpt(){
   var o=el.options[el.selectedIndex];
   return (o && o.getAttribute && o.getAttribute('data-print')) ? o : null;
 }
+// Window quote-line label from the manufacturer's winTypes list — fixes the old
+// hardcoded 30"×30" label that printed a 30×36 Hi-Impact ($995) as "30" × 30" Window".
+function winRowLabel(v){
+  var arr=(MFR().winTypes||[]);
+  for(var i=0;i<arr.length;i++){ if(arr[i].v===v) return arr[i].label+' Window'; }
+  return '30" \xD7 30" Window';
+}
 function gWainscot(){
   if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return 0;
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
-  // CCI TALL (17'+): commercial wainscot = $12.50/lf of CLOSED wall.
-  // CCI corrected Tejada 30x40x20 fully-enclosed to $1,750 = 140 lf × $12.50
-  // exactly (8/17/26). PROVISIONAL single-point rate.
+  // CCI TALL (17'+): Sensei-sampled wainscot chart (8/31/26) — REPLACES the 8/17
+  // Tejada $12.50/lf single-point rate (Sensei now prices lower: 30x40 = $1,600
+  // vs Tejada's $1,750). Chart: W30 series by LENGTH; doors do NOT deduct
+  // (verified vs Fraga QTE-000279: 30x50x20 with 4 doors = $1,800 = the no-door
+  // price); widths shift $50/ft (verified 26/28/30 at L50). Beyond 100' extra-
+  // polates at $10/ft; widths >30 extrapolate upward (unverified — CCI tall
+  // standard widths cap at 30). Partly-open buildings scale by the closed share
+  // of the perimeter (the chart is for a fully-enclosed building).
   if(ACTIVE_MFR==='CCI' && h>=17){
+    var WAIN_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
+    var WAIN_V=[1400,1450,1500,1550,1600,1750,1800,1850,1900,1950,2000,2050,2100,2250,2300,2350,2400];
+    var _wci=WAIN_L.length-1;
+    for(var _wj=0;_wj<WAIN_L.length;_wj++){ if(WAIN_L[_wj]>=l){_wci=_wj;break;} }
+    var _wchart=(l>100)?Math.round(2400+10*(l-100)):WAIN_V[_wci];
+    _wchart += (w-30)*50;
+    if(_wchart<0) _wchart=0;
     var _wlf=0;
     if(G('wfg').value==='Closed')_wlf+=w;
     if(G('wbg').value==='Closed')_wlf+=w;
     if(G('wre').value==='Closed')_wlf+=l;
     if(G('wle').value==='Closed')_wlf+=l;
-    return _wlf>0?Math.round(12.5*_wlf*(wainscotPrintOpt()?1.25:1)):0;
+    if(_wlf<=0) return 0;
+    var _wfrac=Math.min(1,_wlf/(2*(w+l)));
+    return Math.round(_wchart*_wfrac*(wainscotPrintOpt()?1.25:1));
   }
   var _wb=MFR().wainscotBuckets(w), _wc=0;
   for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
@@ -9304,7 +9337,7 @@ async function printQuote(){
   document.querySelectorAll('.ne').forEach(function(el){
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
-    rows+=row('30" \xD7 30"'+(winTypeP==='hi'?' High Impact':'')+' Window',qty,p,qty*p);
+    rows+=row(winRowLabel(winTypeP),qty,p,qty*p);
     var sfEl=el.querySelector('.nsf');
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;rows+=row('Side Frame',sq,sfp,sq*sfp);}
   });
@@ -10292,7 +10325,7 @@ async function printContract(){
   document.querySelectorAll('.ne').forEach(function(el){
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
-    row('30" \xD7 30"'+(winTypeP==='hi'?' High Impact':'')+' Window',qty,p,qty*p);
+    row(winRowLabel(winTypeP),qty,p,qty*p);
     var sfEl=el.querySelector('.nsf');
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
