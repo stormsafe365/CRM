@@ -5460,7 +5460,7 @@ function gWTD(){
     var sfEl=el.querySelector('.wsf');
     sf+=sfEl?parseInt(sfEl.value)||0:0;
   }
-  return {wtd:t, sf:sf*(window._sf_dw||425)};
+  return {wtd:t, sf:sf*(window._sf_dw||150)};
 }
 function gWIN(){
   var t=0, sf=0;
@@ -5473,7 +5473,7 @@ function gWIN(){
     var sfEl=el.querySelector('.nsf');
     sf+=sfEl?parseInt(sfEl.value)||0:0;
   }
-  return {win:t, sf:sf*(window._sf_dw||425)};
+  return {win:t, sf:sf*(window._sf_dw||150)};
 }
 
 // ── INSULATION ────────────────────────────────────────────────────────────────
@@ -12841,7 +12841,7 @@ function renderAllPricingTables(){
       {label:'Automatic Opener (roll-up doors under 12ft, CCI; 12ft+ doors are $1,200)', key:'opener', get:function(){return window._opener||1100;}, set:function(v){window._opener=v;}},
       {label:'Brush Seal rate ($/ft of door width)', key:'seal', get:function(){return window._seal||9.85;}, set:function(v){window._seal=v;}},
       {label:'Side Frame — with Roll-Up Door (per opening)', key:'sf-rud', get:function(){return window._sf_rud||325;}, set:function(v){window._sf_rud=v;}},
-      {label:'Side Frame — without Roll-Up Door (per opening)', key:'sf-dw', get:function(){return window._sf_dw||425;}, set:function(v){window._sf_dw=v;}},
+      {label:'Side Frame — without Roll-Up Door (per opening)', key:'sf-dw', get:function(){return window._sf_dw||150;}, set:function(v){window._sf_dw=v;}},
       {label:'Insulation Rate ($/sq ft)', key:'insul', get:function(){return INSUL_RATE;}, set:function(v){INSUL_RATE=v;}},
       {label:'Free Upgrade Threshold ($)', key:'thresh', get:function(){return window._freeThresh||10000;}, set:function(v){window._freeThresh=v;}},
       {label:'Deposit Percentage (%)', key:'dep-pct', get:function(){return window._depPct||17;}, set:function(v){window._depPct=v;}},
