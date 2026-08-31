@@ -4701,7 +4701,10 @@ function eaveHeaderCost(doorWidthFt, bldgWidthFt){
   }
   // Standard tier (12-30 wide buildings)
   if(dw<=12) return 200;
-  if(dw<=16) return 360;
+  // CCI 13-16' doors: $250 — reverse-engineered from Sensei door bundles 8/31/26
+  // (14x14 w/ hoist = $2,750 total = our door $2,500 + header $250; the old $360
+  // over-billed the 14x14 bundle by $110 vs Sensei; 12x12 already matched at $200).
+  if(dw<=16) return ACTIVE_MFR==='CCI' ? 250 : 360;
   return 720;                    // 17-20' wide door
 }
 function doorNeedsLift(type, size){
