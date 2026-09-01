@@ -7004,7 +7004,18 @@ function gAdjLabel(){
 // into the priced sp-left/sp-right select before repricing (values match;
 // Closed/Open map to closed/open). No-op on other building types.
 function cpWallChanged(wallId, spId){
-  if(!G('btype')||G('btype').value!=='carport') return;
+  var bt=G('btype')?G('btype').value:'';
+  // GCH: the Section-4 eave dropdowns forward to the OPEN extension's side-panel
+  // controls (gch-left/gch-right) — reps kept changing these expecting the
+  // extension to panel up, but the live GCH controls sit in Section 3 and these
+  // were dead for GCH (no price, no 3D). Values map 1:1 ('Closed' = full-length
+  // closed side, 'Open' = bare extension, panel options = partial bands).
+  if(bt==='gch'){
+    var gEl=G(wallId==='wre'?'gch-right':'gch-left'), wEl2=G(wallId);
+    if(gEl&&wEl2){ var v2=wEl2.value; gEl.value=(v2==='Closed')?'closed':(v2==='Open')?'open':v2; }
+    return;
+  }
+  if(bt!=='carport') return;
   var wEl=G(wallId), sEl=G(spId); if(!wEl||!sEl) return;
   var v=wEl.value;
   sEl.value=(v==='Closed')?'closed':(v==='Open')?'open':v;
