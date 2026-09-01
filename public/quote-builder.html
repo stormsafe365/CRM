@@ -3695,14 +3695,21 @@ function doBldType(){
     }
   }
 
-  // GCH defaults: enclosed walls closed, front gable open
+  // GCH defaults: back gable closed, front gable open. The eave dropdowns now
+  // control the OPEN extension's paneling (forwarded to gch-left/right), so they
+  // start 'Open' = bare extension; the enclosed section is always sheeted by the
+  // GCH pricing regardless. 'Closed' here = sheet the FULL length.
   if(bt==='gch'){
-    G('wbg').value='Closed'; G('wre').value='Closed'; G('wle').value='Closed';
+    G('wbg').value='Closed'; G('wre').value='Open'; G('wle').value='Open';
+    if(G('gch-left'))G('gch-left').value='open';
+    if(G('gch-right'))G('gch-right').value='open';
+    var gchEaveN=G('gch-eave-note'); if(gchEaveN) gchEaveN.style.display='';
     G('wfg').value='Open'; // front (carport end) open by default
     // GCH structurally requires an internal divider end wall — auto-select "Added"
     var addEW=G('add-end-wall'); if(addEW) addEW.value='yes';
   } else if(bt==='carport'){
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Open'; });
+    var gchEaveN2=G('gch-eave-note'); if(gchEaveN2) gchEaveN2.style.display='none';
     var addEW2=G('add-end-wall'); if(addEW2) addEW2.value='no';
   } else if(bt==='fslean'){
     // fslean walls live in the fs-section selects; the standard wall rows are
@@ -3712,6 +3719,7 @@ function doBldType(){
     var addEWf=G('add-end-wall'); if(addEWf) addEWf.value='no';
   } else {
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Closed'; });
+    var gchEaveN3=G('gch-eave-note'); if(gchEaveN3) gchEaveN3.style.display='none';
     var addEW3=G('add-end-wall'); if(addEW3) addEW3.value='no';
   }
   if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();

@@ -368,8 +368,11 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="Open">Open (no gable sheeting)</option>
         <option value="Gable Only">Gable Only Sheeting</option>
       </select></div>
-    <div class="enote" style="margin:4px 0 6px;font-size:10px">Side paneling on the OPEN extension. Left &amp; right are independent — each comes down from the eave to the selected height.</div>
-    <div class="row"><label>Left Side Panels</label>
+    <!-- gch-left/gch-right stay in the DOM (pricing, 3D and saved quotes read them)
+         but are HIDDEN — Section 4 Left/Right Eave Side is the single control and
+         forwards here via cpWallChanged (owner: one place to set panels). -->
+    <div class="enote" style="display:none">Side paneling on the OPEN extension.</div>
+    <div class="row" style="display:none"><label>Left Side Panels</label>
       <select id="gch-left" onchange="rc()">
         <option value="open">Open</option>
         <option value="1panel">1 Panel (3')</option>
@@ -383,7 +386,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="q3">3/4 Closed</option>
         <option value="closed">Closed</option>
       </select></div>
-    <div class="row"><label>Right Side Panels</label>
+    <div class="row" style="display:none"><label>Right Side Panels</label>
       <select id="gch-right" onchange="rc()">
         <option value="open">Open</option>
         <option value="1panel">1 Panel (3')</option>
@@ -530,6 +533,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="q2">1/2 Closed</option>
       <option value="q3">3/4 Closed</option>
     </select></div>
+  <div class="enote" id="gch-eave-note" style="display:none;margin:4px 0 6px;font-size:10px">GCH: Left/Right Eave Side control the paneling on the OPEN extension (panels come down from the eave). The enclosed section is always sheeted. &ldquo;Closed&rdquo; sheets the full length.</div>
 </div>
 
 <!-- 4b. SIDE PANELS (Carport/GCH only) -->
@@ -4240,14 +4244,21 @@ function doBldType(){
     }
   }
 
-  // GCH defaults: enclosed walls closed, front gable open
+  // GCH defaults: back gable closed, front gable open. The eave dropdowns now
+  // control the OPEN extension's paneling (forwarded to gch-left/right), so they
+  // start 'Open' = bare extension; the enclosed section is always sheeted by the
+  // GCH pricing regardless. 'Closed' here = sheet the FULL length.
   if(bt==='gch'){
-    G('wbg').value='Closed'; G('wre').value='Closed'; G('wle').value='Closed';
+    G('wbg').value='Closed'; G('wre').value='Open'; G('wle').value='Open';
+    if(G('gch-left'))G('gch-left').value='open';
+    if(G('gch-right'))G('gch-right').value='open';
+    var gchEaveN=G('gch-eave-note'); if(gchEaveN) gchEaveN.style.display='';
     G('wfg').value='Open'; // front (carport end) open by default
     // GCH structurally requires an internal divider end wall — auto-select "Added"
     var addEW=G('add-end-wall'); if(addEW) addEW.value='yes';
   } else if(bt==='carport'){
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Open'; });
+    var gchEaveN2=G('gch-eave-note'); if(gchEaveN2) gchEaveN2.style.display='none';
     var addEW2=G('add-end-wall'); if(addEW2) addEW2.value='no';
   } else if(bt==='fslean'){
     // fslean walls live in the fs-section selects; the standard wall rows are
@@ -4257,6 +4268,7 @@ function doBldType(){
     var addEWf=G('add-end-wall'); if(addEWf) addEWf.value='no';
   } else {
     ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Closed'; });
+    var gchEaveN3=G('gch-eave-note'); if(gchEaveN3) gchEaveN3.style.display='none';
     var addEW3=G('add-end-wall'); if(addEW3) addEW3.value='no';
   }
   if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
