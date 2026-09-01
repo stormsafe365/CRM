@@ -3907,9 +3907,11 @@ function doBld(){
   }
 
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
-  // Leg style at 16'+: CA ladders only on 32'+ widths; CCI ladders at 17'+ any
-  // width (8/17/26 CCI email — Tejada 30x40x20). 16' legs = standard double legs.
-  if(h>=16){var _ldr=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?(h>=17):(w>31); f.push(_ldr?bdg('Ladder Legs Required','bo'):bdg('Standard Double Legs','bb'));}
+  // Leg style at 16'+: LADDER legs only on 32'+ widths — BOTH manufacturers.
+  // Sensei's own UI auto-selects "Double Legs" on CCI 30x96x18 (owner screenshot
+  // 8/31/26); the 8/17 CCI email's "ladder legs" wording refers to PRICING from
+  // the commercial chart, not the physical leg style. Standard widths = double.
+  if(h>=16||w>=52){f.push(w>=52?bdg('Ladder Legs — Standard','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
@@ -6259,7 +6261,7 @@ function rc(){
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
   if(w>31||h===14||h===15) f.push(bdg('Double Trusses','bb'));
-  if(h>=16){var _ldr2=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?(h>=17):(w>31); f.push(_ldr2?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));}
+  if(h>=16||w>=52){f.push(w>=52?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
   // Show free perks badge when base >= $10k
