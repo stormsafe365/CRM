@@ -7074,6 +7074,15 @@ function rc(){
     if(ACTIVE_MFR==='CCI' && h>=17){ _wsF.value='Vertical'; _wsF.disabled=true; _wsF.title="Vertical is automatic at 17'+ walls (CCI)"; }
     else { _wsF.disabled=false; _wsF.title=''; }
   }
+  // GCH: Section-4 eave dropdowns MIRROR the gch-left/right store every reprice,
+  // so a RESTORED quote shows the truth (old saves carried the forced 'Closed'
+  // while the extension store said 'open' — the dropdown lied). Edits still flow
+  // wre/wle → gch via cpWallChanged; this reverse pass makes them converge.
+  if(G('btype')&&G('btype').value==='gch'){
+    var _gMap=function(v){return v==='closed'?'Closed':v==='open'?'Open':v;};
+    if(G('gch-right')&&G('wre')&&document.activeElement!==G('wre')) G('wre').value=_gMap(G('gch-right').value);
+    if(G('gch-left')&&G('wle')&&document.activeElement!==G('wle')) G('wle').value=_gMap(G('gch-left').value);
+  }
   var base=gBase(), leg=gLeg(), walls=gWalls();
   var vertWallUpg=gVertUpgrade();
   var rd=gRUD(), wd=gWTD(), wn=gWIN();
