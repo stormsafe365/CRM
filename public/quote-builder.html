@@ -355,8 +355,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <input id="gch-enc" type="number" min="5" max="200" placeholder="e.g. 20" oninput="gchSync('enc')" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"></div><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Open Length (ft)</label>
       <input id="gch-open" type="number" min="5" max="200" placeholder="e.g. 11" oninput="gchSync('open')" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"></div></div>
     <div id="gch-sum-note" class="enote" style="margin:6px 0;font-size:10px">Enter any 2 of total/enclosed/open length.</div>
-    <!-- Front Gable: GCH-only selector. Syncs the Front Gable choice in Section 4. -->
-    <div class="row"><label>Front Gable</label>
+    <!-- Front Gable duplicate HIDDEN — Section 4's Front Gable is the single
+         control (owner: one place per option); wfg syncs back here so state
+         stays consistent for saves/3D. -->
+    <div class="row" style="display:none"><label>Front Gable</label>
       <select id="gch-front-gable" onchange="syncGchFrontGable(this.value)">
         <option value="Open">Open (no gable sheeting)</option>
         <option value="Gable Only">Gable Only Sheeting</option>
