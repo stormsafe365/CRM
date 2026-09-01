@@ -5970,6 +5970,15 @@ function rc(){
   //    early declaration `w` was `undefined`, causing `w<=24` to be false in every check
   //    and silently wrong values (e.g. 12GA $650 instead of $600 on a 24'-wide quote).
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6;
+  // CCI 17'+ = AUTOMATIC vertical sidewalls (owner rule 9/1/26 — Sensei locks
+  // vertical at 17+; Chris's 30x98x18 went out horizontal because we didn't).
+  // No extra charge (gVertUpgrade is already 0 for CCI 17'+ — the tall pricing
+  // IS the vertical price); the selector locks and unlocks with the height.
+  var _wsF=G('ws');
+  if(_wsF){
+    if(ACTIVE_MFR==='CCI' && h>=17){ _wsF.value='Vertical'; _wsF.disabled=true; _wsF.title="Vertical is automatic at 17'+ walls (CCI)"; }
+    else { _wsF.disabled=false; _wsF.title=''; }
+  }
   var base=gBase(), leg=gLeg(), walls=gWalls();
   var vertWallUpg=gVertUpgrade();
   var rd=gRUD(), wd=gWTD(), wn=gWIN();
