@@ -683,6 +683,13 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="asphalt">Asphalt</option>
       <option value="ground">Directly to the Ground</option>
     </select></div>
+  <div class="row"><label>Delivery Type</label>
+    <select id="delivery-type" onchange="rc()">
+      <option value="installed">Delivered &amp; Installed (standard)</option>
+      <option value="delivered">Delivered Only — No Installation</option>
+    </select>
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Delivered Only: the quote &amp; contract state that no installation is included. Pricing is unchanged — the manufacturer offers no drop-off discount.</div>
+  </div>
 </div>
 
 <!-- 13. DISCOUNT / TAX / NOTES -->
@@ -4514,6 +4521,7 @@ function doBld(){
   _prevOcWidth = w;
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? " — 5' OC" : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
+  if(_delivOnly()) f.push(bdg('DELIVERED ONLY — No Installation','bo'));
   // Wide span already 26GA so hide upgrade option; show for standard/carport
   var sheetRow=G('sheeting-row');
   var sheetSel=G('sheeting-upgrade');
@@ -6991,7 +6999,7 @@ function rcManual(){
   var pdepLbl=G('pdep-label'); if(pdepLbl) pdepLbl.textContent='Deposit Due Now ('+(window._depPct||17)+'%)';
   var pbalSplitEl=G('pbal-split-note');
   if(pbalSplitEl){
-    if(bal>15000){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+' after install'; pbalSplitEl.style.display='block'; }
+    if(bal>15000){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install'); pbalSplitEl.style.display='block'; }
     else { pbalSplitEl.style.display='none'; }
   }
   var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?('\u2014 '+fD(adjTot)):'';
@@ -7100,7 +7108,7 @@ function rc(){
       framingUpgrade=fsG12();
     } else if(bt3==='widespan'){
       // Wide span: fixed CA price by length column
-      var GA12C=ACTIVE_MFR==='CA'?[20,25,30,35,40,44,48,52]:[20,24,28,32,36,40,44,48,52];var GA12V=ACTIVE_MFR==='CA'?[360,480,600,720,840,1560,1680,1800]:[840,960,1080,1200,1320,1440,1560,1680,1800];
+      var GA12C=[20,25,30,35,40,44,48,52],GA12V=[360,480,600,720,840,1560,1680,1800];
       var gci=0; for(var gi=0;gi<GA12C.length;gi++){if(GA12C[gi]<=l)gci=gi;else break;}
       framingUpgrade=GA12V[gci];
     } else {
@@ -7108,7 +7116,7 @@ function rc(){
       var GA12S=[20,25,30,35,40];
       // Master Price Book 7/16/26 §4H: 12GA is 210-330 for 12-24 wide and
       // 360-840 for 26-30 wide (single series each — no separate 4'OC rate).
-      var GA12SV=ACTIVE_MFR==='CA'?(w<=24?[210,240,270,300,330]:[360,480,600,720,840]):(w<=24?[360,480,600,720,840]:[410,530,650,770,890]);
+      var GA12SV=w<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcis=0; for(var gis=0;gis<GA12S.length;gis++){if(GA12S[gis]<=l)gcis=gis;else break;}
       if(ACTIVE_MFR==='CCI' && w>24){
         framingUpgrade=cci12GA(l); // Sensei-sampled CCI series (see cci12GA)
@@ -7360,7 +7368,7 @@ function rc(){
   if(pbalSplitEl){
     if(bal>15000){
       var half=Math.round(bal/2);
-      pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+' after install';
+      pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install');
       pbalSplitEl.style.display='block';
     } else {
       pbalSplitEl.style.display='none';
@@ -8248,6 +8256,7 @@ function zoningChecklistHTML(){
 // QUOTE SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════════════
 
+function _delivOnly(){var e=G('delivery-type');return !!(e&&e.value==='delivered');}
 function collectQuoteData(){
   // Collect all form field values
   var data = { version: 2, savedAt: new Date().toISOString(), fields: {} };
@@ -8256,7 +8265,7 @@ function collectQuoteData(){
   var simpleIds = [
     'cn','cp','ce','city','county','state','zip',
     'pt','agx','perm','cert-ovr','plans-sel','permit-svc','btype','bw','bl','bh',
-    'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
+    'ws','brs','framing-upgrade','oc-spacing','delivery-type','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note','adj-on-h',
     // Wall Options — were NEVER saved, so a building with open gables/sides
@@ -9144,13 +9153,13 @@ async function printQuote(){
   var framingUpgP=0;
   if(fuPrint==='12'){
     if(bt3p==='widespan'){
-      var GA12CP=ACTIVE_MFR==='CA'?[20,25,30,35,40,44,48,52]:[20,24,28,32,36,40,44,48,52];var GA12VP=ACTIVE_MFR==='CA'?[360,480,600,720,840,1560,1680,1800]:[840,960,1080,1200,1320,1440,1560,1680,1800];
+      var GA12CP=[20,25,30,35,40,44,48,52],GA12VP=[360,480,600,720,840,1560,1680,1800];
       var gcip=0; for(var gip=0;gip<GA12CP.length;gip++){if(GA12CP[gip]<=lv)gcip=gip;else break;}
       framingUpgP=GA12VP[gcip];
     } else {
       var GA12SP=[20,25,30,35,40];
       var wPQ=parseInt(G('bw').value)||0;
-      var GA12SPV=ACTIVE_MFR==='CA'?(wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840]):(wPQ<=24?[360,480,600,720,840]:[410,530,650,770,890]);
+      var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
       if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
       else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
@@ -9618,6 +9627,7 @@ async function printQuote(){
 
   // ── MAIN ──
   '<div class="qmain">'+
+  (_delivOnly()?'<div style="background:#2a1205;border:2px solid #f59e0b;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-weight:800;color:#f59e0b;font-size:10pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included</div>':'')+
   '<table class="qp-tbl">'+
   '<thead><tr>'+
   '<th class="qp-bdh">Building Description</th><th class="c qp-col">Qty</th><th class="c qp-col">Qty Price</th><th class="r qp-col">Price</th>'+
@@ -9663,12 +9673,12 @@ async function printQuote(){
         '<div style="background:#111d28;border-radius:4px;padding:7px 10px;border-left:3px solid #1fcec4">'+
           '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">Due at Scheduling</div>'+
           '<div style="font-size:11pt;font-weight:800;color:#1fcec4;margin-top:2px">'+fD(half)+'</div>'+
-          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">When installation is scheduled</div>'+
+          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">'+(_delivOnly()?'When delivery is scheduled':'When installation is scheduled')+'</div>'+
         '</div>'+
         '<div style="background:#111d28;border-radius:4px;padding:7px 10px;border-left:3px solid #1fcec4">'+
-          '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">Due After Install</div>'+
+          '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">'+(_delivOnly()?'Due at Delivery':'Due After Install')+'</div>'+
           '<div style="font-size:11pt;font-weight:800;color:#1fcec4;margin-top:2px">'+fD(bal-half)+'</div>'+
-          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">Upon completion of installation</div>'+
+          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">'+(_delivOnly()?'Upon delivery of materials':'Upon completion of installation')+'</div>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -9684,7 +9694,7 @@ async function printQuote(){
   '<div class="qwarr">'+
   '<div class="qwarr-head">Warranty Coverage</div>'+
   '<div class="qwarr-body">'+
-  '<div class="qw">1-Year workmanship warranty</div>'+
+  (_delivOnly()?'<div class="qw">Workmanship warranty not applicable — customer assembly</div>':'<div class="qw">1-Year workmanship warranty</div>')+
   '<div class="qw">20-Year limited rust-through warranty</div>'+
   '<div class="qw">Limited lifetime warranty on all certified buildings</div>'+
   '</div></div>'+
@@ -10100,13 +10110,13 @@ async function printContract(){
   var framingUpgP=0;
   if(fuValP==='12'){
     if(bt3p==='widespan'){
-      var GA12CP=ACTIVE_MFR==='CA'?[20,25,30,35,40,44,48,52]:[20,24,28,32,36,40,44,48,52];var GA12VP=ACTIVE_MFR==='CA'?[360,480,600,720,840,1560,1680,1800]:[840,960,1080,1200,1320,1440,1560,1680,1800];
+      var GA12CP=[20,25,30,35,40,44,48,52],GA12VP=[360,480,600,720,840,1560,1680,1800];
       var gcip=0; for(var gip=0;gip<GA12CP.length;gip++){if(GA12CP[gip]<=lv)gcip=gip;else break;}
       framingUpgP=GA12VP[gcip];
     } else {
       var GA12SP=[20,25,30,35,40];
       var wPQ=parseInt(G('bw').value)||0;
-      var GA12SPV=ACTIVE_MFR==='CA'?(wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840]):(wPQ<=24?[360,480,600,720,840]:[410,530,650,770,890]);
+      var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
       if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
       else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
@@ -10924,6 +10934,7 @@ async function printContract(){
           '<div class="c-flag"><span>Electricity on site</span>'+yn(elec)+'</div>'+
           '<div class="c-flag"><span>Primary structure</span>'+yn(primStruct)+'</div>'+
           '<div class="c-flag"><span>Site ready for install</span>'+yn(siteReady)+'</div>'+
+          (_delivOnly()?'<div class="c-flag"><span>Delivery type</span><span class="pill no">DELIVERED ONLY</span></div>':'')+
           '<div class="c-flag"><span>Permit required</span>'+(permVal==='yes'?'<span class="pill ok">YES</span>':(permVal==='no'?'<span class="pill no">NO</span>':'<span class="pill tbd">VERIFY</span>'))+'</div>'+
         '</div>'+
       '</div>'+
@@ -10965,6 +10976,7 @@ async function printContract(){
     '<tbody>'+rowsHTML+'</tbody></table>'+
     '</div>'+
 
+    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included — Buyer Is Responsible for Assembly</div>':'')+
     '<div class="c-sec c-pay-section">'+
     '<div class="c-sec-title">Payment Summary</div>'+
     '<div class="c-totals-wrap">'+
@@ -10978,7 +10990,7 @@ async function printContract(){
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
         '<div class="c-pay-line dep"><span class="l">Deposit Due Now</span><span class="v">'+fD(dep)+'</span></div>'+
-        '<div class="c-pay-line bal"><span class="l">Balance at Scheduling</span><span class="v">'+fD(bal)+'</span></div>'+
+        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?'Balance at Delivery':'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
     '</div>'+
@@ -11009,7 +11021,7 @@ async function printContract(){
 
     // ── Buyer Responsibilities — always shown ──
     '<div class="c-responsibilities">'+
-      '<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
+      (_delivOnly()?'<strong>Delivered Only — No Installation:</strong> This order is for delivery of materials only; neither the Seller nor the manufacturer will install the unit. Buyer is solely responsible for assembly and installation. Installation-related warranties, including the workmanship warranty, do not apply, and manufacturer warranties may be limited for units not installed by the manufacturer. ':'')+'<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
     '</div>'+
 
     '<div class="c-ack">'+
@@ -11099,7 +11111,7 @@ async function printContract(){
     '<p style="padding-left:32px"><strong>iv. Right to Correct.</strong> CCI shall have the right to correct any pricing or tax errors made by dealer. Prices for orders placed on hold will only be guaranteed for a 90 calendar day period. If an order is on hold for more than 90 days, customer may be subject to a price increase that equals CCI\'s current pricing at the time of delivery/installation.</p>'+
     '<p><strong>4. Payment Terms.</strong></p>'+
     '<p style="padding-left:16px"><strong>a. Down Payment.</strong> Buyer shall pay dealer a down payment equal to ___ of the retail price at the time of the sale. Buyer shall not pay dealer an amount exceeding the down payment. In the event Buyer pays dealer an amount exceeding the down payment, Buyer does so at his own risk with the understanding that Buyer is contractually obligated to remit payment of any remaining balance of the purchase price (the "Balance") as set forth below.</p>'+
-    '<p style="padding-left:16px"><strong>b. Balance.</strong> Buyer shall pay the balance to the installation contractor on the date of installation. Payment may be made by check or credit card. Payments made by credit card are subject to an additional fee equal to two percent (2%) of the balance paid by credit card.</p>'+
+    '<p style="padding-left:16px"><strong>b. Balance.</strong> '+(_delivOnly()?'Buyer shall pay the balance in full upon delivery of the unit.':'Buyer shall pay the balance to the installation contractor on the date of installation.')+' Payment may be made by check or credit card. Payments made by credit card are subject to an additional fee equal to two percent (2%) of the balance paid by credit card.</p>'+
     '<p style="padding-left:16px"><strong>c. Excess Down Payment.</strong> If Buyer pays more than the required Down Payment at the time of the sale, CCI must receive these funds from the dealer prior to installation or CCI will not schedule installation without payment from the Buyer.</p>'+
     '<p style="padding-left:16px"><strong>d. No Refunds.</strong> In the event Buyer cancels the order, Buyer shall receive no refund of the down payment.</p>'+
     '<p style="padding-left:16px"><strong>e. Security Interest.</strong> Buyer expressly agrees that the unit shall remain property of CCI until the purchase price under the agreement is paid in full. CCI hereby retains a purchase money security interest in the unit as set forth in Section 9 of the Uniform Commercial Code as enacted in the state where unit is being installed. Failure to pay the purchase price under the agreement will result in repossession of unit. Repossession does not relieve Buyer from liability for specific performance of the agreement.</p>'+
@@ -13111,7 +13123,7 @@ function textQuote(){
   var bt3=G('btype').value,lv=parseInt(l)||0,wv=parseInt(w)||0;
   var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
   var framingUpgP=0;
-  if(fuVal==='12'){if(bt3==='widespan'){var GA12C2=ACTIVE_MFR==='CA'?[20,25,30,35,40,44,48,52]:[20,24,28,32,36,40,44,48,52];var GA12V2=ACTIVE_MFR==='CA'?[360,480,600,720,840,1560,1680,1800]:[840,960,1080,1200,1320,1440,1560,1680,1800];var gci2=0;for(var gi2=0;gi2<GA12C2.length;gi2++){if(GA12C2[gi2]<=lv)gci2=gi2;else break;}framingUpgP=GA12V2[gci2];}else{var GA12S2=[20,25,30,35,40];var GA12SV2=ACTIVE_MFR==='CA'?(wv<=24?[210,240,270,300,330]:[360,480,600,720,840]):(wv<=24?[360,480,600,720,840]:[410,530,650,770,890]);var gcis2=0;for(var gis2=0;gis2<GA12S2.length;gis2++){if(GA12S2[gis2]<=lv)gcis2=gis2;else break;}if(ACTIVE_MFR==='CCI'&&wv>24){framingUpgP=cci12GA(lv);}else if(lv>40){var ga12r2=(GA12SV2[4]-GA12SV2[3])/5;framingUpgP=Math.round(GA12SV2[4]+ga12r2*(lv-40));}else{framingUpgP=GA12SV2[gcis2];}}}
+  if(fuVal==='12'){if(bt3==='widespan'){var GA12C2=[20,25,30,35,40,44,48,52],GA12V2=[360,480,600,720,840,1560,1680,1800];var gci2=0;for(var gi2=0;gi2<GA12C2.length;gi2++){if(GA12C2[gi2]<=lv)gci2=gi2;else break;}framingUpgP=GA12V2[gci2];}else{var GA12S2=[20,25,30,35,40];var GA12SV2=wv<=24?[210,240,270,300,330]:[360,480,600,720,840];var gcis2=0;for(var gis2=0;gis2<GA12S2.length;gis2++){if(GA12S2[gis2]<=lv)gcis2=gis2;else break;}if(ACTIVE_MFR==='CCI'&&wv>24){framingUpgP=cci12GA(lv);}else if(lv>40){var ga12r2=(GA12SV2[4]-GA12SV2[3])/5;framingUpgP=Math.round(GA12SV2[4]+ga12r2*(lv-40));}else{framingUpgP=GA12SV2[gcis2];}}}
   var pitchSelVal=G('pitch-sel')?G('pitch-sel').value:'standard';
   var pitchUpgrade=MFR().pitchUpgradeFn(base, wv||0, lv||0, pitchSelVal);
   var lapP=G('lap').value==='yes'?Math.round(base*0.10):0;
@@ -13172,6 +13184,7 @@ function textQuote(){
   }
   m+='\u{1F4B5} Deposit: '+fD(dep)+'\n';
   m+='\u{1F4B5} Balance: '+fD(bal)+'\n';
+  if(_delivOnly())m+='\u26A0 DELIVERED ONLY - NO INSTALLATION\n';
   m+=planLine;
   m+='\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n';
   m+='\u{1F4DE} 561-771-5555\n';

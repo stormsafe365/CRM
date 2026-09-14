@@ -620,6 +620,13 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="asphalt">Asphalt</option>
       <option value="ground">Directly to the Ground</option>
     </select></div>
+  <div class="row"><label>Delivery Type</label>
+    <select id="delivery-type" onchange="rc()">
+      <option value="installed">Delivered &amp; Installed (standard)</option>
+      <option value="delivered">Delivered Only — No Installation</option>
+    </select>
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Delivered Only: the quote &amp; contract state that no installation is included. Pricing is unchanged — the manufacturer offers no drop-off discount.</div>
+  </div>
 </div>
 
 <!-- 13. DISCOUNT / TAX / NOTES -->
@@ -3905,6 +3912,7 @@ function doBld(){
   if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? " — 5' OC" : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
+  if(_delivOnly()) f.push(bdg('DELIVERED ONLY — No Installation','bo'));
   // Wide span already 26GA so hide upgrade option; show for standard/carport
   var sheetRow=G('sheeting-row');
   var sheetSel=G('sheeting-upgrade');
@@ -5899,7 +5907,7 @@ function rcManual(){
   var pdepLbl=G('pdep-label'); if(pdepLbl) pdepLbl.textContent='Deposit Due Now ('+(window._depPct||17)+'%)';
   var pbalSplitEl=G('pbal-split-note');
   if(pbalSplitEl){
-    if(bal>15000){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+' after install'; pbalSplitEl.style.display='block'; }
+    if(bal>15000){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install'); pbalSplitEl.style.display='block'; }
     else { pbalSplitEl.style.display='none'; }
   }
   var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?('\u2014 '+fD(adjTot)):'';
@@ -6267,7 +6275,7 @@ function rc(){
   if(pbalSplitEl){
     if(bal>15000){
       var half=Math.round(bal/2);
-      pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+' after install';
+      pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install');
       pbalSplitEl.style.display='block';
     } else {
       pbalSplitEl.style.display='none';
@@ -7116,6 +7124,7 @@ function buildingPageHTML(prefixHTML){
 // QUOTE SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════════════
 
+function _delivOnly(){var e=G('delivery-type');return !!(e&&e.value==='delivered');}
 function collectQuoteData(){
   // Collect all form field values
   var data = { version: 2, savedAt: new Date().toISOString(), fields: {} };
@@ -7124,7 +7133,7 @@ function collectQuoteData(){
   var simpleIds = [
     'cn','cp','ce','city','county','state','zip',
     'pt','agx','perm','cert-ovr','plans-sel','btype','bw','bl','bh',
-    'ws','brs','framing-upgrade','oc-spacing','pitch-sel','sheeting-upgrade','tax',
+    'ws','brs','framing-upgrade','oc-spacing','delivery-type','pitch-sel','sheeting-upgrade','tax',
     'cr','cw','ct','cwn','wain','lap','disc','add-disc','add-disc-type','add-disc-show','add-disc-valid','rep','zoning-show',
     'insul-sel','foundation','fastener-add','adj-amt','adj-type','adj-note','adj-on-h',
     'gch-enc','gch-open','gch-gable','gch-panels','gch-sides','overhang-sel','sp-qty','sp-half','sp-sides',
@@ -8370,6 +8379,7 @@ function printQuote(){
 
   // ── MAIN ──
   '<div class="qmain">'+
+  (_delivOnly()?'<div style="background:#2a1205;border:2px solid #f59e0b;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-weight:800;color:#f59e0b;font-size:10pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included</div>':'')+
   '<table class="qp-tbl">'+
   '<thead><tr>'+
   '<th class="qp-bdh">Building Description</th><th class="c qp-col">Qty</th><th class="c qp-col">Qty Price</th><th class="r qp-col">Price</th>'+
@@ -8415,12 +8425,12 @@ function printQuote(){
         '<div style="background:#111d28;border-radius:4px;padding:7px 10px;border-left:3px solid #1fcec4">'+
           '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">Due at Scheduling</div>'+
           '<div style="font-size:11pt;font-weight:800;color:#1fcec4;margin-top:2px">'+fD(half)+'</div>'+
-          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">When installation is scheduled</div>'+
+          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">'+(_delivOnly()?'When delivery is scheduled':'When installation is scheduled')+'</div>'+
         '</div>'+
         '<div style="background:#111d28;border-radius:4px;padding:7px 10px;border-left:3px solid #1fcec4">'+
-          '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">Due After Install</div>'+
+          '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">'+(_delivOnly()?'Due at Delivery':'Due After Install')+'</div>'+
           '<div style="font-size:11pt;font-weight:800;color:#1fcec4;margin-top:2px">'+fD(bal-half)+'</div>'+
-          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">Upon completion of installation</div>'+
+          '<div style="font-size:7pt;color:#8aa3b5;margin-top:2px">'+(_delivOnly()?'Upon delivery of materials':'Upon completion of installation')+'</div>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -8436,7 +8446,7 @@ function printQuote(){
   '<div class="qwarr">'+
   '<div class="qwarr-head">Warranty Coverage</div>'+
   '<div class="qwarr-body">'+
-  '<div class="qw">1-Year workmanship warranty</div>'+
+  (_delivOnly()?'<div class="qw">Workmanship warranty not applicable — customer assembly</div>':'<div class="qw">1-Year workmanship warranty</div>')+
   '<div class="qw">20-Year limited rust-through warranty</div>'+
   '<div class="qw">Limited lifetime warranty on all certified buildings</div>'+
   '</div></div>'+
@@ -9440,6 +9450,7 @@ function printContract(){
           '<div class="c-flag"><span>Electricity on site</span>'+yn(elec)+'</div>'+
           '<div class="c-flag"><span>Primary structure</span>'+yn(primStruct)+'</div>'+
           '<div class="c-flag"><span>Site ready for install</span>'+yn(siteReady)+'</div>'+
+          (_delivOnly()?'<div class="c-flag"><span>Delivery type</span><span class="pill no">DELIVERED ONLY</span></div>':'')+
           '<div class="c-flag"><span>Permit required</span>'+(permVal==='yes'?'<span class="pill ok">YES</span>':(permVal==='no'?'<span class="pill no">NO</span>':'<span class="pill tbd">VERIFY</span>'))+'</div>'+
         '</div>'+
       '</div>'+
@@ -9479,6 +9490,7 @@ function printContract(){
     '<tbody>'+rowsHTML+'</tbody></table>'+
     '</div>'+
 
+    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included — Buyer Is Responsible for Assembly</div>':'')+
     '<div class="c-sec c-pay-section">'+
     '<div class="c-sec-title">Payment Summary</div>'+
     '<div class="c-totals-wrap">'+
@@ -9492,7 +9504,7 @@ function printContract(){
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
         '<div class="c-pay-line dep"><span class="l">Deposit Due Now</span><span class="v">'+fD(dep)+'</span></div>'+
-        '<div class="c-pay-line bal"><span class="l">Balance at Scheduling</span><span class="v">'+fD(bal)+'</span></div>'+
+        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?'Balance at Delivery':'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
     '</div>'+
@@ -9523,7 +9535,7 @@ function printContract(){
 
     // ── Buyer Responsibilities — always shown ──
     '<div class="c-responsibilities">'+
-      '<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
+      (_delivOnly()?'<strong>Delivered Only — No Installation:</strong> This order is for delivery of materials only; neither the Seller nor the manufacturer will install the unit. Buyer is solely responsible for assembly and installation. Installation-related warranties, including the workmanship warranty, do not apply, and manufacturer warranties may be limited for units not installed by the manufacturer. ':'')+'<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
     '</div>'+
 
     '<div class="c-ack">'+
@@ -11579,6 +11591,7 @@ function textQuote(){
   }
   m+='\u{1F4B5} Deposit: '+fD(dep)+'\n';
   m+='\u{1F4B5} Balance: '+fD(bal)+'\n';
+  if(_delivOnly())m+='\u26A0 DELIVERED ONLY - NO INSTALLATION\n';
   m+=planLine;
   m+='\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n';
   m+='\u{1F4DE} 561-771-5555\n';
