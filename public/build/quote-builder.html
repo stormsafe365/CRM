@@ -9627,7 +9627,6 @@ async function printQuote(){
 
   // ── MAIN ──
   '<div class="qmain">'+
-  (_delivOnly()?'<div style="background:#2a1205;border:2px solid #f59e0b;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-weight:800;color:#f59e0b;font-size:10pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included</div>':'')+
   '<table class="qp-tbl">'+
   '<thead><tr>'+
   '<th class="qp-bdh">Building Description</th><th class="c qp-col">Qty</th><th class="c qp-col">Qty Price</th><th class="r qp-col">Price</th>'+
@@ -9662,6 +9661,7 @@ async function printQuote(){
   '<div class="qdep-box"><div class="dl">Deposit Due</div><div class="dv">'+fD(dep)+'</div></div>'+
   '<div class="qdep-box"><div class="dl">Remaining Balance</div><div class="dv">'+fD(bal)+'</div></div>'+
   '</div>'+
+  (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f59e0b;background:#151009;color:#e8b45a;font-size:7.5pt;font-weight:700;letter-spacing:.4px">DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.</div>':'')+
 
   // Balance > $15,000: split into two payments (50% at scheduling, 50% after installation)
   (bal > 15000 ? (function(){
