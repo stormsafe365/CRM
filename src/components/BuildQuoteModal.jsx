@@ -26,7 +26,7 @@ const SAVE_BTN = {
   fontWeight: 800,
 }
 
-export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false }) {
+export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false, autoExec = false }) {
   // When reopening a saved builder quote, its full state lives in payload_json.
   const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
@@ -94,16 +94,21 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       done = true
       clearInterval(t)
       toast(
-        ok ? (autoContract
+        ok ? (autoExec
+              ? `Loaded quote ${initialQuote?.quote_number || ''} — generating executed copy…`.trim()
+              : autoContract
               ? `Loaded quote ${initialQuote?.quote_number || ''} — generating contract…`.trim()
               : `Loaded quote ${initialQuote?.quote_number || ''} — adjust and re-save`.trim())
            : "Couldn't fully load this quote's saved build — please rebuild or check the console.",
         ok ? 'success' : undefined,
       )
-      // "Generate Contract" from a quote card: once the build is fully restored
-      // and repriced, auto-run the same save-to-Doc-Hub + print flow the rep would
-      // trigger by hand. The delay lets restoreQuoteData finish repricing first.
-      if (ok && autoContract) {
+      // "Generate Contract" / "Executed Copy" from a quote card: once the build is
+      // fully restored and repriced, auto-run the same save-to-Doc-Hub + print flow
+      // the rep would trigger by hand. The delay lets repricing finish first.
+      if (ok && autoExec) {
+        setStatus('Generating executed copy…')
+        setTimeout(() => { saveExecutedThenPrint(getProgramWindow()) }, 1400)
+      } else if (ok && autoContract) {
         setStatus('Generating contract…')
         setTimeout(() => { saveContractThenPrint(getProgramWindow()) }, 1400)
       }
@@ -186,6 +191,33 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       setStatus('')
     }
     try { pg.printContract() } catch (e) { toast('Could not open the contract: ' + (e.message || e)) }
+  }
+
+  // Executed Copy — Deposit Paid: same flow as saveContractThenPrint, but with the
+  // builder's EXEC_COPY flag raised so both the Doc-Hub PDF and the printed copy
+  // carry the logo + DEPOSIT PAID watermark and the "Deposit PAID" payment line.
+  async function saveExecutedThenPrint(pg) {
+    if (!pg) return
+    try {
+      if (client?.id) {
+        setStatus('Saving executed copy…')
+        pg.EXEC_COPY = true
+        let html
+        try { html = await captureContractHtml(pg) } finally { pg.EXEC_COPY = false }
+        if (html && html.length > 3000) {
+          const blob = await renderQuotePdf(html)
+          const num = quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
+          await uploadClientDocBlob(client.id, 'contract', blob, `${num}-executed-deposit-paid.pdf`, 'application/pdf')
+          try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
+          toast(`Executed copy saved to ${client.name || 'lead'} · Documents › Contracts`, 'success')
+        }
+      }
+    } catch (e) {
+      console.warn('executed copy save failed', e)
+    } finally {
+      setStatus('')
+    }
+    try { pg.printExecutedCopy() } catch (e) { toast('Could not open the executed copy: ' + (e.message || e)) }
   }
 
   // Hook the program's GENERATE CONTRACT button so it also saves to the Doc Hub.

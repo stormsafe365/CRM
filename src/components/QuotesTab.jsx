@@ -33,6 +33,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [editingId, setEditingId] = useState(null)
   const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
   const [autoContract, setAutoContract] = useState(false) // opened via "Generate Contract" → auto-run contract flow
+  const [autoExec, setAutoExec] = useState(false) // opened via "Executed Copy" → auto-run the watermarked deposit-paid contract
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
@@ -205,6 +206,19 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     setBuilding(true)
   }
 
+  // "Executed Copy" — the fully-signed, deposit-collected copy: same contract
+  // with the StormSafe logo + DEPOSIT PAID stamp on every page. Sent back to the
+  // client after both signatures; doubles as the bill of sale.
+  function handleExecutedCopy(quote) {
+    if (!isBuilderQuote(quote)) {
+      setError('This quote was added manually, so there’s no build to generate an executed copy from. Build it in the 3D quote builder first.')
+      return
+    }
+    setEditQuote(quote)
+    setAutoExec(true)
+    setBuilding(true)
+  }
+
   // "Revision Form" from a quote card — for changes to an already-signed order
   // (colors, doors, size). Opens the typed RevisionModal: the rep fills the
   // change rows on screen and gets a finished PDF (no handwriting).
@@ -260,8 +274,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           client={client ?? { id: clientId }}
           initialQuote={editQuote}
           autoContract={autoContract}
+          autoExec={autoExec}
           onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
-          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false) }}
+          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false) }}
         />
       )}
 
@@ -293,12 +308,13 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           onDelete={confirmDeleteQuote}
           onDuplicate={handleDuplicate}
           onGenerateContract={handleGenerateContract}
+          onExecutedCopy={handleExecutedCopy}
           onRevisionForm={handleRevisionForm}
           onReceipt={setReceiptQuote}
           onColorSheet={setColorQuote}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
+        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onExecutedCopy={handleExecutedCopy} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -410,7 +426,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onRevisionForm, onReceipt, onColorSheet }) {
+function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -424,7 +440,7 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGener
       {many && <button className="spread-arrow left" onClick={() => scrollBy(-1)} aria-label="Scroll left">‹</button>}
       <div className="spread-scroll" ref={ref}>
         <div className="spread-grid">
-          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
+          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onExecutedCopy={onExecutedCopy} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
         </div>
       </div>
       {many && <button className="spread-arrow right" onClick={() => scrollBy(1)} aria-label="Scroll right">›</button>}
@@ -432,7 +448,7 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGener
   )
 }
 
-function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onRevisionForm, onReceipt, onColorSheet }) {
+function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const thumb = q.payload_json?.rendering_thumb || null
   const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
   return (
@@ -456,6 +472,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
         {onGenerateContract && canContract && <button className="btn btn-ghost" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
+        {onExecutedCopy && canContract && <button className="btn btn-ghost" style={{ borderColor: '#15803d', color: '#3fbf7f' }} onClick={() => onExecutedCopy(q)}>Executed Copy</button>}
         {onRevisionForm && <button className="btn btn-ghost" onClick={() => onRevisionForm(q)}>Revision Order</button>}
         {onReceipt && <button className="btn btn-ghost" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
         {onColorSheet && <button className="btn btn-ghost" onClick={() => onColorSheet(q)}>Color Sheet</button>}
