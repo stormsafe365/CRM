@@ -470,20 +470,17 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
       <div className="q-divider" />
       <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
       <div className="q-actions">
-        {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
+        {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
         <button className="btn btn-ghost" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+          ...(q.pdf_snapshot_url ? [{ id: 'pdf', label: 'View PDF', onClick: () => onViewPdf(q.pdf_snapshot_url) }] : []),
           ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
           ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
           ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
           ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
           ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
         ])}>Documents ▾</button>
-        <button className="btn btn-ghost" data-menu-anchor aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
-          ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
-          { sep: true },
-          ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),
-        ])}>⋯</button>
+        {onDelete && <button className="btn btn-ghost" aria-label="Delete quote" title="Delete quote" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>✕</button>}
       </div>
     </div>
   )

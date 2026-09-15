@@ -103,20 +103,17 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
         <div className="qcard-foot">
           <span className="qcard-creator">{userIcon} Created by {creator !== '—' ? creator : 'you'}</span>
           <div className="qcard-actions">
-            {q.pdf_snapshot_url && <button className="qcard-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>View PDF</button>}
+            {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
             <button className="qcard-btn" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+              ...(q.pdf_snapshot_url ? [{ id: 'pdf', label: 'View PDF', onClick: () => onViewPdf(q.pdf_snapshot_url) }] : []),
               ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
               ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
               ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
               ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
               ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
             ])}>Documents ▾</button>
-            <button className="qcard-btn" data-menu-anchor aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
-              ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
-              { sep: true },
-              ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),
-            ])}>⋯</button>
+            {onDelete && <button className="qcard-btn danger" aria-label="Delete quote" title="Delete quote" onClick={() => onDelete(q)}>✕</button>}
           </div>
         </div>
       </article>
