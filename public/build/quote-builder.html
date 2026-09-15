@@ -921,6 +921,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div style="margin-top:10px" class="desktop-btns">
     <button class="sbtn" type="button" onclick="printQuote()" style="background:#9fc839;color:#080f14">SAVE / PRINT PDF</button>
     <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
+    <button class="sbtn" type="button" onclick="printExecutedCopy()" style="background:#15803d;color:#fff" title="Watermarked copy for fully signed orders with deposit collected — acts as the bill of sale">EXECUTED COPY — DEPOSIT PAID</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
     <button class="sbtn" type="button" onclick="printRevisionForm()" style="background:#fbbf24;color:#080f14">REVISION FORM</button>
     <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#fbbf24;color:#080f14">REVISED LAYOUT</button>
@@ -10010,6 +10011,18 @@ function dimSpacingPageHTML(){
 })();
 
 
+var EXEC_COPY=false;
+// Executed Copy — Deposit Paid: same contract, stamped on every page. Sent to
+// the client after both parties sign + deposit clears; doubles as the bill of
+// sale (the separate Bill of Sale stays available).
+async function printExecutedCopy(){EXEC_COPY=true;try{await printContract();}finally{EXEC_COPY=false;}}
+function _execWatermark(LOGO){
+  return '<div style="position:fixed;inset:0;z-index:9999;pointer-events:none;display:flex;align-items:center;justify-content:center">'+
+    '<div style="transform:rotate(-27deg);text-align:center">'+
+    '<img src="'+LOGO+'" style="width:300px;display:block;margin:0 auto 16px;opacity:.14">'+
+    '<div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>'+
+    '</div></div>';
+}
 async function printContract(){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
 
@@ -10989,7 +11002,7 @@ async function printContract(){
       '</div>'+
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
-        '<div class="c-pay-line dep"><span class="l">Deposit Due Now</span><span class="v">'+fD(dep)+'</span></div>'+
+        '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>'+
         '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?'Balance at Delivery':'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
@@ -11273,6 +11286,7 @@ async function printContract(){
     '<style>'+CSS+'</style></head><body>'+
     page1+pageViews+page2+page3+page4+
     ((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+
+    (EXEC_COPY?_execWatermark(LOGO):'')+
     '</body></html>';
 
   // pw was opened up front (inside the click gesture); write the finished doc.
