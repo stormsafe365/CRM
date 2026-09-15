@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
+import { openMenu } from '../lib/uiFx'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
@@ -104,13 +105,18 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
           <div className="qcard-actions">
             {q.pdf_snapshot_url && <button className="qcard-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>View PDF</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
-            {onGenerateContract && canContract && <button className="qcard-btn" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
-            {onExecutedCopy && canContract && <button className="qcard-btn" style={{ borderColor: '#15803d', color: '#3fbf7f' }} title="Watermarked DEPOSIT PAID contract — send after both signatures + deposit" onClick={() => onExecutedCopy(q)}>Executed Copy</button>}
-            {onRevisionForm && <button className="qcard-btn" onClick={() => onRevisionForm(q)}>Revision Order</button>}
-            {onReceipt && <button className="qcard-btn" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
-            {onColorSheet && <button className="qcard-btn" onClick={() => onColorSheet(q)}>Color Sheet</button>}
-            {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
-            {onDelete && <button className="qcard-btn danger" onClick={() => onDelete(q)}>Delete</button>}
+            <button className="qcard-btn" onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+              ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
+              ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
+              ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
+              ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
+              ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
+            ])}>Documents ▾</button>
+            <button className="qcard-btn" aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
+              ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
+              { sep: true },
+              ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),
+            ])}>⋯</button>
           </div>
         </div>
       </article>

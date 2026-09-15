@@ -13,6 +13,7 @@ import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
 import ColorSheetModal from './ColorSheetModal'
+import { openMenu } from '../lib/uiFx'
 import RevisionModal from './RevisionModal'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
@@ -471,13 +472,18 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
       <div className="q-actions">
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
-        {onGenerateContract && canContract && <button className="btn btn-ghost" onClick={() => onGenerateContract(q)}>Generate Contract</button>}
-        {onExecutedCopy && canContract && <button className="btn btn-ghost" style={{ borderColor: '#15803d', color: '#3fbf7f' }} onClick={() => onExecutedCopy(q)}>Executed Copy</button>}
-        {onRevisionForm && <button className="btn btn-ghost" onClick={() => onRevisionForm(q)}>Revision Order</button>}
-        {onReceipt && <button className="btn btn-ghost" onClick={() => onReceipt(q)}>{q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt'}</button>}
-        {onColorSheet && <button className="btn btn-ghost" onClick={() => onColorSheet(q)}>Color Sheet</button>}
-        {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
-        {onDelete && <button className="btn btn-ghost" onClick={() => onDelete(q)} style={{ color: 'var(--danger)' }}>Delete</button>}
+        <button className="btn btn-ghost" onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+          ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
+          ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
+          ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
+          ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
+          ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
+        ])}>Documents ▾</button>
+        <button className="btn btn-ghost" aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
+          ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
+          { sep: true },
+          ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),
+        ])}>⋯</button>
       </div>
     </div>
   )
