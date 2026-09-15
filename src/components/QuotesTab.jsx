@@ -472,14 +472,14 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
       <div className="q-actions">
         {q.pdf_snapshot_url && <button className="btn btn-ghost" onClick={() => onViewPdf(q.pdf_snapshot_url)}>PDF</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
-        <button className="btn btn-ghost" onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+        <button className="btn btn-ghost" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
           ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
           ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
           ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
           ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
           ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
         ])}>Documents ▾</button>
-        <button className="btn btn-ghost" aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
+        <button className="btn btn-ghost" data-menu-anchor aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
           ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
           { sep: true },
           ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),

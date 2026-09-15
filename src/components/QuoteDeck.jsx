@@ -105,14 +105,14 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
           <div className="qcard-actions">
             {q.pdf_snapshot_url && <button className="qcard-btn" onClick={() => onViewPdf(q.pdf_snapshot_url)}>View PDF</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
-            <button className="qcard-btn" onClick={(e) => openMenu(e.currentTarget, 'Documents', [
+            <button className="qcard-btn" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
               ...(onGenerateContract && canContract ? [{ id: 'contract', label: 'Generate Contract', onClick: () => onGenerateContract(q) }] : []),
               ...(onExecutedCopy && canContract ? [{ id: 'exec', label: 'Executed Copy — Deposit Paid', onClick: () => onExecutedCopy(q) }] : []),
               ...(onReceipt ? [{ id: 'receipt', label: q.manufacturer === 'cci' ? 'Bill of Sale' : 'Receipt', onClick: () => onReceipt(q) }] : []),
               ...(onColorSheet ? [{ id: 'colors', label: 'Color Sheet', onClick: () => onColorSheet(q) }] : []),
               ...(onRevisionForm ? [{ id: 'revision', label: 'Revision Order', onClick: () => onRevisionForm(q) }] : []),
             ])}>Documents ▾</button>
-            <button className="qcard-btn" aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
+            <button className="qcard-btn" data-menu-anchor aria-label="More actions" onClick={(e) => openMenu(e.currentTarget, null, [
               ...(onDuplicate ? [{ id: 'dup', label: 'Duplicate', onClick: () => onDuplicate(q) }] : []),
               { sep: true },
               ...(onDelete ? [{ id: 'del', label: 'Delete', cls: 'danger', onClick: () => onDelete(q) }] : []),
