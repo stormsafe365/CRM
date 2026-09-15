@@ -4,10 +4,11 @@
 // filter a combined file table; upload targets the active category.
 
 import { useEffect, useRef, useState } from 'react'
-import { uploadClientDoc, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
+import { uploadClientDoc, uploadClientDocBlob, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
+import { stampExecutedPdf } from '../lib/stampExecuted'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { openMenu, MENU_ICON } from '../lib/uiFx'
+import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 
 const SECTIONS = [
@@ -30,6 +31,8 @@ const ICONS = {
   additional:  ic(<><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" /><path d="M12 11v5M9.5 13.5h5" /></>),
 }
 const EYE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+// Stamp icon (badge + check) for "Stamp Executed — Deposit Paid"
+const STAMP = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="10" r="6" /><path d="m9.5 10 2 2 3.5-3.5" /><path d="M7 20h10M8.5 16l-1 4M15.5 16l1 4" /></svg>
 const TRASH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 
 // 6A category accents (rotating palette; All Files uses the brand teal) + short chip labels.
@@ -57,6 +60,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [layoutOpen, setLayoutOpen] = useState(false)
+  const [stamping, setStamping] = useState(null) // path of the file being stamped
   const inputRef = useRef(null)
   const uploadCat = useRef('quote')
   const [docExpanded, setDocExpanded] = useState(false)
@@ -123,6 +127,30 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   async function onView(path) {
     try { window.open(await getDocSignedUrl(path), '_blank') } catch (e) { setError(e.message) }
   }
+  // Stamp a SIGNED contract (DocuSign download / scan / photo) with the logo +
+  // DEPOSIT PAID watermark and save it alongside as the fully executed copy /
+  // bill of sale. Signatures are untouched — the stamp overlays the file as-is.
+  async function onStampExecuted(f) {
+    if (stamping) return
+    setStamping(f.path)
+    try {
+      const url = await getDocSignedUrl(f.path)
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Could not download the file to stamp.')
+      const contentType = res.headers.get('content-type') || (f.label.match(/\.(png|jpe?g)$/i) ? 'image/jpeg' : 'application/pdf')
+      const bytes = new Uint8Array(await res.arrayBuffer())
+      const blob = await stampExecutedPdf(bytes, contentType)
+      const base = f.label.replace(/\.[^.]+$/, '')
+      await uploadClientDocBlob(clientId, 'contract', blob, `${base}-EXECUTED-deposit-paid.pdf`, 'application/pdf')
+      await refresh()
+      toast('Executed copy created — saved under Contracts', 'success')
+    } catch (e) {
+      setError('Could not stamp this file: ' + (e.message || e))
+    } finally {
+      setStamping(null)
+    }
+  }
+
   async function onDelete(path) {
     if (!window.confirm('Delete this file? This cannot be undone.')) return
     try {
@@ -203,6 +231,14 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
                 <span><span className="doc-chip">{CHIP_LABEL[f.cat] || labelSingular(f.cat)}</span></span>
                 <span className="doc-date num">{fmtDate(f.createdAt)}</span>
                 <span className="doc-acts">
+                  {f.cat === 'contract' && !/-EXECUTED-/i.test(f.label) && (
+                    <button
+                      title="Stamp Executed — Deposit Paid (watermarks THIS file, signatures included, as the bill of sale)"
+                      style={{ color: '#3fbf7f' }}
+                      disabled={stamping === f.path}
+                      onClick={() => onStampExecuted(f)}
+                    >{stamping === f.path ? '…' : STAMP}</button>
+                  )}
                   <button title="View" onClick={() => onView(f.path)}>{EYE}</button>
                   <button title="Delete" className="del" onClick={() => onDelete(f.path)}>{TRASH}</button>
                 </span>
