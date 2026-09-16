@@ -37,12 +37,30 @@ export default function NotesSection({ clientId }) {
   const [tab, setTab] = useState('all')
 
   async function load() {
-    const { data } = await supabase
-      .from('client_notes')
-      .select('*')
-      .eq('client_id', clientId)
-      .order('created_at', { ascending: false })
-    setNotes(data ?? [])
+    // Notes live in two places: this section's own client_notes, plus anything
+    // typed into the Activity & Progress composer (activities table). Reps kept
+    // finding it odd that activity notes never showed down here — so merge the
+    // manual, written activity touches in as read-alike notes. Edits/deletes on
+    // those route back to the activities table (the timeline updates too).
+    const [{ data: own }, { data: acts }] = await Promise.all([
+      supabase.from('client_notes').select('*').eq('client_id', clientId).order('created_at', { ascending: false }),
+      supabase.from('activities').select('*').eq('client_id', clientId).in('type', ['call', 'note', 'email', 'meeting']).order('created_at', { ascending: false }),
+    ])
+    const actNotes = (acts ?? [])
+      .filter(a => a.body && a.body.trim())
+      .map(a => ({
+        id: `act-${a.id}`,
+        actId: a.id,
+        src: 'activity',
+        actType: a.type,
+        category: a.type === 'call' ? 'call' : 'general',
+        body: a.body,
+        created_by: a.created_by,
+        created_at: a.created_at,
+        updated_at: null,
+      }))
+    const merged = [...(own ?? []), ...actNotes].sort((x, y) => new Date(y.created_at) - new Date(x.created_at))
+    setNotes(merged)
     setLoading(false)
   }
 
@@ -51,6 +69,7 @@ export default function NotesSection({ clientId }) {
     const ch = supabase
       .channel(`notes-${clientId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_notes', filter: `client_id=eq.${clientId}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities', filter: `client_id=eq.${clientId}` }, () => load())
       .subscribe()
     return () => supabase.removeChannel(ch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,13 +83,22 @@ export default function NotesSection({ clientId }) {
     setDraft({ category: 'general', body: '' })
     setAdding(false)
   }
-  async function saveEdit(id) {
+  async function saveEdit(n) {
     if (!editBody.trim()) return
-    await supabase.from('client_notes').update({ body: editBody.trim(), updated_at: new Date().toISOString() }).eq('id', id)
+    if (n.src === 'activity') {
+      await supabase.from('activities').update({ body: editBody.trim() }).eq('id', n.actId)
+    } else {
+      await supabase.from('client_notes').update({ body: editBody.trim(), updated_at: new Date().toISOString() }).eq('id', n.id)
+    }
     setEditId(null)
   }
-  async function del(id) {
-    await supabase.from('client_notes').delete().eq('id', id)
+  async function del(n) {
+    if (n.src === 'activity') {
+      if (!window.confirm('This note lives in the Activity log — deleting it removes it from the timeline too. Delete?')) return
+      await supabase.from('activities').delete().eq('id', n.actId)
+    } else {
+      await supabase.from('client_notes').delete().eq('id', n.id)
+    }
   }
 
   const shown = tab === 'all' ? notes : notes.filter(n => n.category === tab)
@@ -123,13 +151,13 @@ export default function NotesSection({ clientId }) {
                 <div className="note-top">
                   <div className="note-ic">{NOTE_SVG[n.category] || NOTE_SVG.general}</div>
                   <div className="note-meta">
-                    <div className="nt">{m.l}</div>
+                    <div className="nt">{m.l}{n.src === 'activity' && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--cyan, #09D6DC)', border: '1px solid rgba(9,214,220,.35)', borderRadius: 4, padding: '1px 6px' }}>{n.actType === 'call' ? 'Logged Call' : n.actType === 'meeting' ? 'Meeting' : n.actType === 'email' ? 'Email' : 'Activity'} · Log</span>}</div>
                     <div className="sub">{userLabel(users, n.created_by)} · {new Date(n.created_at).toLocaleDateString()}{n.updated_at ? ' · edited' : ''}</div>
                   </div>
                   {editId !== n.id && (
                     <div style={{ display: 'flex', gap: 10, flex: '0 0 auto' }}>
                       <span className="link-cyan" role="button" onClick={() => { setEditId(n.id); setEditBody(n.body) }}>Edit</span>
-                      <span className="link-cyan" role="button" style={{ color: 'var(--danger)' }} onClick={() => del(n.id)}>Delete</span>
+                      <span className="link-cyan" role="button" style={{ color: 'var(--danger)' }} onClick={() => del(n)}>Delete</span>
                     </div>
                   )}
                 </div>
@@ -138,7 +166,7 @@ export default function NotesSection({ clientId }) {
                     <div className="field" style={{ marginBottom: 0 }}><textarea rows={3} value={editBody} onChange={e => setEditBody(e.target.value)} /></div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                       <button type="button" className="btn btn-ghost" onClick={() => setEditId(null)}>Cancel</button>
-                      <button type="button" className="btn btn-primary" onClick={() => saveEdit(n.id)}>Save</button>
+                      <button type="button" className="btn btn-primary" onClick={() => saveEdit(n)}>Save</button>
                     </div>
                   </div>
                 ) : (
