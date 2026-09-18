@@ -4375,6 +4375,10 @@ function populateGchEnc(desired){
   // customers ask for splits like 30'/35' that don't land on a 4' truss grid.
   // Off-truss picks are flagged; the factory may set the wall at the nearest truss.
   for(var e5=5; e5<=L-5+0.001; e5+=5) if(opts.indexOf(e5)<0) opts.push(e5);
+  // ...and splits where the OPEN side lands on a 4'/5' step (Sensei offers e.g.
+  // 36' open on a 65' — that's 29' enclosed, which no enclosed-side step hits).
+  for(var o4=4; o4<=L-4+0.001; o4+=4){ var ee=L-o4; if(ee>=4&&opts.indexOf(ee)<0) opts.push(ee); }
+  for(var o5=5; o5<=L-5+0.001; o5+=5){ var e2=L-o5; if(e2>=4&&opts.indexOf(e2)<0) opts.push(e2); }
   opts.sort(function(a,b){return a-b;});
   if(!opts.length){ sel.add(new Option('— length too short to split —','')); return; }
   sel.add(new Option('— select enclosed length —',''));
