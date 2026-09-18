@@ -357,7 +357,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   </div>
   <!-- GCH: Length split (Enclosed + Open side by side) + Front Gable + Side Panels -->
   <div id="gch-section" style="display:none">
-    <div class="pnote" style="margin:4px 0 8px;font-size:10px">Pick the enclosed storage length — the open carport fills the rest of the total length. Options step in truss-spacing increments (4' or 5' OC).</div>
+    <div class="pnote" style="margin:4px 0 8px;font-size:10px">Pick the enclosed storage length — the open carport fills the rest of the total length. Truss-aligned lengths and 5' steps are offered; ⚠ marks splits off the truss grid (factory may shift the wall to the nearest truss).</div>
     <div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap"><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Enclosed Storage (ft)</label>
       <select id="gch-enc" onchange="gchEncChange()" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--tx);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box"><option value="">— set total length first —</option></select></div><div style="flex:1;display:flex;flex-direction:column;gap:3px"><label style="margin:0">Open Length (ft)</label>
       <input id="gch-open" type="number" readonly tabindex="-1" placeholder="—" style="border:1px solid var(--bv);border-radius:5px;padding:6px 8px;font-size:15px;color:var(--sub);font-weight:600;background:var(--d4);width:100%;box-sizing:border-box;cursor:not-allowed"></div></div>
@@ -4371,9 +4371,14 @@ function populateGchEnc(desired){
   if(!L){ sel.add(new Option('— set total length first —','')); return; }
   var opts=[];
   for(var e=S; e<=L-S+0.001; e+=S) opts.push(e);
+  // Owner request (9/18/26, Russ Gates 30/65 GCH): also offer every 5' step —
+  // customers ask for splits like 30'/35' that don't land on a 4' truss grid.
+  // Off-truss picks are flagged; the factory may set the wall at the nearest truss.
+  for(var e5=5; e5<=L-5+0.001; e5+=5) if(opts.indexOf(e5)<0) opts.push(e5);
+  opts.sort(function(a,b){return a-b;});
   if(!opts.length){ sel.add(new Option('— length too short to split —','')); return; }
   sel.add(new Option('— select enclosed length —',''));
-  opts.forEach(function(e){ sel.add(new Option(e+"' enclosed  ·  "+(L-e)+"' open", String(e))); });
+  opts.forEach(function(e){ sel.add(new Option(e+"' enclosed  ·  "+(L-e)+"' open"+(e%S?"  ⚠ off truss grid":""), String(e))); });
   // Keep the prior choice if still valid; otherwise snap to the nearest multiple.
   var pick='';
   if(prev>0){
@@ -4393,8 +4398,14 @@ function updateGchOpen(){
   if(note){
     if(enc>0&&opn>0){
       var ti=(typeof getTrussInfo==='function')?getTrussInfo():null; var S=(ti&&ti.spacing)?ti.spacing:5;
-      note.textContent='✓ '+enc+"' enclosed + "+opn+"' open = "+L+"' total  ·  "+S+"' OC trusses";
-      note.style.color='#065f46'; note.style.background='#dcfce7'; note.style.borderLeftColor='#34d399';
+      if(enc%S!==0){
+        var lo=Math.floor(enc/S)*S, hi=lo+S;
+        note.textContent='⚠ '+enc+"' enclosed + "+opn+"' open = "+L+"' total — the partition lands OFF the "+S+"' truss grid. The factory may set the wall at the nearest truss ("+lo+"' or "+hi+"') — confirm with the manufacturer.";
+        note.style.color='#7c4a03'; note.style.background='#fef3c7'; note.style.borderLeftColor='#f59e0b';
+      } else {
+        note.textContent='✓ '+enc+"' enclosed + "+opn+"' open = "+L+"' total  ·  "+S+"' OC trusses";
+        note.style.color='#065f46'; note.style.background='#dcfce7'; note.style.borderLeftColor='#34d399';
+      }
     } else {
       note.textContent='Select an enclosed storage length — the open carport fills the rest.';
       note.style.color=''; note.style.background=''; note.style.borderLeftColor='';
