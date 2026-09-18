@@ -5715,6 +5715,7 @@ function aAC(){
     '<select class="fo-sf" onchange="rc()">'+
     '<option value="0">None</option><option value="1">1 (+$150)</option>'+
     '</select></div>'+
+    '<div class="row fo-sf-incl-note hidden" style="font-size:10px;color:#8aa3b5;margin-top:-2px">Side frame &amp; header included in the framed-opening price (CCI over 30&#39; wide)</div>'+
     '<div class="row fo-dispunit-row hidden"><label>Layout Sheet Units</label>'+
     '<select class="fo-disp-unit"><option value="ft">Feet</option><option value="in">Inches</option></select></div>'+
     '<div class="pos-section fo-pos-section"></div>';
@@ -5781,8 +5782,14 @@ function foSfVis(entry){
   var comp=(entry.querySelector('.act')||{}).value||'';
   var locEl=entry.querySelector('.fo-loc');
   var show=comp.indexOf('Framed Opening')===0 && locEl && isEaveSide(locEl.value);
-  r.classList.toggle('hidden',!show);
-  if(!show){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
+  // CCI over 30' wide (commercial bracket): the framed-opening price INCLUDES
+  // the side frame + header (owner ruling 9/18/26 — 40x60 CCI quote, $425/opening
+  // eave frame-outs carry it). Never charge a separate side frame there.
+  var wideCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')&&(parseInt(G('bw').value)||0)>30;
+  var note=entry.querySelector('.fo-sf-incl-note');
+  if(note) note.classList.toggle('hidden',!(show&&wideCCI));
+  r.classList.toggle('hidden',!show||wideCCI);
+  if(!show||wideCCI){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
 }
 function foApplyUnit(entry){
   var u=entry.querySelector('.fo-unit'); var inIn=u&&u.value==='in';

@@ -6770,6 +6770,7 @@ function aAC(){
     '<select class="fo-sf" onchange="rc()">'+
     '<option value="0">None</option><option value="1">1 (+$150)</option>'+
     '</select></div>'+
+    '<div class="row fo-sf-incl-note hidden" style="font-size:10px;color:#8aa3b5;margin-top:-2px">Side frame &amp; header included in the framed-opening price (CCI over 30&#39; wide)</div>'+
     // Display-only: how this framed opening's size shows on the Dimensioned Layout
     // & Spacing sheet. No onchange / no rc() — never affects pricing or the model.
     '<div class="row fo-dispunit-row hidden"><label>Layout Sheet Units</label>'+
@@ -6860,8 +6861,14 @@ function foSfVis(entry){
   var comp=(entry.querySelector('.act')||{}).value||'';
   var locEl=entry.querySelector('.fo-loc');
   var show=comp.indexOf('Framed Opening')===0 && locEl && isEaveSide(locEl.value);
-  r.classList.toggle('hidden',!show);
-  if(!show){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
+  // CCI over 30' wide (commercial bracket): the framed-opening price INCLUDES
+  // the side frame + header (owner ruling 9/18/26 — 40x60 CCI quote, $425/opening
+  // eave frame-outs carry it). Never charge a separate side frame there.
+  var wideCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')&&(parseInt(G('bw').value)||0)>30;
+  var note=entry.querySelector('.fo-sf-incl-note');
+  if(note) note.classList.toggle('hidden',!(show&&wideCCI));
+  r.classList.toggle('hidden',!show||wideCCI);
+  if(!show||wideCCI){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
 }
 // Update the width/height labels + input constraints to match the chosen unit.
 // Does NOT touch the entered numbers (used on init/restore).
@@ -13386,7 +13393,10 @@ function runTrussChecks(){
       if(hits.length > 0){ hitCount++; allHits = allHits.concat(hits); }
     }
     setTrussState(el, hitCount > 0, allHits);
-    if(sfEl) autoSetSfByTruss(sfEl, hitCount, qty);
+    foSfVis(el); // re-applies the wide-CCI "included" rule on every recalc
+    var _foWideCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')&&(parseInt(G('bw').value)||0)>30;
+    if(_foWideCCI){ if(sfEl) sfEl.value='0'; }
+    else if(sfEl) autoSetSfByTruss(sfEl, hitCount, qty);
   });
 
   // Lean-to outer-wall accessories (same OC as main building applies along length L)
