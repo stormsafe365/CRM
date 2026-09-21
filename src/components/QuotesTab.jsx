@@ -470,7 +470,9 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
       {thumb && <div className="q-thumb"><img src={thumb} alt="3D rendering" /></div>}
       <div className="q-head">
         <div>
-          <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}</div>
+          <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
+            {q.status === 'revised' && <span style={{ marginLeft: 8, background: '#2d2210', color: '#f59e0b', border: '1px solid rgba(245,158,11,.45)', borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 800, letterSpacing: '.08em' }}>REVISED</span>}
+          </div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
         </div>
         <span className="q-badge">{formatDate(q.quote_date)}</span>

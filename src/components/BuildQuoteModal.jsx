@@ -14,6 +14,7 @@ import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
 import { harvestAndSaveQuote, renderQuotePdf } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
+import { supabase } from '../lib/supabase'
 
 const SRC = '/build/build.html'
 
@@ -294,6 +295,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       console.warn('finish revision failed', e)
       toast('Could not build the revision order: ' + (e.message || e))
     }
+    // Mark the quote itself as a revised order so the card wears the amber
+    // REVISED badge — no more guessing which quote is the revision.
+    try { if (initialQuote?.id) await supabase.from('quotes').update({ status: 'revised' }).eq('id', initialQuote.id) } catch { /* badge only */ }
     // Force revision mode on the contract even when nothing priced changed
     // (a placement-only revision must still print as REVISED).
     try { const pw = getProgramWindow(); if (pw) pw._rvForce = true } catch { /* ignore */ }

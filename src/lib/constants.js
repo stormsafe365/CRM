@@ -75,6 +75,7 @@ export const QUOTE_STATUSES = [
   { value: 'deposit_paid',   label: 'Deposit Paid' },
   { value: 'declined',       label: 'Declined' },
   { value: 'superseded',     label: 'Superseded' },
+  { value: 'revised',        label: 'Revised Order' },
   { value: 'expired',        label: 'Expired' },
 ]
 
@@ -137,6 +138,7 @@ export const quoteStatusColor = (status) => {
     deposit_paid:  { bg: '#10241d', fg: '#43ffd2' },
     declined:      { bg: '#241a1c', fg: '#f87171' },
     superseded:    { bg: '#232b34', fg: '#8b95a3' },
+    revised:       { bg: '#2d2210', fg: '#f59e0b' },
     expired:       { bg: '#241a1c', fg: '#f87171' },
   }
   return map[status] ?? { bg: '#232b34', fg: '#8b95a3' }
