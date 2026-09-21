@@ -11138,7 +11138,16 @@ async function printContract(){
       '</div>'+
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
-        '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>'+
+        (function(){
+          // Revised contract on a paid order: show the deposit already paid and
+          // only the ADDITIONAL amount now due (owner: 9/21/26, Mawn revision).
+          var _rvDepPaid=(!EXEC_COPY && _rvMode && window._rvOrig && window._rvOrig.dep>0)?window._rvOrig.dep:0;
+          if(_rvDepPaid){
+            return '<div class="c-pay-line"><span class="l">Original Deposit — Paid</span><span class="v" style="color:#15803d">'+fD(_rvDepPaid)+' ✓</span></div>'+
+              '<div class="c-pay-line dep"><span class="l">Additional Deposit Due Now</span><span class="v">'+fD(Math.max(0,dep-_rvDepPaid))+'</span></div>';
+          }
+          return '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>';
+        })()+
         '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?'Balance at Delivery':'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
