@@ -35,6 +35,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [editQuote, setEditQuote] = useState(null) // a builder-built quote being reopened in the 3D builder
   const [autoContract, setAutoContract] = useState(false) // opened via "Generate Contract" → auto-run contract flow
   const [autoExec, setAutoExec] = useState(false) // opened via "Executed Copy" → auto-run the watermarked deposit-paid contract
+  const [revisionChanges, setRevisionChanges] = useState(null) // revision rows to auto-apply in the builder
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
@@ -276,8 +277,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           initialQuote={editQuote}
           autoContract={autoContract}
           autoExec={autoExec}
+          revisionChanges={revisionChanges}
           onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
-          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false) }}
+          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false); setRevisionChanges(null) }}
         />
       )}
 
@@ -398,6 +400,17 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           client={client ?? { id: clientId }}
           quote={revisionQuote}
           onClose={() => setRevisionQuote(null)}
+          onApplyToBuild={(changes) => {
+            // "Generate + Apply to Building": reopen the quote in the builder
+            // with the revision's component changes pre-applied — the rep drags
+            // placements, then Generate Contract prints the revised contract
+            // with renderings + the spacing sheet reflecting the changes.
+            const q = revisionQuote
+            setRevisionQuote(null)
+            setEditQuote(q)
+            setRevisionChanges(changes)
+            setBuilding(true)
+          }}
         />
       )}
 

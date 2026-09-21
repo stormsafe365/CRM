@@ -26,7 +26,7 @@ const SAVE_BTN = {
   fontWeight: 800,
 }
 
-export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false, autoExec = false }) {
+export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false, autoExec = false, revisionChanges = null }) {
   // When reopening a saved builder quote, its full state lives in payload_json.
   const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
@@ -111,6 +111,13 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       } else if (ok && autoContract) {
         setStatus('Generating contract…')
         setTimeout(() => { saveContractThenPrint(getProgramWindow()) }, 1400)
+      } else if (ok && revisionChanges && revisionChanges.length) {
+        // Revision flow: apply the modal's structured changes to the build
+        // AFTER the program stashes its as-ordered snapshot (~900ms post-restore)
+        // so the applied components count as NEW (highlighted on the revised
+        // contract). The rep then drags placements and hits Generate Contract.
+        setStatus('Applying revision changes…')
+        setTimeout(() => { applyRevisionChanges(getProgramWindow(), revisionChanges) }, 1800)
       }
     }, 500)
     return () => clearInterval(t)
@@ -168,6 +175,66 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Apply the Revision modal's structured rows to the live build: add roll-ups
+  // (with size, wall, hoist/seal/opener), walk doors, windows; remove matching
+  // components; change building size. Anything it can't apply is reported so
+  // the rep does that one by hand. Placement stays with the rep — drag it.
+  function applyRevisionChanges(pg, changes) {
+    if (!pg) return
+    const d = pg.document
+    const set = (el, v) => { if (!el) return false; el.value = v; el.dispatchEvent(new pg.Event('change', { bubbles: true })); return true }
+    const skipped = []
+    try {
+      for (const r of changes) {
+        if (r.type === 'size') {
+          const to = String(r.to || '').replace(/×/g, 'x').match(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/i)
+          if (to) {
+            set(d.getElementById('bw'), to[1]); set(d.getElementById('bl'), to[2]); set(d.getElementById('bh'), to[3])
+            try { pg.doBld() } catch { /* rc below */ }
+          } else skipped.push('Size change — set Width/Length/Height by hand')
+        } else if (r.type === 'add') {
+          if (r.comp === 'Roll-Up Door' && typeof pg.aRUD === 'function') {
+            pg.aRUD()
+            const el = [...d.querySelectorAll('.re')].pop()
+            if (r.size) set(el.querySelector('.rsz'), r.size)
+            if (r.wall && r.wall !== '—') set(el.querySelector('.rloc'), r.wall)
+            if (r.hoist && !r.hoistIncluded) set(el.querySelector('.rch'), '1')
+            if (r.seal) set(el.querySelector('.rsl'), '1')
+            if (r.opener) set(el.querySelector('.rop'), '1')
+          } else if (r.comp === 'Walk-Through Door' && typeof pg.aWTD === 'function') {
+            pg.aWTD()
+            const el = [...d.querySelectorAll('.we')].pop()
+            if (r.wall && r.wall !== '—') set(el.querySelector('.wloc'), r.wall)
+          } else if (r.comp === 'Window' && typeof pg.aWIN === 'function') {
+            pg.aWIN()
+            const el = [...d.querySelectorAll('.ne')].pop()
+            if (r.wall && r.wall !== '—') set(el.querySelector('.nloc'), r.wall)
+          } else {
+            skipped.push(`Add ${r.comp} — add it by hand`)
+          }
+        } else if (r.type === 'remove') {
+          const sel = r.comp === 'Roll-Up Door' ? '.re' : r.comp === 'Walk-Through Door' ? '.we' : r.comp === 'Window' ? '.ne' : null
+          let hit = null
+          if (sel) {
+            hit = [...d.querySelectorAll(sel)].find((el) => {
+              const sz = (el.querySelector('.rsz') || {}).value || ''
+              const loc = (el.querySelector('.rloc') || el.querySelector('.wloc') || el.querySelector('.nloc') || {}).value || ''
+              return (!r.size || sz === r.size) && (!r.wall || r.wall === '—' || loc === r.wall)
+            })
+          }
+          const rm = hit && hit.querySelector('button.rm')
+          if (rm) rm.click()
+          else skipped.push(`Remove ${r.comp}${r.size ? ' ' + r.size : ''} — remove it by hand`)
+        }
+      }
+      try { pg.rc() } catch { /* ignore */ }
+    } catch (e) { console.warn('apply revision changes failed', e) }
+    setStatus('')
+    toast(skipped.length
+      ? `Changes applied — do these by hand: ${skipped.join('; ')}`
+      : 'Revision changes applied to the building — drag placements, then hit GENERATE CONTRACT for the revised contract', 'success')
+  }
 
   // Save a PDF copy of the contract to the Document Hub (Contracts), then let the
   // program generate it for the rep as usual.

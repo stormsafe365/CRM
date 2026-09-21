@@ -6,7 +6,8 @@
 // the shared Electron print path, saves it to Document Hub › Revisions, and
 // opens it ready to send for signature.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { loadPriceEngine, rollupCatalog } from '../lib/revisionPricing'
 import { createPortal } from 'react-dom'
 import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
@@ -25,7 +26,7 @@ const CHANGE_TYPES = [
 const COMPONENTS = ['Roll-Up Door', 'Walk-Through Door', 'Window', 'Framed Opening', 'Garage Door Opener', 'Chain Hoist', 'Brush Seal', 'Lean-To', 'Insulation', 'Other']
 const WALLS = ['Front Gable End', 'Back Gable End', 'Left Eave Side', 'Right Eave Side', '—']
 
-const emptyRow = () => ({ type: 'add', comp: 'Roll-Up Door', size: '', wall: 'Front Gable End', from: '', to: '', desc: '', amount: '' })
+const emptyRow = () => ({ type: 'add', comp: 'Roll-Up Door', size: '', wall: 'Front Gable End', from: '', to: '', desc: '', amount: '', hoist: false, seal: false, opener: false })
 
 // Compose the line that prints on the order from the structured fields.
 function rowDesc(r) {
@@ -37,8 +38,14 @@ function rowDesc(r) {
   const comp = r.comp === 'Other' ? (r.desc.trim() || 'Component') : r.comp
   const size = r.size.trim() ? ` ${r.size.trim()}` : ''
   const wall = r.wall && r.wall !== '—' ? ` — ${r.wall}` : ''
+  const addons = []
+  if (r.hoistIncluded) addons.push('chain hoist included')
+  else if (r.hoist) addons.push('chain hoist')
+  if (r.seal) addons.push('brush seal')
+  if (r.opener) addons.push('automatic opener')
+  const withA = addons.length ? ` (with ${addons.join(', ')})` : ''
   const extra = r.comp !== 'Other' && r.desc.trim() ? ` (${r.desc.trim()})` : ''
-  return `${comp}${size}${wall}${extra}`
+  return `${comp}${size}${wall}${withA}${extra}`
 }
 const rowKind = (r) => (r.type === 'add' ? 'Add' : r.type === 'remove' ? 'Remove' : 'Modify')
 const rowFilled = (r) => !!rowDesc(r)
@@ -58,7 +65,7 @@ const isoToday = () => {
 
 const fmt = (n) => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function RevisionModal({ client, quote, onClose }) {
+export default function RevisionModal({ client, quote, onClose, onApplyToBuild }) {
   const [revNo, setRevNo] = useState('1')
   const [date, setDate] = useState(isoToday())
   const [original, setOriginal] = useState(quote?.total_amount != null ? String(quote.total_amount) : '')
@@ -75,6 +82,31 @@ export default function RevisionModal({ client, quote, onClose }) {
   const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
   const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
   const origDeposit = Number(quote?.deposit_amount) || 0
+
+  // Live engine pricing: load the actual quote-builder in a hidden iframe and
+  // ask it for roll-up sizes + prices + add-on rates (single source of truth).
+  const [cat, setCat] = useState(null)
+  useEffect(() => {
+    let dead = false
+    loadPriceEngine(quote?.manufacturer)
+      .then((pg) => { if (!dead) setCat(rollupCatalog(pg)) })
+      .catch(() => { /* dropdowns fall back to manual entry */ })
+    return () => { dead = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Selecting a size (or toggling add-ons) auto-fills the row's LIST price
+  // straight from the engine: door + hoist (unless included) + seal + opener.
+  function priceRow(next) {
+    if (!cat || next.comp !== 'Roll-Up Door' || !next.size) return next
+    const included = cat.hoistIncluded(next.size)
+    let amt = cat.price(next.size) || 0
+    if (!included && next.hoist) amt += cat.chain
+    if (next.seal) amt += cat.sealFor(next.size)
+    if (next.opener && cat.openerFor) amt += cat.openerFor(next.size)
+    return { ...next, hoistIncluded: included, amount: amt ? String(amt) : next.amount }
+  }
+  const setRowPriced = (i, patch) => setRows(rows.map((r, j) => (j === i ? priceRow({ ...r, ...patch }) : r)))
 
   const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const addRow = () => setRows([...rows, emptyRow()])
@@ -104,7 +136,7 @@ export default function RevisionModal({ client, quote, onClose }) {
     return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff }
   }, [rows, original, amtMode, listFactor, origDeposit])
 
-  async function generate() {
+  async function generate(applyAfter) {
     const filled = rows.filter(rowFilled).map((r) => ({ desc: rowDesc(r), kind: rowKind(r), amount: r.amount }))
     if (!filled.length) { toast('Describe at least one change first.'); return }
     setBusy('Rendering…')
@@ -141,7 +173,13 @@ export default function RevisionModal({ client, quote, onClose }) {
         : 'Revision order generated (opened in a new window) — but saving to Documents failed.',
       saved ? 'success' : undefined)
       setBusy('')
-      onClose()
+      if (applyAfter && onApplyToBuild) {
+        // Hand the structured rows to the builder so the components land on the
+        // actual building (rep drags exact placement, then Generate Contract).
+        onApplyToBuild(rows.filter(rowFilled).map((r) => ({ ...r })))
+      } else {
+        onClose()
+      }
     } catch (e) {
       setBusy('')
       toast(e.message || 'Could not generate the revision order.')
@@ -192,10 +230,17 @@ export default function RevisionModal({ client, quote, onClose }) {
               </select>
               {(r.type === 'add' || r.type === 'remove') && (
                 <>
-                  <select style={{ ...FIELD, flex: 1.2 }} value={r.comp} onChange={(e) => setRow(i, { comp: e.target.value })}>
+                  <select style={{ ...FIELD, flex: 1.2 }} value={r.comp} onChange={(e) => setRowPriced(i, { comp: e.target.value })}>
                     {COMPONENTS.map((c) => <option key={c}>{c}</option>)}
                   </select>
-                  <input style={{ ...FIELD, flex: '0 0 78px', width: 78 }} placeholder="Size" title="e.g. 12x12" value={r.size} onChange={(e) => setRow(i, { size: e.target.value })} />
+                  {r.comp === 'Roll-Up Door' && cat && cat.sizes.length ? (
+                    <select style={{ ...FIELD, flex: '0 0 92px', width: 92 }} value={r.size} title="Size — price fills in from the quoting engine" onChange={(e) => setRowPriced(i, { size: e.target.value })}>
+                      <option value="">Size…</option>
+                      {cat.sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  ) : (
+                    <input style={{ ...FIELD, flex: '0 0 78px', width: 78 }} placeholder="Size" title="e.g. 12x12" value={r.size} onChange={(e) => setRow(i, { size: e.target.value })} />
+                  )}
                   <select style={{ ...FIELD, flex: 1.1 }} value={r.wall} title="Which wall" onChange={(e) => setRow(i, { wall: e.target.value })}>
                     {WALLS.map((wl) => <option key={wl}>{wl}</option>)}
                   </select>
@@ -228,10 +273,33 @@ export default function RevisionModal({ client, quote, onClose }) {
                 style={{ border: '1px solid var(--line, #294059)', background: 'none', color: 'var(--fg-3, #8598AC)', width: 26, height: 26, borderRadius: 6, cursor: rows.length === 1 ? 'default' : 'pointer', opacity: rows.length === 1 ? 0.4 : 1, flex: 'none', padding: 0 }}
               >×</button>
             </div>
+            {r.type === 'add' && r.comp === 'Roll-Up Door' && cat && r.size && (
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginTop: 7, fontSize: 12.5, color: 'var(--fg, #e2e8f0)', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: 'var(--fg-3, #8598AC)', fontWeight: 700, letterSpacing: '.04em' }}>ADD-ONS:</span>
+                {cat.hoistIncluded(r.size) ? (
+                  <span style={{ color: 'var(--fg-3, #8598AC)' }}>✓ Chain hoist included</span>
+                ) : (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={r.hoist} onChange={(e) => setRowPriced(i, { hoist: e.target.checked })} />
+                    Chain Hoist (+{fmt(cat.chain)})
+                  </label>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={r.seal} onChange={(e) => setRowPriced(i, { seal: e.target.checked })} />
+                  Brush Seal (+{fmt(cat.sealFor(r.size))})
+                </label>
+                {cat.openerFor && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={r.opener} onChange={(e) => setRowPriced(i, { opener: e.target.checked })} />
+                    Auto Opener (+{fmt(cat.openerFor(r.size))})
+                  </label>
+                )}
+              </div>
+            )}
             {(r.type === 'add' || r.type === 'remove') && (
               <input
                 style={{ ...FIELD, marginTop: 6, fontSize: 12.5, padding: '7px 10px' }}
-                placeholder="Optional detail — e.g. hi-wind rated, with chain hoist"
+                placeholder="Optional detail — e.g. hi-wind rated"
                 value={r.desc}
                 onChange={(e) => setRow(i, { desc: e.target.value })}
               />
@@ -282,11 +350,16 @@ export default function RevisionModal({ client, quote, onClose }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
           <button className="btn-secondary" disabled={!!busy} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" disabled={!!busy} onClick={generate} style={{ fontWeight: 800 }}>
-            {busy || 'Generate Revision Order'}
+          <button className="btn-secondary" disabled={!!busy} onClick={() => generate(false)}>
+            {busy || 'Revision Order only'}
           </button>
+          {onApplyToBuild && (
+            <button className="btn-primary" disabled={!!busy} onClick={() => generate(true)} style={{ fontWeight: 800 }} title="Saves the Revision Order, then opens the builder with these changes applied so you place them and print the revised contract with renderings + spacing sheet">
+              {busy || 'Generate + Apply to Building →'}
+            </button>
+          )}
         </div>
       </div>
     </div>,
