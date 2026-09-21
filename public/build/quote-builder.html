@@ -10583,6 +10583,34 @@ async function printContract(){
     var scale = TARGET_LARGE / Math.max(W, L);
     var bw = W*scale, bl = L*scale;
     var ML=110, MR=110, MT=105, MB=115;            // left/right/top/bottom margins
+    // Attached lean-tos: collect them and widen that side's margin so the
+    // dashed outline (plus its label) fits on the page.
+    var _fpLTs=[];
+    document.querySelectorAll('.lte').forEach(function(el){
+      var t=el.querySelector('.lt-type'); if(t&&t.value!=='attached') return;
+      var side=(el.querySelector('.lts')||{}).value||'';
+      var lw=parseFloat((el.querySelector('.ltw')||{}).value)||0;
+      var ll=parseFloat((el.querySelector('.ltl2')||{}).value)||0;
+      var off=parseFloat((el.querySelector('.ltoff')||{}).value)||0;
+      if(lw>0&&ll>0) _fpLTs.push({side:side,lw:lw,ll:ll,off:off});
+    });
+    _fpLTs.forEach(function(lt){
+      var need=lt.lw*scale+40;
+      if(lt.side==='Left Eave') ML=Math.max(ML,need+80);
+      else if(lt.side==='Right Eave') MR=Math.max(MR,need+80);
+      else if(lt.side==='Back Gable') MT=Math.max(MT,need+72);
+      else if(lt.side==='Front Gable') MB=Math.max(MB,need+84);
+    });
+    // Per-side lean-to extents (px) — the outer dimension bands and wall
+    // labels shift outward past the lean-to footprint on that side.
+    var _ltExt={left:0,right:0,top:0,bottom:0};
+    _fpLTs.forEach(function(lt){
+      var e=lt.lw*scale;
+      if(lt.side==='Left Eave') _ltExt.left=Math.max(_ltExt.left,e);
+      else if(lt.side==='Right Eave') _ltExt.right=Math.max(_ltExt.right,e);
+      else if(lt.side==='Back Gable') _ltExt.top=Math.max(_ltExt.top,e);
+      else if(lt.side==='Front Gable') _ltExt.bottom=Math.max(_ltExt.bottom,e);
+    });
     var SW = Math.round(bw + ML + MR);
     var SH = Math.round(bl + MT + MB);
     var bx = ML, by = MT;
@@ -10619,6 +10647,39 @@ async function printContract(){
     // Corner markers
     function corner(x,y){ return '<rect x="'+(x-wt/2)+'" y="'+(y-wt/2)+'" width="'+wt+'" height="'+wt+'" fill="#111827"/>'; }
     s += corner(bx,by) + corner(bx+bw,by) + corner(bx,by+bl) + corner(bx+bw,by+bl);
+
+    // ── Truss / frame lines at the build's OC spacing ──
+    // Light dashed lines across the slab wherever a truss frame lands, so the
+    // client and engineering both see where the frames fall.
+    (function(){
+      var ti=(typeof getTrussInfo==='function')?getTrussInfo():null;
+      if(!ti||!ti.spacing) return;
+      var Sp=ti.spacing;
+      for(var z=Sp; z<L-0.01; z+=Sp){
+        var ty=by+z*scale;
+        s+='<line x1="'+(bx+wt)+'" y1="'+ty+'" x2="'+(bx+bw-wt)+'" y2="'+ty+'" stroke="#b6c4d4" stroke-width="1" stroke-dasharray="3,4"/>';
+      }
+      s+='<text x="'+(bx+bw-8)+'" y="'+(by+Sp*scale-4)+'" text-anchor="end" font-family="Arial" font-size="7.5" font-weight="700" fill="#8aa0b5" letter-spacing="0.5">TRUSS LINES — '+Sp+'′ OC</text>';
+    })();
+
+    // ── Attached lean-tos: dashed footprint off their wall, labeled ──
+    // Eave-side offsets run from the FRONT (bottom); gable-end offsets from the
+    // LEFT edge — same convention as the 3D engine's placement.
+    _fpLTs.forEach(function(lt){
+      var x,y,w2,h2;
+      if(lt.side==='Left Eave'||lt.side==='Right Eave'){
+        var runL=Math.min(lt.ll,L), oy=Math.max(0,Math.min(lt.off,L-runL));
+        y=by+bl-(oy+runL)*scale; h2=runL*scale; w2=lt.lw*scale;
+        x=(lt.side==='Left Eave')?bx-w2:bx+bw;
+      } else {
+        var runW=Math.min(lt.ll,W), ox=Math.max(0,Math.min(lt.off,W-runW));
+        x=bx+ox*scale; w2=runW*scale; h2=lt.lw*scale;
+        y=(lt.side==='Back Gable')?by-h2:by+bl;
+      }
+      s+='<rect x="'+x+'" y="'+y+'" width="'+w2+'" height="'+h2+'" fill="#eef4fa" stroke="#111827" stroke-width="2.5" stroke-dasharray="8,5"/>';
+      var cx=x+w2/2, cy=y+h2/2, vert=h2>w2;
+      s+='<text x="'+cx+'" y="'+(cy+3)+'" text-anchor="middle" font-family="Arial" font-size="9" font-weight="800" fill="#111827" letter-spacing="1"'+(vert?' transform="rotate(-90,'+cx+','+cy+')"':'')+'>LEAN-TO '+lt.lw+'′ × '+lt.ll+'′</text>';
+    });
 
     // ── Partition wall (GCH only) ─────────────────────────────────────────────
     // A garage-carport hybrid splits the length into an ENCLOSED bay at the BACK
@@ -10764,7 +10825,7 @@ async function printContract(){
     s += drawDimBand(rightFp,'right',L);
 
     // ── Outer "Full Width" / "Full Length" dimensions ─────────────────────
-    var dimTopY = by - 64;
+    var dimTopY = by - 64 - _ltExt.top;
     s += '<g stroke="#475569" stroke-width="1" fill="none">';
     s += '<line x1="'+bx+'" y1="'+dimTopY+'" x2="'+(bx+bw)+'" y2="'+dimTopY+'"/>';
     s += '<line x1="'+bx+'" y1="'+(dimTopY-5)+'" x2="'+bx+'" y2="'+(dimTopY+5)+'"/>';
@@ -10773,7 +10834,7 @@ async function printContract(){
     s += '<rect x="'+(bx+bw/2-52)+'" y="'+(dimTopY-10)+'" width="104" height="20" fill="white" stroke="none"/>';
     s += '<text x="'+(bx+bw/2)+'" y="'+(dimTopY+6)+'" text-anchor="middle" font-family="Arial" font-size="14" font-weight="800" fill="#111827" letter-spacing="1">FULL WIDTH '+W+"'</text>";
 
-    var dimRightX = bx + bw + 64;
+    var dimRightX = bx + bw + 64 + _ltExt.right;
     s += '<g stroke="#475569" stroke-width="1" fill="none">';
     s += '<line x1="'+dimRightX+'" y1="'+by+'" x2="'+dimRightX+'" y2="'+(by+bl)+'"/>';
     s += '<line x1="'+(dimRightX-5)+'" y1="'+by+'" x2="'+(dimRightX+5)+'" y2="'+by+'"/>';
@@ -10784,10 +10845,10 @@ async function printContract(){
 
     // Wall labels (outermost)
     var labelStyle = 'font-family="Arial" font-size="13" font-weight="800" fill="#111827" letter-spacing="2"';
-    s += '<text x="'+(bx+bw/2)+'" y="'+(by-90)+'" text-anchor="middle" '+labelStyle+'>BACK</text>';
-    s += '<text x="'+(bx+bw/2)+'" y="'+(by+bl+96)+'" text-anchor="middle" '+labelStyle+'>FRONT</text>';
-    s += '<text x="'+(bx-92)+'" y="'+(by+bl/2)+'" text-anchor="middle" '+labelStyle+' transform="rotate(-90, '+(bx-92)+', '+(by+bl/2)+')">LEFT</text>';
-    s += '<text x="'+(bx+bw+92)+'" y="'+(by+bl/2)+'" text-anchor="middle" '+labelStyle+' transform="rotate(90, '+(bx+bw+92)+', '+(by+bl/2)+')">RIGHT</text>';
+    s += '<text x="'+(bx+bw/2)+'" y="'+(by-90-_ltExt.top)+'" text-anchor="middle" '+labelStyle+'>BACK</text>';
+    s += '<text x="'+(bx+bw/2)+'" y="'+(by+bl+96+_ltExt.bottom)+'" text-anchor="middle" '+labelStyle+'>FRONT</text>';
+    s += '<text x="'+(bx-92-_ltExt.left)+'" y="'+(by+bl/2)+'" text-anchor="middle" '+labelStyle+' transform="rotate(-90, '+(bx-92-_ltExt.left)+', '+(by+bl/2)+')">LEFT</text>';
+    s += '<text x="'+(bx+bw+92+_ltExt.right)+'" y="'+(by+bl/2)+'" text-anchor="middle" '+labelStyle+' transform="rotate(90, '+(bx+bw+92+_ltExt.right)+', '+(by+bl/2)+')">RIGHT</text>';
 
     // Legend hint
     s += '<text x="'+(SW-12)+'" y="'+(SH-8)+'" text-anchor="end" font-family="Arial" font-size="7.5" fill="#94a3b8">Solid = enclosed wall &nbsp; Dashed = open wall</text>';
@@ -11394,16 +11455,36 @@ function _ssPdfName(kind){
 // browser (no electronAPI) it returns false and the usual print flow runs.
 function _ssSavePdfViaElectron(fullDoc, suggestedName, popup){
   var api=null;
-  try{ api = window.electronAPI || (window.parent && window.parent.electronAPI) || null; }catch(e){ api=null; }
-  if(!api || typeof api.savePdf!=='function') return false;
-  try{ if(popup) popup.close(); }catch(e){}
-  toast('Generating PDF…','ok');
-  Promise.resolve(api.savePdf(fullDoc, suggestedName)).then(function(r){
-    if(r && r.ok) toast('PDF saved','ok');
-    else if(r && r.canceled){ /* user cancelled the save dialog */ }
-    else toast('PDF save failed','err');
-  }).catch(function(){ toast('PDF save failed','err'); });
-  return true;
+  try{ api = window.electronAPI || (window.parent && window.parent.electronAPI) || (window.top && window.top.electronAPI) || null; }catch(e){ api=null; }
+  if(api && typeof api.savePdf==='function'){
+    try{ if(popup) popup.close(); }catch(e){}
+    toast('Generating PDF…','ok');
+    Promise.resolve(api.savePdf(fullDoc, suggestedName)).then(function(r){
+      if(r && r.ok) toast('PDF saved','ok');
+      else if(r && r.canceled){ /* user cancelled the save dialog */ }
+      else toast('PDF save failed','err');
+    }).catch(function(){ toast('PDF save failed','err'); });
+    return true;
+  }
+  // CRM app: no savePdf bridge, but the CRM preload exposes renderPdf —
+  // Chromium's native print-to-PDF (TRUE VECTOR text, crisp at any zoom).
+  // Render there and open the finished PDF in a viewer window; the user saves
+  // from its download button. Never rasterized, never 'Microsoft Print to PDF'.
+  if(api && typeof api.renderPdf==='function'){
+    try{ if(popup) popup.close(); }catch(e){}
+    toast('Generating PDF…','ok');
+    Promise.resolve(api.renderPdf(fullDoc)).then(function(b64){
+      if(!b64){ toast('PDF render failed','err'); return; }
+      var bytes=atob(b64), arr=new Uint8Array(bytes.length);
+      for(var i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
+      var url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+      var vw=(window.top||window).open(url,'_blank');
+      if(!vw) toast('Popup blocked — allow popups to view the PDF','err');
+      else toast('Crisp PDF ready — save it from the viewer download button','ok');
+    }).catch(function(){ toast('PDF render failed','err'); });
+    return true;
+  }
+  return false;
 }
 
 function toast(msg,type){
