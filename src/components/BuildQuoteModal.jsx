@@ -112,7 +112,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       } else if (ok && autoContract) {
         setStatus('Generating contract…')
         setTimeout(() => { saveContractThenPrint(getProgramWindow()) }, 1400)
-      } else if (ok && revisionChanges && revisionChanges.length) {
+      } else if (ok && revisionChanges && (revisionChanges.rows ? revisionChanges.rows.length : revisionChanges.length)) {
         // Revision flow: apply the modal's structured changes to the build
         // AFTER the program stashes its as-ordered snapshot (~900ms post-restore)
         // so the applied components count as NEW (highlighted on the revised
