@@ -9128,7 +9128,10 @@ function restoreQuoteData(data){
   // are then diffed against this by printRevisionForm - discount and tax ride
   // along automatically because both numbers come from the same engine.
   setTimeout(function(){
-    try{ window._rvOrig={ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent) }; }catch(e){}
+    try{
+      window._rvOrig={ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent), dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) };
+      document.querySelectorAll('.re,.we,.ne,.ace,.lte').forEach(function(el){ el.dataset.rvOrig='1'; });
+    }catch(e){}
   }, 900);
 
   toast('Quote loaded successfully!', 'ok');
@@ -10338,7 +10341,17 @@ async function printContract(){
 
   // ── LINE ITEMS (mirror of printQuote) ──
   var lineItems=[];
-  function row(desc,qty,unit,amt){ lineItems.push({desc:desc, qty:qty, unit:unit, amt:amt}); }
+  // Revision mode: an ordered quote was reopened and the build has changed.
+  // Components added since the order are highlighted, the contract is titled
+  // REVISED, and the dimensioned spacing page is forced on so the client sees
+  // exactly where everything now sits.
+  var _rvDimsNow=(G('bw').value+'x'+G('bl').value+'x'+G('bh').value);
+  var _rvSizeChanged=!!(window._rvOrig&&window._rvOrig.dims&&window._rvOrig.dims!==_rvDimsNow);
+  var _rvHasNew=!!(window._rvOrig&&document.querySelector('.re:not([data-rv-orig]),.we:not([data-rv-orig]),.ne:not([data-rv-orig]),.ace:not([data-rv-orig]),.lte:not([data-rv-orig])'));
+  var _rvMode=!!(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5));
+  window._rvHlCur=false;
+  if(_rvMode&&G('pdf-dims')) G('pdf-dims').checked=true;
+  function row(desc,qty,unit,amt){ lineItems.push({desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}); }
 
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
@@ -10427,6 +10440,7 @@ async function printContract(){
   if(aewP) row(aewLabel(),null,null,aewP);
 
   document.querySelectorAll('.re').forEach(function(el){
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
     var dtype=el.querySelector('.rdtype')?el.querySelector('.rdtype').value:'standard';
     var sz=el.querySelector('.rsz').value;
     var qty=parseInt(el.querySelector('.rqt').value)||1;
@@ -10463,6 +10477,7 @@ async function printContract(){
     }
   });
   document.querySelectorAll('.we').forEach(function(el){
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
     var qty=parseInt(el.querySelector('.wqt').value)||1;
     var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||400;
     var _wtypeDef=(MFR().wtdTypes||[]).find(function(t){return t.v===wtdTypeP;});
@@ -10473,6 +10488,7 @@ async function printContract(){
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
   document.querySelectorAll('.ne').forEach(function(el){
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
     row(winRowLabel(winTypeP),qty,p,qty*p);
@@ -10481,6 +10497,7 @@ async function printContract(){
   });
   // Additional Components (framed openings, custom items, etc.) — mirror of printQuote
   document.querySelectorAll('.ace').forEach(function(el){
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
     if(!el.querySelector('.act')) return;
     var comp=el.querySelector('.act').value||'';
     var qty=parseInt(el.querySelector('.acq')&&el.querySelector('.acq').value)||1;
@@ -10517,11 +10534,12 @@ async function printContract(){
   if(honorAdjC!==0){
     lineItems.push({desc:'<strong>Price Adjustment \u2014 Honoring Signed Agreement'+(honorRefC?' '+_esc(honorRefC):'')+'</strong><br><span style="font-size:6.5pt;color:#64748b">Current chart pricing honored at the original signed contract amount</span>', qty:null, unit:null, amt:honorAdjC});
   }
+  window._rvHlCur=false;
   var rowsHTML='';
   lineItems.forEach(function(it){
     var amtStr=it.amt===0?'<span style="color:#15803d;font-weight:800">INCLUDED</span>':(it.amt<0?'\u2212'+fC(-it.amt):fC(it.amt));
-    rowsHTML+='<tr>'+
-      '<td class="li-desc">'+it.desc+'</td>'+
+    rowsHTML+='<tr'+(it.hl?' style="background:#fff4dc"':'')+'>'+
+      '<td class="li-desc">'+(it.hl?'<span style="display:inline-block;background:#f59e0b;color:#7c2d12;font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">NEW</span>':'')+it.desc+'</td>'+
       '<td class="li-c">'+(it.qty!==null?it.qty:'—')+'</td>'+
       '<td class="li-c">'+(it.unit?fC(it.unit):'—')+'</td>'+
       '<td class="li-r">'+amtStr+'</td>'+
@@ -10981,7 +10999,7 @@ async function printContract(){
   // ── PAGE 1: Order Summary ──
   var page1 =
     '<div class="page">'+
-    _header('Purchase Agreement','Building: <strong>'+w+"' \xD7 "+l+"' \xD7 "+h+"'</strong>")+
+    _header(_rvMode?'Purchase Agreement \u2014 Revised':'Purchase Agreement','Building: <strong>'+w+"' \xD7 "+l+"' \xD7 "+h+"'</strong>")+
 
     '<div class="c-sec">'+
     '<div class="c-parties">'+
@@ -11037,6 +11055,7 @@ async function printContract(){
     '</div>'+
     '</div>'+
 
+    (_rvMode?'<div style="background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;margin:4px 0 8px;font-size:8pt;color:#7c2d12"><strong style="letter-spacing:.5px">REVISED CONTRACT</strong> \u2014 supersedes the previously signed agreement. '+(_rvSizeChanged?('Building size revised: '+window._rvOrig.dims.split("x").join("\u00d7")+' \u2192 '+_rvDimsNow.split("x").join("\u00d7")+'. '):'')+'Added items are highlighted below; renderings, floor plan and spacing pages reflect the revised building.</div>':'')+
     '<div class="c-sec">'+
     '<div class="c-sec-title">Itemized Pricing</div>'+
     '<table class="c-tbl"><thead><tr><th>Description</th><th class="c">Qty</th><th class="c">Unit</th><th class="r">Amount</th></tr></thead>'+
