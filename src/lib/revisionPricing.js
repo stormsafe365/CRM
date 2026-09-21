@@ -24,7 +24,7 @@ export async function loadPriceEngine(manufacturer) {
   if (!enginePromise) {
     frame = document.createElement('iframe')
     frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden'
-    frame.src = 'build/quote-builder.html'
+    frame.src = '/build/quote-builder.html'
     document.body.appendChild(frame)
     enginePromise = waitForEngine(frame.contentWindow)
   }
