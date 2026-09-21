@@ -65,6 +65,16 @@ export default function RevisionModal({ client, quote, onClose }) {
   const [rows, setRows] = useState([emptyRow()])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState('')
+  // The quote carries its own discount % and tax % (builder field snapshot).
+  // Reps naturally type LIST prices for changes ("$1,900 door"), but the
+  // contract total is post-discount, post-tax — so by default the entered
+  // amounts run through the same treatment. 'final' turns that off.
+  const qf = quote?.payload_json?.fields || {}
+  const discPct = Number(qf.disc) || 0
+  const taxPct = Number(qf.tax) || 0
+  const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
+  const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
+  const origDeposit = Number(quote?.deposit_amount) || 0
 
   const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const addRow = () => setRows([...rows, emptyRow()])
@@ -74,15 +84,25 @@ export default function RevisionModal({ client, quote, onClose }) {
   // tracks live so what the rep sees is exactly what prints.
   const totals = useMemo(() => {
     let additions = 0, credits = 0
+    const fac = amtMode === 'list' ? listFactor : 1
     for (const r of rows) {
-      const a = Number(r.amount)
+      const a = Number(r.amount) * fac
       if (!rowFilled(r) || !isFinite(a)) continue
       if (a > 0) additions += a
       else credits += -a
     }
     const orig = Number(original) || 0
-    return { additions, credits, revised: orig + additions - credits }
-  }, [rows, original])
+    const revised = orig + additions - credits
+    const net = additions - credits
+    // Deposit scales at the order's own deposit ratio; balance = revised − deposit.
+    const depRatio = orig > 0 && origDeposit > 0 ? origDeposit / orig : 0
+    const newDeposit = origDeposit ? origDeposit + net * depRatio : null
+    const depDiff = newDeposit != null ? newDeposit - origDeposit : null
+    const origBalance = orig - origDeposit
+    const newBalance = newDeposit != null ? revised - newDeposit : null
+    const balDiff = newBalance != null ? newBalance - origBalance : null
+    return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff }
+  }, [rows, original, amtMode, listFactor, origDeposit])
 
   async function generate() {
     const filled = rows.filter(rowFilled).map((r) => ({ desc: rowDesc(r), kind: rowKind(r), amount: r.amount }))
@@ -102,6 +122,9 @@ export default function RevisionModal({ client, quote, onClose }) {
           additions: totals.additions,
           credits: totals.credits,
           revised: totals.revised,
+          origDeposit: origDeposit || null,
+          newDeposit: totals.newDeposit,
+          newBalance: totals.newBalance,
           note: note.trim(),
         },
       })
@@ -224,6 +247,15 @@ export default function RevisionModal({ client, quote, onClose }) {
         <p style={{ margin: '5px 0 0', fontSize: 11.5, color: 'var(--fg-3, #8598AC)' }}>
           Price column: positive = addition, negative = credit, blank or 0 = no-charge change.
         </p>
+        {(discPct > 0 || taxPct > 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <select style={{ ...FIELD, width: 'auto', flex: 'none', fontSize: 12.5, padding: '6px 9px' }} value={amtMode} onChange={(e) => setAmtMode(e.target.value)}>
+              <option value="list">Amounts are list prices — apply the order's {discPct ? `${discPct}% discount` : ''}{discPct && taxPct ? ' + ' : ''}{taxPct ? `${taxPct}% tax` : ''}</option>
+              <option value="final">Amounts are final — use as entered</option>
+            </select>
+            {amtMode === 'list' && <span style={{ fontSize: 11.5, color: 'var(--fg-3, #8598AC)' }}>×{listFactor.toFixed(3)} applied</span>}
+          </div>
+        )}
 
         <label style={LBL}>Note (shows on the order)</label>
         <input style={FIELD} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional — e.g. Requested by customer by phone 8/25" />
@@ -234,8 +266,20 @@ export default function RevisionModal({ client, quote, onClose }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>Additions (+)</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.additions)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>Credits (−)</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{totals.credits ? '−' + fmt(totals.credits) : '$0.00'}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 1px', marginTop: 4, borderTop: '1px solid var(--line, #294059)', fontSize: 14.5 }}>
-            <b>Revised contract price</b><b style={{ color: 'var(--accent, #22d3c8)' }}>{fmt(totals.revised)}</b>
+            <b>Revised contract price</b><b style={{ color: 'var(--accent, #22d3c8)' }}>{fmt(totals.revised)}{totals.net ? <span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--fg-3, #8598AC)' }}>({totals.net > 0 ? '+' : '−'}{fmt(Math.abs(totals.net))})</span> : null}</b>
           </div>
+          {totals.newDeposit != null && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 3px', marginTop: 6, borderTop: '1px dashed var(--line, #294059)', color: 'var(--fg-3, #8598AC)' }}>
+                <span>Revised deposit</span>
+                <b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.newDeposit)}<span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--accent, #22d3c8)' }}>({totals.depDiff >= 0 ? '+' : '−'}{fmt(Math.abs(totals.depDiff))} due)</span></b>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}>
+                <span>Revised balance at scheduling</span>
+                <b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.newBalance)}<span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--fg-3, #8598AC)' }}>({totals.balDiff >= 0 ? '+' : '−'}{fmt(Math.abs(totals.balDiff))})</span></b>
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>

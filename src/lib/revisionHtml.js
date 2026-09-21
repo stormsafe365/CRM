@@ -182,6 +182,11 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
     <tr><td>Total Additions (+)</td><td>${money(revision.additions)}</td></tr>
     <tr><td>Total Credits (−)</td><td>${Number(revision.credits) ? '−' + money(revision.credits).replace('−', '') : '$0.00'}</td></tr>
     <tr class="rev"><td>Revised Contract Price</td><td>${money(revision.revised)}</td></tr>
+    ${revision.newDeposit != null ? `
+    <tr><td style="padding-top:10px">Original Deposit</td><td style="padding-top:10px">${money(revision.origDeposit || 0)}</td></tr>
+    <tr><td>Revised Deposit</td><td>${money(revision.newDeposit)}</td></tr>
+    <tr><td><b>Additional Deposit Due</b></td><td><b>${money(Math.max(0, revision.newDeposit - (revision.origDeposit || 0)))}</b></td></tr>
+    <tr><td>Revised Balance (due at scheduling)</td><td>${money(revision.newBalance != null ? revision.newBalance : revision.revised - revision.newDeposit)}</td></tr>` : ''}
   </table>
 
   ${revision.note ? `<div class="note">${esc(revision.note)}</div>` : ''}
