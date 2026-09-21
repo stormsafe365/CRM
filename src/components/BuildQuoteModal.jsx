@@ -294,7 +294,14 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       console.warn('finish revision failed', e)
       toast('Could not build the revision order: ' + (e.message || e))
     }
-    await saveContractThenPrint(getProgramWindow())
+    // Force revision mode on the contract even when nothing priced changed
+    // (a placement-only revision must still print as REVISED).
+    try { const pw = getProgramWindow(); if (pw) pw._rvForce = true } catch { /* ignore */ }
+    try {
+      await saveContractThenPrint(getProgramWindow())
+    } finally {
+      try { const pw = getProgramWindow(); if (pw) pw._rvForce = false } catch { /* ignore */ }
+    }
     setStatus('')
   }
 

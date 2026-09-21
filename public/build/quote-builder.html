@@ -10348,7 +10348,9 @@ async function printContract(){
   var _rvDimsNow=(G('bw').value+'x'+G('bl').value+'x'+G('bh').value);
   var _rvSizeChanged=!!(window._rvOrig&&window._rvOrig.dims&&window._rvOrig.dims!==_rvDimsNow);
   var _rvHasNew=!!(window._rvOrig&&document.querySelector('.re:not([data-rv-orig]),.we:not([data-rv-orig]),.ne:not([data-rv-orig]),.ace:not([data-rv-orig]),.lte:not([data-rv-orig])'));
-  var _rvMode=!!(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5));
+  // window._rvForce: set by the CRM's Finish Revision — marks the contract
+  // REVISED even for no-charge changes (e.g. doors moved to another wall).
+  var _rvMode=!!(window._rvForce===true||(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5)));
   window._rvHlCur=false;
   if(_rvMode&&G('pdf-dims')) G('pdf-dims').checked=true;
   function row(desc,qty,unit,amt){ lineItems.push({desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}); }
