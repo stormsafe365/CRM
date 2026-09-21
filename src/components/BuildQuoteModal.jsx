@@ -194,6 +194,18 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
             try { pg.doBld() } catch { /* rc below */ }
           } else skipped.push('Size change — set Width/Length/Height by hand')
         } else if (r.type === 'add') {
+          // Duplicate guard: if the SAVED quote already carries a matching
+          // component on that wall (e.g. from an earlier test-run that got
+          // saved), warn the rep instead of silently stacking a second one.
+          const dupSel = r.comp === 'Roll-Up Door' ? '.re' : r.comp === 'Walk-Through Door' ? '.we' : r.comp === 'Window' ? '.ne' : null
+          if (dupSel) {
+            const dup = [...d.querySelectorAll(dupSel)].some((el) => {
+              const sz = (el.querySelector('.rsz') || {}).value || ''
+              const loc = (el.querySelector('.rloc') || el.querySelector('.wloc') || el.querySelector('.nloc') || {}).value || ''
+              return (!r.size || sz === r.size) && (!r.wall || r.wall === '—' || loc === r.wall)
+            })
+            if (dup) skipped.push(`⚠ ${r.wall || 'the build'} already had a ${r.comp}${r.size ? ' ' + r.size : ''} — added anyway, remove one if it's a leftover`)
+          }
           if (r.comp === 'Roll-Up Door' && typeof pg.aRUD === 'function') {
             pg.aRUD()
             const el = [...d.querySelectorAll('.re')].pop()
