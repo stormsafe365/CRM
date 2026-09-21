@@ -139,6 +139,19 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
   async function generate(applyAfter) {
     const filled = rows.filter(rowFilled).map((r) => ({ desc: rowDesc(r), kind: rowKind(r), amount: r.amount }))
     if (!filled.length) { toast('Describe at least one change first.'); return }
+    if (applyAfter && onApplyToBuild) {
+      // Nothing renders yet — the changes go into the builder first, the rep
+      // places them, and Finish Revision generates BOTH documents from the
+      // final build (so the revision order + contract reflect real placements).
+      onApplyToBuild({
+        rows: rows.filter(rowFilled).map((r) => ({ ...r, printDesc: rowDesc(r), printKind: rowKind(r) })),
+        revNo: revNo.trim() || '1',
+        date,
+        original: Number(original) || 0,
+        note: note.trim(),
+      })
+      return
+    }
     setBusy('Rendering…')
     try {
       const number = makeRevisionOrderNumber(quote)
@@ -173,13 +186,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
         : 'Revision order generated (opened in a new window) — but saving to Documents failed.',
       saved ? 'success' : undefined)
       setBusy('')
-      if (applyAfter && onApplyToBuild) {
-        // Hand the structured rows to the builder so the components land on the
-        // actual building (rep drags exact placement, then Generate Contract).
-        onApplyToBuild(rows.filter(rowFilled).map((r) => ({ ...r })))
-      } else {
-        onClose()
-      }
+      onClose()
     } catch (e) {
       setBusy('')
       toast(e.message || 'Could not generate the revision order.')
@@ -356,8 +363,8 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
             {busy || 'Revision Order only'}
           </button>
           {onApplyToBuild && (
-            <button className="btn-primary" disabled={!!busy} onClick={() => generate(true)} style={{ fontWeight: 800 }} title="Saves the Revision Order, then opens the builder with these changes applied so you place them and print the revised contract with renderings + spacing sheet">
-              {busy || 'Generate + Apply to Building →'}
+            <button className="btn-primary" disabled={!!busy} onClick={() => generate(true)} style={{ fontWeight: 800 }} title="Opens the builder with these changes applied — place them, then Finish Revision saves the Revision Order + Revised Contract from the final build">
+              {busy || 'Apply to Building →'}
             </button>
           )}
         </div>

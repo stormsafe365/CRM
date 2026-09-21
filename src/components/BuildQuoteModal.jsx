@@ -13,6 +13,7 @@ import { uploadClientDocBlob } from '../lib/storage'
 import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
 import { harvestAndSaveQuote, renderQuotePdf } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
+import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 
 const SRC = '/build/build.html'
 
@@ -117,7 +118,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         // so the applied components count as NEW (highlighted on the revised
         // contract). The rep then drags placements and hits Generate Contract.
         setStatus('Applying revision changes…')
-        setTimeout(() => { applyRevisionChanges(getProgramWindow(), revisionChanges) }, 1800)
+        setTimeout(() => { applyRevisionChanges(getProgramWindow(), revisionChanges.rows || revisionChanges) }, 1800)
       }
     }, 500)
     return () => clearInterval(t)
@@ -245,7 +246,56 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     setStatus('')
     toast(skipped.length
       ? `Changes applied — do these by hand: ${skipped.join('; ')}`
-      : 'Revision changes applied to the building — drag placements, then hit GENERATE CONTRACT for the revised contract', 'success')
+      : 'Changes applied — place the components, then hit FINISH REVISION (top right)', 'success')
+  }
+
+  // Finish Revision: the rep has placed everything — NOW generate both papers
+  // from the final build: the Revision Order (engine-diffed totals) saved to
+  // Documents › Revisions, then the Revised Contract (highlighted changes,
+  // renderings, floor plan + spacing sheet) via the normal contract path.
+  async function finishRevision() {
+    const pg = getProgramWindow()
+    if (!pg || !revisionChanges) return
+    const rv = revisionChanges
+    try {
+      setStatus('Saving revision order…')
+      const num = makeRevisionOrderNumber(initialQuote || {})
+      const gv = (id) => { try { return parseFloat(String(pg.G(id).textContent).replace(/[^0-9.-]/g, '')) || 0 } catch { return 0 } }
+      const curTot = gv('ptot')
+      const curDep = gv('pdep')
+      const orig = rv.original || Number(initialQuote?.total_amount) || 0
+      const origDep = Number(initialQuote?.deposit_amount) || 0
+      const net = curTot - orig
+      const html = buildRevisionHtml({
+        client,
+        quote: initialQuote,
+        revision: {
+          number: num,
+          revNo: rv.revNo || '1',
+          date: rv.date,
+          rows: (rv.rows || []).map((r) => ({ desc: r.printDesc || r.desc, kind: r.printKind || 'Modify', amount: r.amount })),
+          original: orig,
+          additions: Math.max(net, 0),
+          credits: Math.max(-net, 0),
+          revised: curTot || orig,
+          origDeposit: origDep || null,
+          newDeposit: curDep || null,
+          newBalance: curTot && curDep ? curTot - curDep : null,
+          note: rv.note || '',
+        },
+      })
+      const blob = await renderQuotePdf(html)
+      try {
+        await uploadClientDocBlob(client.id, 'revisions', blob, `${num}.pdf`, 'application/pdf')
+        window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } }))
+        toast(`Revision order ${num} saved — generating the revised contract…`, 'success')
+      } catch (e) { console.warn('revision upload failed', e) }
+    } catch (e) {
+      console.warn('finish revision failed', e)
+      toast('Could not build the revision order: ' + (e.message || e))
+    }
+    await saveContractThenPrint(getProgramWindow())
+    setStatus('')
   }
 
   // Save a PDF copy of the contract to the Document Hub (Contracts), then let the
@@ -333,13 +383,20 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           {status
             ? <div className="qb-bar-status">{status}</div>
             : <div className="qb-bar-status" style={{ flex: 1, textAlign: 'center', opacity: 0.7 }}>
-                {restoreData
+                {revisionChanges
+                  ? <>Place the added components on the building, then hit <b>✓ Finish Revision</b> — saves the Revision Order + Revised Contract.</>
+                  : restoreData
                   ? <>Adjust the build, then <b>Save to Lead</b> to update this quote.</>
                   : client?.id
                     ? <>Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.</>
                     : <>Build &amp; price, then hit <b>Save to Lead</b> — attach it to a lead or create a new one.</>}
               </div>}
           <div className="qb-bar-actions">
+            {revisionChanges && (
+              <button type="button" className="btn-primary" style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#161006', fontWeight: 800 }} onClick={finishRevision} disabled={!!status} title="Saves the Revision Order + generates the Revised Contract (renderings, floor plan, spacing sheet) from the build as placed">
+                {status || '✓ Finish Revision'}
+              </button>
+            )}
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
             <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
