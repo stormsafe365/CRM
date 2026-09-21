@@ -8470,6 +8470,15 @@ function saveQuote(){
 
 function printRevisionForm(){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
+  // Auto mode: an ordered quote was reopened (as-ordered totals stashed) and the
+  // build has since changed - use the engine's own repricing for the summary.
+  var _rvAuto=null;
+  try{
+    var _rvo=window._rvOrig, _rvCT=_rvNum(G('ptot').textContent), _rvCD=_rvNum(G('pdep').textContent);
+    if(_rvo&&_rvo.tot>0&&_rvCT>0&&Math.abs(_rvCT-_rvo.tot)>0.5){
+      _rvAuto={origTot:_rvo.tot,origDep:_rvo.dep,curTot:_rvCT,curDep:_rvCD};
+    }
+  }catch(e){}
   var cn=G('cn').value||'—', cp=G('cp').value||'—', ce=G('ce').value||'—';
   var rep=G('rep').value||'—';
   var w=G('bw').value, l=G('bl').value, h=G('bh').value;
@@ -8598,6 +8607,7 @@ function printRevisionForm(){
   html+='<div class="price-row total"><span>Revised Contract Price</span><span id="rv-total">$ —</span></div>';
   html+='<div class="price-row" style="border-top:1px solid #1e2d42;margin-top:8px;padding-top:8px"><span>Original Deposit Paid</span><span>$ <input id="rv-dep" class="fill amt-fill" type="number" step="0.01" oninput="rvCalc()"></span></div>';
   html+='<div class="price-row"><span>Additional Deposit Due <span style="color:#64748b;font-size:9px">(same % as original deposit)</span></span><span id="rv-depadd" style="font-weight:700">$ 0.00</span></div>';
+  html+='<div id="rv-autonote" style="display:none;margin-top:8px;padding:7px 10px;border-left:3px solid #22d3c8;background:rgba(34,211,200,.08);font-size:9.5px;color:#7dd8d2">Auto-calculated by the quote builder from the as-ordered quote vs the current build — discount and sales tax included. The change-row dollar column is optional.</div>';
   html+='</div>';
   html+='<div class="sect"><h2>Terms &amp; Conditions</h2>';
   html+='<div class="terms">';
@@ -8620,7 +8630,7 @@ function printRevisionForm(){
   html+='</div></div>';
   html+='<div class="rv-toolbar"><button onclick="window.print()">PRINT / SAVE PDF</button></div>';
   html+='<div class="rv-hint">Type into the underlined fields — the totals and deposit fill in automatically — then Print / Save PDF.</div>';
-  html+='<scr'+'ipt>function rvCalc(){var add=0,cred=0;document.querySelectorAll(".rv-amt").forEach(function(i){var v=parseFloat(i.value);if(isNaN(v))return;if(v>=0)add+=v;else cred+=-v;});function f(n){return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}document.getElementById("rv-add").textContent="$ "+f(add);document.getElementById("rv-cred").textContent="$ "+f(cred);var o=parseFloat(document.getElementById("rv-orig").value);var rt=document.getElementById("rv-total");if(!isNaN(o)){rt.textContent="$ "+f(o+add-cred);}else{rt.textContent=(add||cred)?((add>=cred?"+ $ ":"− $ ")+f(Math.abs(add-cred))+" vs original"):"$ —";}var d=parseFloat(document.getElementById("rv-dep").value);var da=document.getElementById("rv-depadd");if(!isNaN(d)&&!isNaN(o)&&o>0){da.textContent="$ "+f(Math.max(0,(add-cred)*(d/o)));}else{da.textContent="$ 0.00";}}</scr'+'ipt>';
+  html+='<scr'+'ipt>var RV_AUTO='+JSON.stringify(_rvAuto)+';function rvCalc(){function f(n){return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}if(RV_AUTO){var net=RV_AUTO.curTot-RV_AUTO.origTot;document.getElementById("rv-add").textContent="$ "+f(Math.max(net,0));document.getElementById("rv-cred").textContent="$ "+f(Math.max(-net,0));document.getElementById("rv-total").textContent="$ "+f(RV_AUTO.curTot);document.getElementById("rv-depadd").textContent="$ "+f(Math.max(0,RV_AUTO.curDep-RV_AUTO.origDep));return;}var add=0,cred=0;document.querySelectorAll(".rv-amt").forEach(function(i){var v=parseFloat(i.value);if(isNaN(v))return;if(v>=0)add+=v;else cred+=-v;});document.getElementById("rv-add").textContent="$ "+f(add);document.getElementById("rv-cred").textContent="$ "+f(cred);var o=parseFloat(document.getElementById("rv-orig").value);var rt=document.getElementById("rv-total");if(!isNaN(o)){rt.textContent="$ "+f(o+add-cred);}else{rt.textContent=(add||cred)?((add>=cred?"+ $ ":"− $ ")+f(Math.abs(add-cred))+" vs original"):"$ —";}var d=parseFloat(document.getElementById("rv-dep").value);var da=document.getElementById("rv-depadd");if(!isNaN(d)&&!isNaN(o)&&o>0){da.textContent="$ "+f(Math.max(0,(add-cred)*(d/o)));}else{da.textContent="$ 0.00";}}if(RV_AUTO){document.getElementById("rv-orig").value=RV_AUTO.origTot;document.getElementById("rv-dep").value=RV_AUTO.origDep;document.getElementById("rv-autonote").style.display="block";}rvCalc();</scr'+'ipt>';
   html+='</div></body></html>';
   pwin.document.write(html);
   pwin.document.close();
@@ -9113,9 +9123,17 @@ function restoreQuoteData(data){
   }
   sy();
   rc();
+  // Snapshot the AS-ORDERED totals for the Revision Form: after the restore has
+  // fully repriced, remember total + deposit. Later edits (adding a door, etc.)
+  // are then diffed against this by printRevisionForm - discount and tax ride
+  // along automatically because both numbers come from the same engine.
+  setTimeout(function(){
+    try{ window._rvOrig={ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent) }; }catch(e){}
+  }, 900);
 
   toast('Quote loaded successfully!', 'ok');
 }
+function _rvNum(t){ var n=parseFloat(String(t||'').replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; }
 
 
 async function printQuote(){
