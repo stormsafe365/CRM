@@ -13,7 +13,35 @@ import { renderQuotePdf } from '../lib/builderSave'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { toast } from '../lib/uiFx'
 
-const KINDS = ['Modify', 'Add', 'Remove']
+// Structured change rows (owner request 9/21/26): a change is either a
+// component added/removed on a specific wall, a building-size change, or a
+// free-text modify. The printed description is composed from the pickers.
+const CHANGE_TYPES = [
+  { v: 'add', l: 'Add Component' },
+  { v: 'remove', l: 'Remove Component' },
+  { v: 'size', l: 'Building Size Change' },
+  { v: 'other', l: 'Other / Modify' },
+]
+const COMPONENTS = ['Roll-Up Door', 'Walk-Through Door', 'Window', 'Framed Opening', 'Garage Door Opener', 'Chain Hoist', 'Brush Seal', 'Lean-To', 'Insulation', 'Other']
+const WALLS = ['Front Gable End', 'Back Gable End', 'Left Eave Side', 'Right Eave Side', '—']
+
+const emptyRow = () => ({ type: 'add', comp: 'Roll-Up Door', size: '', wall: 'Front Gable End', from: '', to: '', desc: '', amount: '' })
+
+// Compose the line that prints on the order from the structured fields.
+function rowDesc(r) {
+  if (r.type === 'size') {
+    const f = r.from.trim(), t = r.to.trim()
+    return f || t ? `Building Size Change — ${f || '?'} → ${t || '?'}${r.desc.trim() ? ` (${r.desc.trim()})` : ''}` : ''
+  }
+  if (r.type === 'other') return r.desc.trim()
+  const comp = r.comp === 'Other' ? (r.desc.trim() || 'Component') : r.comp
+  const size = r.size.trim() ? ` ${r.size.trim()}` : ''
+  const wall = r.wall && r.wall !== '—' ? ` — ${r.wall}` : ''
+  const extra = r.comp !== 'Other' && r.desc.trim() ? ` (${r.desc.trim()})` : ''
+  return `${comp}${size}${wall}${extra}`
+}
+const rowKind = (r) => (r.type === 'add' ? 'Add' : r.type === 'remove' ? 'Remove' : 'Modify')
+const rowFilled = (r) => !!rowDesc(r)
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box',
@@ -34,12 +62,12 @@ export default function RevisionModal({ client, quote, onClose }) {
   const [revNo, setRevNo] = useState('1')
   const [date, setDate] = useState(isoToday())
   const [original, setOriginal] = useState(quote?.total_amount != null ? String(quote.total_amount) : '')
-  const [rows, setRows] = useState([{ desc: '', kind: 'Modify', amount: '' }])
+  const [rows, setRows] = useState([emptyRow()])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState('')
 
   const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
-  const addRow = () => setRows([...rows, { desc: '', kind: 'Modify', amount: '' }])
+  const addRow = () => setRows([...rows, emptyRow()])
   const delRow = (i) => setRows(rows.length > 1 ? rows.filter((_, j) => j !== i) : rows)
 
   // Additions = positive adjustments; credits = negative ones. Revised price
@@ -48,7 +76,7 @@ export default function RevisionModal({ client, quote, onClose }) {
     let additions = 0, credits = 0
     for (const r of rows) {
       const a = Number(r.amount)
-      if (!r.desc.trim() || !isFinite(a)) continue
+      if (!rowFilled(r) || !isFinite(a)) continue
       if (a > 0) additions += a
       else credits += -a
     }
@@ -57,7 +85,7 @@ export default function RevisionModal({ client, quote, onClose }) {
   }, [rows, original])
 
   async function generate() {
-    const filled = rows.filter((r) => r.desc.trim())
+    const filled = rows.filter(rowFilled).map((r) => ({ desc: rowDesc(r), kind: rowKind(r), amount: r.amount }))
     if (!filled.length) { toast('Describe at least one change first.'); return }
     setBusy('Rendering…')
     try {
@@ -134,28 +162,62 @@ export default function RevisionModal({ client, quote, onClose }) {
 
         <label style={LBL}>Changes</label>
         {rows.map((r, i) => (
-          <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-            <input
-              style={{ ...FIELD, flex: 2.4 }}
-              placeholder={i === 0 ? 'e.g. Change wall color from Pewter Gray to Slate Blue' : 'Describe the change'}
-              value={r.desc}
-              autoFocus={i === 0}
-              onChange={(e) => setRow(i, { desc: e.target.value })}
-            />
-            <select style={{ ...FIELD, flex: '0 0 96px', width: 96 }} value={r.kind} onChange={(e) => setRow(i, { kind: e.target.value })}>
-              {KINDS.map((k) => <option key={k}>{k}</option>)}
-            </select>
-            <input
-              style={{ ...FIELD, flex: '0 0 110px', width: 110 }}
-              type="number" step="0.01" placeholder="+/− $"
-              title="Positive = addition, negative = credit, blank/0 = no charge"
-              value={r.amount}
-              onChange={(e) => setRow(i, { amount: e.target.value })}
-            />
-            <button
-              onClick={() => delRow(i)} title="Remove row" disabled={rows.length === 1}
-              style={{ border: '1px solid var(--line, #294059)', background: 'none', color: 'var(--fg-3, #8598AC)', width: 26, height: 26, borderRadius: 6, cursor: rows.length === 1 ? 'default' : 'pointer', opacity: rows.length === 1 ? 0.4 : 1, flex: 'none', padding: 0 }}
-            >×</button>
+          <div key={i} style={{ border: '1px solid var(--line, #294059)', borderRadius: 10, padding: '8px 10px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <select style={{ ...FIELD, flex: '0 0 172px', width: 172 }} value={r.type} onChange={(e) => setRow(i, { type: e.target.value })}>
+                {CHANGE_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
+              </select>
+              {(r.type === 'add' || r.type === 'remove') && (
+                <>
+                  <select style={{ ...FIELD, flex: 1.2 }} value={r.comp} onChange={(e) => setRow(i, { comp: e.target.value })}>
+                    {COMPONENTS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                  <input style={{ ...FIELD, flex: '0 0 78px', width: 78 }} placeholder="Size" title="e.g. 12x12" value={r.size} onChange={(e) => setRow(i, { size: e.target.value })} />
+                  <select style={{ ...FIELD, flex: 1.1 }} value={r.wall} title="Which wall" onChange={(e) => setRow(i, { wall: e.target.value })}>
+                    {WALLS.map((wl) => <option key={wl}>{wl}</option>)}
+                  </select>
+                </>
+              )}
+              {r.type === 'size' && (
+                <>
+                  <input style={{ ...FIELD, flex: 1 }} placeholder="From — e.g. 30×50×12" value={r.from} onChange={(e) => setRow(i, { from: e.target.value })} />
+                  <span style={{ color: 'var(--fg-3, #8598AC)', flex: 'none' }}>→</span>
+                  <input style={{ ...FIELD, flex: 1 }} placeholder="To — e.g. 30×60×12" value={r.to} onChange={(e) => setRow(i, { to: e.target.value })} />
+                </>
+              )}
+              {r.type === 'other' && (
+                <input
+                  style={{ ...FIELD, flex: 2.4 }}
+                  placeholder="Describe the change — e.g. wall color Pewter Gray → Slate Blue"
+                  value={r.desc}
+                  onChange={(e) => setRow(i, { desc: e.target.value })}
+                />
+              )}
+              <input
+                style={{ ...FIELD, flex: '0 0 100px', width: 100 }}
+                type="number" step="0.01" placeholder="+/− $"
+                title="Positive = addition, negative = credit, blank/0 = no charge"
+                value={r.amount}
+                onChange={(e) => setRow(i, { amount: e.target.value })}
+              />
+              <button
+                onClick={() => delRow(i)} title="Remove row" disabled={rows.length === 1}
+                style={{ border: '1px solid var(--line, #294059)', background: 'none', color: 'var(--fg-3, #8598AC)', width: 26, height: 26, borderRadius: 6, cursor: rows.length === 1 ? 'default' : 'pointer', opacity: rows.length === 1 ? 0.4 : 1, flex: 'none', padding: 0 }}
+              >×</button>
+            </div>
+            {(r.type === 'add' || r.type === 'remove') && (
+              <input
+                style={{ ...FIELD, marginTop: 6, fontSize: 12.5, padding: '7px 10px' }}
+                placeholder="Optional detail — e.g. hi-wind rated, with chain hoist"
+                value={r.desc}
+                onChange={(e) => setRow(i, { desc: e.target.value })}
+              />
+            )}
+            {rowFilled(r) && (
+              <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--accent, #22d3c8)' }}>
+                Prints as: <b>{rowKind(r)}</b> — {rowDesc(r)}
+              </div>
+            )}
           </div>
         ))}
         <button onClick={addRow} style={{ border: '1px dashed var(--line, #294059)', background: 'none', color: 'var(--accent, #22d3c8)', fontSize: 12, padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>+ Add another change</button>
