@@ -52,9 +52,24 @@ const EMPTY = {
   notes: '',
 }
 
+// The DB keeps ONE `name` column (every card, quote, contract and search reads
+// it) — the form just presents it as First / Last and joins on save. Editing
+// splits an existing name at the first space ("Mary Jo Smith" → "Mary" + "Jo
+// Smith" — surnames keep their extra words).
+const splitName = (full) => {
+  const s = String(full || '').trim()
+  if (!s) return { first: '', last: '' }
+  const i = s.indexOf(' ')
+  return i < 0 ? { first: s, last: '' } : { first: s.slice(0, i), last: s.slice(i + 1) }
+}
+
 export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 'Save' }) {
   const { users } = useUsers()
-  const [form, setForm] = useState({ ...EMPTY, ...(initial ?? {}) })
+  const [form, setForm] = useState(() => {
+    const base = { ...EMPTY, ...(initial ?? {}) }
+    const { first, last } = splitName(base.name)
+    return { ...base, first_name: first, last_name: last }
+  })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [zipBusy, setZipBusy] = useState(false)
@@ -94,8 +109,9 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
     e.preventDefault()
     setError('')
 
-    if (!form.name?.trim()) {
-      setError('Name is required.')
+    const joinedName = [form.first_name?.trim(), form.last_name?.trim()].filter(Boolean).join(' ')
+    if (!joinedName) {
+      setError('First name is required.')
       return
     }
     if (!form.primary_rep) {
@@ -110,8 +126,12 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
     for (const [k, v] of Object.entries(form)) {
       payload[k] = (typeof v === 'string' && v.trim() === '') ? null : v
     }
-    // Name is required so trim but don't null it.
-    payload.name = form.name.trim()
+    // Name is required so trim but don't null it. First/last are FORM-ONLY
+    // fields — the DB stores the single joined name, so drop them from the
+    // payload (unknown columns would fail the insert).
+    payload.name = joinedName
+    delete payload.first_name
+    delete payload.last_name
 
     // project_stage only matters once a client is "Ordered". When it's
     // empty, drop it from the payload entirely so creating ordinary leads
@@ -152,8 +172,11 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
   return (
     <form onSubmit={handleSubmit} className="client-form">
       <FormSection title="Contact">
-        <Field label="Name *">
-          <input type="text" value={form.name} onChange={e => update('name', e.target.value)} required autoFocus />
+        <Field label="First Name *">
+          <input type="text" value={form.first_name ?? ''} onChange={e => update('first_name', e.target.value)} required autoFocus />
+        </Field>
+        <Field label="Last Name">
+          <input type="text" value={form.last_name ?? ''} onChange={e => update('last_name', e.target.value)} />
         </Field>
         <Field label="Phone">
           <input type="tel" value={form.phone ?? ''} onChange={e => update('phone', e.target.value)} />

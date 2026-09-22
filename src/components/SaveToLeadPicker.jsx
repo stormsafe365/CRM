@@ -238,8 +238,16 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
 
             {mode === 'new' && (
               <>
-                <label style={LBL}>Name *</label>
-                <input style={FIELD} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name" autoFocus={!form.name} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={LBL}>First Name *</label>
+                    <input style={FIELD} value={(form.name || '').split(' ')[0] || ''} onChange={(e) => { const last = (form.name || '').split(' ').slice(1).join(' '); setForm({ ...form, name: [e.target.value.trim(), last].filter(Boolean).join(' ') }) }} autoFocus={!form.name} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={LBL}>Last Name</label>
+                    <input style={FIELD} value={(form.name || '').split(' ').slice(1).join(' ')} onChange={(e) => { const first = (form.name || '').split(' ')[0] || ''; setForm({ ...form, name: [first, e.target.value].filter(Boolean).join(' ') }) }} />
+                  </div>
+                </div>
                 <label style={LBL}>Phone</label>
                 <input style={FIELD} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(000) 000-0000" />
                 <label style={LBL}>Email</label>
