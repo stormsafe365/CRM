@@ -34,6 +34,29 @@ import { toast } from '../lib/uiFx'
 
 const MFR_LABEL = { ca: 'Carolina Carports', cci: 'CCI', other: 'Other' }
 
+// One-click copy for the contact rows — the phone/email chips are LINKS
+// (RingCentral text / mailto), so their text can't be selected; this puts the
+// raw value on the clipboard for pasting into RingCentral, Gmail, etc.
+function CopyBtn({ value, what }) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(String(value))
+      toast(`${what} copied — paste it anywhere`, 'success')
+    } catch {
+      // clipboard API blocked (rare) — fall back to a prompt the user can copy from
+      window.prompt(`Copy ${what.toLowerCase()}:`, String(value))
+    }
+  }
+  return (
+    <button
+      type="button" onClick={copy} title={`Copy ${what.toLowerCase()}`} aria-label={`Copy ${what.toLowerCase()}`}
+      style={{ flex: 'none', width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px solid var(--line, #294059)', borderRadius: 6, color: 'var(--fg-3, #8598AC)', cursor: 'pointer', padding: 0 }}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+    </button>
+  )
+}
+
 function fmtMoney(n) {
   if (n == null) return null
   return '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
@@ -218,8 +241,18 @@ export default function ClientDetail() {
         </div>
 
         <div className="cp-contact">
-          {client.phone && <a className="cp-crow" href={rcTextHref(client.phone)} title="Text via RingCentral">{stroke(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>)}<span>{client.phone}</span></a>}
-          {client.email && <a className="cp-crow" href={`mailto:${client.email}`}>{stroke(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)}<span className="ell">{client.email}</span></a>}
+          {client.phone && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <a className="cp-crow" style={{ flex: 1, minWidth: 0 }} href={rcTextHref(client.phone)} title="Text via RingCentral">{stroke(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>)}<span>{client.phone}</span></a>
+              <CopyBtn value={client.phone} what="Phone number" />
+            </div>
+          )}
+          {client.email && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <a className="cp-crow" style={{ flex: 1, minWidth: 0 }} href={`mailto:${client.email}`}>{stroke(<><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></>)}<span className="ell">{client.email}</span></a>
+              <CopyBtn value={client.email} what="Email" />
+            </div>
+          )}
           {addr && <div className="cp-crow">{stroke(<><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>)}<span>{addr}</span></div>}
           {client.source && <div className="cp-source">Lead Source · <b>{sourceLabel(client.source)}</b></div>}
         </div>
