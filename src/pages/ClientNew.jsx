@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { isoToday } from '../lib/followups'
 import ClientForm from '../components/ClientForm'
+import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
 
 export default function ClientNew() {
   const navigate = useNavigate()
@@ -22,6 +23,17 @@ export default function ClientNew() {
   }
 
   async function handleSubmit(payload) {
+    // Duplicate guard: same email or phone as an existing lead → offer to open
+    // that lead instead of creating a second pipeline row for the same person.
+    try {
+      const dups = await findDuplicateClients({ email: payload.email, phone: payload.phone })
+      if (dups.length) {
+        const useExisting = window.confirm(
+          `A lead already exists with this ${payload.email ? 'email' : 'phone'}:\n${dupSummary(dups)}\n\nOK = open the existing lead (no duplicate created)\nCancel = create a new lead anyway`,
+        )
+        if (useExisting) { navigate(`/clients/${dups[0].id}`); return }
+      }
+    } catch { /* guard is best-effort — never block creation on a check error */ }
     const { data, error } = await supabase
       .from('clients')
       .insert(payload)

@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { isoToday } from '../lib/followups'
 import { harvestAndSaveQuote } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
+import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box',
@@ -81,6 +82,39 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
       if (mode === 'new') {
         const name = form.name.trim()
         if (!name) { toast('Give the new lead a name first.'); savingRef.current = false; return }
+        // Duplicate guard: if a lead already exists with this email/phone,
+        // offer to attach the quote to it instead of minting a twin.
+        try {
+          const dups = await findDuplicateClients({ email: form.email, phone: form.phone })
+          if (dups.length) {
+            const useExisting = window.confirm(
+              `A lead already exists with this contact info:\n${dupSummary(dups)}\n\nOK = save the quote to that existing lead\nCancel = create a new (duplicate) lead anyway`,
+            )
+            if (useExisting) {
+              const d = dups[0]
+              const chosenExisting = { id: d.id, name: d.name, phone: d.phone, email: d.email }
+              setStatus('Reading quote…')
+              const res = await harvestAndSaveQuote({
+                pg,
+                buildWin: getBuildWin ? getBuildWin() : null,
+                client: chosenExisting,
+                onSave: async (payload) => {
+                  const { error } = await supabase
+                    .from('quotes')
+                    .insert({ ...payload, client_id: d.id, created_by: user?.id ?? null })
+                  if (error) throw error
+                },
+                setStatus,
+              })
+              setStatus('')
+              savingRef.current = false
+              setSaved({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number })
+              onSaved?.({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number, client: chosenExisting })
+              toast(res.pdfWarn || `Quote ${res.quote_number} saved to existing lead ${d.name}`, res.pdfWarn ? undefined : 'success')
+              return
+            }
+          }
+        } catch { /* best-effort guard */ }
         setStatus('Creating lead…')
         const { data, error } = await supabase
           .from('clients')
