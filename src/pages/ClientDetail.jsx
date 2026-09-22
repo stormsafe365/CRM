@@ -293,14 +293,22 @@ export default function ClientDetail() {
       {/* ===================== RIGHT: Work area ===================== */}
       <div className="cp-work">
         {confirmingDelete && (
-          <div className="confirm-card">
-            <div>
-              <strong>Delete this lead?</strong>
-              <div className="muted" style={{ marginTop: 4 }}>This permanently deletes the lead and all their quotes and activity history. Cannot be undone.</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setConfirmingDelete(false)} className="btn-secondary">Cancel</button>
-              <button onClick={handleDelete} className="btn-danger">Yes, delete</button>
+          // Fixed overlay: the Delete button sits at the BOTTOM of the left
+          // column while this used to render at the TOP of the right one — off
+          // screen whenever the page was scrolled, so the click looked dead.
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(4,9,16,.6)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmingDelete(false) }}
+          >
+            <div className="confirm-card" style={{ maxWidth: 440, margin: 16 }}>
+              <div>
+                <strong>Delete this lead?</strong>
+                <div className="muted" style={{ marginTop: 4 }}>This removes {client?.name || 'the lead'} from the pipeline (recoverable from Trash), along with their quotes and activity views.</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setConfirmingDelete(false)} className="btn-secondary">Cancel</button>
+                <button onClick={handleDelete} className="btn-danger">Yes, delete</button>
+              </div>
             </div>
           </div>
         )}
