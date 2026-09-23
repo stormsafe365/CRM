@@ -243,9 +243,14 @@ export default function ClientsList() {
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
+      // Phone matching is digits-vs-digits so "(561) 801-5606" finds
+      // "5618015606", "561.801.5606", etc. Only kicks in for queries with 4+
+      // digits, so typing a name with a digit doesn't misroute to phone-land.
+      const qDigits = q.replace(/\D/g, '')
+      const phoneMatch = (p) => qDigits.length >= 4 && String(p || '').replace(/\D/g, '').includes(qDigits)
       result = result.filter(c =>
         (c.name && c.name.toLowerCase().includes(q)) ||
-        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.phone && (c.phone.toLowerCase().includes(q) || phoneMatch(c.phone))) ||
         (c.email && c.email.toLowerCase().includes(q)) ||
         (c.building_size && c.building_size.toLowerCase().includes(q))
       )
