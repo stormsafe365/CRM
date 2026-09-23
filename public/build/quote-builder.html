@@ -429,6 +429,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </select>
   </div>
   <div id="framing-note" class="hidden anote" style="margin-bottom:6px">12 Gauge framing upgrade — fixed price (Wide Span) or +15% of base (Standard)</div>
+  <div id="framing-req-note" class="hidden" style="margin-bottom:6px;font-size:11px;color:#b45309;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;padding:5px 9px;font-weight:600">12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24' (charged upgrade)</div>
   <div class="row"><label>Roof Pitch</label>
     <select id="pitch-sel" onchange="rc()">
       <option value="standard">Standard 3:12 (auto)</option>
@@ -7107,6 +7108,30 @@ function rc(){
     if(ACTIVE_MFR==='CCI' && h>=17){ _wsF.value='Vertical'; _wsF.disabled=true; _wsF.title="Vertical is automatic at 17'+ walls (CCI)"; }
     else { _wsF.disabled=false; _wsF.title=''; }
   }
+  // CCI in a hi-wind county (the HW list — certified above 150 MPH) and WIDER
+  // than 24' REQUIRES 12-gauge framing (owner rule 9/23/26, Palm Beach etc.).
+  // Auto-selected and locked — it's a CHARGED upgrade, priced as normal.
+  var _fuF=G('framing-upgrade');
+  var _req12=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0);
+  // Override memory resets whenever the width class / county / mfr changes, so
+  // a NEW hi-wind wide build always starts locked at 12 GA again.
+  var _reqKey=ACTIVE_MFR+'|'+(w>24?'wide':'narrow')+'|'+G('county').textContent;
+  if(window._req12Key!==_reqKey){ window._req12Key=_reqKey; window._fu14Ovr=false; }
+  if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12') window._fu14Ovr=false; // rep re-picked 12 → re-lock
+  if(_fuF){
+    if(_req12 && !window._fu14Ovr){ _fuF.value='12'; _fuF.disabled=true; _fuF.title="12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
+    else { _fuF.disabled=false; _fuF.title=''; }
+  }
+  var _fr12=G('framing-req-note');
+  if(_fr12){
+    if(_req12 && !window._fu14Ovr){
+      _fr12.innerHTML='12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
+      _fr12.classList.remove('hidden');
+    } else if(_req12 && window._fu14Ovr){
+      _fr12.innerHTML='⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
+      _fr12.classList.remove('hidden');
+    } else { _fr12.classList.add('hidden'); }
+  }
   // GCH: Section-4 eave dropdowns MIRROR the gch-left/right store every reprice,
   // so a RESTORED quote shows the truth (old saves carried the forced 'Closed'
   // while the extension store said 'open' — the dropdown lied). Edits still flow
@@ -8279,6 +8304,8 @@ function zoningChecklistHTML(){
 // QUOTE SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════════════
 
+function _fu14Override(){ window._fu14Ovr=true; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; } rc(); }
+function _fu12Reapply(){ window._fu14Ovr=false; rc(); }
 function _delivOnly(){var e=G('delivery-type');return !!(e&&e.value==='delivered');}
 function collectQuoteData(){
   // Collect all form field values
