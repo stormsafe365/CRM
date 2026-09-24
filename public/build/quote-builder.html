@@ -10524,6 +10524,85 @@ async function printContract(){
     var sfEl=el.querySelector('.nsf');
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
+  // Lean-tos — ported from printQuote so the contract itemizes EXACTLY what
+  // the subtotal charges (base lean-to, its accessories, connection fee).
+  document.querySelectorAll('.lte').forEach(function(el){
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    var lw=parseInt(el.querySelector('.ltw').value)||0;
+    var ll=parseInt(el.querySelector('.ltl2').value)||0;
+    var ltTypeEl=el.querySelector('.lt-type');
+    var ltIsFree=(ltTypeEl&&ltTypeEl.value==='freestanding');
+    var lh=ltIsFree?(parseInt(el.querySelector('.lt-tall-h')&&el.querySelector('.lt-tall-h').value)||10):(parseInt(el.querySelector('.lth').value)||6);
+    var ls=ltIsFree?'Free-Standing Single Slope':(el.querySelector('.lts')?el.querySelector('.lts').value:'');
+    var ltW3=getLTWalls(el);
+    if(lw&&ll){
+      // Printed line = EXACTLY what the pricing engine charges for this lean-to
+      var lp=ltUnit(el).total;
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+ltPitch3+" Pitch",null,null,lp);
+      // Lean-to accessories
+      el.querySelectorAll('.lt-acc-e').forEach(function(ae){
+        var atype=ae.querySelector('.lt-acc-type')?ae.querySelector('.lt-acc-type').value:'rollup';
+        var aqty=parseInt(ae.querySelector('.lt-acc-qty')?ae.querySelector('.lt-acc-qty').value:1)||1;
+        var aloc=ae.querySelector('.lt-acc-loc')?ae.querySelector('.lt-acc-loc').value:'outer';
+        var alocLabel=aloc==='outer'?'Outer Wall':(aloc==='front'?'Front End':'Back End');
+        if(atype==='rollup'){
+          var asz=ae.querySelector('.lt-acc-size')?ae.querySelector('.lt-acc-size').value:'9x8';
+          // Merged Roll-Up tier — matches gLT (CCI = certified chart)
+          var ap=getDoorPrice('rollup',asz);
+          var _achIncl=doorHasChainIncluded('rollup',asz);
+          row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')',aqty,ap,ap*aqty);
+          // Door color upcharge (CCI flat / CA % of door price)
+          var acoEl2=ae.querySelector('.lt-acc-color');
+          if(acoEl2 && MFR().rudColors){
+            var _acd2=MFR().rudColors.find(function(c){return c.v===acoEl2.value;});
+            var _acUp2=rudColorUpcharge(_acd2,'rollup',asz);
+            if(_acd2 && _acUp2) row('    Lean-To: Door Color — '+_acd2.label,aqty,_acUp2,_acUp2*aqty);
+          }
+          // Chain hoist add-on ($0 line suppressed when the size includes one)
+          var ach=parseInt(ae.querySelector('.lt-acc-ch')&&ae.querySelector('.lt-acc-ch').value)||0;
+          if(_achIncl) ach=0;
+          if(ach>0){var cp=window._chain||325;row('    Lean-To: Chain Hoist',ach,cp,ach*cp);}
+          // Header seal add-on
+          var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
+          if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=Math.round(sw*(window._seal||9.85));row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
+          // Eave header — always required on the outer wall of an eave-attached lean-to
+          var _qhLts=(el.querySelector('.lts')||{}).value||'';
+          if((_qhLts==='Left Eave'||_qhLts==='Right Eave')&&aloc==='outer'){
+            var _qhDw=parseInt((asz||'').split('x')[0])||0;
+            var _qhP=eaveHeaderCost(_qhDw, parseInt(G('bw').value)||0);
+            if(_qhP) row('    Lean-To: Eave Header ('+_qhDw+"' door)",aqty,_qhP,_qhP*aqty);
+          }
+        }
+        else if(atype==='wtd'){var ahi=ae.querySelector('.lt-acc-wtd-hi')?ae.querySelector('.lt-acc-wtd-hi').value:'std';var ap=MFR().wtdPrices[ahi]||window._wtd_std||400;var wtdLbl=MFR().wtdTypes.find(function(t){return t.v===ahi;})||{label:ahi};row('  Lean-To: Walk-Through Door ('+wtdLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
+        else if(atype==='win'){var ahi=ae.querySelector('.lt-acc-win-hi')?ae.querySelector('.lt-acc-win-hi').value:'std';var ap=MFR().winPrices[ahi]||window._win_std||200;var winLbl=MFR().winTypes.find(function(t){return t.v===ahi;})||{label:ahi};row('  Lean-To: Window ('+winLbl.label+') ('+alocLabel+')',aqty,ap,ap*aqty);}
+        else if(atype==='frameout'){
+          var afoW2=parseFloat(ae.querySelector('.lt-acc-fo-w')&&ae.querySelector('.lt-acc-fo-w').value)||10;
+          var afoH2=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
+          var afoKey2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
+          var afp=ltAccFoUnitPrice(ae, aloc);
+          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(afoW2+'x'+afoH2+"' opening");
+          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+afoW2+'x'+afoH2+"'";
+          if(afp) row('  Lean-To: Framed Opening — '+afoLbl+afoSz+' ('+alocLabel+')',aqty,afp,afp*aqty);
+        }
+        // Side frames (wtd / win / frameout on the outer wall, truss auto-set)
+        if(atype!=='rollup'){
+          var _qsLts=(el.querySelector('.lts')||{}).value||'';
+          var _qsSf=ae.querySelector('.lt-acc-sf');
+          var _qsN=(_qsSf&&(_qsLts==='Left Eave'||_qsLts==='Right Eave')&&aloc==='outer')?(parseInt(_qsSf.value)||0):0;
+          if(_qsN>0){var _qsP=window._sf_dw||150;row('    Lean-To: Side Frame',_qsN,_qsP,_qsN*_qsP);}
+        }
+      });
+      // Per-lean-to End Connection Fee (skip for free-standing)
+      if(!ltIsFree){
+        var _isGableQ=(ls==='Front Gable'||ls==='Back Gable');
+        var _connFeeQ=connFeeFor(ls, ll); // shared with gConnectionFees — no duplicate formula
+        if(_connFeeQ>0){
+          var _connLblQ=_isGableQ?'Lean-To: End Connection Fee ('+ls+', '+ll+"')":'Lean-To: Connection Fee ('+ls+', '+ll+"')";
+          row('  '+_connLblQ,null,null,_connFeeQ);
+        }
+      }
+    }
+  });
   // Additional Components (framed openings, custom items, etc.) — mirror of printQuote
   document.querySelectorAll('.ace').forEach(function(el){
     window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
