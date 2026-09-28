@@ -11698,9 +11698,13 @@ function _esc(s){
 }
 
 // A filesystem-safe default PDF name, e.g. "StormSafe Quote - John Doe.pdf".
+// Default PDF file name: "Client Name-StormSafe Steel QTE (9.28)" (month.day).
+// Contracts use "CONTRACT" in place of "QTE". No client name → just the company part.
 function _ssPdfName(kind){
-  var cn=(G('cn')&&G('cn').value)?(' - '+String(G('cn').value).trim()):'';
-  return ('StormSafe '+kind+cn).replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim().slice(0,80)+'.pdf';
+  var cn=(G('cn')&&G('cn').value)?String(G('cn').value).trim():'';
+  var d=new Date(), tag=(kind==='Contract')?'CONTRACT':'QTE';
+  var nm=(cn?cn+'-':'')+'StormSafe Steel '+tag+' ('+(d.getMonth()+1)+'.'+d.getDate()+')';
+  return nm.replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim().slice(0,100)+'.pdf';
 }
 
 // Desktop (Electron) app: the in-app window.print() has NO print preview / Save-
@@ -11730,7 +11734,7 @@ function _ssSavePdfViaElectron(fullDoc, suggestedName, popup){
   if(api && typeof api.renderPdf==='function'){
     try{ if(popup) popup.close(); }catch(e){}
     toast('Generating PDF…','ok');
-    Promise.resolve(api.renderPdf(fullDoc)).then(function(b64){
+    Promise.resolve(api.renderPdf(fullDoc, suggestedName)).then(function(b64){
       if(!b64){ toast('PDF render failed','err'); return; }
       var bytes=atob(b64), arr=new Uint8Array(bytes.length);
       for(var i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);

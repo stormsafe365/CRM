@@ -15,7 +15,11 @@ const fs = require('fs');
 
 // Render an HTML document to a PDF (base64) using Chromium's native print-to-PDF.
 // Used to save quote PDFs that honor the builder's print styles + dark theme.
-ipcMain.handle('ss:render-pdf', async (_evt, html) => {
+// Default file name for the NEXT PDF the user downloads from the viewer
+// (e.g. "Tarek Gabra-StormSafe Steel QTE (9.28).pdf"), set by renderPdf.
+let pendingPdfName = null;
+ipcMain.handle('ss:render-pdf', async (_evt, html, name) => {
+  pendingPdfName = name ? String(name).replace(/[\\/:*?"<>|]+/g, '').trim() : null;
   const w = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: true } });
   try {
     await w.loadURL('about:blank');
@@ -140,6 +144,14 @@ async function createWindow() {
   });
 
   mainWindow.loadURL(startUrl);
+
+  // PDF viewer "download" → pre-fill the Save dialog with the quote/contract name.
+  mainWindow.webContents.session.on('will-download', (_e, item) => {
+    const isPdf = item.getMimeType() === 'application/pdf' || /\.pdf$/i.test(item.getFilename());
+    if (!isPdf || !pendingPdfName) return;
+    const fname = /\.pdf$/i.test(pendingPdfName) ? pendingPdfName : pendingPdfName + '.pdf';
+    item.setSaveDialogOptions({ defaultPath: path.join(app.getPath('downloads'), fname), filters: [{ name: 'PDF Document', extensions: ['pdf'] }] });
+  });
 
   // Window-open routing:
   //  • about:/data:/blank + our own pages  → open IN-APP (the pricing program's

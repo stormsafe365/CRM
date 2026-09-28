@@ -6,7 +6,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  renderPdf: (html) => ipcRenderer.invoke('ss:render-pdf', html),
+  renderPdf: (html, name) => ipcRenderer.invoke('ss:render-pdf', html, name),
   // Main-process confirm/alert — replaces the renderer-native dialogs, whose
   // Chromium bug on Windows kills keyboard input to the window after closing.
   confirmSync: (msg) => ipcRenderer.sendSync('ss:confirm', msg),
