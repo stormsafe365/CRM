@@ -315,12 +315,6 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="2">2:12 (standard)</option>
         <option value="3">3:12 (no charge)</option>
       </select></div>
-    <div class="row"><label>Wind Cert / Framing</label>
-      <select id="fs-cert" onchange="fsCertChanged()">
-        <option value="auto">Auto (county rule)</option>
-        <option value="150">150 MPH — 5' OC (included)</option>
-        <option value="170">170 MPH + 4' OC</option>
-      </select></div>
     <div class="row"><label>Walls</label>
       <select id="fs-walls-mode" onchange="fsWallsModeChanged()">
         <option value="open">Open (lean-to only, no sheeting)</option>
@@ -4536,7 +4530,7 @@ function doBld(){
   // OC spacing row — only for ≤24' wide standard/carport buildings
   var ocRow = G('oc-spacing-row');
   var ocSel = G('oc-spacing');
-  var showOC = (w>0 && w<=24 && bt!=='widespan' && bt!=='fslean');
+  var showOC = (w>0 && w<=24 && bt!=='widespan'); // fslean too: 4' OC = Sensei's '170 MPH + 4ft' ladder (priced in fsCert)
   if(ocRow) ocRow.classList.toggle('hidden', !showOC);
   if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden (>24 = 4' OC standard)
   // A WIDTH change re-evaluates the standard spacing → drop any 4' OC upgrade back
@@ -4544,6 +4538,7 @@ function doBld(){
   // sticking to a different, newly-sized ≤24' building.
   if(showOC && ocSel && w!==_prevOcWidth) ocSel.value='5oc';
   _prevOcWidth = w;
+  if(bt==='fslean' && ocSel && fsCertMph()>=160) ocSel.value='4oc'; // hi-wind county / 170 override already includes 4' OC
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? (fsCertMph()>=160?" — 4' OC":" — 5' OC") : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
   if(_delivOnly()) f.push(bdg(''+(_pickupOnly()?'CUSTOMER PICKUP — No Delivery or Installation':'DELIVERED ONLY — No Installation')+'','bo'));
@@ -4582,7 +4577,6 @@ function doBld(){
     if(w&&(w%2)) f.push(bdg('⚠ Odd width — CCI custom quote','bo'));
     var fuF=G('framing-upgrade');
     if(fuF&&fuF.value==='12'&&fsWidthKey(w)===16&&(parseInt(G('bl').value)||0)===40) f.push(bdg('⚠ Sensei charges $1,220 for 12GA at exactly 16×40 — verify with CCI','bo'));
-    fsCertSync();
     if(fsCertMph()>=160) f.push(bdg('170 MPH + 4ft Wind Cert — $'+fsCert().toLocaleString()+' (in base)','bb'));
     else f.push(bdg('150 MPH Wind Cert — included','bb'));
   }
@@ -4672,6 +4666,8 @@ function fsTier(h){ if(h<=9) return 9; if(h===10) return 10; if(h<=12) return 12
 function fsPitch(){ var p=G('fs-pitch'); return p&&p.value==='3'?3:2; }
 function fsLowSide(){ var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||0; if(!w||!h) return 0; return h-Math.round(w*fsPitch()/12); }
 function fsCertMph(){
+  // Single-slope: picking 4' OC (truss spacing) = CCI's 170 MPH + 4ft cert.
+  if(G('btype')&&G('btype').value==='fslean'){ var _oc=G('oc-spacing'); if(_oc&&_oc.value==='4oc') return 170; }
   // Effective certification for pricing: rep override wins; else FL high-wind
   // county rule (same source the plans logic uses); else 150.
   var ov=G('cert-ovr'); if(ov && ov.value!=='auto') return parseInt(ov.value)||150;
@@ -4686,20 +4682,7 @@ function fsG12(){ // 12GA adder (0 when 14GA)
   if(fsWidthKey(w)===16 && l===40) return 1220;
   return FS_G12[fsLenIdx(l)];
 }
-function fsCertChanged(){ // single-slope cert/4' OC picker → drives the shared Certify-Wind-Load override
-  var v=G('fs-cert'), ov=G('cert-ovr'); if(!v||!ov) return;
-  ov.value=v.value; if(typeof doPerm==='function') doPerm(); doBld();
-}
-function fsCertSync(){ // mirror the override + show the live 170+4' OC price (Sensei: $300 14GA / 12GA incl. its adder)
-  var v=G('fs-cert'), ov=G('cert-ovr'); if(!v) return;
-  var o=ov?ov.value:'auto'; v.value=(o==='auto')?'auto':((parseInt(o)||0)>=160?'170':'150');
-  var l=parseInt(G('bl').value)||0, fu=G('framing-upgrade'), is12=fu&&fu.value==='12';
-  var p=l?(is12?FS_G12CERT[fsLenIdx(l)]+FS_G12[fsLenIdx(l)]:FS_CERT[fsLenIdx(l)]):0;
-  v.options[2].text="170 MPH + 4' OC"+(p?' — $'+p.toLocaleString()+(is12?' (incl. 12GA)':''):'');
-  v.options[0].text='Auto (county rule → '+(fsCertMph()>=160?"170 + 4' OC":"150")+')';
-}
 function fsCert(){ // certification charge (170+4ft ladder; 150/uncert = $0)
-  try{ fsCertSync(); }catch(e){}
   var l=parseInt(G('bl').value)||0; if(!l) return 0;
   if(fsCertMph()<160) return 0;
   var fu=G('framing-upgrade');
