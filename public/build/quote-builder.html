@@ -7333,11 +7333,26 @@ function rc(){
   // CA 8/10/2026 policy: 26GA is ALWAYS a 10% upgrade — no free threshold.
   // CCI keeps its Sensei-verified free-at-$10k behavior.
   var sheetFree=(ACTIVE_MFR!=='CA' && preSheetSub>=(window._freeThresh||10000) && bt3!=='widespan' && bt3!=='fslean');
+  var _su=G('sheeting-upgrade');
   if(sheetFree){
-    G('sheeting-upgrade').value='upgrade';
-    G('sheeting-upgrade').disabled=true;
+    // Remember what the rep had BEFORE the free auto-upgrade kicked in, so it can
+    // be put back if the build drops under the threshold again. A quote reopened
+    // while already free counts as auto (the select is locked while free).
+    if(_su.dataset.autoFree!=='1'){
+      _su.dataset.preFree=(_su.dataset.restored==='1')?'standard':_su.value;
+      _su.dataset.autoFree='1';
+    }
+    delete _su.dataset.restored;
+    _su.value='upgrade';
+    _su.disabled=true;
   } else if(bt3!=='widespan'){
-    G('sheeting-upgrade').disabled=false;
+    // Dropped back under $10k (or switched to CA): undo OUR auto-upgrade instead of
+    // silently turning it into a paid +10% line. A rep's own earlier pick is kept.
+    if(_su.dataset.autoFree==='1'){
+      _su.value=_su.dataset.preFree||'standard';
+      delete _su.dataset.autoFree; delete _su.dataset.preFree;
+    }
+    _su.disabled=false;
   }
   // sheetFree buildings: ZERO charge. Under $10k manual upgrade: +10% of base.
   var sheetUpgrade=(!sheetFree && G('sheeting-upgrade').value==='upgrade' && bt3!=='widespan') ? preSheetSub*0.10 : 0;
@@ -9029,6 +9044,7 @@ var CCI_LEGACY_HEX = {
   '#CCBC9D':'#D2C4A0', '#D6C8A5':'#DBD1B0'
 };
 function restoreQuoteData(data){
+  var _suR=G('sheeting-upgrade'); if(_suR){ delete _suR.dataset.autoFree; delete _suR.dataset.preFree; _suR.dataset.restored='1'; }
   if(!data||!data.fields) return;
   var f = data.fields;
 
@@ -9255,6 +9271,7 @@ function restoreQuoteData(data){
   // Re-run the building pass so size-driven rows (OC Spacing, fslean badges) match the restored quote.
   try{ if(typeof _prevOcWidth!=='undefined') _prevOcWidth=parseInt(G('bw').value)||0; doBld(); }catch(e){}
   rc();
+  var _suE=G('sheeting-upgrade'); if(_suE) delete _suE.dataset.restored;
   // Snapshot the AS-ORDERED totals for the Revision Form: after the restore has
   // fully repriced, remember total + deposit. Later edits (adding a door, etc.)
   // are then diffed against this by printRevisionForm - discount and tax ride
@@ -11768,7 +11785,7 @@ function resetAll(){
   G('perm-yes').classList.add('hidden'); G('perm-no').classList.add('hidden');
   ['pt-flags','bld-flags','specf'].forEach(function(id){ G(id).innerHTML=''; });
   G('lap').value='no'; G('wain').value='no';
-  var suEl=G('sheeting-upgrade'); if(suEl){ suEl.value='standard'; suEl.disabled=false; }
+  var suEl=G('sheeting-upgrade'); if(suEl){ suEl.value='standard'; suEl.disabled=false; delete suEl.dataset.autoFree; delete suEl.dataset.preFree; delete suEl.dataset.restored; }
   var fuEl=G('framing-upgrade'); if(fuEl){ fuEl.value='14'; fuEl.options[0].text='Standard — 14 Gauge'; }
   var pitchSelEl=G('pitch-sel'); if(pitchSelEl) pitchSelEl.value='standard';
   var insulSelR=G('insul-sel'); if(insulSelR) insulSelR.value='none';
