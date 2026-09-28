@@ -19,7 +19,6 @@ import ActivityProgress from '../components/ActivityProgress'
 import FollowUpsCard from '../components/FollowUpsCard'
 import OrderTimeline from '../components/OrderTimeline'
 import LeadTempSlider from '../components/LeadTempSlider'
-import NotesSection from '../components/NotesSection'
 
 // "Click to text": open the RingCentral desktop app's SMS composer with the
 // number prefilled (rcapp:// is the scheme the RingCentral app registers).
@@ -365,10 +364,8 @@ export default function ClientDetail() {
           <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />
         </div>
 
-        <div className="row-2">
-          <NotesSection clientId={client.id} />
-          <FollowUpsCard clientId={client.id} client={client} />
-        </div>
+        {/* Notes live ONLY in the Activity & Progress card above (bottom Notes section removed per owner). */}
+        <FollowUpsCard clientId={client.id} client={client} />
       </div>
 
       {ordering && (

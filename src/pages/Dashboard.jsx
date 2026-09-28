@@ -21,6 +21,7 @@ import { derivedProjectStage } from '../lib/projectStage'
 import { AreaChart } from '../components/charts'
 import DashCalendar from '../components/DashCalendar'
 import BuildQuoteModal from '../components/BuildQuoteModal'
+import DashAnalytics from '../components/DashAnalytics'
 
 const DAY = 86400000
 
@@ -73,7 +74,7 @@ export default function Dashboard() {
     async function load() {
       const [c, q] = await Promise.all([
         supabase.from('clients').select('*'),
-        supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at'),
+        supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at, created_by, deleted_at'),
       ])
       if (cancelled) return
       setClients((c.data ?? []).filter(x => !x.deleted_at))
@@ -373,6 +374,9 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ===== SALES ANALYTICS ===== */}
+      {!loading && <DashAnalytics clients={clients} quotes={quotes} />}
 
       {building && <BuildQuoteModal client={null} onClose={() => setBuilding(false)} />}
     </>
