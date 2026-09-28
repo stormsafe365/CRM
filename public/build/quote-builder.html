@@ -5244,6 +5244,17 @@ function cciUnits(L){
 function cciUnitSum(L, v){ // v = [20',25',30',35',40'] column prices
   return cciUnits(L).reduce(function(s,x){ var i=Math.max(0,Math.min(4,Math.round((x-20)/5))); return s+v[i]; },0);
 }
+// CCI 12'-24' wide with BOTH 12-gauge AND 4' centers: the price book prices
+// the pair as ONE option row, "12G 170mph 4' Centers" (360/480/600/720/840),
+// NOT 12G 5' Centers + 14G 4' Centers stacked. Returns that price (per
+// connected unit past 40'), or null when the combo doesn't apply.
+function cciCombo12x4(fu, oc, w, bt, l){
+  if(ACTIVE_MFR!=='CCI'||fu!=='12'||oc!=='4oc'||!(w>0&&w<=24)||bt==='widespan'||bt==='fslean') return null;
+  var V=[360,480,600,720,840];
+  if(l>40) return cciUnitSum(l,V);
+  var S=[20,25,30,35,40],i=0; for(var k=0;k<S.length;k++){ if(S[k]<=l) i=k; else break; }
+  return V[i];
+}
 function cci12GA(l){
   if(l>=100) return Math.round(2190+24*(l-100));
   var i=CCI_GA12_L.length-1;
@@ -7201,6 +7212,8 @@ function rc(){
     if(l>40){ ocUpgrade=cciUnitSum(l,OC4V); }
     else { ocUpgrade=OC4V[oci]; }
   }
+  var _cbR=cciCombo12x4(fuVal, ocSpacingVal, w, bt3, l);
+  if(_cbR!=null){ framingUpgrade=_cbR; ocUpgrade=0; }
   // Pitch upgrade — uses ACTIVE manufacturer's pricing formula:
   //   CA: 50% of base building price
   //   CCI: tier-based table by width × length (much lower than CA's formula)
@@ -9276,6 +9289,9 @@ async function printQuote(){
     if(lv>40){ ocUpgradeP=cciUnitSum(lv,OC4VP); }
     else { ocUpgradeP=OC4VP[ocip]; }
   }
+  var _cbP=cciCombo12x4((G('framing-upgrade')?G('framing-upgrade').value:'14'), ocSpacingPrint, wPrint, bt3p, lv);
+  window._cb12x4=(_cbP!=null);
+  if(_cbP!=null){ framingUpgP=_cbP; ocUpgradeP=0; }
   // Pitch upgrade for PDF
   var pitchSelValP = G('pitch-sel') ? G('pitch-sel').value : 'standard';
   var pitchUpgradeP = MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
@@ -9355,7 +9371,7 @@ async function printQuote(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) rows+=row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) rows+=row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) rows+=row('12-Gauge Framing Upgrade',null,null,framingUpgP);
+  if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
   if(ocUpgradeP) rows+=row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) rows+=row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
@@ -10244,6 +10260,9 @@ async function printContract(){
     if(lv>40){ ocUpgradeP=cciUnitSum(lv,OC4VP); }
     else { ocUpgradeP=OC4VP[ocip]; }
   }
+  var _cbP=cciCombo12x4((G('framing-upgrade')?G('framing-upgrade').value:'14'), ocSpacingPrint, wPrint, bt3p, lv);
+  window._cb12x4=(_cbP!=null);
+  if(_cbP!=null){ framingUpgP=_cbP; ocUpgradeP=0; }
   var pitchSelValP=G('pitch-sel')?G('pitch-sel').value:'standard';
   var pitchUpgradeP=MFR().pitchUpgradeFn(base, wPrint||0, lv||0, pitchSelValP);
   var wainP=gWainscot();
@@ -10399,7 +10418,7 @@ async function printContract(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) row('12-Gauge Framing Upgrade',null,null,framingUpgP);
+  if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
   if(ocUpgradeP) row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
@@ -13432,6 +13451,7 @@ function textQuote(){
   var ltP=gLT(),acP=gAC(),insP=gInsul();
   var ocSel2=G('oc-spacing'),ocVal2=ocSel2?ocSel2.value:'5oc',ocU=0;
   if(ACTIVE_MFR!=='CA'&&ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){ocU=cciUnitSum(lv,OC4V2);}else{ocU=OC4V2[oci2];}}
+  var _cbT=cciCombo12x4((G('framing-upgrade')?G('framing-upgrade').value:'14'), ocVal2, wv, bt3, lv); if(_cbT!=null){ framingUpgP=_cbT; ocU=0; }
   var preSheet=base+leg+framingUpgP+ocU+pitchUpgrade+walls2+vertU+rd.rud+wd.wtd+wn.win+rd.sf+wd.sf+wn.sf+lapP+wainP+aewP+ltP+acP+insP;
   var sheetFree=(ACTIVE_MFR!=='CA'&&preSheet>=(window._freeThresh||10000)&&bt3!=='widespan');
   var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
