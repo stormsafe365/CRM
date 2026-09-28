@@ -4572,6 +4572,21 @@ var CCI_GA12_V=[410,530,650,770,890,940,1060,1180,1300,1420,1540,1660,1780,1830,
 // first (handbook p6: 45=25+20, 50=25+25, 85=30+30+25, 100=35+35+30).
 // Owner-verified 9/28/26: CCI kicked back Beharie 24x50 4'OC at $450 ->
 // $650 = 325+325. Matches the Sensei 30-wide 12GA series (45'=940, 50'=1060).
+// Lean-to leg height for printed quote/contract lines, in feet-inches.
+// Attached: the LOW leg (continuous-roof lean-tos use their auto-computed
+// .lth-cont value, e.g. 8'10"). Free-standing: low / high legs.
+function _ltFtIn(v){ var ft=Math.floor(v), inch=Math.round((v-ft)*12); if(inch===12){ft++;inch=0;} return inch?ft+"'"+inch+'"':ft+"'"; }
+function _ltLegTxt(el){
+  var free=((el.querySelector('.lt-type')||{}).value==='freestanding');
+  var cont=((el.querySelector('.ltst')||{}).value==='cont');
+  var low=parseFloat(((cont?el.querySelector('.lth-cont'):null)||el.querySelector('.lth')||{}).value);
+  if(free){
+    var tall=parseFloat((el.querySelector('.lt-tall-h')||{}).value);
+    var t=(low?_ltFtIn(low)+' Low':'')+(tall?(low?' / ':'')+_ltFtIn(tall)+' High':'');
+    return t?t+' Legs | ':'';
+  }
+  return low?_ltFtIn(low)+' Low Leg | ':'';
+}
 function cciUnits(L){
   var l5=Math.ceil(L/5)*5, n=Math.ceil(l5/40), steps=l5/5, base=Math.floor(steps/n), extra=steps%n, u=[];
   for(var i=0;i<n;i++) u.push((base+(i<extra?1:0))*5);
@@ -8371,7 +8386,7 @@ function printQuote(){
     if(lw&&ll){
       var wallAdj3=ltW3.frontP+ltW3.backP+ltW3.sideP;
       var lp=ltBasePrice(lw,ll)+((lh>6)?Math.round((lh-6)*50*(ll/10)):0)+wallAdj3;
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+ltPitch3+" Pitch",null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,lp);
       // Lean-to accessories
       el.querySelectorAll('.lt-acc-e').forEach(function(ae){
         var atype=ae.querySelector('.lt-acc-type')?ae.querySelector('.lt-acc-type').value:'rollup';
@@ -9151,7 +9166,7 @@ function printContract(){
     if(lw&&ll){
       var wallAdj3=ltW3.frontP+ltW3.backP+ltW3.sideP;
       var lp=ltBasePrice(lw,ll)+((lh>6)?Math.round((lh-6)*50*(ll/10)):0)+wallAdj3;
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+ltPitch3+" Pitch",null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,lp);
       // Lean-to accessories
       el.querySelectorAll('.lt-acc-e').forEach(function(ae){
         var atype=ae.querySelector('.lt-acc-type')?ae.querySelector('.lt-acc-type').value:'rollup';

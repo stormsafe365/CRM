@@ -157,11 +157,13 @@ export default function ClientsList() {
   ]
   // Everything below is scoped to the selected rep first, then by status.
   const repScoped = useMemo(
+    // liveClients = soft-deleted leads excluded, so the stage-chip counts match
+    // the rows the table shows (deleted leads were inflating "New Lead" etc.).
     () => (repFilter === 'all'
-      ? clients
+      ? liveClients
       : repFilter === 'none'
-        ? clients.filter(isUnassigned)
-        : clients.filter(c => c.primary_rep === repFilter)),
+        ? liveClients.filter(isUnassigned)
+        : liveClients.filter(c => c.primary_rep === repFilter)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [clients, repFilter, users]
   )
