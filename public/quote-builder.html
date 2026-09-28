@@ -268,6 +268,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div class="anote">Plans and permitting service (if selected) are invoiced separately by the engineering firm after deposit is placed. Not included in building total.</div>
   </div>
   <div id="perm-no" class="wnote hidden">Customer will check if plans are required.</div>
+  <div id="perm-rules-note" style="display:none;font-size:11px;line-height:1.45;margin-top:8px"></div>
 </div>
 
 <!-- 3. BUILDING SPECS -->
@@ -624,6 +625,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <select id="delivery-type" onchange="rc()">
       <option value="installed">Delivered &amp; Installed (standard)</option>
       <option value="delivered">Delivered Only — No Installation</option>
+      <option value="pickup">Customer Pickup — No Delivery or Installation</option>
     </select>
     <div style="font-size:10px;color:#94a3b8;margin-top:3px">Delivered Only: the quote &amp; contract state that no installation is included. Pricing is unchanged — the manufacturer offers no drop-off discount.</div>
   </div>
@@ -2306,7 +2308,7 @@ var ZIP = {
 
 };
 
-var HW = ['Charlotte','Collier','Duval','Flagler','Indian River','Lake','Lee','Martin','Palm Beach','Pinellas','Sarasota','Seminole','St Lucie'];
+var HW = ['Charlotte','Collier','Duval','Flagler','Indian River','Lake','Lee','Martin','Palm Beach','Pinellas','Sarasota','Seminole','St Lucie','St. Lucie'];
 
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3572,7 +3574,7 @@ function doZip(z){
   G('city').textContent=d[0];
   G('county').textContent=d[1];
   G('state').textContent='FL';
-  if(d[1]==='Lee') G('lap').value='yes';
+  if(d[1]==='Lee' && ACTIVE_MFR!=='CCI') G('lap').value='yes'; // CCI: locked rule in rc()
   // Set county tax rate
   var cty=d[1];
   var taxRate=COUNTY_TAX[cty]||6;
@@ -3913,7 +3915,7 @@ function doBld(){
   if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? " — 5' OC" : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
-  if(_delivOnly()) f.push(bdg('DELIVERED ONLY — No Installation','bo'));
+  if(_delivOnly()) f.push(bdg(''+(_pickupOnly()?'CUSTOMER PICKUP — No Delivery or Installation':'DELIVERED ONLY — No Installation')+'','bo'));
   // Wide span already 26GA so hide upgrade option; show for standard/carport
   var sheetRow=G('sheeting-row');
   var sheetSel=G('sheeting-upgrade');
@@ -6046,6 +6048,52 @@ function rc(){
       _fr12.classList.remove('hidden');
     } else { _fr12.classList.add('hidden'); }
   }
+  // ── CCI county permitting rules (CCI FL permitting sheet, owner rules 9/28/26) ──
+  // Each rule auto-applies and locks, with a rep override that resets whenever
+  // the county or manufacturer changes (so a new job always starts compliant).
+  var _pCo=G('county').textContent||'', _pCci=(ACTIVE_MFR==='CCI');
+  var _pSqft=(parseInt(G('bw').value)||0)*(parseInt(G('bl').value)||0);
+  var _pKey=ACTIVE_MFR+'|'+_pCo;
+  if(window._permKey!==_pKey){ window._permKey=_pKey; window._impOvr=false; window._lapOvr=false; window._nsOvr=false; }
+  // Impact counties: CCI requires impact windows + hi-wind walk doors. Okaloosa
+  // and Okeechobee only on buildings over 720 sq ft. (CCI roll-ups are certified.)
+  var _pImpCo=['Charlotte','Collier','Hillsborough','Indian River','Lee','Palm Beach','Sarasota','St. Lucie','Volusia'];
+  var _pImpReq=_pCci && (_pImpCo.indexOf(_pCo)>=0 || ((_pCo==='Okaloosa'||_pCo==='Okeechobee') && _pSqft>720));
+  var _pImpLock=_pImpReq && !window._impOvr;
+  var _pWinOK={hi:1,hi3036:1};
+  document.querySelectorAll('.ntp, .lt-acc-win-hi').forEach(function(sel){
+    [].forEach.call(sel.options,function(o){ o.disabled=_pImpLock && !_pWinOK[o.value]; });
+    // Remember what the rep had so lifting the lock (override / new county) restores it.
+    if(_pImpLock && !_pWinOK[sel.value]){ sel.dataset.preImp=sel.value; sel.value=/3036$/.test(sel.value)?'hi3036':'hi'; }
+    else if(!_pImpLock && sel.dataset.preImp){ sel.value=sel.dataset.preImp; delete sel.dataset.preImp; }
+  });
+  document.querySelectorAll('.whi, .lt-acc-wtd-hi').forEach(function(sel){
+    [].forEach.call(sel.options,function(o){ o.disabled=_pImpLock && o.value!=='hiwind'; });
+    if(_pImpLock && sel.value!=='hiwind'){ sel.dataset.preImp=sel.value; sel.value='hiwind'; }
+    else if(!_pImpLock && sel.dataset.preImp){ sel.value=sel.dataset.preImp; delete sel.dataset.preImp; }
+  });
+  // Lee County (incl. Lehigh Acres): no corrugated siding in residential zones -> lap siding.
+  var _pLapReq=_pCci && _pCo==='Lee', _pLapEl=G('lap');
+  if(_pLapEl){
+    if(_pLapReq && !window._lapOvr){ if(!_pLapEl.disabled) window._lapPre=_pLapEl.value; _pLapEl.value='yes'; _pLapEl.disabled=true; }
+    else if(_pLapEl.disabled){ _pLapEl.disabled=false; _pLapEl.value=window._lapPre||'no'; window._lapPre=null; }
+  }
+  // No-service areas need a higher wind cert than CCI provides. Material-only
+  // (customer pickup + self-install) is still possible via the override.
+  var _pNoSvc=_pCci && (_pCo==='Broward'||_pCo==='Miami-Dade'||_pCo==='Monroe');
+  var _pBox=G('perm-rules-note');
+  if(_pBox){
+    var _pA=function(fn,txt){ return ' <a href="#" onclick="'+fn+';return false;" style="color:inherit;text-decoration:underline;font-weight:800">'+txt+'</a>'; };
+    var _pH='';
+    if(_pNoSvc && !window._nsOvr) _pH+='<div style="background:#fee2e2;color:#991b1b;border-left:4px solid #dc2626;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26D4 We don\u2019t service '+(_pCo==='Monroe'?'the Keys (Monroe)':_pCo)+' \u2014 it requires a higher wind certification than CCI can provide. The customer can still order material, pick it up and install it themselves.'+_pA("_permOvr(\'ns\',true)",'Override \u2192 material-only order')+'</div>';
+    else if(_pNoSvc) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 MATERIAL-ONLY ORDER \u2014 '+_pCo+' is outside CCI\u2019s service area. Customer picks up and self-installs.'+_pA("_permOvr(\'ns\',false)",'Undo')+'</div>';
+    if(_pImpReq && !window._impOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+_pCo+' requires impact-rated components \u2014 windows are locked to Hi-Impact and walk doors to Hi-Wind Rated.'+_pA("_permOvr(\'imp\',true)",'Override')+'</div>';
+    else if(_pImpReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 non-impact windows/doors allowed in an impact county ('+_pCo+').'+_pA("_permOvr(\'imp\',false)",'Re-apply')+'</div>';
+    if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.'+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
+    else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in Lee County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
+    _pBox.innerHTML=_pH; _pBox.style.display=_pH?'block':'none';
+  }
+  window._materialOnly=!!(_pNoSvc && window._nsOvr);
   // GCH: Section-4 eave dropdowns MIRROR the gch-left/right store every reprice,
   // so a RESTORED quote shows the truth (old saves carried the forced 'Closed'
   // while the extension store said 'open' — the dropdown lied). Edits still flow
@@ -7183,9 +7231,16 @@ function buildingPageHTML(prefixHTML){
 // QUOTE SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════════════
 
+function _permOvr(k,on){
+  if(k==='imp') window._impOvr=on;
+  else if(k==='lap'){ window._lapOvr=on; var el=G('lap'); if(el){ el.disabled=false; if(on) el.value='no'; } }
+  else if(k==='ns'){ window._nsOvr=on; var dt=G('delivery-type'); if(dt){ if(on){ window._dtPre=dt.value; dt.value='pickup'; } else { dt.value=window._dtPre&&window._dtPre!=='pickup'?window._dtPre:'installed'; } } }
+  rc();
+}
 function _fu14Override(){ window._fu14Ovr=true; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; } rc(); }
 function _fu12Reapply(){ window._fu14Ovr=false; rc(); }
-function _delivOnly(){var e=G('delivery-type');return !!(e&&e.value==='delivered');}
+function _delivOnly(){var e=G('delivery-type');return !!(e&&(e.value==='delivered'||e.value==='pickup'));}
+function _pickupOnly(){var e=G('delivery-type');return !!(e&&e.value==='pickup');}
 function collectQuoteData(){
   // Collect all form field values
   var data = { version: 2, savedAt: new Date().toISOString(), fields: {} };
@@ -8512,7 +8567,7 @@ function printQuote(){
   '<div class="qdep-box"><div class="dl">Deposit Due</div><div class="dv">'+fD(dep)+'</div></div>'+
   '<div class="qdep-box"><div class="dl">Remaining Balance</div><div class="dv">'+fD(bal)+'</div></div>'+
   '</div>'+
-  (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f59e0b;background:#151009;color:#e8b45a;font-size:7.5pt;font-weight:700;letter-spacing:.4px">DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.</div>':'')+
+  (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f59e0b;background:#151009;color:#e8b45a;font-size:7.5pt;font-weight:700;letter-spacing:.4px">'+(_pickupOnly()?'CUSTOMER PICKUP \u2014 no delivery or installation. Remaining balance due at pickup.':'DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.')+'</div>':'')+
 
   // Balance > $15,000: split into two payments (50% at scheduling, 50% after installation)
   (bal > 15000 ? (function(){
@@ -9684,7 +9739,7 @@ function printContract(){
           '<div class="c-flag"><span>Electricity on site</span>'+yn(elec)+'</div>'+
           '<div class="c-flag"><span>Primary structure</span>'+yn(primStruct)+'</div>'+
           '<div class="c-flag"><span>Site ready for install</span>'+yn(siteReady)+'</div>'+
-          (_delivOnly()?'<div class="c-flag"><span>Delivery type</span><span class="pill no">DELIVERED ONLY</span></div>':'')+
+          (_delivOnly()?'<div class="c-flag"><span>Delivery type</span><span class="pill no">'+(_pickupOnly()?'CUSTOMER PICKUP':'DELIVERED ONLY')+'</span></div>':'')+
           '<div class="c-flag"><span>Permit required</span>'+(permVal==='yes'?'<span class="pill ok">YES</span>':(permVal==='no'?'<span class="pill no">NO</span>':'<span class="pill tbd">VERIFY</span>'))+'</div>'+
         '</div>'+
       '</div>'+
@@ -9725,7 +9780,7 @@ function printContract(){
     '<tbody>'+rowsHTML+'</tbody></table>'+
     '</div>'+
 
-    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">Delivered Only — No Installation Included — Buyer Is Responsible for Assembly</div>':'')+
+    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">'+(_pickupOnly()?'Customer Pickup — No Delivery or Installation — Buyer Is Responsible for Transport and Assembly':'Delivered Only — No Installation Included — Buyer Is Responsible for Assembly')+'</div>':'')+
     '<div class="c-sec c-pay-section">'+
     '<div class="c-sec-title">Payment Summary</div>'+
     '<div class="c-totals-wrap">'+
@@ -9748,7 +9803,7 @@ function printContract(){
           }
           return '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>';
         })()+
-        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?'Balance at Delivery':'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
+        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?(_pickupOnly()?'Balance at Pickup':'Balance at Delivery'):'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
     '</div>'+
@@ -9779,7 +9834,7 @@ function printContract(){
 
     // ── Buyer Responsibilities — always shown ──
     '<div class="c-responsibilities">'+
-      (_delivOnly()?'<strong>Delivered Only — No Installation:</strong> This order is for delivery of materials only; neither the Seller nor the manufacturer will install the unit. Buyer is solely responsible for assembly and installation. Installation-related warranties, including the workmanship warranty, do not apply, and manufacturer warranties may be limited for units not installed by the manufacturer. ':'')+'<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
+      (_delivOnly()?'<strong>'+(_pickupOnly()?'Customer Pickup — No Delivery or Installation:</strong> This order is for materials picked up by the Buyer; neither delivery nor installation is included, and the Buyer is responsible for transport;':'Delivered Only — No Installation:</strong> This order is for delivery of materials only;')+' neither the Seller nor the manufacturer will install the unit. Buyer is solely responsible for assembly and installation. Installation-related warranties, including the workmanship warranty, do not apply, and manufacturer warranties may be limited for units not installed by the manufacturer. ':'')+'<strong>Buyer Responsibilities:</strong> Buyer is responsible for verifying property zoning, setback requirements, HOA covenants, easements, and right-of-way restrictions prior to installation. Buyer must locate and mark all underground utilities (electrical, gas, water, septic, etc.); if utility lines are not marked, StormSafe is not liable for any damage occurring during installation. Lot must be level and accessible by a 50\u2032 truck and trailer. Any flood vents required by local code are the Buyer\u2032s responsibility.'+
     '</div>'+
 
     '<div class="c-ack">'+
@@ -11837,7 +11892,7 @@ function textQuote(){
   }
   m+='\u{1F4B5} Deposit: '+fD(dep)+'\n';
   m+='\u{1F4B5} Balance: '+fD(bal)+'\n';
-  if(_delivOnly())m+='\u26A0 DELIVERED ONLY - NO INSTALLATION\n';
+  if(_delivOnly())m+='\u26A0 '+(_pickupOnly()?'CUSTOMER PICKUP - NO DELIVERY OR INSTALLATION':'DELIVERED ONLY - NO INSTALLATION')+'\n';
   m+=planLine;
   m+='\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n';
   m+='\u{1F4DE} 561-771-5555\n';
