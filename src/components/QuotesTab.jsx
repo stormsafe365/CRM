@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
+import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
@@ -78,6 +79,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       .from('quotes')
       .insert({ ...payload, client_id: clientId, created_by: user.id })
     if (error) throw error
+    // A saved quote = the lead has been quoted → Working Leads (forward-only).
+    promoteToWorking(clientId, user?.id).catch(() => {})
     setAdding(false)
   }
 

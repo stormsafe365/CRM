@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { uploadClientDoc, uploadClientDocBlob, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
 import { stampExecutedPdf } from '../lib/stampExecuted'
 import { supabase } from '../lib/supabase'
+import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
@@ -118,6 +119,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
           notes: file.name.replace(/\.[^.]+$/, ''),
           created_by: user?.id ?? null,
         })
+        promoteToWorking(clientId, user?.id).catch(() => {})
       }
       await refresh()
     }

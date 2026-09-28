@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { isoToday } from '../lib/followups'
 import { harvestAndSaveQuote } from '../lib/builderSave'
@@ -103,6 +104,7 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
                     .from('quotes')
                     .insert({ ...payload, client_id: d.id, created_by: user?.id ?? null })
                   if (error) throw error
+                  promoteToWorking(d.id, user?.id).catch(() => {})
                 },
                 setStatus,
               })
@@ -144,6 +146,7 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
             .from('quotes')
             .insert({ ...payload, client_id: target.id, created_by: user?.id ?? null })
           if (error) throw error
+          promoteToWorking(target.id, user?.id).catch(() => {})
         },
         setStatus,
       })
