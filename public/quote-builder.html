@@ -308,6 +308,12 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
         <option value="2">2:12 (standard)</option>
         <option value="3">3:12 (no charge)</option>
       </select></div>
+    <div class="row"><label>Wind Cert / Framing</label>
+      <select id="fs-cert" onchange="fsCertChanged()">
+        <option value="auto">Auto (county rule)</option>
+        <option value="150">150 MPH — 5' OC (included)</option>
+        <option value="170">170 MPH + 4' OC</option>
+      </select></div>
     <div class="row"><label>Walls</label>
       <select id="fs-walls-mode" onchange="fsWallsModeChanged()">
         <option value="open">Open (lean-to only, no sheeting)</option>
@@ -398,7 +404,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </select>
   </div>
   <div class="row" id="framing-row"><label>Framing Gauge</label>
-    <select id="framing-upgrade" onchange="rc()">
+    <select id="framing-upgrade" onchange="if(G('btype').value==='fslean')doBld();else rc()">
       <option value="14">Standard — 14 Gauge</option>
       <option value="12">Upgrade — 12 Gauge</option>
     </select>
@@ -3913,7 +3919,7 @@ function doBld(){
   var showOC = (w>0 && w<=24 && bt!=='widespan' && bt!=='fslean');
   if(ocRow) ocRow.classList.toggle('hidden', !showOC);
   if(!showOC && ocSel) ocSel.value='5oc'; // reset when hidden
-  var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? " — 5' OC" : " — 4' OC");
+  var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? (fsCertMph()>=160?" — 4' OC":" — 5' OC") : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
   if(_delivOnly()) f.push(bdg(''+(_pickupOnly()?'CUSTOMER PICKUP — No Delivery or Installation':'DELIVERED ONLY — No Installation')+'','bo'));
   // Wide span already 26GA so hide upgrade option; show for standard/carport
@@ -3951,6 +3957,7 @@ function doBld(){
     if(w&&(w%2)) f.push(bdg('⚠ Odd width — CCI custom quote','bo'));
     var fuF=G('framing-upgrade');
     if(fuF&&fuF.value==='12'&&fsWidthKey(w)===16&&(parseInt(G('bl').value)||0)===40) f.push(bdg('⚠ Sensei charges $1,220 for 12GA at exactly 16×40 — verify with CCI','bo'));
+    fsCertSync();
     if(fsCertMph()>=160) f.push(bdg('170 MPH + 4ft Wind Cert — $'+fsCert().toLocaleString()+' (in base)','bb'));
     else f.push(bdg('150 MPH Wind Cert — included','bb'));
   }
@@ -4052,7 +4059,20 @@ function fsG12(){ // 12GA adder (0 when 14GA)
   if(fsWidthKey(w)===16 && l===40) return 1220;
   return FS_G12[fsLenIdx(l)];
 }
+function fsCertChanged(){ // single-slope cert/4' OC picker → drives the shared Certify-Wind-Load override
+  var v=G('fs-cert'), ov=G('cert-ovr'); if(!v||!ov) return;
+  ov.value=v.value; if(typeof doPerm==='function') doPerm(); doBld();
+}
+function fsCertSync(){ // mirror the override + show the live 170+4' OC price (Sensei: $300 14GA / 12GA incl. its adder)
+  var v=G('fs-cert'), ov=G('cert-ovr'); if(!v) return;
+  var o=ov?ov.value:'auto'; v.value=(o==='auto')?'auto':((parseInt(o)||0)>=160?'170':'150');
+  var l=parseInt(G('bl').value)||0, fu=G('framing-upgrade'), is12=fu&&fu.value==='12';
+  var p=l?(is12?FS_G12CERT[fsLenIdx(l)]+FS_G12[fsLenIdx(l)]:FS_CERT[fsLenIdx(l)]):0;
+  v.options[2].text="170 MPH + 4' OC"+(p?' — $'+p.toLocaleString()+(is12?' (incl. 12GA)':''):'');
+  v.options[0].text='Auto (county rule → '+(fsCertMph()>=160?"170 + 4' OC":"150")+')';
+}
 function fsCert(){ // certification charge (170+4ft ladder; 150/uncert = $0)
+  try{ fsCertSync(); }catch(e){}
   var l=parseInt(G('bl').value)||0; if(!l) return 0;
   if(fsCertMph()<160) return 0;
   var fu=G('framing-upgrade');
