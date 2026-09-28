@@ -4558,7 +4558,7 @@ function doBld(){
     }
   }
 
-  if(w>31||h===14||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
+  if(w>31||h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
   // Leg style at 16'+: LADDER legs only on 32'+ widths — BOTH manufacturers.
   // Sensei's own UI auto-selects "Double Legs" on CCI 30x96x18 (owner screenshot
   // 8/31/26); the 8/17 CCI email's "ladder legs" wording refers to PRICING from
@@ -7568,7 +7568,7 @@ function rc(){
   var wsVal=G('ws')?G('ws').value:'Horizontal';
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
-  if(w>31||h===14||h===15) f.push(bdg('Double Trusses','bb'));
+  if(w>31||h===15) f.push(bdg('Double Trusses','bb'));
   if(h>=16||w>=52){f.push(w>=52?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
