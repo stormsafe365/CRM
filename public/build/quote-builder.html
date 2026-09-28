@@ -5230,6 +5230,20 @@ function wainscotPrintOpt(){
 // >100' extrapolates +120/5'; odd lengths round UP to the next column.
 var CCI_GA12_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
 var CCI_GA12_V=[410,530,650,770,890,940,1060,1180,1300,1420,1540,1660,1780,1830,1950,2070,2190];
+// CCI builds anything over 40' as CONNECTED UNITS and prices length-based
+// options (4' OC, 12GA, J-trim...) PER UNIT from the 20/25/30/35/40 columns.
+// Units: n = ceil(L/40), split as evenly as possible in 5' steps, largest
+// first (handbook p6: 45=25+20, 50=25+25, 85=30+30+25, 100=35+35+30).
+// Owner-verified 9/28/26: CCI kicked back Beharie 24x50 4'OC at $450 ->
+// $650 = 325+325. Matches the Sensei 30-wide 12GA series (45'=940, 50'=1060).
+function cciUnits(L){
+  var l5=Math.ceil(L/5)*5, n=Math.ceil(l5/40), steps=l5/5, base=Math.floor(steps/n), extra=steps%n, u=[];
+  for(var i=0;i<n;i++) u.push((base+(i<extra?1:0))*5);
+  return u;
+}
+function cciUnitSum(L, v){ // v = [20',25',30',35',40'] column prices
+  return cciUnits(L).reduce(function(s,x){ var i=Math.max(0,Math.min(4,Math.round((x-20)/5))); return s+v[i]; },0);
+}
 function cci12GA(l){
   if(l>=100) return Math.round(2190+24*(l-100));
   var i=CCI_GA12_L.length-1;
@@ -7170,7 +7184,7 @@ function rc(){
         framingUpgrade=cci12GA(l); // Sensei-sampled CCI series (see cci12GA)
       } else if(l>40){
         var ga12rate=(GA12SV[4]-GA12SV[3])/5;
-        framingUpgrade=Math.round(GA12SV[4]+ga12rate*(l-40));
+        framingUpgrade=(ACTIVE_MFR==='CCI')?cciUnitSum(l,GA12SV):Math.round(GA12SV[4]+ga12rate*(l-40));
       } else {
         framingUpgrade=GA12SV[gcis];
       }
@@ -7184,7 +7198,7 @@ function rc(){
     // Master Price Book 7/16/26 has NO separate 4'OC option charge for CA.
     var OC4S=[20,25,30,35,40], OC4V=[300,325,350,375,400];
     var oci=0; for(var oi=0;oi<OC4S.length;oi++){if(OC4S[oi]<=l)oci=oi;else break;}
-    if(l>40){ var ocRate=(OC4V[4]-OC4V[3])/5; ocUpgrade=Math.round(OC4V[4]+ocRate*(l-40)); }
+    if(l>40){ ocUpgrade=cciUnitSum(l,OC4V); }
     else { ocUpgrade=OC4V[oci]; }
   }
   // Pitch upgrade — uses ACTIVE manufacturer's pricing formula:
@@ -9247,7 +9261,7 @@ async function printQuote(){
       var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
       if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
-      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
+      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=(ACTIVE_MFR==='CCI')?cciUnitSum(lv,GA12SPV):Math.round(GA12SPV[4]+ga12rp*(lv-40));}
       else{framingUpgP=GA12SPV[gcisp];}
     }
   }
@@ -9259,7 +9273,7 @@ async function printQuote(){
   if(ACTIVE_MFR!=='CA' && ocSpacingPrint==='4oc' && wPrint<=24 && bt3p!=='widespan'){
     var OC4SP=[20,25,30,35,40], OC4VP=[300,325,350,375,400];
     var ocip=0; for(var oip=0;oip<OC4SP.length;oip++){if(OC4SP[oip]<=lv)ocip=oip;else break;}
-    if(lv>40){ var ocRP=(OC4VP[4]-OC4VP[3])/5; ocUpgradeP=Math.round(OC4VP[4]+ocRP*(lv-40)); }
+    if(lv>40){ ocUpgradeP=cciUnitSum(lv,OC4VP); }
     else { ocUpgradeP=OC4VP[ocip]; }
   }
   // Pitch upgrade for PDF
@@ -10216,7 +10230,7 @@ async function printContract(){
       var GA12SPV=wPQ<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcisp=0; for(var gisp=0;gisp<GA12SP.length;gisp++){if(GA12SP[gisp]<=lv)gcisp=gisp;else break;}
       if(ACTIVE_MFR==='CCI' && wPQ>24){framingUpgP=cci12GA(lv);}
-      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=Math.round(GA12SPV[4]+ga12rp*(lv-40));}
+      else if(lv>40){var ga12rp=(GA12SPV[4]-GA12SPV[3])/5;framingUpgP=(ACTIVE_MFR==='CCI')?cciUnitSum(lv,GA12SPV):Math.round(GA12SPV[4]+ga12rp*(lv-40));}
       else{framingUpgP=GA12SPV[gcisp];}
     }
   }
@@ -10227,7 +10241,7 @@ async function printContract(){
   if(ACTIVE_MFR!=='CA' && ocSpacingPrint==='4oc' && wPrint<=24 && bt3p!=='widespan'){
     var OC4SP=[20,25,30,35,40], OC4VP=[300,325,350,375,400];
     var ocip=0; for(var oip=0;oip<OC4SP.length;oip++){if(OC4SP[oip]<=lv)ocip=oip;else break;}
-    if(lv>40){ var ocRP=(OC4VP[4]-OC4VP[3])/5; ocUpgradeP=Math.round(OC4VP[4]+ocRP*(lv-40)); }
+    if(lv>40){ ocUpgradeP=cciUnitSum(lv,OC4VP); }
     else { ocUpgradeP=OC4VP[ocip]; }
   }
   var pitchSelValP=G('pitch-sel')?G('pitch-sel').value:'standard';
@@ -13417,7 +13431,7 @@ function textQuote(){
   var aewP=gAddEndWall();
   var ltP=gLT(),acP=gAC(),insP=gInsul();
   var ocSel2=G('oc-spacing'),ocVal2=ocSel2?ocSel2.value:'5oc',ocU=0;
-  if(ACTIVE_MFR!=='CA'&&ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){var ocR2=(OC4V2[4]-OC4V2[3])/5;ocU=Math.round(OC4V2[4]+ocR2*(lv-40));}else{ocU=OC4V2[oci2];}}
+  if(ACTIVE_MFR!=='CA'&&ocVal2==='4oc'&&wv<=24&&bt3!=='widespan'){var OC4S2=[20,25,30,35,40],OC4V2=[300,325,350,375,400];var oci2=0;for(var oi2=0;oi2<OC4S2.length;oi2++){if(OC4S2[oi2]<=lv)oci2=oi2;else break;}if(lv>40){ocU=cciUnitSum(lv,OC4V2);}else{ocU=OC4V2[oci2];}}
   var preSheet=base+leg+framingUpgP+ocU+pitchUpgrade+walls2+vertU+rd.rud+wd.wtd+wn.win+rd.sf+wd.sf+wn.sf+lapP+wainP+aewP+ltP+acP+insP;
   var sheetFree=(ACTIVE_MFR!=='CA'&&preSheet>=(window._freeThresh||10000)&&bt3!=='widespan');
   var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
