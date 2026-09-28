@@ -8033,7 +8033,9 @@ function restoreQuoteData(data){
   if(f.btype==='gch' && f['gch-enc'] && f['gch-open']){
     gchSync('enc');
   }
-  sy();
+  sy();
+  // Re-run the building pass so size-driven rows (OC Spacing, fslean badges) match the restored quote.
+  try{ if(typeof _prevOcWidth!=='undefined') _prevOcWidth=parseInt(G('bw').value)||0; doBld(); }catch(e){}
   rc();
   // Snapshot the AS-ORDERED totals for the Revision Form: after the restore has
   // fully repriced, remember total + deposit. Later edits (adding a door, etc.)
