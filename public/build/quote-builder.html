@@ -740,12 +740,9 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     </div>
   </div>
   <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px">
-    <label>Zoning Checklist</label>
-    <select id="zoning-show" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff">
-      <option value="hide">Hide from Quote</option>
-      <option value="show">Show on Quote</option>
-    </select>
-    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Adds a Pre-Order Zoning Checklist to page 2 of the PDF — questions the customer should ask their local building department.</div>
+    <label>Zoning Checklist &amp; Color Chart</label>
+    <select id="zoning-show" style="display:none"><option value="show">Show on Quote</option><option value="hide">Hide from Quote</option></select>
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Always included as the last two pages of every quote PDF: the Pre-Order Zoning Checklist, then the manufacturer's color chart (CCI or CA).</div>
   </div>
   <div class="row"><label>Sales Tax (%)</label>
     <div class="pct"><input id="tax" type="number" value="6" min="0" max="15" step="0.25" oninput="rc()"></div>
@@ -8391,7 +8388,7 @@ function buildingPageHTML(prefixHTML){
 // elevations or the 3D rendering (the 3D page used to drop it). Returns '' when
 // the user hasn't enabled it (#zoning-show !== 'show').
 function zoningChecklistHTML(){
-  if(!(G('zoning-show')&&G('zoning-show').value==='show')) return '';
+  // Always included (owner 9/29/26: every quote ends with this + the color chart).
   return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
     '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase">Pre-Order Zoning Checklist</div>'+
     '<div style="border-left:3px solid #1fcec4;padding:4px 0 4px 10px;margin-bottom:14px;color:#dde7ef;font-size:9pt;line-height:1.4">Before ordering, please verify your local zoning and building requirements. Bring these questions to your local building department to avoid delays.</div>'+
@@ -8407,6 +8404,53 @@ function zoningChecklistHTML(){
                '<span style="font-size:9pt;color:#dde7ef">'+q+'</span>'+
              '</div>';
     }).join('')+
+    '</div></div>';
+}
+
+// Manufacturer color chart as the LAST page of every quote PDF (owner 9/29/26).
+// The image is inlined as a data URL because the desktop apps print the quote
+// from an about:blank document, where a relative image path can't load.
+var COLOR_CHART_SRC={CCI:'color-charts/cci-color-chart.webp',CA:'color-charts/ca-color-chart.png'};
+var _colorChartCache={};
+async function colorChartDataUrl(){
+  var mfr=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?'CCI':'CA';
+  if(_colorChartCache[mfr]) return _colorChartCache[mfr];
+  var src=COLOR_CHART_SRC[mfr];
+  try{
+    var r=await fetch(src); if(!r.ok) throw new Error('HTTP '+r.status);
+    var b=await r.blob();
+    var d=await new Promise(function(res,rej){ var fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=rej; fr.readAsDataURL(b); });
+    _colorChartCache[mfr]=d; return d;
+  }catch(e){
+    console.warn('color chart load failed', e);
+    try{ return new URL(src, location.href).href; }catch(_){ return ''; }
+  }
+}
+function colorChartPageHTML(src){
+  if(!src) return '';
+  var isCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI');
+  var mfrName=isCCI?'Carolina Carports':'Carports Anywhere';
+  function pick(id){
+    var el=G(id); if(!el||el.selectedIndex<0||!el.value||el.value==='TBD') return 'TBD';
+    var t=(el.options[el.selectedIndex].text||'').replace(/\s*\(.*\)\s*$/,'').trim();
+    return t&&t!=='—'?t:'TBD';
+  }
+  var sel=[['Roof',pick('cr')],['Walls',pick('cw')],['Trim',pick('ct')]];
+  if(G('wain')&&G('wain').value==='yes') sel.push(['Wainscot',pick('cwn')]);
+  var chips=sel.map(function(p){
+    return '<div style="flex:1;min-width:120px;background:#0d1820;border:1px solid #1b2e3e;border-radius:5px;padding:8px 12px">'+
+             '<div style="font-size:7pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase">'+p[0]+'</div>'+
+             '<div style="font-size:10pt;font-weight:700;color:'+(p[1]==='TBD'?'#f59e0b':'#dde7ef')+';margin-top:2px">'+p[1]+'</div>'+
+           '</div>';
+  }).join('');
+  return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
+    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase">Color Chart — '+mfrName+'</div>'+
+    '<div style="font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase;margin-bottom:8px">Your color selections</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'+chips+'</div>'+
+    '<div style="background:#ffffff;border-radius:6px;padding:10px;text-align:center">'+
+      '<img src="'+src+'" alt="'+mfrName+' color chart" style="display:block;width:100%;height:auto;max-height:7.2in;object-fit:contain;margin:0 auto">'+
+    '</div>'+
+    '<div style="font-size:8pt;color:#8aa3b5;margin-top:10px;line-height:1.4">Colors shown are for reference. Printed and on-screen colors can look different from actual painted steel.</div>'+
     '</div></div>';
 }
 
@@ -9931,6 +9975,7 @@ async function printQuote(){
   '</div>'; // end qpg
 
   // Build self-contained HTML doc with all CSS inline - opens in new tab
+  var _chartUrl = await colorChartDataUrl(); // last page: manufacturer color chart
   var fullDoc = '<!DOCTYPE html><html><head>'+
     '<meta charset="UTF-8">'+
     '<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">'+
@@ -10011,7 +10056,7 @@ async function printQuote(){
     '.qfooter-r{font-size:7.5pt;color:#4e6070;text-align:right}'+
     '.print-only{display:none}'+
     '@media print{@page{margin:0;size:letter portrait}body{background:#080f14;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-only{display:block}.qpg{display:block!important;background:#080f14!important}.qbody{display:flex!important;align-items:stretch!important}.qsidebar{align-self:stretch!important}.qmain{display:flex!important;flex-direction:column!important;align-self:stretch!important;background:#111d28!important}.qfooter{margin-top:12px!important;position:static!important}.qsec{margin-bottom:8px!important;padding-bottom:6px!important}.qfield{margin-bottom:4px!important}.qsec-title{margin-bottom:5px!important;font-size:6pt!important}.qfield .fl{font-size:5.5pt!important}.qfield .fv{font-size:8pt!important}.qspec-box{padding:4px 5px!important}.qspec-box .fl{font-size:5pt!important}.qspec-box .fv{font-size:8pt!important}.qcolor-row{padding:2px 0!important}}'+
-    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+zoningChecklistHTML()+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+'</div>'+'</body></html>';
+    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+zoningChecklistHTML()+colorChartPageHTML(_chartUrl)+'</div>'+'</body></html>';
 
   // Desktop app → real PDF + Save dialog + preview; browser → popup + print.
   if(!_ssSavePdfViaElectron(fullDoc, _ssPdfName('Quote'), pwin)){
