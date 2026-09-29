@@ -13,13 +13,9 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
-// Render an HTML document to a PDF (base64) using Chromium's native print-to-PDF.
+// Render an HTML document to a PDF (Buffer) using Chromium's native print-to-PDF.
 // Used to save quote PDFs that honor the builder's print styles + dark theme.
-// Default file name for the NEXT PDF the user downloads from the viewer
-// (e.g. "Tarek Gabra-StormSafe Steel QTE (9.28).pdf"), set by renderPdf.
-let pendingPdfName = null;
-ipcMain.handle('ss:render-pdf', async (_evt, html, name) => {
-  pendingPdfName = name ? String(name).replace(/[\\/:*?"<>|]+/g, '').trim() : null;
+async function htmlToPdfBuffer(html) {
   const w = new BrowserWindow({ show: false, webPreferences: { offscreen: false, javascript: true } });
   try {
     await w.loadURL('about:blank');
@@ -27,10 +23,52 @@ ipcMain.handle('ss:render-pdf', async (_evt, html, name) => {
       `document.open();document.write(${JSON.stringify(String(html || ''))});document.close();`
     );
     await new Promise((r) => setTimeout(r, 600)); // let fonts/images settle
-    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'Letter', landscape: false });
-    return buf.toString('base64');
+    return await w.webContents.printToPDF({ printBackground: true, pageSize: 'Letter', landscape: false });
   } finally {
     try { w.destroy(); } catch { /* ignore */ }
+  }
+}
+const cleanPdfName = (name) => {
+  const n = String(name || '').replace(/[\\/:*?"<>|]+/g, '').trim() || 'StormSafe Steel';
+  return /\.pdf$/i.test(n) ? n : n + '.pdf';
+};
+
+// Default file name for the NEXT PDF the user downloads from a viewer, set by
+// renderPdf (kept for other callers; the quote/contract buttons use savePdf).
+let pendingPdfName = null;
+ipcMain.handle('ss:render-pdf', async (_evt, html, name) => {
+  pendingPdfName = name ? String(name).replace(/[\\/:*?"<>|]+/g, '').trim() : null;
+  const buf = await htmlToPdfBuffer(html);
+  return buf.toString('base64');
+});
+
+// "Save / Print PDF" in the pricing program (quotes + contracts): render, then a
+// real Windows Save dialog PRE-FILLED with e.g. "Tarek Gabra-StormSafe Steel QTE
+// (9.29).pdf" (the PDF viewer's own save button can't be pre-filled — it showed
+// a blank name), then open the saved file in an in-app viewer for preview.
+// defaultPath is just the file name, so Windows opens the folder used last time.
+ipcMain.handle('ss:save-pdf', async (evt, { html, suggestedName } = {}) => {
+  try {
+    const pdf = await htmlToPdfBuffer(html);
+    const parent = BrowserWindow.fromWebContents(evt.sender) || BrowserWindow.getFocusedWindow() || undefined;
+    const { canceled, filePath } = await dialog.showSaveDialog(parent, {
+      title: 'Save PDF',
+      defaultPath: cleanPdfName(suggestedName),
+      filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+    });
+    if (canceled || !filePath) return { ok: false, canceled: true };
+    fs.writeFileSync(filePath, pdf);
+    try {
+      const viewer = new BrowserWindow({ width: 1100, height: 900, title: path.basename(filePath), webPreferences: { plugins: true } });
+      viewer.setMenuBarVisibility(false);
+      viewer.webContents.on('did-fail-load', () => { try { viewer.destroy(); } catch { /* ignore */ } shell.openPath(filePath); });
+      await viewer.loadURL('file:///' + filePath.replace(/\\/g, '/'));
+    } catch {
+      shell.openPath(filePath); // fall back to the default PDF app
+    }
+    return { ok: true, filePath };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message ? e.message : e) };
   }
 });
 
