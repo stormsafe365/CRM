@@ -8462,7 +8462,8 @@ function _swatchCSS(hex,name,tile){
 function colorChartPageHTML(tiles){
   tiles=tiles||{};
   var isCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI');
-  var mfrName=isCCI?'Carolina Carports':'Carports Anywhere';
+  // Customer PDFs are 100% StormSafe-branded (BUILDER_SPEC): never print the
+  // manufacturer's name here — the palette below is still the quote's own mfr.
   var M=(typeof MFR==='function')?MFR():{};
   var colors=M.colors||[], prints=M.wainscotPrints||[];
   var norm=function(h){ return String(h||'').trim().toLowerCase(); };
@@ -8514,7 +8515,7 @@ function colorChartPageHTML(tiles){
       '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px 11px">'+prints.map(function(p){ return chip(p,tiles[p.k],90); }).join('')+'</div>';
   }
   return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
-    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline"><span>Color Selections</span><span style="font-size:8pt;letter-spacing:1.5px;color:#8aa3b5">'+mfrName+'</span></div>'+
+    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline"><span>Color Selections</span><span style="font-size:8pt;letter-spacing:1.5px;color:#8aa3b5">Panel color chart</span></div>'+
     '<div style="'+label+';margin-bottom:9px">Your colors</div>'+mine+
     section('Standard Panel Colors',colors.length+' colors')+grid+
     printSec+
