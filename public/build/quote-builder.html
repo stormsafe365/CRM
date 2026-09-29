@@ -8388,69 +8388,137 @@ function buildingPageHTML(prefixHTML){
 // elevations or the 3D rendering (the 3D page used to drop it). Returns '' when
 // the user hasn't enabled it (#zoning-show !== 'show').
 function zoningChecklistHTML(){
-  // Always included (owner 9/29/26: every quote ends with this + the color chart).
-  return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
-    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase">Pre-Order Zoning Checklist</div>'+
-    '<div style="border-left:3px solid #1fcec4;padding:4px 0 4px 10px;margin-bottom:14px;color:#dde7ef;font-size:9pt;line-height:1.4">Before ordering, please verify your local zoning and building requirements. Bring these questions to your local building department to avoid delays.</div>'+
-    '<div style="font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase;margin-bottom:8px">Questions to ask your building department</div>'+
-    ['Can I build a steel structure on my property?',
+  // Always included (owner 9/29/26: every quote ends with this + the color page).
+  // Same visual language as colorChartPageHTML so the last two pages read as a pair.
+  var label='font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase';
+  var line='<div style="height:17px;border-bottom:1px solid #2a4258"></div>';
+  var qs=['Can I build a steel structure on my property?',
      'Do I need a site plan or survey?',
      'What are the setback requirements?',
      'Are there drainage, elevation, or fill requirements?',
      'Are there any size or height restrictions?',
-     'Are there any protected land or wildlife concerns?'].map(function(q){
-      return '<div style="display:flex;align-items:center;gap:10px;background:#0d1820;border:1px solid #1b2e3e;border-radius:5px;padding:10px 14px;margin-bottom:6px">'+
-               '<span style="display:inline-block;width:14px;height:14px;border:1.5px solid #4a6480;border-radius:3px;background:#080f14;flex-shrink:0"></span>'+
-               '<span style="font-size:9pt;color:#dde7ef">'+q+'</span>'+
-             '</div>';
-    }).join('')+
+     'Are there any protected land or wildlife concerns?'];
+  var cards=qs.map(function(q,i){
+    return '<div style="display:flex;gap:12px;background:#111d28;border:1px solid #243c50;border-radius:6px;padding:12px 14px 10px;margin-bottom:9px;page-break-inside:avoid;break-inside:avoid">'+
+             '<div style="flex-shrink:0;width:24px;height:24px;border-radius:5px;background:#1C2E3F;color:#1fcec4;font-size:9pt;font-weight:900;display:flex;align-items:center;justify-content:center">'+(i+1)+'</div>'+
+             '<div style="flex:1">'+
+               '<div style="display:flex;align-items:center;gap:9px">'+
+                 '<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #4a6480;border-radius:3px;background:#080f14;flex-shrink:0"></span>'+
+                 '<span style="font-size:10pt;font-weight:700;color:#dde7ef">'+q+'</span>'+
+               '</div>'+
+               '<div style="margin:4px 0 0 22px"><div style="font-size:6.5pt;font-weight:800;letter-spacing:1px;color:#6f879a;text-transform:uppercase;margin-top:6px">Answer / notes</div>'+line+line+'</div>'+
+             '</div>'+
+           '</div>';
+  }).join('');
+  var field=function(t){ return '<div><div style="font-size:6.5pt;font-weight:800;letter-spacing:1px;color:#6f879a;text-transform:uppercase">'+t+'</div>'+line+'</div>'; };
+  return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
+    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline"><span>Pre-Order Zoning Checklist</span><span style="font-size:8pt;letter-spacing:1.5px;color:#8aa3b5">Before you order</span></div>'+
+    '<div style="border-left:3px solid #1fcec4;background:#0d1820;border-radius:0 5px 5px 0;padding:9px 12px;margin-bottom:16px;color:#dde7ef;font-size:9.5pt;line-height:1.45">Before ordering, please verify your local zoning and building requirements. Bring these questions to your local building department to avoid delays.</div>'+
+    '<div style="'+label+';margin-bottom:9px">Questions to ask your building department</div>'+
+    cards+
+    '<div style="margin-top:14px;background:#111d28;border:1px solid #243c50;border-radius:6px;overflow:hidden;page-break-inside:avoid;break-inside:avoid">'+
+      '<div style="background:#1C2E3F;color:#fff;font-size:8.5pt;font-weight:800;letter-spacing:2px;padding:6px 14px;text-transform:uppercase">Building Department Contact</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:10px 14px 14px">'+field('Department')+field('Contact name')+field('Phone')+field('Date contacted')+'</div>'+
+    '</div>'+
     '</div></div>';
 }
 
-// Manufacturer color chart as the LAST page of every quote PDF (owner 9/29/26).
-// The image is inlined as a data URL because the desktop apps print the quote
-// from an about:blank document, where a relative image path can't load.
-var COLOR_CHART_SRC={CCI:'color-charts/cci-color-chart.webp',CA:'color-charts/ca-color-chart.png'};
-var _colorChartCache={};
-async function colorChartDataUrl(){
-  var mfr=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI')?'CCI':'CA';
-  if(_colorChartCache[mfr]) return _colorChartCache[mfr];
-  var src=COLOR_CHART_SRC[mfr];
-  try{
-    var r=await fetch(src); if(!r.ok) throw new Error('HTTP '+r.status);
-    var b=await r.blob();
-    var d=await new Promise(function(res,rej){ var fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=rej; fr.readAsDataURL(b); });
-    _colorChartCache[mfr]=d; return d;
-  }catch(e){
-    console.warn('color chart load failed', e);
-    try{ return new URL(src, location.href).href; }catch(_){ return ''; }
-  }
+// Color page — the LAST page of every quote PDF (owner 9/29/26). Drawn in the
+// quote's own style from the SAME palettes the color dropdowns use
+// (MFR().colors + CCI wainscotPrints), so it always matches what can be picked.
+// CCI print-panel swatches use small texture tiles (color-charts/print-*.jpg),
+// inlined as data URLs because the desktop apps print from about:blank.
+var _printTileCache={};
+async function printTileUrls(){
+  var prints=(typeof MFR==='function'&&MFR().wainscotPrints)||null;
+  if(!prints) return {};
+  var key=prints.map(function(p){return p.k;}).join(',');
+  if(_printTileCache[key]) return _printTileCache[key];
+  var out={};
+  await Promise.all(prints.map(async function(p){
+    var src='color-charts/print-'+p.k.toLowerCase()+'.jpg';
+    try{
+      var r=await fetch(src); if(!r.ok) throw new Error('HTTP '+r.status);
+      var b=await r.blob();
+      out[p.k]=await new Promise(function(res,rej){ var fr=new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=rej; fr.readAsDataURL(b); });
+    }catch(e){ try{ out[p.k]=new URL(src,location.href).href; }catch(_){} }
+  }));
+  _printTileCache[key]=out; return out;
 }
-function colorChartPageHTML(src){
-  if(!src) return '';
+// A ribbed-steel swatch: the paint color under a 9"-rib profile (major rib +
+// two minor ribs per pan) and a soft top-to-bottom sheen. Galvalume gets a
+// brushed-metal base; print panels get their texture tile.
+function _swatchCSS(hex,name,tile){
+  var sheen='linear-gradient(180deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,0) 38%,rgba(0,0,0,.14) 100%)';
+  var major='linear-gradient(90deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 14px,rgba(0,0,0,.24) 14px,rgba(255,255,255,.27) 16px,rgba(255,255,255,.08) 19px,rgba(0,0,0,.20) 20.5px,rgba(0,0,0,0) 21.5px,rgba(0,0,0,0) 26px)';
+  var minor='linear-gradient(90deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 4.5px,rgba(0,0,0,.13) 4.5px,rgba(255,255,255,.14) 5.5px,rgba(0,0,0,0) 6.5px,rgba(0,0,0,0) 9.5px,rgba(0,0,0,.13) 9.5px,rgba(255,255,255,.14) 10.5px,rgba(0,0,0,0) 11.5px,rgba(0,0,0,0) 26px)';
+  if(tile){
+    return 'background-color:'+hex+';background-image:'+sheen+',url('+tile+');background-size:100% 100%,cover;background-position:center,center;';
+  }
+  var galv=/galvalume/i.test(name||'');
+  var base=galv?',linear-gradient(115deg,#9ea4aa 0%,#dde1e4 22%,#a8adb2 44%,#e6e9eb 63%,#999fa5 84%,#cfd3d6 100%)':'';
+  return 'background-color:'+hex+';background-image:'+sheen+','+major+','+minor+base+';background-size:100% 100%,26px 100%,26px 100%'+(galv?',100% 100%':'')+';background-repeat:no-repeat,repeat-x,repeat-x'+(galv?',no-repeat':'')+';';
+}
+function colorChartPageHTML(tiles){
+  tiles=tiles||{};
   var isCCI=(typeof ACTIVE_MFR!=='undefined'&&ACTIVE_MFR==='CCI');
   var mfrName=isCCI?'Carolina Carports':'Carports Anywhere';
-  function pick(id){
-    var el=G(id); if(!el||el.selectedIndex<0||!el.value||el.value==='TBD') return 'TBD';
-    var t=(el.options[el.selectedIndex].text||'').replace(/\s*\(.*\)\s*$/,'').trim();
-    return t&&t!=='—'?t:'TBD';
-  }
-  var sel=[['Roof',pick('cr')],['Walls',pick('cw')],['Trim',pick('ct')]];
-  if(G('wain')&&G('wain').value==='yes') sel.push(['Wainscot',pick('cwn')]);
-  var chips=sel.map(function(p){
-    return '<div style="flex:1;min-width:120px;background:#0d1820;border:1px solid #1b2e3e;border-radius:5px;padding:8px 12px">'+
-             '<div style="font-size:7pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase">'+p[0]+'</div>'+
-             '<div style="font-size:10pt;font-weight:700;color:'+(p[1]==='TBD'?'#f59e0b':'#dde7ef')+';margin-top:2px">'+p[1]+'</div>'+
+  var M=(typeof MFR==='function')?MFR():{};
+  var colors=M.colors||[], prints=M.wainscotPrints||[];
+  var norm=function(h){ return String(h||'').trim().toLowerCase(); };
+  // What the client picked, by role (values are the palette hexes).
+  var roles=[['cr','Roof'],['cw','Walls'],['ct','Trim']];
+  if(G('wain')&&G('wain').value==='yes') roles.push(['cwn','Wainscot']);
+  var picks=roles.map(function(r){
+    var el=G(r[0]), v=el?el.value:'';
+    if(!v||v==='TBD') return {role:r[1],entry:null};
+    var e=null, isPrint=false;
+    colors.forEach(function(c){ if(!e&&norm(c.h)===norm(v)) e=c; });
+    prints.forEach(function(p){ if(!e&&norm(p.h)===norm(v)){ e=p; isPrint=true; } });
+    return {role:r[1],entry:e,print:isPrint};
+  });
+  var rolesOf=function(entry){ return picks.filter(function(p){return p.entry===entry;}).map(function(p){return p.role;}); };
+  var label='font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase';
+  var tag=function(t){ return '<span style="display:inline-block;background:#1fcec4;color:#04121a;font-size:6pt;font-weight:900;letter-spacing:.8px;padding:2px 5px;border-radius:3px;margin:0 3px 3px 0;text-transform:uppercase">'+t+'</span>'; };
+  var section=function(t,right){ return '<div style="display:flex;align-items:baseline;justify-content:space-between;margin:24px 0 11px;padding-bottom:6px;border-bottom:1px solid #243c50"><span style="'+label+'">'+t+'</span>'+(right?'<span style="font-size:7.5pt;color:#8aa3b5">'+right+'</span>':'')+'</div>'; };
+
+  // ── Your colors ──
+  var mine='<div style="display:grid;grid-template-columns:repeat('+picks.length+',1fr);gap:12px">'+picks.map(function(p){
+    var e=p.entry, tile=(p.print&&e)?tiles[e.k]:null;
+    var sw=e
+      ? '<div style="height:86px;'+_swatchCSS(e.h,e.n,tile)+'"></div>'
+      : '<div style="height:86px;border:1.5px dashed #4a6480;border-radius:0;background:repeating-linear-gradient(135deg,#0d1820 0,#0d1820 7px,#111d28 7px,#111d28 14px)"></div>';
+    var nm=e?'<div style="font-size:10.5pt;font-weight:800;color:#dde7ef">'+e.n+'</div>'+((e.c&&!p.print&&!/galvalume/i.test(e.c))?'<div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">'+e.c+'</div>':'')+(p.print?'<div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">Print panel</div>':'')
+                 :'<div style="font-size:10.5pt;font-weight:800;color:#f59e0b">To be selected</div><div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">Choose from the chart below</div>';
+    return '<div style="background:#111d28;border:1px solid #243c50;border-radius:6px;overflow:hidden;page-break-inside:avoid;break-inside:avoid">'+
+             '<div style="background:#1C2E3F;color:#fff;font-size:8.5pt;font-weight:800;letter-spacing:2px;text-align:center;padding:5px;text-transform:uppercase">'+p.role+'</div>'+
+             sw+'<div style="padding:8px 10px 9px">'+nm+'</div>'+
            '</div>';
-  }).join('');
+  }).join('')+'</div>';
+
+  // ── Chart chips ──
+  var chip=function(e,tile,h){
+    var rs=rolesOf(e), on=rs.length>0;
+    return '<div style="page-break-inside:avoid;break-inside:avoid">'+
+             '<div style="position:relative;height:'+h+'px;border-radius:4px;overflow:hidden;'+_swatchCSS(e.h,e.n,tile)+(on?'box-shadow:0 0 0 2px #080f14,0 0 0 4px #1fcec4;':'box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);')+'">'+
+               (on?'<div style="position:absolute;left:5px;top:5px">'+rs.map(tag).join('')+'</div>':'')+
+             '</div>'+
+             '<div style="margin-top:6px;font-size:8pt;font-weight:800;color:'+(on?'#1fcec4':'#dde7ef')+';letter-spacing:.3px;text-transform:uppercase">'+e.n+'</div>'+
+             ((e.c&&!/galvalume/i.test(e.c))?'<div style="font-size:6.8pt;color:#6f879a;margin-top:1px">'+e.c+'</div>':'')+
+           '</div>';
+  };
+  var grid='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:15px 12px">'+colors.map(function(c){ return chip(c,null,98); }).join('')+'</div>';
+  var printSec='';
+  if(prints.length){
+    printSec=section('Print Panels — Wainscot &amp; Two-Tone Only','Vertical panels only')+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px 11px">'+prints.map(function(p){ return chip(p,tiles[p.k],90); }).join('')+'</div>';
+  }
   return '<div style="page-break-before:always;background:#080f14;min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial,sans-serif">'+
-    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase">Color Chart — '+mfrName+'</div>'+
-    '<div style="font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase;margin-bottom:8px">Your color selections</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'+chips+'</div>'+
-    '<div style="background:#ffffff;border-radius:6px;padding:10px;text-align:center">'+
-      '<img src="'+src+'" alt="'+mfrName+' color chart" style="display:block;width:100%;height:auto;max-height:7.2in;object-fit:contain;margin:0 auto">'+
-    '</div>'+
-    '<div style="font-size:8pt;color:#8aa3b5;margin-top:10px;line-height:1.4">Colors shown are for reference. Printed and on-screen colors can look different from actual painted steel.</div>'+
+    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#1fcec4;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1fcec4;text-transform:uppercase;display:flex;justify-content:space-between;align-items:baseline"><span>Color Selections</span><span style="font-size:8pt;letter-spacing:1.5px;color:#8aa3b5">'+mfrName+'</span></div>'+
+    '<div style="'+label+';margin-bottom:9px">Your colors</div>'+mine+
+    section('Standard Panel Colors',colors.length+' colors')+grid+
+    printSec+
+    '<div style="margin-top:18px;padding-top:9px;border-top:1px solid #243c50;font-size:7.5pt;color:#8aa3b5;line-height:1.45">Swatches are shown for reference. Printed and on-screen colors can look different from actual painted steel.</div>'+
     '</div></div>';
 }
 
@@ -9975,7 +10043,7 @@ async function printQuote(){
   '</div>'; // end qpg
 
   // Build self-contained HTML doc with all CSS inline - opens in new tab
-  var _chartUrl = await colorChartDataUrl(); // last page: manufacturer color chart
+  var _printTiles = await printTileUrls(); // last page: color selections + chart (CCI print-panel tiles)
   var fullDoc = '<!DOCTYPE html><html><head>'+
     '<meta charset="UTF-8">'+
     '<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">'+
@@ -10056,7 +10124,7 @@ async function printQuote(){
     '.qfooter-r{font-size:7.5pt;color:#4e6070;text-align:right}'+
     '.print-only{display:none}'+
     '@media print{@page{margin:0;size:letter portrait}body{background:#080f14;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-only{display:block}.qpg{display:block!important;background:#080f14!important}.qbody{display:flex!important;align-items:stretch!important}.qsidebar{align-self:stretch!important}.qmain{display:flex!important;flex-direction:column!important;align-self:stretch!important;background:#111d28!important}.qfooter{margin-top:12px!important;position:static!important}.qsec{margin-bottom:8px!important;padding-bottom:6px!important}.qfield{margin-bottom:4px!important}.qsec-title{margin-bottom:5px!important;font-size:6pt!important}.qfield .fl{font-size:5.5pt!important}.qfield .fv{font-size:8pt!important}.qspec-box{padding:4px 5px!important}.qspec-box .fl{font-size:5pt!important}.qspec-box .fv{font-size:8pt!important}.qcolor-row{padding:2px 0!important}}'+
-    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+zoningChecklistHTML()+colorChartPageHTML(_chartUrl)+'</div>'+'</body></html>';
+    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+zoningChecklistHTML()+colorChartPageHTML(_printTiles)+'</div>'+'</body></html>';
 
   // Desktop app → real PDF + Save dialog + preview; browser → popup + print.
   if(!_ssSavePdfViaElectron(fullDoc, _ssPdfName('Quote'), pwin)){
