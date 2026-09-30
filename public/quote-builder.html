@@ -3933,13 +3933,14 @@ function doBld(){
     }
   }
 
-  // Owner 9/29/26: every wide span (32'+) = LADDER legs, CCI and CA (framing only; price unchanged).
-  if(w<=31&&h===15) f.push(bdg('Double Trusses & Base Rails','bb'));
+  // Owner 9/29/26 (framing look only; price unchanged): CCI = LADDER legs on every wide span (32'+,
+  // CCI Trusses & Bows chart); CA = its engineering sheet AD-1: 31'-51' double post, 52'-60' ladder leg.
+  if((ACTIVE_MFR==='CCI')?(w<=31&&h===15):(w>31||h===15)) f.push(bdg('Double Trusses & Base Rails','bb'));
   // Leg style at 16'+: LADDER legs only on 32'+ widths — BOTH manufacturers.
   // Sensei's own UI auto-selects "Double Legs" on CCI 30x96x18 (owner screenshot
   // 8/31/26); the 8/17 CCI email's "ladder legs" wording refers to PRICING from
   // the commercial chart, not the physical leg style. Standard widths = double.
-  if(h>=16||w>31){f.push(w>31?bdg('Ladder Legs — Standard','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
+  if(h>=16||((ACTIVE_MFR==='CCI')?w>31:w>=52)){f.push(((ACTIVE_MFR==='CCI')?w>31:w>=52)?bdg('Ladder Legs — Standard','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
   if(needsLift) f.push(bdg('Reach Lift Required on Site','bo'));
   if(h>6) f.push(bdg('Max eave RUD: '+(h-2)+"'",'bx'));
   if(bt==='gch') f.push(bdg('Garage Carport Hybrid','bv'));
@@ -6458,8 +6459,8 @@ function rc(){
   var wsVal=G('ws')?G('ws').value:'Horizontal';
   if(wsVal==='Vertical'||w>31) f.push(bdg('Vertical Walls','bb'));
   else if(w) f.push(bdg('Horizontal Walls','bx'));
-  if(w<=31&&h===15) f.push(bdg('Double Trusses','bb'));
-  if(h>=16||w>31){f.push(w>31?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
+  if((ACTIVE_MFR==='CCI')?(w<=31&&h===15):(w>31||h===15)) f.push(bdg('Double Trusses','bb'));
+  if(h>=16||((ACTIVE_MFR==='CCI')?w>31:w>=52)){f.push(((ACTIVE_MFR==='CCI')?w>31:w>=52)?bdg('Ladder Legs','bo'):bdg('Standard Double Legs','bb'));} // Book 7/16/26 footnote: 32-51w double, 52-60w ladder (any height)
   if(agEx) f.push(bdg('Tax Exempt','bg'));
   if(HW.indexOf(co)>=0) f.push(bdg('Hi-Wind County','bo'));
   // Show free perks badge when base >= $10k
