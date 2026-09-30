@@ -1,8 +1,9 @@
-// PriceChangeConfirm: the ONE confirm dialog every builder write goes through
-// (Update Quote / the program's Save + Generate Contract buttons / Executed
-// Copy / Finish Revision) when the price being written is not the saved one,
-// or the saved price is not being held. Shows saved → new for total, deposit
-// and balance. Built from lib/priceLockCrm writeCheck(); Cancel is the default.
+// PriceChangeConfirm: the ONE confirm dialog every builder write to a saved
+// quote goes through (Update Quote / the program's Save + Generate Contract
+// buttons / Generate Contract + Executed Copy from a card / Finish Revision).
+// Shows saved → new for total, deposit and balance (and says so when nothing
+// changed). Built from lib/priceLockCrm writeCheck(). Cancel is the default
+// button when the price changes; OK when it does not.
 
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -13,10 +14,12 @@ const HEAD = { ...CELL, fontSize: 11, letterSpacing: '.05em', textTransform: 'up
 
 export default function PriceChangeConfirm({ check, onAnswer }) {
   const cancelRef = useRef(null)
+  const okRef = useRef(null)
   const answerRef = useRef(onAnswer)
   answerRef.current = onAnswer
+  const quiet = check.changed === false && !(check.lines || []).some((l) => Math.abs(l.delta) >= 0.005)
   useEffect(() => {
-    try { cancelRef.current?.focus() } catch { /* ignore */ }
+    try { (quiet ? okRef : cancelRef).current?.focus() } catch { /* ignore */ }
     const onKey = (e) => { if (e.key === 'Escape') answerRef.current(false) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -67,7 +70,7 @@ export default function PriceChangeConfirm({ check, onAnswer }) {
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" ref={cancelRef} className="btn-secondary" onClick={() => onAnswer(false)}>Cancel</button>
-          <button type="button" className="btn-primary" style={{ fontWeight: 800 }} onClick={() => onAnswer(true)}>{check.okLabel}</button>
+          <button type="button" ref={okRef} className="btn-primary" style={{ fontWeight: 800 }} onClick={() => onAnswer(true)}>{check.okLabel}</button>
         </div>
       </div>
     </div>,

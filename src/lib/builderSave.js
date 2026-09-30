@@ -8,7 +8,7 @@
 
 import { uploadClientDocBlob } from './storage'
 import { readBuilderTotals, buildSummary, capturePrintHtml, dataUrlToThumb, quoteNumberFromHtml, htmlToPdfBlob } from './quoteCapture'
-import { appendPriceHistory, planQuoteFields, totalsDiffer } from './priceLockCrm'
+import { appendPriceHistory, planQuoteFields, savedTotalsOf, totalsDiffer, withPrintCheck } from './priceLockCrm'
 
 // Render the captured quote document to a PDF blob. Prefer Electron's native
 // print-to-PDF (honors the quote's print styles + dark theme exactly like the
@@ -110,6 +110,14 @@ export async function harvestAndSaveQuote({ pg, buildWin, client, initialQuote =
   setStatus('Capturing quote…')
   const printHtml = await capturePrintHtml(pg)
   const now = new Date()
+  // Snapshot check: the quote PDF's Building Amount should equal the priced
+  // subtotal. A divergence is logged and recorded on the snapshot; the save goes on.
+  if (payload_json.priced) {
+    payload_json.priced = withPrintCheck(payload_json.priced, printHtml)
+    if (payload_json.priced.printDiverged) {
+      console.warn('quote PDF subtotal differs from the priced subtotal', { printSub: payload_json.priced.printSub, sub: payload_json.priced.sub })
+    }
+  }
   // Keep the quote's EXISTING number when editing, so the DB row, the card,
   // and the PDF filename in the Document Hub all show the same number. Only a
   // brand-new quote takes the number stamped into the freshly printed quote.
@@ -127,6 +135,14 @@ export async function harvestAndSaveQuote({ pg, buildWin, client, initialQuote =
       pdf_snapshot_url = await uploadClientDocBlob(client.id, 'quote', blob, `${quote_number}.pdf`, 'application/pdf')
     } else { pdfWarn = 'Quote saved, but the PDF could not be captured.' }
   } catch (e) { pdfWarn = `Quote saved, but the PDF could not be captured (${e.message}).` }
+  // No new PDF on a re-save: keep the card's existing quote PDF when the price is
+  // unchanged (it still shows this price). When the price changed, the old PDF
+  // no longer matches the card — it stays in Documents and price_history, but is
+  // not presented as the current quote.
+  if (!pdf_snapshot_url && initialQuote?.pdf_snapshot_url
+    && !totalsDiffer(savedTotalsOf(initialQuote), totals)) {
+    pdf_snapshot_url = initialQuote.pdf_snapshot_url
+  }
 
   // New quote: draft, valid 30 days, no notes. Re-save of an existing quote:
   // a sold status (verbal accept / deposit paid / revised) and the notes are

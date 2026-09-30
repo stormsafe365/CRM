@@ -59,8 +59,9 @@ plus a shared **Supabase** cloud project.
   the plan-labels table) once the program page is fully loaded. Rules in
   `src/lib/priceLockCrm.js` (unit tests: `npm test`): the amber saved-vs-today
   bar, automatic contract / executed copy / revision only while the saved price
-  is held, one confirm dialog (`PriceChangeConfirm.jsx`, saved → new) before any
-  write at a different price, re-saves keep sold statuses + notes, never delete
+  is held (an honored sold order is held to its signed-contract price), one
+  confirm dialog (`PriceChangeConfirm.jsx`, saved → new, "no price change" when
+  nothing moved) before EVERY write to a saved quote, re-saves keep sold statuses + notes, never delete
   the old quote PDF, `payload_json.priced` (price snapshot) + `payload_json.price_history`
   on every save, duplicates priced fresh. Emergency switch: localStorage
   `ss_price_lock` = `off` reopens at today's pricing. Migration

@@ -13,9 +13,9 @@ import { dirname, resolve } from 'node:path'
 import vm from 'node:vm'
 import {
   SOLD_STATUSES, appendPriceHistory, autoDocGate, fmtDelta, fmtMoney, guardBuilderUpdate, HISTORY_MAX,
-  HISTORY_PAYLOAD_KEEP, isBuilderPayload, lockBanner, mergeSaved, planQuoteFields, readLockState,
-  readScreenTotals, restoreOptionsFor, revisionReconcile, savedTotalsOf, stripForDuplicate, totalsDiffer,
-  writeCheck,
+  HISTORY_PAYLOAD_KEEP, isBuilderPayload, lockBanner, lockTarget, mergeSaved, planQuoteFields,
+  printedBuildingAmount, readLockState, readScreenTotals, restoreOptionsFor, revisionReconcile,
+  savedTotalsOf, stripForDuplicate, totalsDiffer, withPrintCheck, writeCheck,
 } from '../src/lib/priceLockCrm.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -109,11 +109,46 @@ test('autoDocGate: waits, then blocks on issues / today / drift / open complianc
   assert.equal(autoDocGate({ saved: null, screen: GRAHAM_TODAY, lock: null }).ok, true) // nothing saved to protect
 })
 
+// Honor Signed Pricing on a sold order (verifier V22): the builder holds the
+// signed contract's $16,052 while the card says $16,558.
+const HONOR_CARD = { total: 16558, deposit: 2643, balance: 13915 }
+const HONOR_SIGNED = { total: 16052, deposit: 2562, balance: 13490 }
+const honorLock = (over = {}) => grahamLock({ source: 'legacy+honor', saved: { ...HONOR_SIGNED }, current: { ...HONOR_SIGNED }, today: { ...HONOR_CARD }, hold: -470, parts: [], ...over })
+test('autoDocGate: honored sold order is held to the SIGNED price, not the card', () => {
+  assert.deepEqual(autoDocGate({ saved: HONOR_CARD, screen: { ...HONOR_SIGNED }, lock: honorLock() }), { ok: true })
+  const moved = autoDocGate({ saved: HONOR_CARD, screen: HONOR_CARD, lock: honorLock() })
+  assert.equal(moved.ok, false); assert.match(moved.reason, /\$16,052\.00/)
+  // Today's pricing chosen: back to the card as the reference.
+  assert.equal(autoDocGate({ saved: HONOR_CARD, screen: HONOR_SIGNED, lock: honorLock({ choice: 'today' }) }).ok, false)
+})
+test('lockBanner / writeCheck: honored sold order names the signed price and the card', () => {
+  const b = lockBanner({ saved: HONOR_CARD, screen: HONOR_SIGNED, lock: honorLock() })
+  assert.equal(b.tone, 'warn')
+  assert.match(b.text, /Saved price held: \$16,052\.00 \(signed contract; the card shows \$16,558\.00\)/)
+  const c = writeCheck({ kind: 'save', saved: HONOR_CARD, next: HONOR_SIGNED, lock: honorLock(), status: 'deposit_paid' })
+  assert.equal(c.confirm, true)
+  assert.equal(c.title, 'Save quote at the signed-contract price?')
+  assert.equal(writeCheck({ kind: 'contract', saved: HONOR_CARD, next: HONOR_SIGNED, lock: honorLock() }).title, 'Generate contract at the signed-contract price?')
+  assert.deepEqual(c.lines.map((l) => [l.from, l.to]), [[16558, 16052], [2643, 2562], [13915, 13490]])
+  assert.ok(c.notes.some((n) => /Honor Signed Pricing: the builder holds the signed contract's \$16,052\.00 — the card showed \$16,558\.00/.test(n)))
+  assert.ok(!c.notes.some((n) => /re-sign/.test(n))) // the customer already signed $16,052
+})
+
 // ── confirm before a write ──
-test('writeCheck: untouched locked quote → no dialog', () => {
+test('writeCheck: every write to a saved quote asks — untouched says "no price change"', () => {
   const c = writeCheck({ kind: 'save', saved: GRAHAM_SAVED, next: { ...GRAHAM_SAVED }, lock: grahamLock(), status: 'deposit_paid' })
-  assert.equal(c.confirm, false)
-  assert.equal(writeCheck({ kind: 'contract', saved: GRAHAM_SAVED, next: GRAHAM_SAVED, lock: grahamLock() }).confirm, false)
+  assert.equal(c.confirm, true)
+  assert.equal(c.changed, false)
+  assert.equal(c.title, 'Save quote?')
+  assert.deepEqual(c.lines.map((l) => [l.label, l.from, l.to, l.delta]), [
+    ['Total', 44448, 44448, 0], ['Deposit', 5222, 5222, 0], ['Balance', 39226, 39226, 0],
+  ])
+  assert.ok(c.notes.some((n) => /No price change: the saved \$44,448\.00 is kept\./.test(n)))
+  assert.ok(!c.notes.some((n) => /re-sign/.test(n)))
+  const k = writeCheck({ kind: 'contract', saved: GRAHAM_SAVED, next: GRAHAM_SAVED, lock: grahamLock() })
+  assert.equal(k.confirm, true); assert.equal(k.title, 'Generate contract?')
+  const e = writeCheck({ kind: 'exec', saved: GRAHAM_SAVED, next: GRAHAM_SAVED, lock: grahamLock() })
+  assert.equal(e.confirm, true); assert.equal(e.title, 'Generate executed copy?')
 })
 test('writeCheck: a different price always asks, showing saved → new', () => {
   const c = writeCheck({ kind: 'save', saved: GRAHAM_SAVED, next: GRAHAM_TODAY, lock: null, status: 'deposit_paid' })
@@ -312,4 +347,30 @@ test('builder copy: the card totals the CRM passes invert to Graham\'s saved sub
   // today's rules drop 8 × $150 side frames = $1,200 of subtotal → $43,545.00 on the card
   const t = PL.forward(59075 - 1200, { disc: 20, tax: 6.5, agx: true, depPct: 17, adType: 'pct', adVal: 35 })
   assert.deepEqual({ total: t.adjTot, deposit: t.dep, balance: t.bal }, GRAHAM_TODAY)
+})
+
+// ── honor target / snapshot print check ──
+test('lockTarget: the card unless the builder holds an honored signed price', () => {
+  assert.deepEqual(lockTarget({ saved: GRAHAM_SAVED, lock: grahamLock() }), { target: GRAHAM_SAVED, honored: false, card: GRAHAM_SAVED })
+  const h = lockTarget({ saved: HONOR_CARD, lock: honorLock() })
+  assert.equal(h.honored, true); assert.deepEqual(h.target, HONOR_SIGNED); assert.deepEqual(h.card, HONOR_CARD)
+  assert.equal(lockTarget({ saved: HONOR_CARD, lock: honorLock({ choice: 'today' }) }).honored, false)
+  assert.equal(lockTarget({ saved: HONOR_CARD, lock: null }).honored, false)
+})
+test('withPrintCheck: the quote PDF Building Amount is recorded next to the priced subtotal', () => {
+  const html = '<tr><td>Building Amount</td><td>$59,075.00</td></tr><tr><td>Grand Total</td><td>$44,448.00</td></tr>'
+  assert.equal(printedBuildingAmount(html), 59075)
+  assert.equal(printedBuildingAmount('<p>nothing</p>'), null)
+  assert.deepEqual(withPrintCheck({ v: 1, sub: 59075 }, html), { v: 1, sub: 59075, printSub: 59075 })
+  assert.deepEqual(withPrintCheck({ v: 1, sub: 59000 }, html), { v: 1, sub: 59000, printSub: 59075, printDiverged: true })
+  assert.equal(withPrintCheck(null, html), null)
+  assert.deepEqual(withPrintCheck({ v: 1, sub: 1 }, ''), { v: 1, sub: 1 })
+})
+test('builder copy: reset / revision-baseline / free-threshold hooks are present', () => {
+  const { PL, html } = loadBuilderPriceLock()
+  assert.equal(typeof PL.rvBaseline, 'function')
+  assert.equal(PL.rvBaseline(), null) // nothing reopened
+  assert.match(html, /function resetAll\(\)\{\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if\(window\.PriceLock\) PriceLock\.reset\(\);/)
+  assert.match(html, /function gThrAdj\(\)/)
+  assert.equal((html.match(/\+gThrAdj\(\)/g) || []).length, 4) // rc, quote PDF, contract, text copy
 })

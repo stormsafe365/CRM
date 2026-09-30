@@ -86,6 +86,26 @@ export function readLockState(pg) {
   } catch { return null }
 }
 
+// The quote PDF's "Building Amount" (printQuote's subtotal) from the captured
+// print HTML, or null. Saved next to the price snapshot so a quote whose PDF
+// and on-screen subtotal disagree (known path divergences, e.g. fslean) is
+// visible later instead of silent.
+export function printedBuildingAmount(html) {
+  if (!html) return null
+  const text = String(html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ')
+  const m = text.match(/Building Amount\s*\$\s*([\d,]+(?:\.\d{1,2})?)/)
+  if (!m) return null
+  const n = Number(m[1].replace(/,/g, ''))
+  return Number.isFinite(n) ? n : null
+}
+export function withPrintCheck(priced, html) {
+  if (!priced || typeof priced !== 'object') return priced
+  const printSub = printedBuildingAmount(html)
+  if (printSub == null || !Number.isFinite(Number(priced.sub))) return priced
+  const diverged = Math.abs(printSub - Number(priced.sub)) >= 0.01
+  return { ...priced, printSub, ...(diverged ? { printDiverged: true } : {}) }
+}
+
 // ── Reopen options ────────────────────────────────────────────────────────
 export function isBuilderPayload(p) {
   return !!(p && (p.fields || p.source === '3d-builder'))
@@ -103,13 +123,29 @@ export function restoreOptionsFor(quote) {
   return { lock: true, status, legacyTotals: saved }
 }
 
+// ── What the reopened quote is held to ────────────────────────────────────
+// Normally the card totals. On a sold order whose contract was reissued with
+// Honor Signed Pricing (payload ct-honor), the builder holds the SIGNED
+// contract's price instead (lock.source 'legacy+honor'), which can differ from
+// the card (the card came from the screen, which never applied ct-honor).
+// Returns {target, honored, card}: compare the screen with `target`.
+export function lockTarget({ saved, lock }) {
+  const honored = !!(saved && lock && lock.requested && lock.saved && lock.choice !== 'today'
+    && /honor/.test(String(lock.source || '')))
+  return honored
+    ? { target: { total: r2(lock.saved.total), deposit: r2(lock.saved.deposit), balance: r2(lock.saved.balance) }, honored: true, card: saved }
+    : { target: saved, honored: false, card: saved }
+}
+
 // ── Automatic documents (Generate Contract / Executed Copy / Revision from a card) ──
 // kind: 'contract' | 'exec' | 'revision'. Returns {ok, wait, reason}.
 // They run only while the saved price is held to the cent, the reopen had no
 // issues, and (per the builder's canAutoDoc) no sold-order rule decision is open.
-export function autoDocGate({ saved, screen, lock }) {
+// "Saved price" = the card, or the signed contract's price on an honored sold order.
+export function autoDocGate({ saved: card, screen, lock }) {
   if (!screen) return { ok: false, wait: true, reason: 'The builder has not priced the quote yet.' }
-  if (!saved) return { ok: true }
+  if (!card) return { ok: true }
+  const saved = lockTarget({ saved: card, lock }).target
   const diff = totalsDiffer(saved, screen)
   const drift = `saved ${fmtMoney(saved.total)}, the builder shows ${fmtMoney(screen.total)} (${fmtDelta(screen.total - saved.total)})`
   if (!lock || !lock.requested) {
@@ -132,10 +168,11 @@ export function autoDocGate({ saved, screen, lock }) {
 
 // ── Confirm before a write ────────────────────────────────────────────────
 // kind: 'save' | 'contract' | 'exec' | 'revision' | 'apply'.
-// Returns {confirm, title, okLabel, lines:[{label, from, to, delta}], notes:[]}.
-// The dialog appears whenever the write would record a price different from
-// the saved one, the saved price is not being held, or it is a revision.
-// force:true (a blocked automatic document the rep runs by hand) always asks.
+// Returns {confirm, changed, title, okLabel, lines:[{label, from, to, delta}], notes:[]}.
+// Every write to a quote that already has a saved price asks first and shows
+// saved → new (owner plan: "one confirm dialog showing old → new on every
+// write"), even when nothing changed — the dialog then says so. Only a brand-new
+// quote (nothing saved yet) goes straight through.
 const TITLES = {
   save: ['Save this quote at a new price?', 'Save quote'],
   contract: ['Generate a contract at a different price?', 'Generate contract'],
@@ -143,12 +180,13 @@ const TITLES = {
   revision: ['Finish this revision?', 'Finish revision'],
   apply: ['Apply the revision changes?', 'Apply changes'],
 }
-export function writeCheck({ kind, saved, next, lock, status, force = false, reason = '' }) {
+export function writeCheck({ kind, saved, next, lock, status, reason = '' }) {
   const [title, okLabel] = TITLES[kind] || TITLES.save
-  if (!saved) return { confirm: false, title, okLabel, lines: [], notes: [] }
+  if (!saved) return { confirm: false, changed: false, title, okLabel, lines: [], notes: [] }
   const differ = totalsDiffer(saved, next)
   const notHolding = !!(lock && lock.requested && (lock.choice === 'today' || !lock.ok || (lock.issues || []).length))
-  const confirm = force || differ || notHolding || kind === 'revision'
+  const { target, honored } = lockTarget({ saved, lock })
+  const confirm = true
   const lines = next ? [
     { label: kind === 'revision' ? 'Contract total' : 'Total', from: saved.total, to: next.total, delta: r2(next.total - saved.total) },
     { label: 'Deposit', from: saved.deposit, to: next.deposit, delta: r2(next.deposit - saved.deposit) },
@@ -156,15 +194,23 @@ export function writeCheck({ kind, saved, next, lock, status, force = false, rea
   ] : []
   const notes = []
   if (reason) notes.push(reason)
+  if (!differ && next && !notHolding && kind !== 'revision') notes.push(`No price change: the saved ${fmtMoney(saved.total)} is kept.`)
+  if (honored && next && !totalsDiffer(target, next)) {
+    notes.push(`Honor Signed Pricing: the builder holds the signed contract's ${fmtMoney(target.total)}${differ ? ` — the card showed ${fmtMoney(saved.total)}` : ''}.`)
+  }
   if (lock && lock.choice === 'today') notes.push("Today's pricing was applied (\"Update to today's pricing\"), so the saved price is not kept.")
   else if (notHolding) notes.push('The saved price is not being held: ' + ((lock.issues || [])[0] || 'see the notice in the builder.'))
   else if (!lock && differ) notes.push("This builder repriced the quote with today's rules; the saved price is not held.")
-  if (isSold(status) && differ && kind !== 'revision') notes.push('This is a sold order: the customer must re-sign for a new price.')
+  if (isSold(status) && differ && kind !== 'revision' && !(honored && !totalsDiffer(target, next))) notes.push('This is a sold order: the customer must re-sign for a new price.')
   if (kind === 'save') notes.push('The previous price and quote PDF stay in this quote’s history.')
   if (kind === 'contract') notes.push('A new contract PDF is added to Documents › Contracts. Earlier contracts are kept.')
   if (kind === 'exec') notes.push('The executed copy is added to Documents › Contracts. Earlier copies are kept.')
   if (kind === 'revision') notes.push('Saves the Revision Order and the Revised Contract, and updates this quote’s card to the revised price. The previous price stays in the quote’s history.')
-  return { confirm, title: differ || kind === 'revision' ? title : okLabel + '?', okLabel, lines, notes }
+  const signedPrice = honored && next && !totalsDiffer(target, next) && kind !== 'revision'
+  return {
+    confirm, changed: differ, okLabel, lines, notes,
+    title: signedPrice ? `${okLabel} at the signed-contract price?` : (differ || kind === 'revision' ? title : okLabel + '?'),
+  }
 }
 
 // ── Re-saving an existing quote ───────────────────────────────────────────
@@ -277,9 +323,13 @@ export function revisionReconcile(rows, net) {
 
 // ── Top-bar banner (rep-facing) ───────────────────────────────────────────
 // tone: 'ok' | 'warn' | 'error'. Returns null when there is nothing to show.
-export function lockBanner({ saved, screen, lock }) {
-  if (!saved || !screen) return null
-  const S = fmtMoney(saved.total)
+export function lockBanner({ saved: card, screen, lock }) {
+  if (!card || !screen) return null
+  // Honored sold order: the builder holds the signed contract's price, not the card's.
+  const { target: saved, honored } = lockTarget({ saved: card, lock })
+  const S = honored && totalsDiffer(card, saved)
+    ? `${fmtMoney(saved.total)} (signed contract; the card shows ${fmtMoney(card.total)})`
+    : fmtMoney(saved.total)
   const d = r2(screen.total - saved.total)
   const sold = lock && lock.sold
   const open = (lock && lock.compliance) || []

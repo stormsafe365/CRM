@@ -12,7 +12,8 @@
 // {lock:true, status, legacyTotals}) and the builder's window.PriceLock hold
 // it. The bar under the title shows saved vs today's rules; automatic
 // contract / executed copy / revision only run while the saved price is held;
-// every write that would record a different price asks first (saved → new).
+// every write to a saved quote asks first in one dialog (saved → new; it says
+// so when nothing changed).
 
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
@@ -94,9 +95,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     setBanner((prev) => (JSON.stringify(prev) === JSON.stringify(b) ? prev : b))
   }
 
-  // Resolves true when the write may go ahead. Asks (saved → new) only when
-  // the write would record a different price than the saved one, the saved
-  // price isn't being held, it's a revision, or `force` (a blocked document).
+  // Resolves true when the write may go ahead. Every write to a quote that
+  // already has a saved price shows the dialog (saved → new, or "no price
+  // change"); only a brand-new quote (nothing saved yet) goes straight through.
   function confirmWrite(kind, extra = {}) {
     const pg = getProgramWindow()
     const cur = quoteRef.current
@@ -163,8 +164,10 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       toast(`${AUTO_LABEL[kind]} not run automatically — ${escHtml(g.reason)}`)
       return
     }
-    if (kind === 'exec') saveExecutedThenPrint(pg, { confirmed: true })
-    else if (kind === 'contract') saveContractThenPrint(pg, { confirmed: true })
+    // Contract / executed copy are writes (a PDF lands in Documents), so they go
+    // through the same confirm dialog (saved → new) before anything is saved.
+    if (kind === 'exec') saveExecutedThenPrint(pg)
+    else if (kind === 'contract') saveContractThenPrint(pg)
     else { revAppliedRef.current = true; applyRevisionChanges(pg, revisionRows) }
   }
 
@@ -480,7 +483,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // program generate it for the rep as usual.
   async function saveContractThenPrint(pg, { confirmed = false } = {}) {
     if (!pg) return
-    if (!confirmed && client?.id && !(await confirmWrite('contract'))) return
+    if (!confirmed && client?.id && !(await confirmWrite('contract'))) { setStatus(''); return }
     try {
       if (client?.id) {
         setStatus('Saving contract…')
@@ -506,7 +509,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // carry the logo + DEPOSIT PAID watermark and the "Deposit PAID" payment line.
   async function saveExecutedThenPrint(pg, { confirmed = false } = {}) {
     if (!pg) return
-    if (!confirmed && client?.id && !(await confirmWrite('exec'))) return
+    if (!confirmed && client?.id && !(await confirmWrite('exec'))) { setStatus(''); return }
     try {
       if (client?.id) {
         setStatus('Saving executed copy…')
