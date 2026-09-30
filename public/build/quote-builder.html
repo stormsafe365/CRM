@@ -727,6 +727,12 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <span style="font-size:12px;color:#555">Apply a manufacturer-approved price adjustment</span>
     </div>
     <input type="hidden" id="adj-on-h" value="no">
+    <!-- Reopened-quote price lock (window.PriceLock): the saved price difference, its
+         labelled parts (JSON) and where it came from. Only priced while PriceLock.on. -->
+    <input type="hidden" id="hold-amt" value="">
+    <input type="hidden" id="hold-ref" value="">
+    <input type="hidden" id="hold-src" value="">
+    <input type="hidden" id="hold-dec" value="">
     <div id="adj-fields" class="hidden" style="margin-top:6px">
       <div style="display:flex;gap:6px;align-items:center">
         <select id="adj-type" onchange="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 4px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;flex:0 0 96px;width:96px">
@@ -793,6 +799,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="row"><label>Original Agreement #</label>
     <input id="ct-honor-ref" placeholder="e.g. SS-2026-20350" onchange="rc()">
   </div>
+  <div id="ct-honor-held" class="hidden" style="font-size:11px;color:#b45309;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;padding:5px 9px;margin:4px 0;font-weight:600">Price already held: this reopened quote keeps its saved price, so Honor Signed Pricing is not applied again.</div>
   <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4"><strong style="color:#cbd5e1">Reissuing a contract on a signed order</strong> (adding colors, etc.): enter the signed contract's <strong>Building Subtotal</strong> and agreement #. The reprint keeps today's line items, adds one "honoring signed agreement" adjustment row, and the totals, deposit and plans fee recompute to the signed contract's numbers exactly.</div>
   <div style="font-size:11px;color:#94a3b8;margin-top:4px;line-height:1.4">These fields appear on the printed contract only. Section 1 (Client Information) fills the city/state/zip portion automatically.</div>
 </div>
@@ -843,6 +850,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div id="specf" class="flags"></div>
   </div>
 
+  <div id="pl-notice" style="display:none"></div>
   <div class="st" style="margin-top:2px">Price Breakdown</div>
   <div class="rc">
     <table class="ptbl">
@@ -866,6 +874,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <tr id="sp-summary-row" style="display:none"><td class="pk">Side Panels</td><td class="pv" id="psp">—</td></tr>
       <tr id="overhang-summary-row" style="display:none"><td class="pk">1' Overhang</td><td class="pv" id="poh">—</td></tr>
       <tr id="adj-summary-row" style="display:none"><td class="pk" id="padj-k">Manufacturer Adjustment</td><td class="pv" id="padj">—</td></tr>
+      <tr id="hold-summary-row" style="display:none"><td class="pk" id="phold-k">Pricing as originally quoted</td><td class="pv" id="phold">—</td></tr>
       <tr class="dr"><td class="pk" id="dlbl">Discount (0%)</td><td class="pv" id="pds">—</td></tr>
       <tr class="ad"><td class="pk">Building Price (After Discount)</td><td class="pv" id="pad">—</td></tr>
       <tr class="tr2"><td class="pk" id="tlbl">Sales Tax (6%)</td><td class="pv" id="ptx">—</td></tr>
@@ -7074,6 +7083,9 @@ function rcManual(){
     else { pbalSplitEl.style.display='none'; }
   }
   var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?('\u2014 '+fD(adjTot)):'';
+  window._rcLast={manual:true, sub:sub, disc:disc, tax:tax, agEx:agEx, da:da, ad:ad, ta:ta, tot:tot, depPct:(window._depPct||17), grossDep:grossDep,
+    addDiscType:addDiscType, addDiscVal:addDiscVal, addDiscAmount:addDiscAmount, dep:dep, bal:bal, adjTot:adjTot, holdP:0};
+  if(window.PriceLock&&PriceLock.on) PriceLock.afterRc();
   if(typeof sy==='function') sy();
   if(G('building-panel') && G('building-panel').style.display==='block' && typeof renderBuildingViews==='function') renderBuildingViews();
 }
@@ -7097,6 +7109,31 @@ function gAdj(){
 function gAdjLabel(){
   var n=(G('adj-note')&&G('adj-note').value?G('adj-note').value:'').replace(/^\s+|\s+$/g,'').replace(/[<>]/g,'');
   return 'Manufacturer Adjustment'+(n?' — '+n:'');
+}
+// Reopened-quote price lock (see window.PriceLock at the end of this file). The
+// difference between the SAVED building subtotal and today's engine price for
+// the same build. Sits in the gAdj() slot of every pricing path (rc / quote /
+// contract / text): pre-discount, outside the $10k free-upgrade thresholds,
+// and carried through discount, tax, deposit and plans cost the same way.
+// Always 0 unless a saved quote was reopened with the lock on (new quotes,
+// NEWTOOL tab sync and "Update to today's pricing" are never held).
+function gHold(){
+  var _L=window.PriceLock; if(!_L||!_L.on) return 0;
+  if(INPUT_MODE) return 0; // manual pricing is never held (rcManual has no hold slot)
+  var v=parseFloat(G('hold-amt')?G('hold-amt').value:0)||0;
+  return Math.round(v*100)/100;
+}
+// Customer-facing rows for the held amount: one row per identified cause
+// ("Side frames (as originally quoted)"), the rest as "Pricing as originally
+// quoted". The rows always add up to gHold().
+function gHoldRows(){
+  var h=gHold(); if(!h) return [];
+  var parts=[]; try{ parts=JSON.parse((G('hold-ref')||{}).value||'{}').parts||[]; }catch(e){ parts=[]; }
+  var out=[], s=0;
+  parts.forEach(function(p){ var a=Math.round((+p.amt||0)*100)/100; if(a){ out.push({label:String(p.label||'Pricing as originally quoted').replace(/[<>]/g,''), amt:a}); s+=a; } });
+  var rest=Math.round((h-s)*100)/100;
+  if(rest) out.push({label:'Pricing as originally quoted', amt:rest});
+  return out;
 }
 // Carport: a Wall Options eave-row choice IS a Side Panels choice — copy it
 // into the priced sp-left/sp-right select before repricing (values match;
@@ -7163,8 +7200,8 @@ function rc(){
   // Override memory resets whenever the width class / county / mfr changes, so
   // a NEW hi-wind wide build always starts locked at 12 GA again.
   var _reqKey=ACTIVE_MFR+'|'+(w>24?'wide':'narrow')+'|'+G('county').textContent;
-  if(window._req12Key!==_reqKey){ window._req12Key=_reqKey; window._fu14Ovr=false; }
-  if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12') window._fu14Ovr=false; // rep re-picked 12 → re-lock
+  if(window._req12Key!==_reqKey){ window._req12Key=_reqKey; window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; }
+  if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12'){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; } // rep re-picked 12 → re-lock
   if(_fuF){
     if(_req12 && !window._fu14Ovr){ _fuF.value='12'; _fuF.disabled=true; _fuF.title="12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
     else { _fuF.disabled=false; _fuF.title=''; }
@@ -7173,6 +7210,10 @@ function rc(){
   if(_fr12){
     if(_req12 && !window._fu14Ovr){
       _fr12.innerHTML='12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
+      _fr12.classList.remove('hidden');
+    } else if(_req12 && window._fu14Ovr && window._plGrand && window._plGrand.fu14){
+      // Reopened quote sold before the 9/23/26 rule: kept as sold (not a rep override).
+      _fr12.innerHTML='GRANDFATHERED — sold as 14-gauge before the 9/23/26 rule (12 GA is now required on a hi-wind-county build wider than 24&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>';
       _fr12.classList.remove('hidden');
     } else if(_req12 && window._fu14Ovr){
       _fr12.innerHTML='⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
@@ -7185,7 +7226,8 @@ function rc(){
   var _pCo=G('county').textContent||'', _pCci=(ACTIVE_MFR==='CCI');
   var _pSqft=(parseInt(G('bw').value)||0)*(parseInt(G('bl').value)||0);
   var _pKey=ACTIVE_MFR+'|'+_pCo;
-  if(window._permKey!==_pKey){ window._permKey=_pKey; window._impOvr=false; window._lapOvr=false; window._nsOvr=false; }
+  if(window._permKey!==_pKey){ window._permKey=_pKey; window._impOvr=false; window._lapOvr=false; window._nsOvr=false; if(window._plGrand){ window._plGrand.imp=false; window._plGrand.lap=false; window._plGrand.ns=false; } }
+  var _pGf=window._plGrand||{};
   // Impact counties: CCI requires impact windows + hi-wind walk doors. Okaloosa
   // and Okeechobee only on buildings over 720 sq ft. (CCI roll-ups are certified.)
   var _pImpCo=['Charlotte','Collier','Hillsborough','Indian River','Lee','Palm Beach','Sarasota','St. Lucie','Volusia'];
@@ -7219,8 +7261,10 @@ function rc(){
     if(_pNoSvc && !window._nsOvr) _pH+='<div style="background:#fee2e2;color:#991b1b;border-left:4px solid #dc2626;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26D4 We don\u2019t service '+(_pCo==='Monroe'?'the Keys (Monroe)':_pCo)+' \u2014 it requires a higher wind certification than CCI can provide. The customer can still order material, pick it up and install it themselves.'+_pA("_permOvr(\'ns\',true)",'Override \u2192 material-only order')+'</div>';
     else if(_pNoSvc) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 MATERIAL-ONLY ORDER \u2014 '+_pCo+' is outside CCI\u2019s service area. Customer picks up and self-installs.'+_pA("_permOvr(\'ns\',false)",'Undo')+'</div>';
     if(_pImpReq && !window._impOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+_pCo+' requires impact-rated components \u2014 windows are locked to Hi-Impact and walk doors to Hi-Wind Rated.'+_pA("_permOvr(\'imp\',true)",'Override')+'</div>';
+    else if(_pImpReq && _pGf.imp) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold with non-impact windows/doors before the 9/28/26 '+_pCo+' impact rule (kept as sold).'+_pA("_permOvr(\'imp\',false)",'Apply impact rule')+'</div>';
     else if(_pImpReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 non-impact windows/doors allowed in an impact county ('+_pCo+').'+_pA("_permOvr(\'imp\',false)",'Re-apply')+'</div>';
     if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.'+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
+    else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the 9/28/26 Lee County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
     else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in Lee County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
     _pBox.innerHTML=_pH; _pBox.style.display=_pH?'block':'none';
   }
@@ -7303,6 +7347,7 @@ function rc(){
   var wallsVertical = G('ws').value==='Vertical';
   var wainP=gWainscot();
   var adjP=gAdj();
+  var holdP=gHold(); // reopened-quote price lock (0 unless PriceLock.on)
   var aewP=gAddEndWall();
   var leanToTotal=gLT();
   var connFeeTotal=gConnectionFees();
@@ -7393,7 +7438,9 @@ function rc(){
   var perm=G('perm').value, co=G('county').textContent, pt=G('pt').value;
 
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP+gAnchors()+adjP;
+  var anchorP=gAnchors();
+  var sub=base+leg+framingUpgrade+ocUpgrade+pitchUpgrade+walls+vertWallUpg+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToTotal+connFeeTotal+addCompTotal+insulTotal+fastenerP+overhangP+sidePanelP+anchorP+adjP;
+  if(holdP) sub+=holdP;
   var da=Math.round(sub*(disc/100));
   var ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100));
@@ -7480,6 +7527,14 @@ function rc(){
   if(adjRowEl) adjRowEl.style.display=adjP?'':'none';
   if(padjEl) padjEl.textContent=adjP?(adjP<0?'−'+fC(-adjP):fC(adjP)):'—';
   if(padjK) padjK.textContent=gAdjLabel();
+  // Price-lock row: the saved-price difference on a reopened quote (PriceLock.on only)
+  var holdRowEl=G('hold-summary-row');
+  if(holdRowEl) holdRowEl.style.display=holdP?'':'none';
+  if(holdP){
+    var _hRows=gHoldRows();
+    if(G('phold')) G('phold').textContent=holdP<0?'−'+fD(-holdP):fD(holdP);
+    if(G('phold-k')) G('phold-k').textContent=_hRows.length===1?_hRows[0].label:'Pricing as originally quoted';
+  }
   // Insulation show/hide detail
   var insulSel2=G('insul-sel');
   var insulDetail=G('insul-detail');
@@ -7584,6 +7639,15 @@ function rc(){
   if(mobTot) mobTot.textContent=adjTot?('— '+fD(adjTot)):'';
   // Re-sync mobile summary if it's open
   // mobile summary shows actual .right panel - no sync needed
+
+  // Last engine pass, for the reopened-quote price lock (window.PriceLock). Read-only.
+  window._rcLast={manual:false, base:base, leg:leg, framingUpgrade:framingUpgrade, ocUpgrade:ocUpgrade, pitchUpgrade:pitchUpgrade,
+    walls:walls, vertWallUpg:vertWallUpg, rud:rud, wtd:wtd, win:win, sf:sf, lapP:lapP, sheetUpgrade:sheetUpgrade, sheetFree:sheetFree,
+    fastenerFree:fastenerFree, wainP:wainP, aewP:aewP, leanToTotal:leanToTotal, connFeeTotal:connFeeTotal, addCompTotal:addCompTotal,
+    insulTotal:insulTotal, fastenerP:fastenerP, overhangP:overhangP, sidePanelP:sidePanelP, anchorP:anchorP, adjP:adjP, holdP:holdP,
+    preSheetSub:preSheetSub, sub:sub, disc:disc, tax:tax, agEx:agEx, da:da, ad:ad, ta:ta, tot:tot, depPct:(window._depPct||17),
+    grossDep:grossDep, addDiscType:addDiscType, addDiscVal:addDiscVal, addDiscAmount:addDiscAmount, dep:dep, bal:bal, adjTot:adjTot};
+  if(window.PriceLock&&PriceLock.on) PriceLock.afterRc();
 
   sy();
   // Live update building views when visible
@@ -8531,18 +8595,22 @@ function colorChartPageHTML(tiles){
 // ══════════════════════════════════════════════════════════════════════════
 
 function _permOvr(k,on){
+  if(window._plGrand) window._plGrand[k]=false;
   if(k==='imp') window._impOvr=on;
   else if(k==='lap'){ window._lapOvr=on; var el=G('lap'); if(el){ el.disabled=false; if(on) el.value='no'; } }
   else if(k==='ns'){ window._nsOvr=on; var dt=G('delivery-type'); if(dt){ if(on){ window._dtPre=dt.value; dt.value='pickup'; } else { dt.value=window._dtPre&&window._dtPre!=='pickup'?window._dtPre:'installed'; } } }
   rc();
 }
-function _fu14Override(){ window._fu14Ovr=true; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; } rc(); }
-function _fu12Reapply(){ window._fu14Ovr=false; rc(); }
+function _fu14Override(){ window._fu14Ovr=true; if(window._plGrand) window._plGrand.fu14=false; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; } rc(); }
+function _fu12Reapply(){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; rc(); }
 function _delivOnly(){var e=G('delivery-type');return !!(e&&(e.value==='delivered'||e.value==='pickup'));}
 function _pickupOnly(){var e=G('delivery-type');return !!(e&&e.value==='pickup');}
 function collectQuoteData(){
   // Collect all form field values
-  var data = { version: 2, savedAt: new Date().toISOString(), fields: {} };
+  // v3 (9/30/26): + roof style (#rs; 'brs' never existed), INPUT mode + ip-*,
+  // rule overrides, session price edits, price-lock hold fields. Stays pure:
+  // no pricing snapshot here (PriceLock.snapshot() is added by the savers).
+  var data = { version: 3, savedAt: new Date().toISOString(), fields: {} };
 
   // Simple fields by ID
   var simpleIds = [
@@ -8559,7 +8627,15 @@ function collectQuoteData(){
     // Free-standing lean-to (fslean) controls — pitch + walls drive the price.
     'fs-pitch','fs-walls-mode','fs-wf','fs-wb','fs-wt','fs-wl2','fs-orient',
     // Section 1 notes + contract page inputs — were missing, so they didn't persist.
-    'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref'
+    'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref',
+    // v3: Roof Style was never saved ('brs' above is a dead id, kept for old readers) —
+    // every Regular / Boxed Eve quote reopened as Vertical.
+    'rs',
+    // v3: INPUT (manual pricing) mode values — a manual quote reopened in the engine.
+    'ip-base','ip-leg','ip-framing','ip-pitch','ip-frontend','ip-backend','ip-leftside','ip-rightside','ip-rud','ip-wtd','ip-win',
+    'ip-sidepanel','ip-leanto','ip-addl','ip-cust1-l','ip-cust1-a','ip-cust2-l','ip-cust2-a','ip-cust3-l','ip-cust3-a',
+    // v3: reopened-quote price lock (recomputed on every locked reopen)
+    'hold-amt','hold-ref','hold-src','hold-dec'
   ];
   simpleIds.forEach(function(id){
     var el = G(id);
@@ -8661,6 +8737,14 @@ function collectQuoteData(){
   // Fastener checkbox
   var fcb=G('fastener-add'); data.fields.fastenerAdd=fcb?fcb.checked:false;
 
+  // v3: manual-pricing mode, the rep's rule overrides (12GA / impact / Lee lap /
+  // no-service) incl. which ones are grandfathered, and session price edits.
+  data.inputMode = !!INPUT_MODE;
+  var _gf=window._plGrand||{};
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr,
+    grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
+  data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
+
   return data;
 }
 
@@ -8673,6 +8757,9 @@ function saveQuote(){
     console.error('collectQuoteData failed:', e);
     return;
   }
+
+  // Price snapshot (what this quote costs right now), so reopening it keeps the price.
+  try { if(window.PriceLock) data.priced = PriceLock.snapshot(); } catch(snapErr){ console.warn('price snapshot failed', snapErr); }
 
   // Build filename: ClientName + Size + Date
   cn = (G('cn')&&G('cn').value) ? G('cn').value.trim() : 'Client';
@@ -9138,7 +9225,7 @@ function loadQuote(input){
   reader.onload = function(e){
     try{
       var data = JSON.parse(e.target.result);
-      restoreQuoteData(data);
+      restoreQuoteData(data, data.priced?{lock:true}:undefined);
       toast('Quote loaded: '+file.name, 'ok');
     } catch(err){
       toast('Error loading quote file', 'err');
@@ -9158,7 +9245,19 @@ var CCI_LEGACY_HEX = {
   '#4B1A23':'#46201F', '#B7986A':'#B18F6C', '#A99172':'#A8977E',
   '#CCBC9D':'#D2C4A0', '#D6C8A5':'#DBD1B0'
 };
-function restoreQuoteData(data){
+// opts (all optional; restoreQuoteData(data) behaves as before apart from the
+// v3 fidelity fixes — roof style, manual-pricing mode, session price edits):
+//   lock:true          reopen at the SAVED price (window.PriceLock): today's rules only
+//                      touch what the rep changes; rules that would rewrite the as-sold
+//                      build (12GA hi-wind, impact, Lee lap) are grandfathered
+//   legacyTotals:{total,deposit,balance}  the saved card totals, for quotes saved
+//                      before payload.priced existed (inverted to the saved subtotal)
+//   status:'sent'|'verbal_accept'|'deposit_paid'|...   sold statuses gate new contracts
+function restoreQuoteData(data, opts){
+  opts=opts||{};
+  // Kill switch: window.SS_PRICE_LOCK=false reopens at today's pricing, as before 9/30/26.
+  if(window.SS_PRICE_LOCK===false && opts.lock) opts={ status:opts.status, legacyTotals:opts.legacyTotals };
+  if(window.PriceLock) PriceLock.reset();
   var _suR=G('sheeting-upgrade'); if(_suR){ delete _suR.dataset.autoFree; delete _suR.dataset.preFree; _suR.dataset.restored='1'; }
   if(!data||!data.fields) return;
   var f = data.fields;
@@ -9172,6 +9271,10 @@ function restoreQuoteData(data){
     var mfrSel=G('mfr-sel'); if(mfrSel) mfrSel.value=data.mfr;
     if(data.mfr!==ACTIVE_MFR) switchMfr(data.mfr);
   }
+  // A non-manual quote must not inherit INPUT mode left on by the previous quote.
+  if(!data.inputMode && INPUT_MODE){ exitInputMode(); var _msR=G('mfr-sel'); if(_msR) _msR.value=ACTIVE_MFR; }
+  // v3: the rep's session price edits (Pricing tab) — after switchMfr, which resets MFR tables.
+  if(data.sessionEdits && data.sessionEdits.length && typeof _seReplay==='function') _seReplay(data.sessionEdits);
 
   // Step 1: restore building type, then width, then length in correct sequence
   if(f.btype){ var btEl=G('btype'); if(btEl) btEl.value=f.btype; }
@@ -9197,6 +9300,10 @@ function restoreQuoteData(data){
     }
   });
 
+  // Roof style was not saved before v3: start from the default instead of the
+  // previous quote's pick (the price lock can infer it from the saved total).
+  if(f.rs===undefined){ var _rsR=G('rs'); if(_rsR) _rsR.value='Vertical'; }
+
   // Step 2b: fslean custom-walls sub-panel visibility follows the restored mode
   if(G('btype').value==='fslean' && typeof fsWallsModeChanged==='function'){
     var _fsm=G('fs-walls-mode');
@@ -9212,11 +9319,19 @@ function restoreQuoteData(data){
     if(el&&val!==undefined&&el.tagName!=='SELECT'&&el.tagName!=='INPUT') el.textContent=val;
   });
 
+  // Step 3b: rule overrides (12GA hi-wind / impact / Lee lap / no-service) BEFORE
+  // any component is re-added — aWTD/aWIN/doPT all run rc(), which would
+  // otherwise re-lock the saved choices mid-restore. v3 quotes carry the flags;
+  // older quotes reopened with the lock get them inferred ("Grandfathered").
+  if(window.PriceLock) PriceLock.restoreFlags(data, opts);
+
   // Step 4: fastener checkbox
   var fcb=G('fastener-add'); if(fcb) fcb.checked=!!f.fastenerAdd;
 
   // Step 5: Clear and restore roll-up doors
-  var rdl=G('rdl'); if(rdl) rdl.innerHTML='';
+  // The roll-up list is #rl ('rdl' never existed): restoring a second quote in the same
+  // session used to ADD its doors to the previous quote's doors.
+  var rdl=G('rl')||G('rdl'); if(rdl) rdl.innerHTML='';
   (data.doors||[]).forEach(function(d){
     aRUD();
     var entries=document.querySelectorAll('.re.entry');
@@ -9366,9 +9481,15 @@ function restoreQuoteData(data){
     }
   });
 
+  // Step 9b: put back the saved choices that the rule locks may have rewritten
+  // while components were re-added (only where an override / grandfather flag is set).
+  if(window.PriceLock) PriceLock.reapplySaved(data);
+
   // Step 10: trigger all update functions in correct order
   doPT();
   doPerm();
+  // doPerm re-picks the county's default plan; a locked reopen keeps the saved one.
+  if(opts.lock && f['plans-sel']){ var _psR=G('plans-sel'); if(_psR && !_psR.disabled){ for(var _pi=0;_pi<_psR.options.length;_pi++){ if(_psR.options[_pi].value===f['plans-sel']){ _psR.value=f['plans-sel']; break; } } } }
   ['cr','cw','ct','cwn'].forEach(function(id){
     var el=G(id);
     if(el&&el.value){
@@ -9385,15 +9506,23 @@ function restoreQuoteData(data){
   sy();
   // Re-run the building pass so size-driven rows (OC Spacing, fslean badges) match the restored quote.
   try{ if(typeof _prevOcWidth!=='undefined') _prevOcWidth=parseInt(G('bw').value)||0; doBld(); }catch(e){}
+  // v3: a manually priced (INPUT mode) quote reopens in INPUT mode with its typed prices.
+  if(data.inputMode && !INPUT_MODE){ var _msI=G('mfr-sel'); if(_msI) _msI.value='INPUT'; enterInputMode(); }
   rc();
   var _suE=G('sheeting-upgrade'); if(_suE) delete _suE.dataset.restored;
+  // Reopen at the saved price (checks the restore, holds the saved totals, shows the notice).
+  if(window.PriceLock){ try{ PriceLock.afterRestore(data, opts); }catch(e){ console.error('price lock failed', e); PriceLock.fail(String(e&&e.message||e)); } }
   // Snapshot the AS-ORDERED totals for the Revision Form: after the restore has
   // fully repriced, remember total + deposit. Later edits (adding a door, etc.)
   // are then diffed against this by printRevisionForm - discount and tax ride
   // along automatically because both numbers come from the same engine.
   setTimeout(function(){
     try{
-      window._rvOrig={ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent), dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) };
+      // Price lock: the as-ordered figures are the SAVED totals (card / snapshot),
+      // not a repricing — so a revision and "Original Deposit — Paid" use what was sold.
+      var _plSaved=(window.PriceLock&&PriceLock.savedTotals)?PriceLock.savedTotals():null;
+      window._rvOrig=_plSaved?{ tot:_plSaved.total, dep:_plSaved.deposit, dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) }
+        :{ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent), dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) };
       document.querySelectorAll('.re,.we,.ne,.ace,.lte').forEach(function(el){ el.dataset.rvOrig='1'; });
     }catch(e){}
   }, 900);
@@ -9538,6 +9667,7 @@ async function printQuote(){
   var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+connFeePr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
   var adjPQ=gAdj(); sub+=adjPQ;
+  var holdPQ=gHold(); if(holdPQ) sub+=holdPQ; // reopened-quote price lock (0 unless PriceLock.on)
 
   // Build plans HTML now that sub is computed (CCI Site Specific = 5% of retail)
   if(perm==='yes'){
@@ -9671,6 +9801,7 @@ async function printQuote(){
   if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
   if(typeof adjPQ!=='undefined'&&adjPQ) rows+=row(gAdjLabel(),null,null,adjPQ);
+  gHoldRows().forEach(function(hr){ rows+=row(hr.label,null,null,hr.amt); });
   if(aewP) rows+=row(aewLabel(),null,null,aewP);
 
   // Roll-up doors
@@ -9956,7 +10087,7 @@ async function printQuote(){
   '<thead><tr>'+
   '<th class="qp-bdh">Building Description</th><th class="c qp-col">Qty</th><th class="c qp-col">Qty Price</th><th class="r qp-col">Price</th>'+
   '</tr></thead>'+
-  '<tbody>'+(INPUT_MODE?(function(){var r='';manualLineItems().forEach(function(it){r+=row(it.desc,null,null,it.amt);});return r;})():rows)+'</tbody>'+
+  '<tbody>'+(INPUT_MODE?(function(){var r='';manualLineItems().forEach(function(it){r+=row(it.desc,null,null,it.amt);});gHoldRows().forEach(function(hr){r+=row(hr.label,null,null,hr.amt);});return r;})():rows)+'</tbody>'+
   '</table>'+
 
   '<div class="qtot-box">'+
@@ -10379,6 +10510,10 @@ function _execWatermark(LOGO){
 }
 async function printContract(){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
+  // Sold order reopened under the price lock: a NEW contract waits until every
+  // rule that would change the as-sold build has a decision (Executed Copy is a
+  // record of the signed order, so it is never blocked).
+  if(!EXEC_COPY && window.PriceLock && PriceLock.contractBlocked()){ PriceLock.showGate(); return; }
 
   // Open the print window NOW (inside the click gesture) so it isn't popup-
   // blocked, then capture the live 3D modeler before assembling — the contract's
@@ -10536,6 +10671,7 @@ async function printContract(){
   var sub=base+leg+framingUpgP+ocUpgradeP+pitchUpgradeP+walls+vertWallUpgP+rud+wtd+win+sf+lapP+sheetUpgrade+wainP+aewP+leanToPr+connFeePr+addCompPr+insulPr+fastenerPQ+overhangPQ+sidePanelPQ+anchorPr;
   if(INPUT_MODE) sub=manualSubtotal();
   var adjPC=gAdj(); sub+=adjPC;
+  var holdPC=gHold(); if(holdPC) sub+=holdPC; // reopened-quote price lock (0 unless PriceLock.on)
 
   // ── Honor signed pricing (contract reissue) ───────────────────────────────
   // Reissuing a contract for an already-signed order (e.g. adding colors after
@@ -10548,7 +10684,8 @@ async function printContract(){
   var honorAmtC=parseFloat(G('ct-honor')?G('ct-honor').value:0)||0;
   var honorRefC=(G('ct-honor-ref')&&G('ct-honor-ref').value?G('ct-honor-ref').value:'').replace(/^\s+|\s+$/g,'');
   var honorAdjC=0;
-  if(honorAmtC>0){ honorAdjC=Math.round(honorAmtC-sub); sub=Math.round(honorAmtC); }
+  // A reopened quote under the price lock already carries its saved price: never honor twice.
+  if(honorAmtC>0 && !(window.PriceLock&&PriceLock.on)){ honorAdjC=Math.round(honorAmtC-sub); sub=Math.round(honorAmtC); }
 
   // ── Engineered Plans + Permit Service (both invoiced separately by engineering firm) ──
   // Show on contract only when "permit required" is Yes. Permitting service is optional.
@@ -10739,6 +10876,7 @@ async function printContract(){
   if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
   if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
+  gHoldRows().forEach(function(hr){ row(hr.label,null,null,hr.amt); });
   if(aewP) row(aewLabel(),null,null,aewP);
 
   document.querySelectorAll('.re').forEach(function(el){
@@ -10911,7 +11049,7 @@ async function printContract(){
   if(anchorPr) row('Mobile Home Anchors — Ground Install',anchorLegsQ,ANCHOR_UNIT,anchorPr);
 
   // ── Build line items HTML ──
-  if(INPUT_MODE){ lineItems.length=0; manualLineItems().forEach(function(it){ lineItems.push({desc:it.desc, qty:null, unit:null, amt:it.amt}); }); }
+  if(INPUT_MODE){ lineItems.length=0; manualLineItems().forEach(function(it){ lineItems.push({desc:it.desc, qty:null, unit:null, amt:it.amt}); }); gHoldRows().forEach(function(hr){ lineItems.push({desc:hr.label, qty:null, unit:null, amt:hr.amt}); }); }
   if(honorAdjC!==0){
     lineItems.push({desc:'<strong>Price Adjustment \u2014 Honoring Signed Agreement'+(honorRefC?' '+_esc(honorRefC):'')+'</strong><br><span style="font-size:6.5pt;color:#64748b">Current chart pricing honored at the original signed contract amount</span>', qty:null, unit:null, amt:honorAdjC});
   }
@@ -12001,7 +12139,7 @@ function renderQuoteLog(){
 function loadFromLog(idx){
   var log = JSON.parse(localStorage.getItem('ss_quotes')||'[]');
   if(!log[idx]) return;
-  restoreQuoteData(log[idx]);
+  restoreQuoteData(log[idx], log[idx].priced?{lock:true}:undefined);
   switchTab('quote');
 }
 
@@ -13354,12 +13492,61 @@ function makePricingTable(containerId, rowKeys, colKeys, getData, setData, rowLa
   el.innerHTML = html;
 }
 
+// Session price edits (Pricing tab) are recorded so a saved quote can reopen
+// with the same table prices (collectQuoteData -> data.sessionEdits; replayed
+// by restoreQuoteData). Last value per cell/key wins.
+window._sessionEdits=window._sessionEdits||[];
+function _seRecord(e){
+  var k=e.kind+'|'+(e.tbl||'')+'|'+(e.r||'')+'|'+(e.c||'')+'|'+(e.k||e.key||'');
+  window._sessionEdits=(window._sessionEdits||[]).filter(function(x){ return x._id!==k; });
+  e._id=k; window._sessionEdits.push(e);
+}
+function _applyPricingCell(tbl,r,c,val){
+  if(tbl==='tbl-pv'){ if(!PV[r]) PV[r]=[]; PV[r][WIDTHS.indexOf(parseInt(c))] = val; }
+  else if(tbl==='tbl-pr'){ if(!PR[r]) PR[r]=[]; PR[r][WIDTHS.indexOf(parseInt(c))] = val; }
+  else if(tbl==='tbl-hu'){ if(!HU[r]) HU[r]=[]; HU[r][LENGTHS.indexOf(parseInt(c))] = val; }
+  else if(tbl==='tbl-sc'){ if(!SC[r]) SC[r]={}; SC[r][parseInt(c)] = val; }
+  else if(tbl==='tbl-ec-std'||tbl==='tbl-ec-ws'){ if(!EC[r]) EC[r]={}; EC[r][parseInt(c)] = val; }
+}
+function _applyDoorPrice(tbl,k,val){
+  if(tbl==='door-std') RDP_STD[k]=val;
+  else if(tbl==='door-chain'){ RDP_CHAIN[k]=val; RDP_CHAIN['*'+k]=val; }
+  else if(tbl==='door-hi'){ RDP_HI[k]=val; RDP_HI['*'+k]=val; }
+}
+function _applyMiscPrice(key,val){
+  if(key==='insul') INSUL_RATE=val;
+  else if(key==='thresh') window._freeThresh=val;
+  else if(key==='dep-pct') window._depPct=val;
+  else if(key.indexOf('ac_')===0) AC_PRICES[key.substring(3)]=val;
+  else if(key==='wtd-std') window._wtd_std=val;
+  else if(key==='wtd-hi') window._wtd_hi=val;
+  else if(key==='win-std') window._win_std=val;
+  else if(key==='win-hi') window._win_hi=val;
+  else if(key==='chain') window._chain=val;
+  else if(key==='opener') window._opener=val;
+  else if(key==='seal') window._seal=val;
+  else if(key==='sf-rud') window._sf_rud=val;
+  else if(key==='sf-dw') window._sf_dw=val;
+}
+// Replay a saved quote's session edits (restoreQuoteData, after switchMfr).
+function _seReplay(list){
+  (list||[]).forEach(function(e){
+    try{
+      if(e.kind==='cell') _applyPricingCell(e.tbl,e.r,e.c,e.val);
+      else if(e.kind==='door') _applyDoorPrice(e.tbl,e.k,e.val);
+      else if(e.kind==='misc') _applyMiscPrice(e.key,e.val);
+      else return;
+      _seRecord({kind:e.kind,tbl:e.tbl,r:e.r,c:e.c,k:e.k,key:e.key,val:e.val});
+    }catch(err){ console.warn('session edit replay failed', e, err); }
+  });
+}
 function updatePricingCell(inp){
   var tbl = inp.dataset.tbl;
   var r = inp.dataset.r;
   var c = inp.dataset.c;
   var val = parseInt(inp.value.replace(/[^0-9]/g,''))||0;
   inp.value = val;
+  _seRecord({kind:'cell', tbl:tbl, r:r, c:c, val:val});
   // Route to correct table
   if(tbl==='tbl-pv'){ if(!PV[r]) PV[r]=[]; PV[r][WIDTHS.indexOf(parseInt(c))] = val; }
   else if(tbl==='tbl-pr'){ if(!PR[r]) PR[r]=[]; PR[r][WIDTHS.indexOf(parseInt(c))] = val; }
@@ -13512,6 +13699,7 @@ function updateDoorPrice(inp){
   var tbl=inp.dataset.tbl, k=inp.dataset.k;
   var val=parseInt(inp.value.replace(/[^0-9]/g,''))||0;
   inp.value=val;
+  _seRecord({kind:'door', tbl:tbl, k:k, val:val});
   if(tbl==='door-std') RDP_STD[k]=val;
   else if(tbl==='door-chain'){ RDP_CHAIN[k]=val; RDP_CHAIN['*'+k]=val; }
   else if(tbl==='door-hi'){ RDP_HI[k]=val; RDP_HI['*'+k]=val; }
@@ -13523,6 +13711,7 @@ function updateMiscPrice(inp){
   var key=inp.dataset.misc;
   var val=parseFloat(inp.value.replace(/[^0-9.]/g,''))||0;
   inp.value=val;
+  _seRecord({kind:'misc', key:key, val:val});
   inp.style.background='#fef9c3'; inp.style.color='#854d0e';
   if(key==='insul') INSUL_RATE=val;
   else if(key==='thresh') window._freeThresh=val;
@@ -13543,6 +13732,7 @@ function updateMiscPrice(inp){
 
 function resetPricing(){
   if(!confirm('Reset ALL pricing tables to original defaults? This cannot be undone.')) return;
+  window._sessionEdits=[];
   PV=JSON.parse(JSON.stringify(DEFAULT_PV));
   PR=JSON.parse(JSON.stringify(DEFAULT_PR));
   HU=JSON.parse(JSON.stringify(DEFAULT_HU));
@@ -13701,7 +13891,7 @@ function textQuote(){
   var sheetU=(!sheetFree&&G('sheeting-upgrade').value==='upgrade'&&bt3!=='widespan')?preSheetSub*0.10:0;
   var fastenerFree=((preSheet+sheetU)>=(window._freeThresh||10000));
   var fastenerP=(G('fastener-add')&&G('fastener-add').checked&&!fastenerFree)?150:0;
-  var sub=preSheet+sheetU+fastenerP+gAdj();
+  var sub=preSheet+sheetU+fastenerP+gAdj()+gHold();
   var da=Math.round(sub*(disc/100)),ad=sub-da;
   var ta=agEx?0:Math.round(ad*(tax/100)),tot=ad+ta;
   var grossDep=Math.round(ad*((window._depPct||17)/100));
@@ -13710,6 +13900,8 @@ function textQuote(){
   var addDA=addDT==='pct'?Math.round(grossDep*(addDV/100)):addDV;
   var dep=Math.max(0,grossDep-addDA);
   var bal=tot-grossDep;
+  // Reopened quote under the price lock: the text copy shows the same held totals as the screen.
+  if(window.PriceLock&&PriceLock.on&&window._rcLast){ sub=_rcLast.sub; tot=_rcLast.tot; addDA=_rcLast.addDiscAmount; dep=_rcLast.dep; bal=_rcLast.bal; }
   var doorLines=[];
   document.querySelectorAll('.re').forEach(function(el){var sz=el.querySelector('.rsz').value,qty=parseInt(el.querySelector('.rqt').value)||1;var loc=el.querySelector('.rloc').value.replace(' Gable End','').replace(' Eave Side','');doorLines.push(qty+'x '+sz+' Roll-Up ('+loc+')');});
   document.querySelectorAll('.we').forEach(function(el){var qty=parseInt(el.querySelector('.wqt').value)||1;var loc=el.querySelector('.wloc').value.replace(' Gable End','').replace(' Eave Side','');doorLines.push(qty+'x Walk Door ('+loc+')');});
@@ -14151,5 +14343,657 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
 </script>
 
 
+<script id="ss-price-lock">
+// ══════════════════════════════════════════════════════════════════════════
+// REOPENED-QUOTE PRICE LOCK — window.PriceLock (owner 9/30/26: "make sure i
+// can reopen that quote exactly as it was"). ES5, no dependencies.
+//
+// A saved quote reopened with restoreQuoteData(data, {lock:true, ...}) keeps
+// its SAVED price. Today's pricing only reaches what the rep changes, or
+// everything after an explicit "Update to today's pricing".
+//  - The saved building subtotal comes from payload.priced (PriceLock.snapshot(),
+//    written by the savers) or, for older quotes, from the saved card totals
+//    inverted through the saved discount / tax / deposit / additional discount.
+//  - hold = saved subtotal - today's engine subtotal for the same build. It is
+//    priced through gHold() in the gAdj() slot of rc / printQuote /
+//    printContract / textQuote, so every document carries the same totals.
+//  - Customer rows name the cause ("Side frames (as originally quoted)"), or
+//    "Pricing as originally quoted" when no known rule change explains it.
+//  - Rules that would rewrite the as-sold build (12GA hi-wind, impact
+//    windows/doors, Lee lap siding) are grandfathered; the notice shows what
+//    each would cost and lets the rep apply it (charged / no charge) or keep
+//    it as sold (with a reason). Sold orders need that decision before a new
+//    contract.
+// Nothing here runs unless a quote is reopened with the lock: PriceLock.on is
+// false for new quotes, so gHold() is 0 and every price is unchanged.
+// ══════════════════════════════════════════════════════════════════════════
+(function(root){
+  var doc = root.document;
+  function $(id){ return doc ? doc.getElementById(id) : null; }
+  function r2(x){ return Math.round((+x||0)*100)/100; }
+  function money(n){ var v=r2(n); var s=Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); return (v<0?'−$':'$')+s; }
+  function signed(n){ var v=r2(n); return (v>0?'+':'')+money(v); }
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function num(t){ var n=parseFloat(String(t==null?'':t).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+  function tms(iso){ var t=Date.parse(iso); return isNaN(t)?0:t; }
+
+  var PL = { on:false, ENGINE_REV:'2026-09-30', st:null, _data:null, _opts:null, _silent:false };
+  PL.SOLD = { verbal_accept:1, deposit_paid:1, revised:1 };
+
+  // ── Rule registry (internal wording — never printed on customer documents) ──
+  var T_OC_WAIVE_END = tms('2026-09-14T09:08:00-04:00'); // 631490e
+  var T_CRM_FROM     = tms('2026-09-08T12:58:35-04:00'); // a420769 (CRM copy only)
+  var T_CRM_END      = tms('2026-09-14T12:42:56-04:00'); // 9030ba9 resync
+  var T_SIDEFRAME    = tms('2026-09-18T12:33:00-04:00'); // d4c8695
+  var T_HW12         = tms('2026-09-23T15:45:00-04:00'); // 8d0e77f
+  var T_UNITS        = tms('2026-09-28T09:40:00-04:00'); // 348a766
+  var T_COMBO        = tms('2026-09-28T09:45:00-04:00'); // 6ab9572
+  var T_PERMIT       = tms('2026-09-28T10:42:00-04:00'); // 4930a13
+  PL.RULES = {
+    'oc-waiver':   { commit:'631490e', date:'9/14/26', text:"12-gauge no longer waives the CCI 4' OC charge (24' wide or less)" },
+    'crm-12ga':    { commit:'a420769 / 9030ba9', date:'9/14/26', text:"CRM-only CCI 12-gauge table (9/8–9/14) replaced by the builder's table" },
+    'side-frames': { commit:'d4c8695', date:'9/18/26', text:"CCI over 30' wide: the framed-opening price now includes the side frame (no separate $150)" },
+    'hw-12ga':     { commit:'8d0e77f', date:'9/23/26', text:"CCI hi-wind county, wider than 24': 12-gauge framing required", flag:'fu14' },
+    'cci-units':   { commit:'348a766', date:'9/28/26', text:"CCI past 40' long: 4' OC and 12-gauge priced per connected unit" },
+    'combo-12x4':  { commit:'6ab9572', date:'9/28/26', text:"CCI 24' wide or less with 12-gauge + 4' OC: one combined book row" },
+    'impact':      { commit:'4930a13', date:'9/28/26', text:'CCI impact county: Hi-Impact windows and Hi-Wind walk doors required', flag:'imp' },
+    'lee-lap':     { commit:'4930a13', date:'9/28/26', text:'CCI Lee County: lap siding required', flag:'lap' },
+    'no-service':  { commit:'4930a13', date:'9/28/26', text:'CCI does not service Broward / Miami-Dade / Monroe (material-only orders)', flag:'ns' }
+  };
+  var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
+  // Customer-facing wording when a rule change is applied at no charge.
+  var NC_LABEL = { fu14:'12-gauge framing (included at no charge)', imp:'Impact-rated windows and doors (included at no charge)', lap:'Lap siding (included at no charge)' };
+  var IMPACT_CO = ['Charlotte','Collier','Hillsborough','Indian River','Lee','Palm Beach','Sarasota','St. Lucie','Volusia'];
+  var NOSVC_CO = ['Broward','Miami-Dade','Monroe'];
+  var WIN_OK = { hi:1, hi3036:1 };
+
+  // ── Pure money math: identical to rc() (discount -> tax -> 17% deposit -> additional discount) ──
+  PL.forward = function(sub, p){
+    var da=Math.round(sub*((+p.disc||0)/100)), ad=sub-da;
+    var ta=p.agx?0:Math.round(ad*((+p.tax||0)/100)), tot=ad+ta;
+    var gd=Math.round(ad*((p.depPct||17)/100));
+    var adv=+p.adVal||0, am=(p.adType==='pct')?Math.round(gd*(adv/100)):adv;
+    return { sub:sub, da:da, ad:ad, ta:ta, tot:tot, grossDep:gd, addDisc:am, dep:Math.max(0,gd-am), bal:tot-gd, adjTot:tot-am, clamped:(gd-am<0) };
+  };
+  function sameCents(a,b){ return Math.abs(r2(a)-r2(b))<0.005; }
+  function matches(m, T){ return sameCents(m.adjTot,T.total) && sameCents(m.dep,T.deposit) && sameCents(m.bal,T.balance); }
+  // Saved card totals -> every building subtotal that reproduces them exactly.
+  // T = {total, deposit, balance}; p = discount / tax / exempt / deposit % /
+  // additional discount of the restored quote. Returns {subs:[..], depPct} or null.
+  PL.invert = function(T, p){
+    if(!T || !isFinite(+T.total) || !isFinite(+T.deposit) || !isFinite(+T.balance)) return null;
+    T = { total:r2(T.total), deposit:r2(T.deposit), balance:r2(T.balance) };
+    var pcts=[p.depPct||17]; for(var q=5;q<=60;q++) if(q!==pcts[0]) pcts.push(q);
+    for(var pi=0; pi<pcts.length; pi++){
+      var dp=pcts[pi], subs=[], gds=[], adv=+p.adVal||0;
+      if(p.adType==='pct' && adv>0){
+        var g0=Math.round(T.deposit/Math.max(0.01,1-adv/100));
+        for(var g=g0-3; g<=g0+3; g++){ if(g-Math.round(g*(adv/100))===Math.round(T.deposit)) gds.push(g); }
+      } else {
+        gds.push(r2(T.total + adv - T.balance));
+      }
+      for(var gi=0; gi<gds.length; gi++){
+        var gd=gds[gi]; if(Math.abs(gd-Math.round(gd))>0.005) continue; gd=Math.round(gd);
+        var am=(p.adType==='pct')?Math.round(gd*(adv/100)):adv;
+        var tot=r2(T.total+am);
+        var ads=[];
+        if(p.agx || !(+p.tax)) ads.push(tot);
+        else { var t0=Math.round(tot*(+p.tax)/(100+(+p.tax))); for(var ta=t0-3; ta<=t0+3; ta++){ var ad=r2(tot-ta); if(Math.round(ad*((+p.tax)/100))===ta) ads.push(ad); } }
+        for(var ai=0; ai<ads.length; ai++){
+          var ad2=ads[ai];
+          if(Math.round(ad2*(dp/100))!==gd) continue;
+          if(!(+p.disc)) { subs.push(ad2); continue; }
+          var d0=Math.round(ad2*(+p.disc)/(100-(+p.disc)));
+          for(var da=d0-3; da<=d0+3; da++){ var sb=r2(ad2+da); if(Math.round(sb*((+p.disc)/100))===da) subs.push(sb); }
+        }
+      }
+      var ok=[];
+      for(var si=0; si<subs.length; si++){ var pp={disc:p.disc,tax:p.tax,agx:p.agx,depPct:dp,adType:p.adType,adVal:p.adVal}; var m=PL.forward(subs[si],pp); if(!m.clamped && matches(m,T) && ok.indexOf(subs[si])<0) ok.push(subs[si]); }
+      if(ok.length) return { subs:ok, depPct:dp };
+    }
+    return null;
+  };
+
+  // ── Framing / 4' OC price under the rules in force at time T (old engines) ──
+  function colIdx(cols, l){ var i=0; for(var k=0;k<cols.length;k++){ if(cols[k]<=l) i=k; else break; } return i; }
+  function frOcAt(T, c, crm){
+    var fr=0, oc=0, S=[20,25,30,35,40];
+    if(c.fu==='12'){
+      if(c.bt==='fslean') fr=c.nowFr;
+      else if(c.bt==='widespan'){
+        if(crm && c.mfr!=='CA') fr=[840,960,1080,1200,1320,1440,1560,1680,1800][colIdx([20,24,28,32,36,40,44,48,52],c.l)];
+        else fr=[360,480,600,720,840,1560,1680,1800][colIdx([20,25,30,35,40,44,48,52],c.l)];
+      } else {
+        var SV=(crm && c.mfr!=='CA')?(c.w<=24?[360,480,600,720,840]:[410,530,650,770,890]):(c.w<=24?[210,240,270,300,330]:[360,480,600,720,840]);
+        if(c.mfr==='CCI' && c.w>24) fr=c.nowFr; // cci12GA series: unchanged since before 9/7
+        else if(c.l>40) fr=(c.mfr==='CCI' && T>=T_UNITS)?root.cciUnitSum(c.l,SV):Math.round(SV[4]+((SV[4]-SV[3])/5)*(c.l-40));
+        else fr=SV[colIdx(S,c.l)];
+      }
+    }
+    if(c.mfr!=='CA' && c.oc==='4oc' && c.w<=24 && c.bt!=='widespan' && c.bt!=='fslean'){
+      var waived=(!crm && T<T_OC_WAIVE_END && c.fu==='12');
+      if(!waived){ var V4=[300,325,350,375,400]; oc=(c.l>40)?((c.mfr==='CCI'&&T>=T_UNITS)?root.cciUnitSum(c.l,V4):Math.round(400+5*(c.l-40))):V4[colIdx(S,c.l)]; }
+    }
+    if(T>=T_COMBO && c.mfr==='CCI' && c.fu==='12' && c.oc==='4oc' && c.w>0 && c.w<=24 && c.bt!=='widespan' && c.bt!=='fslean'){
+      var V=[360,480,600,720,840]; fr=(c.l>40)?root.cciUnitSum(c.l,V):V[colIdx(S,c.l)]; oc=0;
+    }
+    return { fr:fr, oc:oc };
+  }
+
+  // ── Drift detectors: $ the saved price carries that today's engine no longer charges ──
+  // Returns [{k, label, amt, rules:[ids]}] (amt > 0 = the saved price was higher).
+  function detectDrift(data, rcl){
+    var out=[], f=data.fields||{}, savedT=tms(data.savedAt)||0;
+    var mfr=root.ACTIVE_MFR, w=parseInt(f.bw)||0, l=parseInt(f.bl)||0, bt=f.btype||'';
+    // 1) Side frames on CCI > 30' wide eave framed openings (d4c8695)
+    if(mfr==='CCI' && w>30 && savedT<T_SIDEFRAME){
+      var cnt=0;
+      (data.addcomps||[]).forEach(function(a){
+        if(String(a.act||'').indexOf('Framed Opening')===0 && /Eave Side$/.test(String(a['fo-loc']||''))) cnt+=parseInt(a['fo-sf'])||0;
+      });
+      if(cnt>0) out.push({ k:'sideFrames', label:'Side frames (as originally quoted)', amt:r2(cnt*(root._sf_dw||150)), rules:['side-frames'] });
+    }
+    // 2) Framing / 4' OC price changes (631490e, CRM 12GA table, 348a766, 6ab9572)
+    if(bt && rcl && !rcl.manual){
+      var c={ mfr:mfr, bt:bt, w:w, l:l, fu:(f['framing-upgrade']||'14'), oc:(f['oc-spacing']||'5oc'), nowFr:rcl.framingUpgrade };
+      // the model must reproduce today's engine exactly, or it is not used
+      var nowM=frOcAt(8.64e15, c, false);
+      if(c.fu===(($('framing-upgrade')||{}).value||'14') && r2(nowM.fr+nowM.oc)===r2(rcl.framingUpgrade+rcl.ocUpgrade)){
+        var crm=(data.source==='3d-builder' && savedT>=T_CRM_FROM && savedT<T_CRM_END);
+        var steps=[[T_CRM_END,'crm-12ga'],[T_OC_WAIVE_END,'oc-waiver'],[T_UNITS,'cci-units'],[T_COMBO,'combo-12x4']];
+        steps.sort(function(a,b){ return a[0]-b[0]; });
+        var at=savedT||0, cur=frOcAt(at, c, crm), rules=[], frD=0, ocD=0;
+        var old=cur;
+        steps.forEach(function(s){
+          if(s[0]<=at) return;
+          var crmNow=crm && s[0]<T_CRM_END;
+          var nx=frOcAt(s[0], c, crmNow);
+          if(nx.fr!==cur.fr || nx.oc!==cur.oc) rules.push(s[1]);
+          cur=nx;
+        });
+        frD=old.fr-nowM.fr; ocD=old.oc-nowM.oc;
+        var amt=r2(frD+ocD);
+        if(amt){
+          var lbl=(frD&&ocD)?'Framing upgrades (as originally quoted)':(frD?'12-gauge framing (as originally quoted)':"4' OC framing (as originally quoted)");
+          if(nowM.oc===0 && nowM.fr && c.fu==='12' && c.oc==='4oc' && !frD) lbl="4' OC framing (as originally quoted)";
+          out.push({ k:'framing', label:lbl, amt:amt, rules:rules });
+        }
+      }
+    }
+    return out;
+  }
+
+  // ── Rule overrides (12GA hi-wind / impact / Lee lap / no-service) ──
+  function ruleCtx(){
+    var co=(($('county')||{}).textContent)||'', w=parseInt(($('bw')||{}).value)||0, l=parseInt(($('bl')||{}).value)||0;
+    var cci=(root.ACTIVE_MFR==='CCI');
+    return {
+      co:co, w:w, cci:cci,
+      req12: cci && w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0,
+      imp: cci && (IMPACT_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
+      lap: cci && co==='Lee',
+      ns: cci && NOSVC_CO.indexOf(co)>=0
+    };
+  }
+  function savedNonImpact(data){
+    var bad=false;
+    (data.windows||[]).forEach(function(d){ var v=(d.ntp!==undefined)?d.ntp:d.ntype; if(v!==undefined && !WIN_OK[v]) bad=true; });
+    (data.wtds||[]).forEach(function(d){ var v=(d.whi!==undefined)?d.whi:d.wtype; if(v!==undefined && v!=='hiwind') bad=true; });
+    (data.leantos||[]).forEach(function(lt){ (lt.accs||[]).forEach(function(a){
+      if(a['lt-acc-type']==='win' && a['lt-acc-win-hi']!==undefined && !WIN_OK[a['lt-acc-win-hi']]) bad=true;
+      if(a['lt-acc-type']==='wtd' && a['lt-acc-wtd-hi']!==undefined && a['lt-acc-wtd-hi']!=='hiwind') bad=true;
+    }); });
+    return bad;
+  }
+  // Called by restoreQuoteData right after the county is restored (Step 3b).
+  PL.restoreFlags = function(data, opts){
+    opts=opts||{};
+    var f=data.fields||{}, c=ruleCtx();
+    // Pin the rule keys to the restored build so rc() does not reset the flags.
+    root._req12Key=root.ACTIVE_MFR+'|'+(c.w>24?'wide':'narrow')+'|'+c.co;
+    root._permKey=root.ACTIVE_MFR+'|'+c.co;
+    var gf={ fu14:false, imp:false, lap:false, ns:false };
+    var ov=data.overrides;
+    if(ov){
+      root._fu14Ovr=!!ov.fu14; root._impOvr=!!ov.imp; root._lapOvr=!!ov.lap; root._nsOvr=!!ov.ns;
+      if(ov.grand){ gf.fu14=!!ov.grand.fu14; gf.imp=!!ov.grand.imp; gf.lap=!!ov.grand.lap; gf.ns=!!ov.grand.ns; }
+    } else if(opts.lock){
+      // Older quotes: infer the flag wherever the saved build differs from what the
+      // rule would force. Saved before the rule -> "Grandfathered", else a rep override.
+      var sT=tms(data.savedAt)||0;
+      var fu=f['framing-upgrade']||'14';
+      root._fu14Ovr=!!(c.req12 && fu!=='12');
+      root._impOvr=!!(c.imp && savedNonImpact(data));
+      root._lapOvr=!!(c.lap && f.lap!=='yes');
+      root._nsOvr=!!(c.ns && f['delivery-type']==='pickup');
+      var t12=(c.co==='St. Lucie')?T_PERMIT:T_HW12;
+      gf.fu14=root._fu14Ovr && sT<t12;
+      gf.imp=root._impOvr && sT<T_PERMIT;
+      gf.lap=root._lapOvr && sT<T_PERMIT;
+      gf.ns=false; // 'pickup' did not exist before the rule: always a rep choice
+    } else {
+      root._fu14Ovr=false; root._impOvr=false; root._lapOvr=false; root._nsOvr=false;
+    }
+    root._plGrand=gf;
+  };
+  // Put back saved choices a rule lock may have rewritten while components were re-added.
+  PL.reapplySaved = function(data){
+    var f=data.fields||{}, el;
+    if(root._fu14Ovr && f['framing-upgrade']!==undefined && (el=$('framing-upgrade'))){ el.disabled=false; el.value=f['framing-upgrade']; }
+    if(root._lapOvr && f.lap!==undefined && (el=$('lap'))){ el.disabled=false; el.value=f.lap; root._lapPre=null; }
+    if(root._nsOvr && f['delivery-type']!==undefined && (el=$('delivery-type'))) el.value=f['delivery-type'];
+    if(root._impOvr){
+      var i;
+      var wins=doc.querySelectorAll('.ne.entry'); (data.windows||[]).forEach(function(d,ix){ var s=wins[ix]&&wins[ix].querySelector('.ntp'); var v=(d.ntp!==undefined)?d.ntp:d.ntype; if(s&&v!==undefined){ for(i=0;i<s.options.length;i++) s.options[i].disabled=false; s.value=v; delete s.dataset.preImp; } });
+      var wds=doc.querySelectorAll('.we.entry'); (data.wtds||[]).forEach(function(d,ix){ var s=wds[ix]&&wds[ix].querySelector('.whi'); var v=(d.whi!==undefined)?d.whi:d.wtype; if(s&&v!==undefined){ for(i=0;i<s.options.length;i++) s.options[i].disabled=false; s.value=v; delete s.dataset.preImp; } });
+      var lts=doc.querySelectorAll('.lte.entry'); (data.leantos||[]).forEach(function(lt,li){
+        var aes=lts[li]?lts[li].querySelectorAll('.lt-acc-e'):[];
+        (lt.accs||[]).forEach(function(a,ai){ var ae=aes[ai]; if(!ae) return;
+          ['lt-acc-win-hi','lt-acc-wtd-hi'].forEach(function(cls){ var s=ae.querySelector('.'+cls); if(s&&a[cls]!==undefined){ for(i=0;i<s.options.length;i++) s.options[i].disabled=false; s.value=a[cls]; delete s.dataset.preImp; } });
+        });
+      });
+    }
+  };
+
+  // ── Tripwire: what the restore did NOT put back as saved ──
+  var FIELD_ALLOW = { 'plans-sel':1, 'sheeting-upgrade':1, 'zoning-show':1, 'fastenerAdd':1, 'fastener-add':1, 'hold-amt':1, 'hold-ref':1, 'hold-src':1, 'hold-dec':1, 'gch-open':1, 'brs':1 };
+  PL.tripwire = function(data){
+    var issues=[], now;
+    try{ now=root.collectQuoteData(); }catch(e){ return ['Could not read the reopened quote back ('+e.message+')']; }
+    var f=data.fields||{}, g=now.fields||{}, bt=g.btype||'', w=parseInt(g.bw)||0, cci=(root.ACTIVE_MFR==='CCI');
+    function same(a,b){ return String(a==null?'':a)===String(b==null?'':b); }
+    function hexOK(a,b){ return root.CCI_LEGACY_HEX && root.CCI_LEGACY_HEX[a]===b; }
+    Object.keys(f).forEach(function(k){
+      if(FIELD_ALLOW[k]) return;
+      if(k.indexOf('_span_')===0){ if(/^_span_(city|county|state)$/.test(k) && k in g && !same(f[k],g[k])) issues.push(k.slice(6)+': saved "'+f[k]+'", now "'+g[k]+'"'); return; }
+      if(!(k in g) || same(f[k],g[k]) || hexOK(f[k],g[k])) return;
+      if(k==='agx' && g.pt!=='ag') return;                                   // doPT clears exempt off Agricultural
+      if((k==='wre'||k==='wle') && (bt==='carport'||bt==='gch')) return;     // mirrors of the side-panel store
+      if(k==='oc-spacing' && (w>24 || bt==='widespan')) return;              // hidden + unpriced there
+      if(k==='pitch-sel' && bt==='fslean') return;                           // fslean pitch lives in fs-pitch
+      issues.push(k+': saved "'+f[k]+'", now "'+g[k]+'"');
+    });
+    function cmpList(name, a, b, keys, skip){
+      a=a||[]; b=b||[];
+      if(a.length!==b.length){ issues.push(name+': saved '+a.length+', now '+b.length); return; }
+      a.forEach(function(x,i){ var y=b[i]||{};
+        keys.forEach(function(k){ if(!(k in x) || !(k in y) || same(x[k],y[k]) || hexOK(x[k],y[k])) return; if(skip && skip(k,x,y)) return; issues.push(name+' '+(i+1)+' '+k+': saved "'+x[k]+'", now "'+y[k]+'"'); });
+        var px=x.positions||[], py=y.positions||[];
+        px.forEach(function(p,j){ var q=py[j]; if(q && (!same(p.val,q.val) || !same(p.side,q.side))) issues.push(name+' '+(i+1)+' position '+(j+1)+' changed'); });
+      });
+    }
+    cmpList('Roll-up door', data.doors, now.doors, ['rloc','rdtype','rsz','rqt','rch','rsl','rop','r45','rco']);
+    cmpList('Walk door', data.wtds, now.wtds, ['wloc','whi','wqt','wsf']);
+    cmpList('Window', data.windows, now.windows, ['nloc','ntp','nqt','nsf','nsill']);
+    cmpList('Framed opening / component', data.addcomps, now.addcomps, ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-sill','fo-sf','fo-loc'],
+      function(k,x){ return k==='fo-sf' && cci && w>30; });                  // side frame now included (d4c8695)
+    var lta=data.leantos||[], ltb=now.leantos||[];
+    if(lta.length!==ltb.length) issues.push('Lean-tos: saved '+lta.length+', now '+ltb.length);
+    else lta.forEach(function(x,i){ var y=ltb[i]||{};
+      ['lts','ltw','ltl2','ltoff','ltc','ltp','lt-type','lt-tall-h','lt-wm','lt-wall-front','lt-wall-back','lt-wall-side'].forEach(function(k){ if(k in x && k in y && !same(x[k],y[k]) && !hexOK(x[k],y[k])) issues.push('Lean-to '+(i+1)+' '+k+': saved "'+x[k]+'", now "'+y[k]+'"'); });
+      var aa=x.accs||[], ab=y.accs||[];
+      if(aa.length!==ab.length){ issues.push('Lean-to '+(i+1)+' accessories: saved '+aa.length+', now '+ab.length); return; }
+      aa.forEach(function(a,j){ var b=ab[j]||{};
+        ['lt-acc-type','lt-acc-fo-type','lt-acc-size','lt-acc-color','lt-acc-fo-w','lt-acc-fo-h','lt-acc-sf','lt-acc-ch','lt-acc-sl','lt-acc-wtd-hi','lt-acc-win-hi','lt-acc-qty','lt-acc-loc','lt-acc-pos'].forEach(function(k){
+          if(!(k in a) || !(k in b) || same(a[k],b[k]) || hexOK(a[k],b[k])) return;
+          if(k==='lt-acc-win-hi' && a['lt-acc-type']!=='win') return;      // unused select on this accessory
+          if(k==='lt-acc-wtd-hi' && a['lt-acc-type']!=='wtd') return;
+          issues.push('Lean-to '+(i+1)+' accessory '+(j+1)+' '+k+': saved "'+a[k]+'", now "'+b[k]+'"');
+        });
+      });
+    });
+    return issues;
+  };
+
+  // ── Engine passes ──
+  PL._rawRc = root.rc; // the program's own rc chain, before the 3D host wraps it (no 3D sync)
+  function pass(){ PL._silent=true; try{ PL._rawRc(); } finally { PL._silent=false; } return root._rcLast; }
+  function setHold(amt, parts, src){
+    var a=$('hold-amt'), b=$('hold-ref'), c=$('hold-src');
+    if(a) a.value=amt?String(r2(amt)):'';
+    if(b) b.value=(parts&&parts.length)?JSON.stringify({parts:parts}):'';
+    if(c) c.value=src||'';
+  }
+  function holdParts(){ try{ return (JSON.parse((($('hold-ref')||{}).value)||'{}').parts)||[]; }catch(e){ return []; } }
+  function curP(){ var r=root._rcLast||{}; return { disc:r.disc, tax:r.tax, agx:r.agEx, depPct:r.depPct, adType:r.addDiscType, adVal:r.addDiscVal }; }
+  function screen(){ return { total:num(($('ptot')||{}).textContent), deposit:num(($('pdep')||{}).textContent), balance:num(($('pbal')||{}).textContent) }; }
+  function flagsSnapshot(){ return { fu14:!!root._fu14Ovr, imp:!!root._impOvr, lap:!!root._lapOvr, ns:!!root._nsOvr }; }
+  function setFlags(fl){ root._fu14Ovr=!!fl.fu14; root._impOvr=!!fl.imp; root._lapOvr=!!fl.lap; root._nsOvr=!!fl.ns; }
+
+  PL.reset = function(){
+    PL.on=false; PL.st=null; PL._data=null; PL._opts=null;
+    setHold(0,null,''); var d=$('hold-dec'); if(d) d.value='';
+    var n=$('pl-notice'); if(n){ n.style.display='none'; n.innerHTML=''; }
+    var h=$('ct-honor-held'); if(h) h.classList.add('hidden');
+    root._plGrand={ fu14:false, imp:false, lap:false, ns:false };
+  };
+  PL.fail = function(msg){
+    var st=PL.st||(PL.st={ requested:true, issues:[] });
+    PL.on=false; setHold(0,null,''); st.ok=false; st.active=false; st.ready=true;
+    (st.issues=st.issues||[]).push('Price lock error: '+msg);
+    try{ root.rc(); }catch(e){}
+    paint();
+  };
+
+  // ── Reopen: find the saved price, hold it, explain the difference ──
+  PL.afterRestore = function(data, opts){
+    opts=opts||{};
+    PL._data=data; PL._opts=opts;
+    var f=data.fields||{};
+    var st=PL.st={ requested:!!opts.lock, ready:false, ok:false, active:false, status:opts.status||'', sold:!!PL.SOLD[opts.status||''],
+      source:null, saved:null, today:null, hold:0, parts:[], rules:[], issues:[], notes:[], decisions:[], choice:'keep', savedAt:data.savedAt||null };
+    if(!opts.lock) { st.ready=true; return; }
+    try{ st.decisions=JSON.parse(f['hold-dec']||'[]')||[]; }catch(e){ st.decisions=[]; }
+    var dec=$('hold-dec'); if(dec) dec.value=st.decisions.length?JSON.stringify(st.decisions):'';
+    st.issues=PL.tripwire(data);
+    var rcl=root._rcLast;
+    if(!rcl){ st.issues.push('The quote did not price on reopen.'); st.ready=true; paint(); return; }
+    var p=curP();
+    // 1) The saved price
+    var S=null, pr=data.priced;
+    if(pr && pr.v===1 && isFinite(+pr.sub) && pr.money){
+      S={ sub:+pr.sub, src:'snapshot', depPct:pr.depPct||17, parts:pr.holdParts||[], freeThresh:pr.freeThresh,
+          totals:{ total:+pr.money.adjTot, deposit:+pr.money.dep, balance:+pr.money.bal } };
+      st.pricedAt=pr.pricedAt||null;
+    } else if(opts.legacyTotals && isFinite(+opts.legacyTotals.total)){
+      var LT={ total:+opts.legacyTotals.total, deposit:+opts.legacyTotals.deposit, balance:+opts.legacyTotals.balance };
+      var inv=PL.invert(LT, p);
+      if(!inv){
+        st.issues.push("The saved total "+money(LT.total)+" (deposit "+money(LT.deposit)+", balance "+money(LT.balance)+") can't be reproduced from this quote's discount, tax and deposit settings, so the price can't be held automatically. Compare with the saved PDF.");
+        st.saved=LT; st.ready=true; st.today=screen(); paint(); return;
+      }
+      S={ sub:inv.subs[0], subs:inv.subs, src:'legacy', depPct:inv.depPct, parts:[], totals:LT };
+    } else {
+      st.notes.push('No saved price on record for this quote — showing today’s pricing.');
+      st.ready=true; st.today=screen(); paint(); return;
+    }
+    // Honor Signed Pricing on a sold order: the signed contract subtotal is the target.
+    var honor=parseFloat(f['ct-honor'])||0;
+    if(st.sold && honor>0 && S.src==='legacy'){
+      var hm=PL.forward(Math.round(honor), { disc:p.disc, tax:p.tax, agx:p.agx, depPct:S.depPct, adType:p.adType, adVal:p.adVal });
+      st.notes.push('Signed-contract subtotal honored ('+money(Math.round(honor))+'); the card showed '+money(S.totals.total)+'.');
+      S.sub=Math.round(honor); S.subs=[S.sub]; S.src='legacy+honor'; S.totals={ total:hm.adjTot, deposit:hm.dep, balance:hm.bal };
+    }
+    st.source=S.src; st.saved={ total:r2(S.totals.total), deposit:r2(S.totals.deposit), balance:r2(S.totals.balance) };
+    // 2) Deposit % / free-upgrade threshold as saved
+    if(S.depPct && S.depPct!==(root._depPct||17)){ root._depPct=S.depPct; st.notes.push('Deposit % held at '+S.depPct+'% (as saved).'); }
+    if(S.freeThresh && S.freeThresh!==(root._freeThresh||10000)) root._freeThresh=S.freeThresh;
+    rcl=pass();
+    if(root.INPUT_MODE){
+      // Manual pricing reopens with its typed prices: nothing to hold, just verify.
+      S.parts=[]; finishLock(S, rcl.sub, [], data, opts);
+      return;
+    }
+    // 3) Roof style was never saved before v3: pick the one that reproduces the saved price.
+    var parts=S.src==='snapshot'?S.parts.slice():[];
+    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source}:data, rcl);
+    drift.forEach(function(d){ parts.push(d); });
+    var attributed=0; parts.forEach(function(x){ attributed+=(+x.amt||0); });
+    // Pick the saved subtotal (the inversion can allow two when a discount rounds) and,
+    // on quotes saved before roof style was stored, the roof style that reproduces it.
+    function bestFor(rs, P0){
+      var b=null;
+      (S.subs||[S.sub]).forEach(function(sb){ var res=r2(sb-P0-attributed); if(!b || Math.abs(res)<Math.abs(b.res)-0.004) b={ rs:rs, sub:sb, P0:P0, res:res }; });
+      return b;
+    }
+    var rsEl=$('rs'), rs0=rsEl?rsEl.value:'';
+    var best=bestFor(rs0, rcl.sub);
+    if(f.rs===undefined && S.src!=='snapshot' && rsEl && Math.abs(best.res)>=0.005){
+      var exact=[];
+      for(var oi=0; oi<rsEl.options.length; oi++){ var v=rsEl.options[oi].value; if(v===rs0) continue; rsEl.value=v; var b2=bestFor(v, pass().sub); if(Math.abs(b2.res)<0.005) exact.push(b2); }
+      if(exact.length===1){
+        best=exact[0];
+        st.notes.push('Roof style set to '+best.rs+': it is the only roof style that reproduces the saved price (roof style was not saved with quotes before 9/30/26 — check the saved PDF).');
+      }
+      rsEl.value=best.rs;
+      rcl=pass();
+    }
+    S.sub=best.sub;
+    finishLock(S, best.P0, parts, data, opts);
+  };
+
+  function finishLock(S, P0, parts, data, opts){
+    var st=PL.st, f=data.fields||{};
+    var hold=r2(S.sub-P0), attributed=0;
+    parts=(parts||[]).filter(function(x){ return r2(x.amt); });
+    parts.forEach(function(x){ x.amt=r2(x.amt); attributed+=x.amt; });
+    var residual=r2(hold-attributed);
+    if(residual) parts.push({ k:'orig', label:'Pricing as originally quoted', amt:residual, rules:[] });
+    if(root.INPUT_MODE && hold){ st.issues.push('Manual (Input mode) prices do not add up to the saved total ('+signed(hold)+').'); hold=0; parts=[]; }
+    st.hold=hold; st.parts=parts; st.P0=P0; st.savedSub=S.sub;
+    if(S.src!=='snapshot' && Math.abs(residual)>Math.max(500, 0.03*Math.abs(S.sub)))
+      st.issues.push('The saved price differs from today’s price for this build by '+signed(residual)+' that no rule change explains. The build may not have reopened exactly as saved (roof style, manual pricing and price-table edits were not stored on older quotes). Compare with the saved PDF before sending documents.');
+    setHold(hold, parts, S.src+'|'+PL.ENGINE_REV);
+    PL.on=true;
+    pass();
+    // What each grandfathered / overridden rule would do to this build today.
+    ruleEffects(data);
+    // Today's pricing with every rule applied (for the notice) — silent passes only.
+    st.today=todayAll(data);
+    // Final pass through the full chain (3D host sync) and verify to the cent.
+    root.rc();
+    var cur=screen();
+    st.current=cur;
+    st.ok=sameCents(cur.total,st.saved.total) && sameCents(cur.deposit,st.saved.deposit) && sameCents(cur.balance,st.saved.balance);
+    if(!st.ok) st.issues.push('Held totals '+money(cur.total)+' / '+money(cur.deposit)+' / '+money(cur.balance)+' do not match the saved '+money(st.saved.total)+' / '+money(st.saved.deposit)+' / '+money(st.saved.balance)+'.');
+    st.active=true; st.ready=true;
+    // Revision baseline = what was sold.
+    root._rvOrig={ tot:st.saved.total, dep:st.saved.deposit, dims:(($('bw')||{}).value+'x'+($('bl')||{}).value+'x'+($('bh')||{}).value) };
+    paint();
+    try{ root.dispatchEvent(new CustomEvent('ss-price-lock',{ detail:PL.state() })); }catch(e){}
+  }
+
+  function applicableFlagRules(){
+    var c=ruleCtx(), out=[];
+    if(c.req12 && root._fu14Ovr) out.push('fu14');
+    if(c.imp && root._impOvr) out.push('imp');
+    if(c.lap && root._lapOvr) out.push('lap');
+    // No-service county: listed while the order is still 'installed' (material-only is the compliant path).
+    var dt=(($('delivery-type')||{}).value)||'installed';
+    if(c.ns && !root._nsOvr && dt!=='pickup') out.push('ns');
+    return out;
+  }
+  function ruleEffects(data){
+    var st=PL.st, base=root._rcLast, fl0=flagsSnapshot();
+    st.rules=[];
+    applicableFlagRules().forEach(function(k){
+      var eff={ sub:0, total:0 };
+      if(k!=='ns'){
+        var fl=flagsSnapshot(); fl[k]=false; setFlags(fl);
+        var r=pass();
+        eff={ sub:r2(r.sub-base.sub), total:r2(r.adjTot-base.adjTot) };
+        setFlags(fl0); PL.reapplySaved(data); pass();
+      }
+      var id=FLAG_RULE[k], R=PL.RULES[id];
+      var d=decisionFor(id);
+      st.rules.push({ id:id, flag:k, commit:R.commit, date:R.date, text:R.text, kind:'input', grandfathered:(k==='ns')?((tms(data.savedAt)||0)<T_PERMIT):!!(root._plGrand&&root._plGrand[k]),
+        effectSub:eff.sub, effectTotal:eff.total, decision:d?d.choice:null, reason:d?d.reason:null });
+    });
+    // Price-table rules behind the held parts (for the notice)
+    st.parts.forEach(function(pt){ (pt.rules||[]).forEach(function(id){ var R=PL.RULES[id]; if(R) st.rules.push({ id:id, commit:R.commit, date:R.date, text:R.text, kind:'price', part:pt.label, effectSub:-pt.amt }); }); });
+  }
+  function todayAll(data){
+    var fl0=flagsSnapshot(), on0=PL.on;
+    setFlags({}); PL.on=false;
+    var r=pass(), t={ total:r2(r.adjTot), deposit:r2(r.dep), balance:r2(r.bal), sub:r2(r.sub) };
+    PL.on=on0; setFlags(fl0); PL.reapplySaved(data); pass();
+    return t;
+  }
+  function decisionFor(id){ var d=(PL.st&&PL.st.decisions)||[]; for(var i=d.length-1;i>=0;i--) if(d[i].rule===id) return d[i]; return null; }
+  function saveDecisions(){ var el=$('hold-dec'); if(el) el.value=PL.st.decisions.length?JSON.stringify(PL.st.decisions):''; }
+
+  // ── Rep choices ──
+  // Grandfathered / overridden rule: 'charge' (apply, customer pays today's price),
+  // 'nocharge' (apply, customer total unchanged), 'keep' (as sold, reason required).
+  PL.decide = function(ruleId, choice, reason){
+    var st=PL.st; if(!st || !PL.on) return false;
+    var k=null; for(var fk in FLAG_RULE) if(FLAG_RULE[fk]===ruleId) k=fk;
+    if(!k) return false;
+    if(choice==='keep'){
+      reason=String(reason||'').replace(/^\s+|\s+$/g,'');
+      if(!reason){ if(root.toast) root.toast('Add a reason to keep the build as sold','err'); return false; }
+    } else if(k==='ns'){
+      // Material-only order (customer pickup + self-install): the price does not change.
+      root._nsOvr=true; var dtEl=$('delivery-type'); if(dtEl){ root._dtPre=dtEl.value; dtEl.value='pickup'; }
+      choice='material';
+    } else {
+      var before=pass();
+      var fl=flagsSnapshot(); fl[k]=false; setFlags(fl);
+      if(root._plGrand) root._plGrand[k]=false;
+      var after=pass();
+      if(choice==='nocharge'){
+        var d=r2(after.sub-before.sub);
+        if(d){
+          var parts=holdParts(); parts.push({ k:'nc-'+k, label:NC_LABEL[k]||'Included at no charge', amt:-d, rules:[ruleId] });
+          st.hold=r2(st.hold-d); st.parts=parts; setHold(st.hold, parts, ($('hold-src')||{}).value);
+        }
+      }
+    }
+    st.decisions.push({ rule:ruleId, choice:choice, reason:reason||'', at:new Date().toISOString() });
+    saveDecisions();
+    st.rules.forEach(function(r){ if(r.id===ruleId){ r.decision=choice; r.reason=reason||null; } });
+    root.rc();
+    st.current=screen();
+    paint();
+    return true;
+  };
+  // 'today': drop the hold and apply every current rule (one way for this session).
+  PL.choose = function(choice){
+    var st=PL.st; if(!st) return false;
+    if(choice!=='today' || st.choice==='today') return false;
+    var msg='Update this quote to TODAY’S pricing?\n\nSaved total '+money(st.saved?st.saved.total:0)+' → today '+money(st.today?st.today.total:0)+'.'+(st.sold?'\n\nThis is a SOLD order: the customer must re-sign.':'')+'\n\nNothing is saved until you save the quote.';
+    if(root.confirm && !root.confirm(msg)) return false;
+    PL.on=false; setHold(0,null,''); setFlags({}); root._plGrand={ fu14:false, imp:false, lap:false, ns:false };
+    st.choice='today'; st.active=false;
+    root.rc();
+    st.current=screen();
+    root._rvOrig={ tot:st.saved?st.saved.total:0, dep:st.saved?st.saved.deposit:0, dims:(($('bw')||{}).value+'x'+($('bl')||{}).value+'x'+($('bh')||{}).value) };
+    paint();
+    return true;
+  };
+
+  // ── Queries for the CRM / savers ──
+  PL.openCompliance = function(){
+    var st=PL.st; if(!st || !st.sold || st.choice==='today') return [];
+    return (st.rules||[]).filter(function(r){ return r.kind==='input' && !r.decision; });
+  };
+  PL.contractBlocked = function(){ return PL.openCompliance().length>0; };
+  PL.showGate = function(){
+    var n=PL.openCompliance().length;
+    if(root.toast) root.toast('Sold order: decide on '+n+' rule'+(n===1?'':'s')+' that would change the build (see the notice above the Price Breakdown) before a new contract.','err');
+    var el=$('pl-notice'); if(el && el.scrollIntoView) try{ el.scrollIntoView({ block:'center' }); }catch(e){}
+  };
+  PL.savedTotals = function(){ var st=PL.st; return (PL.on && st && st.saved)?{ total:st.saved.total, deposit:st.saved.deposit, balance:st.saved.balance }:null; };
+  PL.state = function(){
+    var st=PL.st;
+    if(!st) return { requested:false, ready:true, active:false, ok:null };
+    var open=PL.openCompliance();
+    var cur=screen();
+    return {
+      requested:st.requested, ready:st.ready, active:PL.on, ok:!!st.ok, choice:st.choice, source:st.source, status:st.status, sold:st.sold,
+      saved:st.saved, current:cur, today:st.today, hold:PL.on?r2(st.hold):0, parts:JSON.parse(JSON.stringify(st.parts||[])),
+      rules:JSON.parse(JSON.stringify(st.rules||[])), issues:(st.issues||[]).slice(), notes:(st.notes||[]).slice(),
+      compliance:open.map(function(r){ return { id:r.id, text:r.text, effectTotal:r.effectTotal }; }),
+      differsFromSaved:!!(st.saved && !(sameCents(cur.total,st.saved.total)&&sameCents(cur.deposit,st.saved.deposit)&&sameCents(cur.balance,st.saved.balance))),
+      canAutoDoc:!!(PL.on && st.ok && !(st.issues||[]).length && !open.length)
+    };
+  };
+  // What this quote costs right now. Saved with the quote as payload.priced
+  // (CRM harvest, program Save) so a later reopen can hold it exactly.
+  PL.snapshot = function(){
+    if(!$('bw') || !$('bw').value || !$('bl') || !$('bl').value) return null;
+    var r=pass(); if(!r) return null;
+    var st=PL.st;
+    return { v:1, pricedAt:new Date().toISOString(), engineRev:PL.ENGINE_REV, inputMode:!!root.INPUT_MODE,
+      source:PL.on?'held':'engine', sub:r.sub, hold:r2(r.holdP||0), holdParts:PL.on?holdParts():[], depPct:r.depPct, freeThresh:(root._freeThresh||10000),
+      firstPricedAt:(st&&st.pricedAt)||(st&&st.savedAt)||null,
+      fields:{ disc:r.disc, tax:r.tax, agx:!!r.agEx, adType:r.addDiscType, adVal:r.addDiscVal },
+      money:{ da:r.da, ad:r.ad, ta:r.ta, tot:r.tot, grossDep:r.grossDep, addDisc:r.addDiscAmount, dep:r.dep, bal:r.bal, adjTot:r.adjTot },
+      screen:{ ptot:(($('ptot')||{}).textContent||''), pdep:(($('pdep')||{}).textContent||''), pbal:(($('pbal')||{}).textContent||'') },
+      lines:r.manual?null:{ base:r.base, leg:r.leg, framing:r.framingUpgrade, oc:r.ocUpgrade, pitch:r.pitchUpgrade, walls:r.walls, vert:r.vertWallUpg,
+        rud:r.rud, wtd:r.wtd, win:r.win, sideFrames:r.sf, lap:r.lapP, sheet:r.sheetUpgrade, wainscot:r.wainP, partition:r.aewP, leanTos:r.leanToTotal,
+        connection:r.connFeeTotal, components:r.addCompTotal, insulation:r.insulTotal, fastener:r.fastenerP, overhang:r.overhangP, sidePanels:r.sidePanelP,
+        anchors:r.anchorP, adjustment:r.adjP } };
+  };
+
+  // ── Notice panel (rep-facing; never printed) ──
+  var BTN='display:inline-block;border:1px solid #b45309;border-radius:5px;padding:3px 8px;margin:4px 4px 0 0;font-size:10.5px;font-weight:700;cursor:pointer;background:#fff;color:#7c4a03';
+  var BTN_ON='display:inline-block;border:1px solid #15803d;border-radius:5px;padding:3px 8px;margin:4px 4px 0 0;font-size:10.5px;font-weight:700;background:#dcfce7;color:#14532d';
+  function paint(){
+    var el=$('pl-notice'), st=PL.st; if(!el) return;
+    if(!st || !st.requested){ el.style.display='none'; el.innerHTML=''; return; }
+    var hon=$('ct-honor-held'); if(hon) hon.classList.toggle('hidden', !(PL.on && parseFloat((($('ct-honor')||{}).value)||0)>0));
+    var cur=screen(), h='';
+    var diff=st.saved?r2(cur.total-st.saved.total):0;
+    var anyRule=(st.rules||[]).length>0, anyIssue=(st.issues||[]).length>0;
+    if(st.choice!=='today' && PL.on && !r2(st.hold) && !anyRule && !anyIssue && !diff && !(st.notes||[]).length){ el.style.display='none'; el.innerHTML=''; return; }
+    var bad=anyIssue||!st.ok;
+    h+='<div style="background:'+(bad?'#fee2e2':'#fef3c7')+';border:1px solid '+(bad?'#dc2626':'#f59e0b')+';border-radius:7px;padding:9px 11px;margin:0 0 10px;color:'+(bad?'#7f1d1d':'#7c4a03')+';font-size:11px;line-height:1.45">';
+    if(st.choice==='today'){
+      h+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">Today’s pricing applied</div>';
+      h+='<div>Saved total was <b>'+money(st.saved?st.saved.total:0)+'</b> → now <b>'+money(cur.total)+'</b> ('+signed(diff)+'). To go back, close without saving and reopen.</div>';
+    } else if(st.saved){
+      h+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">'+(PL.on?'Saved price held':'Saved price NOT held')+'</div>';
+      h+='<div>Saved <b>'+money(st.saved.total)+'</b> (deposit '+money(st.saved.deposit)+', balance '+money(st.saved.balance)+')';
+      if(st.today) h+=' · today’s rules <b>'+money(st.today.total)+'</b> ('+signed(r2(st.today.total-st.saved.total))+')';
+      h+='</div>';
+      if(PL.on && diff) h+='<div style="margin-top:3px;font-weight:700">Changes made since reopening: '+signed(diff)+' (now '+money(cur.total)+').</div>';
+    }
+    if(PL.on && (st.parts||[]).length){
+      h+='<div style="margin-top:5px;font-weight:700">Held at the saved price:</div><ul style="margin:2px 0 0 16px;padding:0">';
+      st.parts.forEach(function(pt){
+        var why=(pt.rules||[]).map(function(id){ var R=PL.RULES[id]; return R?(R.text+' ('+R.date+')'):id; }).join('; ');
+        h+='<li><b>'+esc(pt.label)+'</b> '+signed(pt.amt)+(why?' — '+esc(why):(pt.k==='orig'?' — no known rule change explains this part':''))+'</li>';
+      });
+      h+='</ul>';
+    }
+    var ins=(st.rules||[]).filter(function(r){ return r.kind==='input'; });
+    if(PL.on && ins.length){
+      h+='<div style="margin-top:6px;font-weight:700">Rules that would change this build today'+(st.sold?' (sold order — decide before a new contract)':'')+':</div>';
+      ins.forEach(function(r){
+        h+='<div style="margin:4px 0 0;padding:5px 7px;background:rgba(255,255,255,.55);border-radius:5px">';
+        if(r.flag==='ns') h+='<div>'+esc(r.text)+' ('+r.date+'): this order is <b>installed</b>'+(r.grandfathered?' (sold before the rule)':'')+'. Material-only (customer pickup) does not change the price.</div>';
+        else h+='<div>'+esc(r.text)+' ('+r.date+') — '+(r.grandfathered?'<b>grandfathered</b> (sold before the rule)':'<b>rep override</b>')+'. Applying it: '+(r.effectTotal?'<b>'+signed(r.effectTotal)+'</b> on the total':'no price change')+'.</div>';
+        if(r.decision){
+          h+='<div style="'+BTN_ON+'">'+(r.decision==='charge'?'Applied — charged':r.decision==='nocharge'?'Applied — no charge':r.decision==='material'?'Material-only (customer pickup)':'Kept as sold'+(r.reason?': '+esc(r.reason):''))+'</div>';
+        } else {
+          if(r.flag==='ns') h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'material\')">Make material-only (customer pickup)</span>';
+          else h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'charge\')">Apply — charge customer</span>';
+          if(r.effectSub && r.flag!=='ns') h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'nocharge\')">Apply — no charge</span>';
+          h+='<span style="white-space:nowrap"><input id="pl-reason-'+r.id+'" placeholder="Reason to keep as sold" style="font-size:10.5px;padding:2px 5px;border:1px solid #d6a756;border-radius:4px;width:150px;margin:4px 4px 0 0;color:#1C3557"><span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'keep\',(document.getElementById(\'pl-reason-'+r.id+'\')||{}).value)">Keep as sold</span></span>';
+        }
+        h+='</div>';
+      });
+    }
+    (st.notes||[]).forEach(function(n){ h+='<div style="margin-top:4px">'+esc(n)+'</div>'; });
+    if(anyIssue){
+      h+='<div style="margin-top:6px;font-weight:800">Check before sending documents:</div><ul style="margin:2px 0 0 16px;padding:0">';
+      st.issues.slice(0,12).forEach(function(s){ h+='<li>'+esc(s)+'</li>'; });
+      if(st.issues.length>12) h+='<li>… '+(st.issues.length-12)+' more</li>';
+      h+='</ul>';
+    }
+    if(st.choice!=='today' && st.saved){
+      h+='<div style="margin-top:6px">';
+      if(PL.on) h+='<span style="'+BTN_ON+'">✓ Keep saved price</span>';
+      h+=st.sold?'<a href="#" onclick="PriceLock.choose(\'today\');return false;" style="font-size:10.5px;color:inherit;text-decoration:underline;margin-left:4px">Reprice sold order (customer must re-sign)</a>'
+                :'<span style="'+BTN+'" onclick="PriceLock.choose(\'today\')">Update to today’s pricing</span>';
+      h+='</div>';
+    }
+    h+='</div>';
+    el.innerHTML=h; el.style.display='block';
+  }
+  PL.paint=paint;
+  // Called at the end of every rc() while the lock is on (keeps the notice's "changes since reopening" line live).
+  var _pt=0;
+  PL.afterRc = function(){
+    if(PL._silent || !PL.st || !PL.st.ready) return;
+    if(_pt) return;
+    _pt=setTimeout(function(){ _pt=0; paint(); }, 60);
+  };
+
+  root.PriceLock=PL;
+  if(typeof module!=='undefined' && module.exports) module.exports=PL;
+})(typeof window!=='undefined'?window:this);
+</script>
 </body>
 </html>

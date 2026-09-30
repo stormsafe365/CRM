@@ -52,6 +52,19 @@ plus a shared **Supabase** cloud project.
   timeline via `activities.metadata.audience`.
 - **In-app notifications**: `src/lib/useDueFollowups.js` + nav badge / tab title /
   desktop bell in `src/components/AppLayout.jsx`.
+- **Reopened-quote price lock** (owner 9/30/26: "make sure i can reopen that
+  quote exactly as it was"): a saved builder quote reopens at its SAVED price.
+  `BuildQuoteModal.jsx` calls `restoreQuoteData(payload, {lock:true, status,
+  legacyTotals})` (the builder's `window.PriceLock` — NOT `window.PL`, which is
+  the plan-labels table) once the program page is fully loaded. Rules in
+  `src/lib/priceLockCrm.js` (unit tests: `npm test`): the amber saved-vs-today
+  bar, automatic contract / executed copy / revision only while the saved price
+  is held, one confirm dialog (`PriceChangeConfirm.jsx`, saved → new) before any
+  write at a different price, re-saves keep sold statuses + notes, never delete
+  the old quote PDF, `payload_json.priced` (price snapshot) + `payload_json.price_history`
+  on every save, duplicates priced fresh. Emergency switch: localStorage
+  `ss_price_lock` = `off` reopens at today's pricing. Migration
+  `018_quote_price_lock.sql` ('revised' status + price audit table) is optional.
 
 ## Cross-machine workflow
 - Code syncs via GitHub (`stormsafe365/CRM`, branch `main`). `git pull` when you
