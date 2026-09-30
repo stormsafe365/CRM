@@ -56,6 +56,7 @@ function App() {
   const [selectedId, setSelectedId] = React.useState(null);
   const [placeType, setPlaceType] = React.useState(null);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [revisionMode, setRevisionMode] = React.useState(false);
   const [savedLayouts, setSavedLayouts] = React.useState(() => {
     const layouts = loadLayouts();
     layouts.forEach(L => bumpIdsPast(L.openings));
@@ -341,6 +342,11 @@ function App() {
           </button>
         </div>
 
+        <button className={'tbtn' + (revisionMode ? ' tbtn-rev-on' : ' tbtn-rev')} onClick={() => setRevisionMode(r => !r)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /><path d="M15 5l3 3" /></svg>
+          {revisionMode ? 'Original' : 'Revision'}
+        </button>
+
         <button className="tbtn tbtn-primary" onClick={doPrint}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
           Save PDF
@@ -390,6 +396,7 @@ function App() {
             <Sheet building={building} docInfo={docInfo} openings={openings} tagMap={tagMap}
               style={t.style} showDims={t.showDims} showFrames={t.showFrames}
               showElevation={t.showElev} elevWall={t.elevWall}
+              revisionMode={revisionMode}
               selectedId={editing ? selectedId : null}
               onSelect={editing ? setSelectedId : null}
               placeType={editing ? placeType : null}
