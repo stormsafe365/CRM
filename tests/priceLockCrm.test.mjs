@@ -445,5 +445,11 @@ test('builder copy: reset / revision-baseline / free-threshold hooks are present
   assert.equal(PL.rvBaseline(), null) // nothing reopened
   assert.match(html, /function resetAll\(\)\{\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if\(window\.PriceLock\) PriceLock\.reset\(\);/)
   assert.match(html, /function gThrAdj\(\)/)
-  assert.equal((html.match(/\+gThrAdj\(\)/g) || []).length, 4) // rc, quote PDF, contract, text copy
+  // One totals source (integration 9/30/26): only rc() measures the thresholds on the held price;
+  // the quote PDF, contract and text copy re-run rc() and print its published pass (window._qTotals).
+  assert.equal((html.match(/\+gThrAdj\(\)/g) || []).length, 1) // rc
+  for (const fn of ['async function printQuote(', 'async function printContract(', 'function textQuote(']) {
+    const at = html.indexOf(fn), body = html.slice(at, at + 12000)
+    assert.match(body, /\n\s*rc\(\);\s*\r?\n\s*var T=window\._qTotals;/, fn)
+  }
 })
