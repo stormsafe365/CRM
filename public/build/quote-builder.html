@@ -9228,6 +9228,18 @@ async function printRevisedLayout(){
   setTimeout(function(){ pwin.print(); }, 400);
 }
 
+// Reopen options for a program file / quote-log entry: hold its saved price (v3 snapshot,
+// or the card totals a CRM payload carries); with neither, today's pricing plus a rep note.
+function _plFileOpts(data){
+  if(!data) return undefined;
+  if(data.priced) return { lock:true };
+  var t=data.totals, tn=t?parseFloat(String(t.total).replace(/[^0-9.\-]/g,'')):NaN;
+  if(isFinite(tn) && tn>0){
+    var m=function(v){ var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; };
+    return { lock:true, legacyTotals:{ total:tn, deposit:m(t.deposit), balance:m(t.balance) } };
+  }
+  return { unpriced:true };
+}
 function loadQuote(input){
   var file = input.files[0];
   if(!file){ return; }
@@ -9235,7 +9247,7 @@ function loadQuote(input){
   reader.onload = function(e){
     try{
       var data = JSON.parse(e.target.result);
-      restoreQuoteData(data, data.priced?{lock:true}:undefined);
+      restoreQuoteData(data, _plFileOpts(data));
       toast('Quote loaded: '+file.name, 'ok');
     } catch(err){
       toast('Error loading quote file', 'err');
@@ -9255,6 +9267,16 @@ var CCI_LEGACY_HEX = {
   '#4B1A23':'#46201F', '#B7986A':'#B18F6C', '#A99172':'#A8977E',
   '#CCBC9D':'#D2C4A0', '#D6C8A5':'#DBD1B0'
 };
+// GCH 'Partition Wall' location: the 3D host adds this option to the roll-up / walk-door /
+// window / framed-opening wall selects at runtime (BuildHost ensurePartitionOption, same value
+// and text). A restore can run before the host has added it (standalone program, file loads,
+// or a CRM restore that beats the host's load handler): setting the saved value then drops the
+// select to '' and the opening loses its placement. Add it first, the same way the host does.
+function _ensureLocOpt(sel, v){
+  if(!sel || v!=='Partition Wall' || (((G('btype')||{}).value)||'')!=='gch') return;
+  for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===v) return;
+  var o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o);
+}
 // opts (all optional; restoreQuoteData(data) behaves as before apart from the
 // v3 fidelity fixes — roof style, manual-pricing mode, session price edits):
 //   lock:true          reopen at the SAVED price (window.PriceLock): today's rules only
@@ -9263,6 +9285,10 @@ var CCI_LEGACY_HEX = {
 //   legacyTotals:{total,deposit,balance}  the saved card totals, for quotes saved
 //                      before payload.priced existed (inverted to the saved subtotal)
 //   status:'sent'|'verbal_accept'|'deposit_paid'|...   sold statuses gate new contracts
+//   fresh:true (with lock + legacyTotals)  a DUPLICATE of an older quote: the saved price is
+//                      read only to recover the build (roof style, free 26GA), then the copy is
+//                      priced like a brand-new quote (PriceLock.freshen)
+//   unpriced:true      a program file / quote-log entry with no saved price: rep note only
 function restoreQuoteData(data, opts){
   opts=opts||{};
   // Kill switch: window.SS_PRICE_LOCK=false reopens at today's pricing, as before 9/30/26.
@@ -9346,7 +9372,7 @@ function restoreQuoteData(data, opts){
     aRUD();
     var entries=document.querySelectorAll('.re.entry');
     var el=entries[entries.length-1];
-    var locEl=el.querySelector('.rloc'); if(locEl&&d.rloc){ locEl.value=d.rloc; chkRE(locEl); }
+    var locEl=el.querySelector('.rloc'); if(locEl&&d.rloc){ _ensureLocOpt(locEl, d.rloc); locEl.value=d.rloc; chkRE(locEl); }
     var dtEl=el.querySelector('.rdtype'); if(dtEl&&d.rdtype){ dtEl.value=d.rdtype; updateRUDSizes(dtEl); }
     var szEl=el.querySelector('.rsz'); if(szEl&&d.rsz) szEl.value=d.rsz;
     var qtEl=el.querySelector('.rqt'); if(qtEl&&d.rqt){ qtEl.value=d.rqt; syncQtyOpts(qtEl); }
@@ -9378,6 +9404,7 @@ function restoreQuoteData(data, opts){
       var fld=el.querySelector('.'+cls); if(!fld) return;
       // Backward-compat: old saves may have stored door type under 'wtype' instead of 'whi'
       var v = (d[cls]!==undefined) ? d[cls] : (cls==='whi' ? d.wtype : undefined);
+      if(cls==='wloc') _ensureLocOpt(fld, v);
       if(v!==undefined) fld.value = v;
     });
     var qty=parseInt(d.wqt)||1;
@@ -9402,6 +9429,7 @@ function restoreQuoteData(data, opts){
       var fld=el.querySelector('.'+cls); if(!fld) return;
       // Backward-compat: old saves stored window type under 'ntype' (typo), accept both
       var v = (d[cls]!==undefined) ? d[cls] : (cls==='ntp' ? d.ntype : undefined);
+      if(cls==='nloc') _ensureLocOpt(fld, v);
       if(v!==undefined) fld.value = v;
     });
     var qty=parseInt(d.nqt)||1;
@@ -9472,7 +9500,7 @@ function restoreQuoteData(data, opts){
     var foChEl=el.querySelector('.fo-ch'); if(foChEl&&d['fo-ch']) foChEl.value=d['fo-ch'];
     if(typeof foApplyUnit==='function') foApplyUnit(el); // relabel ft/in (no conversion)
     // Wall location (was reverting framed openings to the first wall).
-    var foLocEl=el.querySelector('.fo-loc'); if(foLocEl&&d['fo-loc']) foLocEl.value=d['fo-loc'];
+    var foLocEl=el.querySelector('.fo-loc'); if(foLocEl&&d['fo-loc']){ _ensureLocOpt(foLocEl, d['fo-loc']); foLocEl.value=d['fo-loc']; }
     var foDuEl=el.querySelector('.fo-disp-unit'); if(foDuEl&&d['fo-disp-unit']) foDuEl.value=d['fo-disp-unit'];
     var foSlEl=el.querySelector('.fo-sill'); if(foSlEl&&d['fo-sill']!==undefined&&d['fo-sill']!=='') foSlEl.value=d['fo-sill'];
     // Rebuild + restore placement rows for framed openings (act starts with "Framed Opening").
@@ -9499,7 +9527,7 @@ function restoreQuoteData(data, opts){
   doPT();
   doPerm();
   // doPerm re-picks the county's default plan; a locked reopen keeps the saved one.
-  if(opts.lock && f['plans-sel']){ var _psR=G('plans-sel'); if(_psR && !_psR.disabled){ for(var _pi=0;_pi<_psR.options.length;_pi++){ if(_psR.options[_pi].value===f['plans-sel']){ _psR.value=f['plans-sel']; break; } } } }
+  if(opts.lock && !opts.fresh && f['plans-sel']){ var _psR=G('plans-sel'); if(_psR && !_psR.disabled){ for(var _pi=0;_pi<_psR.options.length;_pi++){ if(_psR.options[_pi].value===f['plans-sel']){ _psR.value=f['plans-sel']; break; } } } }
   ['cr','cw','ct','cwn'].forEach(function(id){
     var el=G(id);
     if(el&&el.value){
@@ -9522,6 +9550,10 @@ function restoreQuoteData(data, opts){
   var _suE=G('sheeting-upgrade'); if(_suE) delete _suE.dataset.restored;
   // Reopen at the saved price (checks the restore, holds the saved totals, shows the notice).
   if(window.PriceLock){ try{ PriceLock.afterRestore(data, opts); }catch(e){ console.error('price lock failed', e); PriceLock.fail(String(e&&e.message||e)); } }
+  // A duplicate (opts.fresh): the saved price was only read to recover what an older
+  // save did not store (roof style, whether 26GA was the free auto-upgrade); the copy
+  // is then priced exactly like a brand-new quote for the same building.
+  if(window.PriceLock && opts.fresh && opts.lock){ try{ PriceLock.freshen(); }catch(e){ console.error('fresh copy pricing failed', e); } }
   // Snapshot the AS-ORDERED totals for the Revision Form: after the restore has
   // fully repriced, remember total + deposit. Later edits (adding a door, etc.)
   // are then diffed against this by printRevisionForm - discount and tax ride
@@ -12159,7 +12191,7 @@ function renderQuoteLog(){
 function loadFromLog(idx){
   var log = JSON.parse(localStorage.getItem('ss_quotes')||'[]');
   if(!log[idx]) return;
-  restoreQuoteData(log[idx], log[idx].priced?{lock:true}:undefined);
+  restoreQuoteData(log[idx], _plFileOpts(log[idx]));
   switchTab('quote');
 }
 
@@ -14776,10 +14808,16 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var f=data.fields||{};
     var st=PL.st={ requested:!!opts.lock, ready:false, ok:false, active:false, status:opts.status||'', sold:!!PL.SOLD[opts.status||''],
       source:null, saved:null, today:null, hold:0, parts:[], rules:[], issues:[], notes:[], decisions:[], choice:'keep', savedAt:data.savedAt||null };
-    if(!opts.lock) { st.ready=true; return; }
+    if(!opts.lock){
+      st.ready=true;
+      // A program file / quote-log entry saved without a price: say so (nothing to hold).
+      if(opts.unpriced){ st.unpriced=true; st.notes.push('No saved price on record for this file — shown at today’s pricing.'); paint(); }
+      return;
+    }
     try{ st.decisions=JSON.parse(f['hold-dec']||'[]')||[]; }catch(e){ st.decisions=[]; }
     var dec=$('hold-dec'); if(dec) dec.value=st.decisions.length?JSON.stringify(st.decisions):'';
     st.issues=PL.tripwire(data);
+    st.tripIssues=st.issues.slice(); // what did not reopen as saved (kept by freshen for a copy)
     var rcl=root._rcLast;
     if(!rcl){ st.issues.push('The quote did not price on reopen.'); st.ready=true; paint(); return; }
     var p=curP();
@@ -15014,6 +15052,34 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     paint();
     return true;
   };
+  // A DUPLICATE of an older quote (restoreQuoteData opts.fresh): the locked reopen above
+  // only recovered what the old save did not store (roof style; whether 26GA was the free
+  // auto-upgrade). Now drop every as-sold state and price the copy exactly like a brand-new
+  // quote for the same building: no hold, every current rule applied (no grandfathered or
+  // overridden flags, no rule decisions), the default deposit % and free-upgrade threshold.
+  // requested=false: to the CRM the copy is an ordinary quote with nothing saved yet.
+  PL.freshen = function(){
+    var st=PL.st; if(!st) return false;
+    PL.on=false; setHold(0,null,''); setFlags({}); root._plGrand={ fu14:false, imp:false, lap:false, ns:false };
+    var dec=$('hold-dec'); if(dec) dec.value='';
+    if(PL._pins){
+      if('depPct' in PL._pins) root._depPct=PL._pins.depPct;
+      if('freeThresh' in PL._pins) root._freeThresh=PL._pins.freeThresh;
+      PL._pins=null;
+    }
+    var matched=(st.savedSub!=null);
+    st.fresh=true; st.requested=false; st.active=false; st.choice='today'; st.sold=false; st.status='';
+    st.decisions=[]; st.rules=[]; st.parts=[]; st.hold=0;
+    st.notes=(st.notes||[]).filter(function(n){ return /^Roof style set to /.test(n); });
+    if(!matched && st.saved) st.notes.push('The original’s saved price could not be matched, so its roof style and 26GA sheeting could not be confirmed — check them against the original quote.');
+    st.issues=(st.tripIssues||[]).slice();
+    root.rc();
+    st.current=screen();
+    setRvOrig();
+    paint();
+    try{ root.dispatchEvent(new CustomEvent('ss-price-lock',{ detail:PL.state() })); }catch(e){}
+    return true;
+  };
   // The as-ordered figures for a revision (window._rvOrig): the SAVED totals on a sold
   // order (its deposit was paid on them), or on an unsold quote while the saved price
   // holds; null = use what is on screen (unsold + today's pricing / lock not holding).
@@ -15046,6 +15112,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var cur=screen();
     return {
       requested:st.requested, ready:st.ready, active:PL.on, ok:!!st.ok, choice:st.choice, source:st.source, status:st.status, sold:st.sold,
+      fresh:!!st.fresh, unpriced:!!st.unpriced,
       saved:st.saved, current:cur, today:st.today, hold:PL.on?r2(st.hold):0, parts:JSON.parse(JSON.stringify(st.parts||[])),
       rules:JSON.parse(JSON.stringify(st.rules||[])), issues:(st.issues||[]).slice(), notes:(st.notes||[]).slice(),
       compliance:open.map(function(r){ return { id:r.id, text:r.text, effectTotal:r.effectTotal }; }),
@@ -15078,8 +15145,25 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   var BTN_ON='display:inline-block;border:1px solid #15803d;border-radius:5px;padding:3px 8px;margin:4px 4px 0 0;font-size:10.5px;font-weight:700;background:#dcfce7;color:#14532d';
   function paint(){
     var el=$('pl-notice'), st=PL.st; if(!el) return;
+    var hon=$('ct-honor-held'); if(hon) hon.classList.toggle('hidden', !(st && PL.on && parseFloat((($('ct-honor')||{}).value)||0)>0));
+    // A copy priced fresh (freshen) or a file with no saved price: notes / issues only.
+    if(st && (st.fresh || st.unpriced)){
+      var fn=st.notes||[], fi=st.issues||[];
+      if(!fn.length && !fi.length){ el.style.display='none'; el.innerHTML=''; return; }
+      var fh='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:7px;padding:9px 11px;margin:0 0 10px;color:#7c4a03;font-size:11px;line-height:1.45">';
+      if(st.fresh) fh+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">Copy — priced at today’s pricing</div>';
+      fn.forEach(function(n,i){ fh+='<div'+((i||st.fresh)?' style="margin-top:4px"':'')+'>'+esc(n)+'</div>'; });
+      if(fi.length){
+        fh+='<div style="margin-top:6px;font-weight:800">Check before sending documents:</div><ul style="margin:2px 0 0 16px;padding:0">';
+        fi.slice(0,12).forEach(function(s){ fh+='<li>'+esc(s)+'</li>'; });
+        if(fi.length>12) fh+='<li>… '+(fi.length-12)+' more</li>';
+        fh+='</ul>';
+      }
+      fh+='</div>';
+      el.innerHTML=fh; el.style.display='block';
+      return;
+    }
     if(!st || !st.requested){ el.style.display='none'; el.innerHTML=''; return; }
-    var hon=$('ct-honor-held'); if(hon) hon.classList.toggle('hidden', !(PL.on && parseFloat((($('ct-honor')||{}).value)||0)>0));
     var cur=screen(), h='';
     var diff=st.saved?r2(cur.total-st.saved.total):0;
     var anyRule=(st.rules||[]).length>0, anyIssue=(st.issues||[]).length>0;

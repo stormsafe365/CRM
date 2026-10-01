@@ -13,8 +13,8 @@ import { dirname, resolve } from 'node:path'
 import vm from 'node:vm'
 import {
   SOLD_STATUSES, appendPriceHistory, autoDocGate, fmtDelta, fmtMoney, guardBuilderUpdate, HISTORY_MAX,
-  HISTORY_PAYLOAD_KEEP, isBuilderPayload, lockBanner, lockTarget, mergeSaved, planQuoteFields,
-  printedBuildingAmount, readLockState, readScreenTotals, restoreOptionsFor, revisionReconcile,
+  HISTORY_PAYLOAD_KEEP, honoredLegacyOrder, isBuilderPayload, lockBanner, lockTarget, mergeSaved, planQuoteFields,
+  printedBuildingAmount, readLockState, readScreenTotals, restoreOptionsFor, revisionOriginal, revisionReconcile,
   savedTotalsOf, stripForDuplicate, totalsDiffer, withPrintCheck, writeCheck,
 } from '../src/lib/priceLockCrm.js'
 
@@ -132,6 +132,15 @@ test('lockBanner / writeCheck: honored sold order names the signed price and the
   assert.deepEqual(c.lines.map((l) => [l.from, l.to]), [[16558, 16052], [2643, 2562], [13915, 13490]])
   assert.ok(c.notes.some((n) => /Honor Signed Pricing: the builder holds the signed contract's \$16,052\.00 — the card showed \$16,558\.00/.test(n)))
   assert.ok(!c.notes.some((n) => /re-sign/.test(n))) // the customer already signed $16,052
+  // Finish Revision starts from the signed contract (the Revision Order's and Revised Contract's original)
+  const REV = { total: 16506, deposit: 2635, balance: 13871 }
+  const rv = writeCheck({ kind: 'revision', saved: HONOR_CARD, next: REV, lock: honorLock({ current: REV }), status: 'deposit_paid' })
+  assert.deepEqual(rv.lines.map((l) => [l.from, l.to, l.delta]), [[16052, 16506, 454], [2562, 2635, 73], [13490, 13871, 381]])
+  assert.ok(rv.notes.some((n) => /Original contract: the signed \$16,052\.00 \(Honor Signed Pricing; the card showed \$16,558\.00\)/.test(n)))
+  // a non-honored revision is unchanged: from the card
+  const g = writeCheck({ kind: 'revision', saved: GRAHAM_SAVED, next: { total: 44749, deposit: 5258, balance: 39491 }, lock: grahamLock() })
+  assert.deepEqual(g.lines.map((l) => l.from), [44448, 5222, 39226])
+  assert.ok(!g.notes.some((n) => /Original contract/.test(n)))
 })
 
 // ── confirm before a write ──
@@ -261,16 +270,70 @@ test('stripForDuplicate: the copy carries the build but none of the held price',
   const now = new Date('2026-09-30T14:00:00Z')
   const d = stripForDuplicate(src, { fromQuote: { id: 'q-graham', quote_number: 'SS-2026-05670' }, newNumber: 'SS-2026-12345', now })
   assert.equal(JSON.stringify(src), before) // original untouched
-  for (const k of ['priced', 'overrides', 'price_history', 'totals']) assert.equal(k in d, false, k)
+  for (const k of ['priced', 'overrides', 'price_history', 'totals', 'sessionEdits', 'freshBasis']) assert.equal(k in d, false, k)
   for (const k of ['hold-amt', 'hold-ref', 'hold-src', 'hold-dec']) assert.equal(k in d.fields, false, k)
   assert.equal(d.fields.county, 'Manatee')
-  assert.deepEqual(d.sessionEdits, src.sessionEdits) // the rep's deliberate price edits stay
+  assert.equal(d.fields.disc, '20') // the rep's terms (discount / additional discount) stay
+  assert.equal(d.fields['add-disc'], '35')
   assert.equal(d.priceFresh, true)
   assert.equal(d.quote_number, 'SS-2026-12345')
   assert.deepEqual(d.duplicatedFrom, { id: 'q-graham', quote_number: 'SS-2026-05670', at: now.toISOString() })
   assert.equal(d.rendering_thumb, src.rendering_thumb)
   // …and it reopens at today's pricing
   assert.equal(restoreOptionsFor({ status: 'draft', total_amount: null, payload_json: d }), null)
+})
+test('stripForDuplicate: no as-sold state reaches the copy (price edits, honor, free 26GA)', () => {
+  const src = {
+    ...grahamRow().payload_json, version: 3,
+    fields: { ...grahamRow().payload_json.fields, 'ct-honor': '13173', 'ct-honor-ref': 'SS-2026-80021', 'sheeting-upgrade': 'upgrade', 'ct-siteaddr': '12 Oak Ln', 'adj-amt': '250' },
+    priced: { v: 1, sub: 12000, free: { sheet: true, fastener: true } },
+    sessionEdits: [{ kind: 'door', tbl: 'door-std', k: '10x10', val: 1500 }, { kind: 'misc', key: 'dep-pct', val: 25 }],
+    inputMode: true,
+  }
+  const d = stripForDuplicate(src, { fromQuote: grahamRow(), newNumber: 'SS-2026-22222' })
+  assert.equal('sessionEdits' in d, false)
+  assert.equal('ct-honor' in d.fields, false)
+  assert.equal('ct-honor-ref' in d.fields, false)
+  assert.equal(d.fields['sheeting-upgrade'], 'standard') // the free auto-upgrade was not a rep pick
+  assert.equal(d.fields['ct-siteaddr'], '12 Oak Ln')       // contract addresses are not pricing
+  assert.equal(d.fields['adj-amt'], '250')                 // rep terms stay (disclosed)
+  assert.equal(d.inputMode, true)                          // a manual quote stays manual (disclosed)
+  assert.equal('freshBasis' in d, false)                   // v3: everything needed is in the payload
+  // a rep-paid 26GA (not free at sale) stays
+  const paid = stripForDuplicate({ ...src, priced: { v: 1, sub: 9000, free: { sheet: false, fastener: false } } }, {})
+  assert.equal(paid.fields['sheeting-upgrade'], 'upgrade')
+})
+test('stripForDuplicate + restoreOptionsFor: a copy of an OLDER quote opens fresh off the original card totals', () => {
+  const d = stripForDuplicate(grahamRow().payload_json, { fromQuote: grahamRow(), newNumber: 'SS-2026-33333' })
+  assert.deepEqual(d.freshBasis, GRAHAM_SAVED)
+  assert.equal('totals' in d, false)
+  const copy = { status: 'draft', total_amount: null, deposit_amount: null, balance_amount: null, payload_json: d }
+  assert.deepEqual(restoreOptionsFor(copy), { lock: true, fresh: true, status: 'draft', legacyTotals: GRAHAM_SAVED })
+  // a copy of that unsaved copy passes the basis on; a copy of a quote with no total has none
+  const d2 = stripForDuplicate(d, { fromQuote: copy })
+  assert.deepEqual(d2.freshBasis, GRAHAM_SAVED)
+  assert.equal('freshBasis' in stripForDuplicate(grahamRow().payload_json, { fromQuote: grahamRow({ total_amount: null }) }), false)
+  // a bad basis never asks for a lock
+  assert.equal(restoreOptionsFor({ status: 'draft', payload_json: { ...d, freshBasis: { total: 0 } } }), null)
+  assert.equal(restoreOptionsFor({ status: 'draft', payload_json: { ...d, freshBasis: { total: 'x' } } }), null)
+})
+test('revisionOriginal: the Revision Order uses the Revised Contract\'s original (honored signed price)', () => {
+  const pgWith = (b) => ({ PriceLock: { rvBaseline: () => b } })
+  // honored sold order: builder baseline = signed contract, card differs
+  assert.deepEqual(revisionOriginal({ pg: pgWith(HONOR_SIGNED), typed: HONOR_CARD.total, card: HONOR_CARD }),
+    { total: HONOR_SIGNED.total, deposit: HONOR_SIGNED.deposit, from: 'builder' })
+  // no baseline (kill switch, old builder, unsold at today's pricing): the form / card, as before
+  assert.deepEqual(revisionOriginal({ pg: pgWith(null), typed: '13600', card: HONOR_CARD }), { total: 13600, deposit: HONOR_CARD.deposit, from: 'modal' })
+  assert.deepEqual(revisionOriginal({ pg: {}, typed: 0, card: { total: '44448.00', deposit: '5222.00' } }), { total: 44448, deposit: 5222, from: 'modal' })
+  assert.deepEqual(revisionOriginal({ pg: { PriceLock: { rvBaseline: () => { throw new Error('x') } } }, typed: 0, card: GRAHAM_SAVED }), { total: 44448, deposit: 5222, from: 'modal' })
+})
+test('honoredLegacyOrder: sold + Honor Signed Pricing + saved before price snapshots', () => {
+  const row = (over = {}, fields = {}) => grahamRow({ ...over, payload_json: { ...grahamRow().payload_json, fields: { ...grahamRow().payload_json.fields, ...fields } } })
+  assert.equal(honoredLegacyOrder(row({}, { 'ct-honor': '13173' })), true)
+  assert.equal(honoredLegacyOrder(row({ status: 'sent' }, { 'ct-honor': '13173' })), false)
+  assert.equal(honoredLegacyOrder(row({}, { 'ct-honor': '' })), false)
+  assert.equal(honoredLegacyOrder(grahamRow({ payload_json: { ...grahamRow().payload_json, priced: { v: 1 }, fields: { 'ct-honor': '1' } } })), false)
+  assert.equal(honoredLegacyOrder(null), false)
 })
 
 // ── revision order ──
@@ -330,7 +393,7 @@ function loadBuilderPriceLock() {
 }
 test('builder copy: window.PriceLock API the CRM calls is present', () => {
   const { PL, html } = loadBuilderPriceLock()
-  for (const fn of ['state', 'snapshot', 'contractBlocked', 'showGate', 'savedTotals', 'invert', 'forward']) assert.equal(typeof PL[fn], 'function', fn)
+  for (const fn of ['state', 'snapshot', 'contractBlocked', 'showGate', 'savedTotals', 'invert', 'forward', 'freshen', 'rvBaseline']) assert.equal(typeof PL[fn], 'function', fn)
   assert.match(html, /function restoreQuoteData\(data, opts\)/)
   assert.deepEqual(JSON.parse(JSON.stringify(PL.state())), { requested: false, ready: true, active: false, ok: null })
 })
@@ -365,6 +428,16 @@ test('withPrintCheck: the quote PDF Building Amount is recorded next to the pric
   assert.deepEqual(withPrintCheck({ v: 1, sub: 59000 }, html), { v: 1, sub: 59000, printSub: 59075, printDiverged: true })
   assert.equal(withPrintCheck(null, html), null)
   assert.deepEqual(withPrintCheck({ v: 1, sub: 1 }, ''), { v: 1, sub: 1 })
+})
+test('builder copy: duplicate (fresh), GCH partition placement and unpriced-file hooks are present', () => {
+  const { html } = loadBuilderPriceLock()
+  // a duplicate of an older quote: locked reopen only to recover the build, then priced fresh
+  assert.match(html, /if\(window\.PriceLock && opts\.fresh && opts\.lock\)\{ try\{ PriceLock\.freshen\(\); \}/)
+  // the 'Partition Wall' option is added before each saved location is set
+  for (const s of ['_ensureLocOpt(locEl, d.rloc)', "if(cls==='wloc') _ensureLocOpt(fld, v)", "if(cls==='nloc') _ensureLocOpt(fld, v)", "_ensureLocOpt(foLocEl, d['fo-loc'])"]) assert.ok(html.includes(s), s)
+  // program files / quote-log entries with no saved price get the rep note
+  assert.ok(html.includes('No saved price on record for this file — shown at today’s pricing.'))
+  assert.equal((html.match(/restoreQuoteData\((?:data|log\[idx\]), _plFileOpts\(/g) || []).length, 2)
 })
 test('builder copy: reset / revision-baseline / free-threshold hooks are present', () => {
   const { PL, html } = loadBuilderPriceLock()

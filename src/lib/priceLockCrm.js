@@ -110,12 +110,25 @@ export function withPrintCheck(priced, html) {
 export function isBuilderPayload(p) {
   return !!(p && (p.fields || p.source === '3d-builder'))
 }
+// {total, deposit, balance} from a duplicate's freshBasis, or null.
+function freshBasisOf(b) {
+  const total = num(b && b.total)
+  if (total == null || total <= 0) return null
+  return { total, deposit: num(b.deposit) ?? 0, balance: num(b.balance) ?? 0 }
+}
 // Options for restoreQuoteData(data, opts), or null to reopen at today's
 // pricing (no saved price to hold: a fresh duplicate, or a quote with no total).
+// A duplicate of an older quote (freshBasis) opens with {fresh:true}: the
+// builder reads the original's card totals only to recover the build (roof
+// style, free 26GA), then prices the copy like a brand-new quote
+// (PriceLock.freshen; its lock state then reads requested:false).
 export function restoreOptionsFor(quote) {
   const p = quote?.payload_json
   if (!p || !p.fields) return null
-  if (p.priceFresh) return null
+  if (p.priceFresh) {
+    const basis = !p.priced ? freshBasisOf(p.freshBasis) : null
+    return basis ? { lock: true, fresh: true, status: quote.status || 'draft', legacyTotals: basis } : null
+  }
   const status = quote.status || ''
   if (p.priced) return { lock: true, status }
   const saved = savedTotalsOf(quote)
@@ -187,13 +200,17 @@ export function writeCheck({ kind, saved, next, lock, status, reason = '' }) {
   const notHolding = !!(lock && lock.requested && (lock.choice === 'today' || !lock.ok || (lock.issues || []).length))
   const { target, honored } = lockTarget({ saved, lock })
   const confirm = true
+  // A revision of an honored sold order starts from the SIGNED contract (the same
+  // original the Revision Order and the Revised Contract use), not the card.
+  const from = kind === 'revision' && honored ? target : saved
   const lines = next ? [
-    { label: kind === 'revision' ? 'Contract total' : 'Total', from: saved.total, to: next.total, delta: r2(next.total - saved.total) },
-    { label: 'Deposit', from: saved.deposit, to: next.deposit, delta: r2(next.deposit - saved.deposit) },
-    { label: 'Balance', from: saved.balance, to: next.balance, delta: r2(next.balance - saved.balance) },
+    { label: kind === 'revision' ? 'Contract total' : 'Total', from: from.total, to: next.total, delta: r2(next.total - from.total) },
+    { label: 'Deposit', from: from.deposit, to: next.deposit, delta: r2(next.deposit - from.deposit) },
+    { label: 'Balance', from: from.balance, to: next.balance, delta: r2(next.balance - from.balance) },
   ] : []
   const notes = []
   if (reason) notes.push(reason)
+  if (kind === 'revision' && honored && totalsDiffer(target, saved)) notes.push(`Original contract: the signed ${fmtMoney(target.total)} (Honor Signed Pricing; the card showed ${fmtMoney(saved.total)}).`)
   if (!differ && next && !notHolding && kind !== 'revision') notes.push(`No price change: the saved ${fmtMoney(saved.total)} is kept.`)
   if (honored && next && !totalsDiffer(target, next)) {
     notes.push(`Honor Signed Pricing: the builder holds the signed contract's ${fmtMoney(target.total)}${differ ? ` — the card showed ${fmtMoney(saved.total)}` : ''}.`)
@@ -289,19 +306,39 @@ export function appendPriceHistory({ initialQuote, reason = 'update', next = nul
 }
 
 // ── Duplicate: priced fresh ───────────────────────────────────────────────
-// The copy keeps the build (so it opens ready to tweak) but none of the
-// original's held price: no saved snapshot, no rule overrides, no hold
-// fields, no history. It reopens at today's pricing.
+// Owner 9/30/26: "if i click duplicate or new quote then yes pricing should be
+// up-to date". The copy keeps the build (so it opens ready to tweak) but none
+// of the original's "as sold" state, so it prices exactly like a brand-new
+// quote for the same building:
+//  - no saved snapshot, totals or price history
+//  - no rule overrides / grandfathering (overrides) and no rule decisions (hold-dec)
+//  - no held price (hold-amt / hold-ref / hold-src)
+//  - no Pricing-tab price edits (sessionEdits: table cells, door prices,
+//    deposit %, free-upgrade threshold…)
+//  - no Honor Signed Pricing (ct-honor / ct-honor-ref: the signed contract's price)
+//  - 26GA that was the FREE auto-upgrade at sale (the $10k threshold, recorded
+//    by the v3 snapshot) starts from standard sheeting, as a new quote does;
+//    the builder re-applies the free upgrade if the copy qualifies today
+// The copy's discount, tax, additional discount, manufacturer adjustment and
+// manual (Input mode) prices are the rep's terms, not price-table state: kept.
+// An older original (saved before payload.priced) keeps its card totals as
+// freshBasis: the builder reads them once to recover what the old save did not
+// store (roof style, free 26GA), then prices the copy fresh (restoreOptionsFor).
+const AS_SOLD_FIELDS = [...HOLD_FIELDS, 'ct-honor', 'ct-honor-ref']
 export function stripForDuplicate(payload, { fromQuote = null, newNumber = null, now = new Date() } = {}) {
   if (!payload || typeof payload !== 'object') return payload
-  const { priced, overrides, price_history, totals, ...rest } = payload
+  const { priced, overrides, price_history, totals, sessionEdits, freshBasis, ...rest } = payload
   const fields = { ...(rest.fields || {}) }
-  HOLD_FIELDS.forEach((k) => { delete fields[k] })
+  AS_SOLD_FIELDS.forEach((k) => { delete fields[k] })
+  if (priced && priced.free && priced.free.sheet && fields['sheeting-upgrade'] === 'upgrade') fields['sheeting-upgrade'] = 'standard'
+  // (a copy of a copy that was never saved passes its own basis on)
+  const basis = priced ? null : (savedTotalsOf(fromQuote) || freshBasisOf(freshBasis))
   return {
     ...rest,
     fields,
     ...(newNumber ? { quote_number: newNumber } : {}),
     priceFresh: true,
+    ...(basis ? { freshBasis: basis } : {}),
     duplicatedFrom: fromQuote ? { id: fromQuote.id || null, quote_number: fromQuote.quote_number || null, at: now.toISOString() } : null,
   }
 }
@@ -319,6 +356,33 @@ export function revisionReconcile(rows, net) {
   }
   const adj = r2(r2(net) - r2(sum))
   return Math.abs(adj) < 0.005 ? 0 : adj
+}
+
+// The ORIGINAL contract figures for Finish Revision. The Revised Contract takes
+// its "Original Deposit — Paid" and revision baseline from the builder's
+// window._rvOrig, which the price lock sets to PriceLock.rvBaseline(): the
+// saved totals of a sold order — on an order reissued with Honor Signed
+// Pricing, the SIGNED contract's price, not the card's. The Revision Order uses
+// the same figures so both documents state the same original contract.
+// Returns {total, deposit, from} — from 'builder' (the lock's baseline) or
+// 'modal' (no baseline: the RevisionModal's Original Contract / card, as before).
+export function revisionOriginal({ pg, typed, card }) {
+  let base = null
+  try {
+    const L = pg && pg.PriceLock
+    if (L && typeof L.rvBaseline === 'function') base = L.rvBaseline()
+  } catch { base = null }
+  const t = num(base && base.total)
+  if (t != null && t > 0) return { total: r2(t), deposit: r2(num(base.deposit) ?? 0), from: 'builder' }
+  const c = card || {}
+  return { total: num(typed) || num(c.total) || 0, deposit: num(c.deposit) || 0, from: 'modal' }
+}
+// RevisionModal hint: a sold order reissued with Honor Signed Pricing, saved
+// before price snapshots existed — its card total is not the signed price, and
+// only the builder (Apply to Building → Finish Revision) knows the signed one.
+export function honoredLegacyOrder(quote) {
+  const p = quote?.payload_json
+  return !!(p && p.fields && !p.priced && isSold(quote.status) && (num(p.fields['ct-honor']) || 0) > 0)
 }
 
 // ── Top-bar banner (rep-facing) ───────────────────────────────────────────

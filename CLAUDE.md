@@ -63,7 +63,14 @@ plus a shared **Supabase** cloud project.
   confirm dialog (`PriceChangeConfirm.jsx`, saved → new, "no price change" when
   nothing moved) before EVERY write to a saved quote, re-saves keep sold statuses + notes, never delete
   the old quote PDF, `payload_json.priced` (price snapshot) + `payload_json.price_history`
-  on every save, duplicates priced fresh. Emergency switch: localStorage
+  on every save. Duplicates are priced exactly like a brand-new quote for the
+  same building (`stripForDuplicate` drops every as-sold state: snapshot,
+  overrides, hold fields, Pricing-tab `sessionEdits`, Honor Signed Pricing, a
+  free auto-26GA; a copy of an older quote keeps the original card totals as
+  `freshBasis` so the builder can recover its roof style first —
+  `restoreOptionsFor` → `{fresh:true}` → `PriceLock.freshen()`). Finish
+  Revision's Revision Order uses the Revised Contract's original
+  (`revisionOriginal`: the signed price on an honored sold order). Emergency switch: localStorage
   `ss_price_lock` = `off` reopens at today's pricing. Migration
   `018_quote_price_lock.sql` ('revised' status + price audit table) is optional.
 

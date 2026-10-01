@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
+import { honoredLegacyOrder } from '../lib/priceLockCrm'
 import { toast } from '../lib/uiFx'
 
 // Structured change rows (owner request 9/21/26): a change is either a
@@ -82,6 +83,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
   const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
   const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
   const origDeposit = Number(quote?.deposit_amount) || 0
+  const honored = honoredLegacyOrder(quote)
 
   // Live engine pricing: load the actual quote-builder in a hidden iframe and
   // ask it for roll-up sizes + prices + add-on rates (single source of truth).
@@ -227,6 +229,12 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
             <input style={FIELD} type="number" step="0.01" value={original} onChange={(e) => setOriginal(e.target.value)} />
           </div>
         </div>
+        {honored && (
+          <p style={{ margin: '6px 0 0', color: 'var(--warning, #fbbf24)', fontSize: 12 }}>
+            This order was signed with Honor Signed Pricing, so the card total is not the signed price. Apply to Building → Finish Revision
+            uses the signed contract&apos;s price as the original on both the Revision Order and the Revised Contract. For “Revision Order only”, type the signed contract total here.
+          </p>
+        )}
 
         <label style={LBL}>Changes</label>
         {rows.map((r, i) => (

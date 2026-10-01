@@ -25,8 +25,8 @@ import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { supabase } from '../lib/supabase'
 import {
-  autoDocGate, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
-  REVISION_ADJ_LABEL, revisionReconcile, savedTotalsOf, writeCheck,
+  autoDocGate, fmtMoney, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
+  REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
 } from '../lib/priceLockCrm'
 
 const SRC = '/build/build.html'
@@ -220,7 +220,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       if (!ok) msg = "Couldn't fully load this quote's saved build — please rebuild or check the console."
       else if (opts && lock && lock.requested && lock.active && lock.ok && saved) msg = `Loaded quote ${num} at its saved price${next}`
       else if (opts && lock && lock.requested) msg = `Loaded quote ${num} — the saved price could not be held exactly (see the bar at the top)`
-      else if (!opts && initialQuote?.payload_json?.priceFresh) msg = `Loaded copy ${num} — priced at today's rules${next}`
+      else if ((!opts || opts.fresh) && initialQuote?.payload_json?.priceFresh) msg = `Loaded copy ${num} — priced at today's rules${next}`
       else msg = `Loaded quote ${num}${next}`
       toast(msg.replace(/\s+/g, ' ').trim(), ok ? 'success' : undefined)
       // "Generate Contract" / "Executed Copy" from a quote card: once the build is
@@ -407,8 +407,14 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       const gv = (id) => { try { return parseFloat(String(pg.G(id).textContent).replace(/[^0-9.-]/g, '')) || 0 } catch { return 0 } }
       const curTot = gv('ptot')
       const curDep = gv('pdep')
-      const orig = rv.original || Number(cur.total_amount) || 0
-      const origDep = Number(cur.deposit_amount) || 0
+      // Same original figures as the Revised Contract (the builder's revision
+      // baseline: on an honored sold order, the signed contract's price).
+      const base = revisionOriginal({ pg, typed: rv.original, card: { total: cur.total_amount, deposit: cur.deposit_amount } })
+      const orig = base.total
+      const origDep = base.deposit
+      if (base.from === 'builder' && rv.original && Math.abs(Number(rv.original) - orig) >= 0.005) {
+        toast(`Revision Order: Original Contract ${fmtMoney(orig)} — the signed contract price the revised contract uses (the form had ${fmtMoney(Number(rv.original))}).`)
+      }
       const net = curTot - orig
       const rows = (rv.rows || []).map((r) => ({ desc: r.printDesc || r.desc, kind: r.printKind || 'Modify', amount: r.amount }))
       // Rep-typed amounts are often LIST prices; the order's totals come from the

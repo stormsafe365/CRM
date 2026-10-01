@@ -94,9 +94,11 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
   // Duplicate a quote → a fresh draft (new number + today's date, no PDF yet).
   // Keeps the builder config + rendering thumbnail so it opens ready to tweak.
-  // Price lock (9/30/26): a BUILDER quote's copy is priced fresh — no saved
-  // price, snapshot, rule overrides or history are carried over, its card shows
-  // no total until it is saved, and it opens in the builder at today's pricing.
+  // Price lock (9/30/26): a BUILDER quote's copy is priced exactly like a
+  // brand-new quote for the same building — no saved price, snapshot, rule
+  // overrides, Pricing-tab edits, Honor Signed Pricing or history are carried
+  // over (stripForDuplicate), its card shows no total until it is saved, and it
+  // opens in the builder at today's pricing.
   // Manually-added quotes (no build to reprice) copy their typed totals as before.
   async function handleDuplicate(quote) {
     const now = new Date()
