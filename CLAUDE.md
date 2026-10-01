@@ -52,6 +52,27 @@ plus a shared **Supabase** cloud project.
   timeline via `activities.metadata.audience`.
 - **In-app notifications**: `src/lib/useDueFollowups.js` + nav badge / tab title /
   desktop bell in `src/components/AppLayout.jsx`.
+- **Reopened-quote price lock** (owner 9/30/26: "make sure i can reopen that
+  quote exactly as it was"): a saved builder quote reopens at its SAVED price.
+  `BuildQuoteModal.jsx` calls `restoreQuoteData(payload, {lock:true, status,
+  legacyTotals})` (the builder's `window.PriceLock` — NOT `window.PL`, which is
+  the plan-labels table) once the program page is fully loaded. Rules in
+  `src/lib/priceLockCrm.js` (unit tests: `npm test`): the amber saved-vs-today
+  bar, automatic contract / executed copy / revision only while the saved price
+  is held (an honored sold order is held to its signed-contract price), one
+  confirm dialog (`PriceChangeConfirm.jsx`, saved → new, "no price change" when
+  nothing moved) before EVERY write to a saved quote, re-saves keep sold statuses + notes, never delete
+  the old quote PDF, `payload_json.priced` (price snapshot) + `payload_json.price_history`
+  on every save. Duplicates are priced exactly like a brand-new quote for the
+  same building (`stripForDuplicate` drops every as-sold state: snapshot,
+  overrides, hold fields, Pricing-tab `sessionEdits`, Honor Signed Pricing, a
+  free auto-26GA; a copy of an older quote keeps the original card totals as
+  `freshBasis` so the builder can recover its roof style first —
+  `restoreOptionsFor` → `{fresh:true}` → `PriceLock.freshen()`). Finish
+  Revision's Revision Order uses the Revised Contract's original
+  (`revisionOriginal`: the signed price on an honored sold order). Emergency switch: localStorage
+  `ss_price_lock` = `off` reopens at today's pricing. Migration
+  `018_quote_price_lock.sql` ('revised' status + price audit table) is optional.
 
 ## Cross-machine workflow
 - Code syncs via GitHub (`stormsafe365/CRM`, branch `main`). `git pull` when you

@@ -1778,6 +1778,26 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
   border: 0;
   background: #fff;
 }
+/* Price lock bar (reopened quote: saved price vs today's rules) */
+.qb-lock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--line-2);
+  flex: 0 0 auto;
+}
+.qb-lock-ok { background: rgba(9, 214, 220, .07); color: #A6B7C8; }
+.qb-lock-warn { background: rgba(255, 181, 71, .13); color: #FFD08A; border-bottom-color: rgba(255, 181, 71, .45); }
+.qb-lock-error { background: rgba(255, 92, 92, .13); color: #FFB8B8; border-bottom-color: rgba(255, 92, 92, .5); }
+.qb-lock-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.qb-lock-text { flex: 1 1 320px; min-width: 0; }
+.qb-lock-detail { opacity: .85; }
+.qb-lock-blocked { font-weight: 700; }
+.qb-lock-btn { padding: 4px 10px; font-size: 12px; }
 @media (max-width: 720px) {
   .qb-overlay { padding: 0; }
   .qb-modal { height: 100vh; border-radius: 0; border: 0; }

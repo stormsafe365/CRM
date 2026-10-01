@@ -14,8 +14,9 @@ import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
 import ColorSheetModal from './ColorSheetModal'
-import { openMenu } from '../lib/uiFx'
+import { openMenu, toast } from '../lib/uiFx'
 import RevisionModal from './RevisionModal'
+import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
@@ -93,21 +94,38 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
   // Duplicate a quote → a fresh draft (new number + today's date, no PDF yet).
   // Keeps the builder config + rendering thumbnail so it opens ready to tweak.
+  // Price lock (9/30/26): a BUILDER quote's copy is priced exactly like a
+  // brand-new quote for the same building — no saved price, snapshot, rule
+  // overrides, Pricing-tab edits, Honor Signed Pricing or history are carried
+  // over (stripForDuplicate), its card shows no total until it is saved, and it
+  // opens in the builder at today's pricing.
+  // Manually-added quotes (no build to reprice) copy their typed totals as before.
   async function handleDuplicate(quote) {
     const now = new Date()
     const { id, created_at, updated_at, deleted_at, deleted_by, ...rest } = quote
+    const quote_number = `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`
+    const builder = isBuilderPayload(quote.payload_json)
     const copy = {
       ...rest,
       client_id: clientId,
       created_by: user?.id ?? null,
       quote_date: now.toISOString().slice(0, 10),
-      quote_number: `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`,
+      quote_number,
       status: 'draft',
       pdf_snapshot_url: null,
       valid_through: new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10),
+      ...(builder ? {
+        total_amount: null, deposit_amount: null, balance_amount: null,
+        payload_json: stripForDuplicate(quote.payload_json, { fromQuote: quote, newNumber: quote_number, now }),
+      } : {}),
     }
-    const { error } = await supabase.from('quotes').insert(copy)
-    if (error) setError(error.message)
+    const { data, error } = await supabase.from('quotes').insert(copy).select().single()
+    if (error) { setError(error.message); return }
+    if (builder && data && data.payload_json?.fields) {
+      toast(`Copy ${quote_number} created — opening it at today's pricing. Save to Lead to keep its price.`, 'success')
+      setEditQuote(data)
+      setBuilding(true)
+    }
   }
 
   async function handleUpdate(id, payload) {
@@ -120,12 +138,15 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   }
 
   // Re-save an edited builder quote onto the SAME row, keeping its original
-  // quote number + date so it stays the same quote — just revised.
+  // quote number + date so it stays the same quote — just revised. A sold
+  // status (verbal accept / deposit paid / revised) and the notes are never
+  // overwritten by a builder save (guardBuilderUpdate — second guard after
+  // builderSave's planQuoteFields).
   async function handleBuildUpdate(original, payload) {
     const { quote_number, quote_date, ...rest } = payload
     const { error } = await supabase
       .from('quotes')
-      .update({ ...rest, quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
+      .update({ ...guardBuilderUpdate(original, rest), quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
       .eq('id', original.id)
     if (error) throw error
   }
