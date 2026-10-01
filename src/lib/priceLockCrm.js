@@ -407,8 +407,15 @@ export function lockBanner({ saved: card, screen, lock }) {
     return { tone: 'warn', text: `Today's pricing applied: saved ${S} → ${fmtMoney(screen.total)} (${fmtDelta(d)}) · nothing saved${sold ? ' · sold order: customer must re-sign' : ''}` }
   }
   const issues = lock.issues || []
-  if (!lock.ok || issues.length) {
+  if (!lock.ok) {
     return { tone: 'error', text: `Saved ${S} could not be held exactly — the builder shows ${fmtMoney(screen.total)} (${fmtDelta(d)}) · nothing saved`, detail: issues[0] || null }
+  }
+  if (issues.length) {
+    // The price IS held to the cent, but something about the reopen needs a look
+    // (a field that did not come back as saved, an unexplained difference): the
+    // automatic contract / executed copy wait for the rep (autoDocGate).
+    const where = totalsDiffer(saved, screen) ? `Saved ${S} → now ${fmtMoney(screen.total)} (${fmtDelta(d)})` : `Saved price held: ${S}`
+    return { tone: 'error', text: `${where} · check before sending documents (automatic contract paused) · nothing saved`, detail: issues[0] }
   }
   if (totalsDiffer(saved, screen)) {
     return { tone: 'warn', text: `Saved ${S} → now ${fmtMoney(screen.total)} (${fmtDelta(d)}) · your changes are not saved yet${tail}` }
