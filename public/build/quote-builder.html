@@ -8238,17 +8238,17 @@ function rc(){
   // 4' OC spacing upgrade (≤24' wide buildings only; standard is 5' OC for those)
   var ocSpacingSel=G('oc-spacing');
   var ocSpacingVal=ocSpacingSel?ocSpacingSel.value:'5oc';
-  var ocUpgrade=0;
+  var ocUpgrade=0, ocLean=0; // ocLean: the attached lean-tos' part of ocUpgrade (published for the price lock)
   if(ACTIVE_MFR!=='CA' && ocSpacingVal==='4oc' && w<=24 && bt3!=='widespan' && bt3!=='fslean'){
     // Master Price Book 7/16/26 has NO separate 4'OC option charge for CA.
     var OC4S=[20,25,30,35,40], OC4V=[300,325,350,375,400];
     var oci=0; for(var oi=0;oi<OC4S.length;oi++){if(OC4S[oi]<=l)oci=oi;else break;}
     if(l>40){ ocUpgrade=cciUnitSum(l,OC4V); }
     else { ocUpgrade=OC4V[oci]; }
-    ocUpgrade+=cciOC4Leans(); // Sensei: each attached lean adds the 4' OC column at its own length
+    ocLean=cciOC4Leans(); ocUpgrade+=ocLean; // Sensei: each attached lean adds the 4' OC column at its own length
   }
   var _cbR=cciCombo12x4(fuVal, ocSpacingVal, w, bt3, l);
-  if(_cbR!=null){ framingUpgrade=_cbR; ocUpgrade=0; }
+  if(_cbR!=null){ framingUpgrade=_cbR; ocUpgrade=0; ocLean=0; }
   // 12GA + 4' OC combined row: Sensei's lean 4' OC was read at 14 gauge only → lean part left out, rep note.
   var _ocLtN=G('oc-lean-note'); if(_ocLtN) _ocLtN.classList.toggle('hidden', !(_cbR!=null && cciOC4Leans()>0));
   // Pitch upgrade — uses ACTIVE manufacturer's pricing formula:
@@ -8381,7 +8381,7 @@ function rc(){
   // what the Building Amount charges.
   window._qTotals=Object.assign({mode:'engine', manual:false, depPct:(window._depPct||17),
     base:base, leg:leg, walls:walls, vertWallUpg:vertWallUpg, rud:rud, wtd:wtd, win:win, sf:sf, lapP:lapP,
-    framingUpgrade:framingUpgrade, ocUpgrade:ocUpgrade, cb12x4:(_cbR!=null), pitchUpgrade:pitchUpgrade, pitchSelVal:pitchSelVal,
+    framingUpgrade:framingUpgrade, ocUpgrade:ocUpgrade, ocLean:ocLean, cb12x4:(_cbR!=null), pitchUpgrade:pitchUpgrade, pitchSelVal:pitchSelVal,
     wainP:wainP, adjP:adjP, holdP:holdP, aewP:aewP, leanToTotal:leanToTotal, connFeeTotal:connFeeTotal, addCompTotal:addCompTotal,
     insulTotal:insulTotal, overhangP:overhangP, sidePanelP:sidePanelP, anchors:anchorP, anchorP:anchorP, anchorLegs:anchorLegs,
     preSheetSub:preSheetSub, thrPre:thrPre, subPreFastener:subPreFastener, sheetFree:sheetFree, sheetUpgrade:sheetUpgrade, fastenerFree:fastenerFree, fastenerP:fastenerP,
@@ -11874,7 +11874,7 @@ async function printContract(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp,true);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsC=ltStorage(el);
       if(_lsC.valid&&_lsC.total){
@@ -15348,6 +15348,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   var T_UNITS        = tms('2026-09-28T09:40:00-04:00'); // 348a766
   var T_COMBO        = tms('2026-09-28T09:45:00-04:00'); // 6ab9572
   var T_PERMIT       = tms('2026-09-28T10:42:00-04:00'); // 4930a13
+  var T_ANCHORS      = tms('2026-07-01T17:18:58-04:00'); // f86f4ce (ground anchors at $68)
+  var T_LT_HANDBOOK  = tms('2026-07-24T15:32:09-04:00'); // 23f6db4 (CCI lean-to half-of-2W method)
   PL.RULES = {
     'oc-waiver':   { commit:'631490e', date:'9/14/26', text:"12-gauge no longer waives the CCI 4' OC charge (24' wide or less)" },
     'crm-12ga':    { commit:'a420769 / 9030ba9', date:'9/14/26', text:"CRM-only CCI 12-gauge table (9/8–9/14) replaced by the builder's table" },
@@ -15357,7 +15359,10 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'combo-12x4':  { commit:'6ab9572', date:'9/28/26', text:"CCI 24' wide or less with 12-gauge + 4' OC: one combined book row" },
     'impact':      { commit:'4930a13', date:'9/28/26', text:'CCI impact county: Hi-Impact windows and Hi-Wind walk doors required', flag:'imp' },
     'lee-lap':     { commit:'4930a13', date:'9/28/26', text:'CCI Lee County: lap siding required', flag:'lap' },
-    'no-service':  { commit:'4930a13', date:'9/28/26', text:'CCI does not service Broward / Miami-Dade / Monroe (material-only orders)', flag:'ns' }
+    'no-service':  { commit:'4930a13', date:'9/28/26', text:'CCI does not service Broward / Miami-Dade / Monroe (material-only orders)', flag:'ns' },
+    'lean-walls':  { commit:'20114d9 / c87e523', date:'9/30/26', text:'CCI attached lean-to walls priced like Sensei: closed side by length sections, ends keep cents, partial / panel sides with J trim' },
+    'lean-oc4':    { commit:'c87e523', date:'9/30/26', text:"CCI 4' OC now also charged on each attached lean-to (Sensei)" },
+    'anchor-70':   { commit:'c87e523', date:'9/30/26', text:'Ground (mobile home) anchors $68 → $70 each (Sensei)' }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
   // Customer-facing wording when a rule change is applied at no charge.
@@ -15439,9 +15444,50 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     return { fr:fr, oc:oc };
   }
 
+  // ── CCI attached lean-to walls as priced before 20114d9 / c87e523 (7/24 – 9/30/26) ──
+  // Ends rounded to whole dollars; closed side = the raw SC chart at the half-length
+  // column (+ VERT_SIDE when vertical); partial / panel sides = the flat LT_SIDE_P
+  // rates. Base and height did not change. Same tables as today's engine.
+  function ltSidePre(h, l, vertical){
+    var SC=root.SC, VS=root.VERT_SIDE;
+    var hk=Math.min(16,Math.max(6,Math.ceil(h||6)));
+    while(hk<16 && !SC[hk]) hk++;
+    var scRow=SC[hk]||SC[16], vsRow=VS[h<=10?'low':(h<=15?'mid':'high')];
+    var colLen=l/2, C=[20,25,30,35,40];
+    for(var i=0;i<C.length;i++){ if(C[i]>=colLen) return Math.round((scRow[C[i]]||0)+(vertical?(vsRow[C[i]]||0):0)); }
+    var b40=(scRow[40]||0)+(vertical?(vsRow[40]||0):0);
+    return Math.round(b40+(colLen-40)*54*(b40/2560));
+  }
+  function ltEncPre(el, u){
+    var vw=2*u.w; if(vw%2) vw++;
+    var wl=root.getLTWalls(el), hz=root.ltPanelsHorizontal();
+    var pair=root.ecLookup(vw,u.h)+(hz?0:root.vertEndUpcharge(vw));
+    var FR={ closed:1, q3:0.75, q2:0.5, halfEnd:0.5, q1:0.25 };
+    function endP(v){ return v==='gable'?112.5:Math.round(pair/2*(FR[v]||0)); }
+    var side=(wl.side==='closed')?ltSidePre(u.h,u.l,!hz):((root.LT_SIDE_P||{})[wl.side]||0);
+    return endP(wl.front)+endP(wl.back)+side;
+  }
+  // The CCI attached lean-tos of the build as priced today: [{el, u}].
+  function cciAttachedLeans(){
+    var out=[]; if(!doc || root.ACTIVE_MFR!=='CCI' || typeof root.ltUnit!=='function') return out;
+    doc.querySelectorAll('.lte').forEach(function(el){
+      if((((el.querySelector('.lt-type')||{}).value)||'')==='freestanding') return;
+      var u=root.ltUnit(el); if(u && u.w && u.l && !u.isFree) out.push({ el:el, u:u });
+    });
+    return out;
+  }
+  function anyLeanStorage(){
+    if(!doc || typeof root.ltStorOn!=='function') return false;
+    var on=false; doc.querySelectorAll('.lte').forEach(function(el){ if(root.ltStorOn(el)) on=true; });
+    return on;
+  }
+  PL._ltEncPre=function(el){ var u=root.ltUnit(el); return (u&&u.w&&u.l)?ltEncPre(el,u):0; }; // test hook
+
   // ── Drift detectors: $ the saved price carries that today's engine no longer charges ──
   // Returns [{k, label, amt, rules:[ids]}] (amt > 0 = the saved price was higher).
-  function detectDrift(data, rcl){
+  // src: where the saved price came from ('snapshot' = a v3 price snapshot, priced by
+  // this engine generation; otherwise the saved card totals of an older program).
+  function detectDrift(data, rcl, src){
     var out=[], f=data.fields||{}, savedT=tms(data.savedAt)||0;
     var mfr=root.ACTIVE_MFR, w=parseInt(f.bw)||0, l=parseInt(f.bl)||0, bt=f.btype||'';
     // 1) Side frames on CCI > 30' wide eave framed openings (d4c8695)
@@ -15457,7 +15503,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       var c={ mfr:mfr, bt:bt, w:w, l:l, fu:(f['framing-upgrade']||'14'), oc:(f['oc-spacing']||'5oc'), nowFr:rcl.framingUpgrade };
       // the model must reproduce today's engine exactly, or it is not used
       var nowM=frOcAt(8.64e15, c, false);
-      if(c.fu===(($('framing-upgrade')||{}).value||'14') && r2(nowM.fr+nowM.oc)===r2(rcl.framingUpgrade+rcl.ocUpgrade)){
+      if(c.fu===(($('framing-upgrade')||{}).value||'14') && r2(nowM.fr+nowM.oc)===r2(rcl.framingUpgrade+rcl.ocUpgrade-(+rcl.ocLean||0))){
         var crm=(data.source==='3d-builder' && savedT>=T_CRM_FROM && savedT<T_CRM_END);
         var steps=[[T_CRM_END,'crm-12ga'],[T_OC_WAIVE_END,'oc-waiver'],[T_UNITS,'cci-units'],[T_COMBO,'combo-12x4']];
         steps.sort(function(a,b){ return a[0]-b[0]; });
@@ -15477,6 +15523,26 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
           if(nowM.oc===0 && nowM.fr && c.fu==='12' && c.oc==='4oc' && !frD) lbl="4' OC framing (as originally quoted)";
           out.push({ k:'framing', label:lbl, amt:amt, rules:rules });
         }
+      }
+    }
+    // 3) Lean-to walls, 4' OC on attached lean-tos and $70 ground anchors (20114d9 /
+    //    c87e523, 9/30/26). Only a price saved by an older program carries the old
+    //    prices: a v3 snapshot was priced by this engine, and a lean-to storage room
+    //    only exists in programs that already had these rules.
+    if(src!=='snapshot' && rcl && !rcl.manual && !anyLeanStorage()){
+      if(mfr==='CCI' && (!savedT || savedT>=T_LT_HANDBOOK)){
+        var ltD=0;
+        cciAttachedLeans().forEach(function(x){ ltD+=(x.u.bp+x.u.heightAdj+ltEncPre(x.el,x.u))-x.u.total; });
+        ltD=r2(ltD);
+        if(ltD) out.push({ k:'leanWalls', label:'Lean-to walls (as originally quoted)', amt:ltD, rules:['lean-walls'] });
+      }
+      var ocL=r2(+rcl.ocLean||0); // never charged before c87e523
+      if(ocL) out.push({ k:'leanOc', label:"Lean-to 4' OC framing (as originally quoted)", amt:-ocL, rules:['lean-oc4'] });
+      var legs=+rcl.anchorLegs||0;
+      if(legs && +rcl.anchorP && (!savedT || savedT>=T_ANCHORS)){
+        var aD=r2(legs*68-(+rcl.anchorP));
+        // outside: priced after the 26GA line (finishLock carries it inside the hold)
+        if(aD) out.push({ k:'anchors', label:'Ground anchors (as originally quoted)', amt:aD, rules:['anchor-70'], outside:true });
       }
     }
     return out;
@@ -15670,7 +15736,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
           var d=target-r.sub;
           if(Math.abs(d)<0.006){
             var key=String(r2(h));
-            if(!seen[key]){ seen[key]=1; out.push({ h:r2(h), sheetFree:!!r.sheetFree, fastenerFree:!!r.fastenerFree }); }
+            if(!seen[key]){ seen[key]=1; out.push({ h:r2(h), sheetFree:!!r.sheetFree, fastenerFree:!!r.fastenerFree, sheetPaid:(+r.sheetUpgrade>0) }); }
             break;
           }
           h=r2(h + d/((+r.sheetUpgrade>0)?1.1:1));
@@ -15758,9 +15824,12 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     // 3) Roof style was never saved before v3: pick the one that reproduces the saved price.
     var parts=S.src==='snapshot'?S.parts.slice():[];
-    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source}:data, rcl);
+    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source}:data, rcl, S.src);
     drift.forEach(function(d){ parts.push(d); });
     var attributed=0; parts.forEach(function(x){ attributed+=(+x.amt||0); });
+    // A part priced after the 26GA line (ground anchors) moves the subtotal 1:1, but the
+    // hold sits inside the 26GA base: with a paid 26GA line the hold carries it as amt / 1.1.
+    function attrFor(paid){ var a=0; parts.forEach(function(x){ a+=(x.outside&&paid)?(+x.amt||0)/1.1:(+x.amt||0); }); return r2(a); }
     // Pick the saved subtotal (the inversion can allow two when a discount rounds),
     // whether 26GA / fasteners were free at sale (the $10k thresholds are measured on
     // the saved price), and — on quotes saved before roof style was stored — the roof
@@ -15775,7 +15844,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         solveHolds(sb, prep).forEach(function(s){
           var bad=((savedSU==='standard' && s.sheetFree)?1:0)+((savedFA && s.fastenerFree)?1:0);
           var miss=hint?(((!!hint.sheet)!==s.sheetFree?1:0)+((!!hint.fastener)!==s.fastenerFree?1:0)):0;
-          list.push({ rs:rs, sub:sb, P0:r2(sb-s.h), hold:s.h, res:r2(s.h-attributed), bad:bad, miss:miss, sheetFree:s.sheetFree, fastenerFree:s.fastenerFree });
+          list.push({ rs:rs, sub:sb, P0:r2(sb-s.h), hold:s.h, res:r2(s.h-attrFor(s.sheetPaid)), bad:bad, miss:miss, sheetFree:s.sheetFree, fastenerFree:s.fastenerFree });
         });
       });
       return list;
@@ -15816,18 +15885,24 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   function finishLock(S, P0, parts, data, opts){
     var st=PL.st, f=data.fields||{};
     var hold=r2(S.sub-P0), attributed=0;
-    parts=(parts||[]).filter(function(x){ return r2(x.amt); });
-    parts.forEach(function(x){ x.amt=r2(x.amt); attributed+=x.amt; });
-    var residual=r2(hold-attributed);
-    if(residual) parts.push({ k:'orig', label:'Pricing as originally quoted', amt:residual, rules:[] });
     if(root.INPUT_MODE && hold){ st.issues.push('Manual (Input mode) prices do not add up to the saved total ('+signed(hold)+').'); hold=0; parts=[]; }
+    setHold(hold, null, S.src+'|'+PL.ENGINE_REV);
+    PL.on=true;
+    applySavedThr(data); // the sheeting / fastener inputs as saved (thresholds now on the saved price)
+    var T0=pass();
+    // Name the held parts. A part priced after the 26GA line (ground anchors) is carried
+    // inside the hold as amt / 1.1 when the 26GA line is paid (the hold is in its base).
+    var k26=(T0 && +T0.sheetUpgrade>0)?1.1:1, outsideAt=-1;
+    parts=(parts||[]).filter(function(x){ return r2(x.amt); });
+    parts.forEach(function(x, i){ if(x.outside){ x.amt=r2(x.amt/k26); outsideAt=i; delete x.outside; } else x.amt=r2(x.amt); attributed+=x.amt; }); // stored in hold units
+    var residual=r2(hold-attributed);
+    // that division can leave a cent of rounding: it belongs to the outside part
+    if(residual && k26!==1 && outsideAt>=0 && Math.abs(residual)<=0.02){ parts[outsideAt].amt=r2(parts[outsideAt].amt+residual); residual=0; }
+    if(residual) parts.push({ k:'orig', label:'Pricing as originally quoted', amt:residual, rules:[] });
     st.hold=hold; st.parts=parts; st.P0=P0; st.savedSub=S.sub;
     if(S.src!=='snapshot' && Math.abs(residual)>Math.max(500, 0.03*Math.abs(S.sub)))
       st.issues.push('The saved price differs from today’s price for this build by '+signed(residual)+' that no rule change explains. The build may not have reopened exactly as saved (roof style, manual pricing and price-table edits were not stored on older quotes). Compare with the saved PDF before sending documents.');
     setHold(hold, parts, S.src+'|'+PL.ENGINE_REV);
-    PL.on=true;
-    applySavedThr(data); // the sheeting / fastener inputs as saved (thresholds now on the saved price)
-    pass();
     // What each grandfathered / overridden rule would do to this build today.
     ruleEffects(data);
     // Today's pricing with every rule applied (for the notice) — silent passes only.
