@@ -487,13 +487,28 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
        EC[30][16], invariant to building length AND partition position). Charged
        on the quote. Storage doors are added like any other door (Components). -->
   <div class="row"><label>Storage / Add'l End Wall</label>
-    <select id="add-end-wall" onchange="updateAddEndWallDisplay();rc()">
+    <select id="add-end-wall" onchange="aewModeChange()">
       <option value="no">None</option>
       <option value="yes">End Storage &mdash; Partition Wall</option>
       <option value="left">Left Storage &mdash; Lengthwise Partition</option>
       <option value="right">Right Storage &mdash; Lengthwise Partition</option>
     </select></div>
-  <div id="add-end-wall-cost" class="enote" style="margin:4px 0 8px;display:none;font-size:10px;background:#1a1e0a;border-left-color:#f0c040;color:#f59e0b">
+  <!-- Where the storage partition stands (owner 10/1/26). VIEW + paperwork only:
+       gAddEndWall() never reads these, so they can't change the price (the
+       charts are invariant to position / storage width). End Storage depth is a
+       frame line (the program's own truss OC, measured from the front like
+       getTrussPositions); Left/Right width is whole feet. Hidden on GCH, whose
+       divider follows the Enclosed Storage length above. -->
+  <div class="row" id="aew-end-row" style="display:none"><label>Storage at</label>
+    <select id="aew-end" onchange="aewSpecChange()">
+      <option value="back">Back end</option>
+      <option value="front">Front end</option>
+    </select></div>
+  <div class="row" id="aew-depth-row" style="display:none" title="Frame-line positions only (the building's truss spacing)"><label>Storage depth</label>
+    <select id="aew-depth" onchange="aewSpecChange()"></select></div>
+  <div class="row" id="aew-width-row" style="display:none"><label>Storage width (ft)</label>
+    <select id="aew-width" onchange="aewSpecChange()"></select></div>
+  <div id="add-end-wall-cost" class="enote" style="margin:4px 0 8px;display:none;font-size:10px;background:rgba(241,94,48,.1);border-left-color:var(--or);color:#f7956f">
     <strong>Storage partition:</strong> <span id="add-end-wall-cost-val">$0</span>
   </div>
   <div class="row"><label>Front Gable</label>
@@ -4299,6 +4314,11 @@ function doBldType(){
     var gchEaveN3=G('gch-eave-note'); if(gchEaveN3) gchEaveN3.style.display='none';
     var addEW3=G('add-end-wall'); if(addEW3) addEW3.value='no';
   }
+  // Storage position back to its defaults with the type (back end, 10'-nearest
+  // depth / width — doBld → aewPopulate picks them from the blanked selects).
+  var aewE=G('aew-end'); if(aewE) aewE.value='back';
+  ['aew-depth','aew-width'].forEach(function(id){ var s=G(id); if(s) s.value=''; });
+  if(typeof aewClearUnset==='function') aewClearUnset();
   if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
   doBld();
 }
@@ -4431,6 +4451,31 @@ function updateGchOpen(){
 }
 // User picked an enclosed length from the dropdown.
 function gchEncChange(){ updateGchOpen(); rc(); }
+// GCH: the Enclosed Storage length drives the enclosed side sheeting, the inside divider wall and the open-side
+// panel length. Left blank, none of that is priced — a 28x40x14 CCI GCH came out $3,895 low, and a "Closed" open
+// side added $0 (owner report 10/1/26). So the field is required: a red note until it's picked, and the quote PDF,
+// contract, revised layout, text quote and send-to-client stop with a message (pricing math is unchanged).
+function gchEncMissing(){
+  return !!(G('btype') && G('btype').value==='gch' && !((parseInt(G('gch-enc') && G('gch-enc').value)||0) > 0));
+}
+function updateGchEncWarn(){
+  var miss=gchEncMissing(), sel=G('gch-enc'), note=G('gch-sum-note');
+  if(sel) sel.style.borderColor = miss ? '#f87171' : '';
+  if(!note) return;
+  if(miss){
+    note.textContent='⚠ Pick the enclosed storage length — until you do, the GCH walls, sides and inside divider are NOT priced, and the quote PDF / contract / text quote won’t generate.';
+    note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderLeftColor='#f87171';
+    note.setAttribute('data-gch-warn','1');
+  } else if(note.getAttribute('data-gch-warn')){
+    note.removeAttribute('data-gch-warn'); updateGchOpen();
+  }
+}
+function gchEncPrintBlock(){
+  if(INPUT_MODE || !gchEncMissing()) return false;
+  toast('Garage-carport hybrid: pick the Enclosed Storage length in Section 3 first — the walls, sides and inside divider aren’t priced until you do.','err');
+  var el=G('gch-enc'); if(el){ try{ el.scrollIntoView({block:'center'}); el.focus({preventScroll:true}); }catch(e){} }
+  return true;
+}
 
 function populateLength(){
   var blSel=G('bl');
@@ -4606,6 +4651,8 @@ function doBld(){
   if(typeof refreshAllRUDSizes==='function') refreshAllRUDSizes();
   // GCH: rebuild the enclosed-storage dropdown (total length / width / OC may have changed)
   if(typeof populateGchEnc==='function') populateGchEnc();
+  // Storage partition depth / width lists follow the length, width and OC too.
+  if(typeof aewPopulate==='function') aewPopulate();
   sy(); rc();
 }
 
@@ -5739,11 +5786,168 @@ function lrStorageLookup(l,h){
   if(hk<=16 && G('ws') && G('ws').value==='Vertical') price+=colVal(LR_VERT_ADD);
   return price;
 }
+// ── Where the storage partition stands (owner 10/1/26) ──────────────────────
+// VIEW + paperwork only — gAddEndWall() below never reads any of this, so the
+// depth / end / width can't move the price (Sensei + IdeaRoom: position- and
+// storage-width-independent). The 3D host draws the wall from aewSpec().
+// End Storage depth = a FRAME LINE: trusses stand at k·S from the FRONT gable
+// (getTrussPositions; the 3D frames the same way, short last bay at the back),
+// so a back-end room is L − k·S deep and a front-end room k·S deep, from one
+// bay up to L − one bay.
+var AEW_DEFAULT_FT=10;
+function aewDepthOptions(L, S, end){
+  var out=[];
+  if(!(L>0) || !(S>0)) return out;
+  for(var t=S; t<L-0.01; t+=S){
+    var d=(end==='front')?t:L-t;
+    d=Math.round(d*100)/100;
+    if(d>=S-0.001 && d<=L-S+0.001 && out.indexOf(d)<0) out.push(d);
+  }
+  return out.sort(function(a,b){ return a-b; });
+}
+// Left/Right lengthwise storage width: whole feet, 4' up to (width − 4').
+function aewWidthOptions(W){
+  var out=[];
+  for(var x=4; x<=W-4; x++) out.push(x);
+  return out;
+}
+// Nearest option to `want` (a tie goes to the larger — at least the room asked for).
+function aewNearest(opts, want){
+  if(!opts.length) return null;
+  var best=opts[0], bd=Infinity;
+  opts.forEach(function(o){ var d=Math.abs(o-want); if(d<bd-1e-9 || (Math.abs(d-bd)<1e-9 && o>best)){ bd=d; best=o; } });
+  return best;
+}
+// Default pick: 10' (or the nearest valid line to it); a building too short to
+// reach 10' gets its middle-most valid line.
+function aewDefaultDepth(opts){
+  if(!opts.length) return null;
+  if(opts[opts.length-1] < AEW_DEFAULT_FT) return opts[Math.floor(opts.length/2)];
+  return aewNearest(opts, AEW_DEFAULT_FT);
+}
+var _aewMoved=''; // rep note when a length / OC change moved the depth or width
+// (Re)build the depth + width lists for the current size / truss spacing — every
+// building pass (doBld) and once after a restore with the saved picks (`wantD`,
+// `wantW`). A pick that is still valid is kept; otherwise it snaps to the
+// nearest valid line. Built for every type so a save always reopens to the
+// same value. The rep note only names a move of the field the current storage
+// type actually uses (Depth for End Storage, Width for Left / Right) — the
+// hidden one snaps silently.
+function aewPopulate(wantD, wantW){
+  var dSel=G('aew-depth'), wSel=G('aew-width');
+  if(!dSel || !wSel) return;
+  var L=parseInt(G('bl')&&G('bl').value)||0, W=parseInt(G('bw')&&G('bw').value)||0;
+  var ti=(typeof getTrussInfo==='function')?getTrussInfo():null;
+  var S=(ti&&ti.spacing)?ti.spacing:5;
+  var end=(G('aew-end')&&G('aew-end').value==='front')?'front':'back';
+  var mode=(G('add-end-wall')||{}).value||'no';
+  var restoring=(wantD!=null&&wantD!=='')||(wantW!=null&&wantW!=='');
+  var moved=[]; // the note only describes THIS pass's move(s)
+  function fill(sel, opts, want, dflt, fmt, what, shown){
+    var prevStr=(want!=null&&want!=='')?String(want):sel.value;
+    var prev=parseFloat(prevStr);
+    sel.innerHTML='';
+    if(!opts.length){ sel.add(new Option(L&&W?'— building too small —':'— set the size first —','')); sel.value=''; return; }
+    opts.forEach(function(o){ sel.add(new Option(fmt(o), String(o))); });
+    var pick;
+    if(prev>0 && opts.indexOf(prev)>=0) pick=prev;
+    else if(prev>0){ pick=aewNearest(opts, prev); if(!restoring && shown) moved.push(what+' moved from '+prev+'′ to '+pick+'′ ('+(what==='Depth'?'nearest frame line at '+S+'′ OC':'fits this width')+').'); }
+    else pick=dflt(opts);
+    sel.value=String(pick);
+  }
+  fill(dSel, aewDepthOptions(L, S, end), wantD, aewDefaultDepth,
+       function(d){ return d+'′ '+(end==='front'?'from the front':'from the back')+' · '+(L-d)+'′ main room'; }, 'Depth', mode==='yes');
+  fill(wSel, aewWidthOptions(W), wantW, function(o){ return aewNearest(o, AEW_DEFAULT_FT); },
+       function(x){ return x+'′ wide · '+(W-x)+'′ main room'; }, 'Width', mode==='left'||mode==='right');
+  _aewMoved=moved.join(' ');
+}
+// A quote saved before 10/1/26 has no storage position: it reopens drawn at the
+// default (3D), but the paperwork must not print a position nobody chose. The
+// flag lives on the select (set by restoreQuoteData, cleared by any storage
+// pick, a type change, a reset) and keeps the fields out of the next save.
+function aewUnset(){ var el=G('add-end-wall'); return !!(el && el.dataset && el.dataset.aewUnset==='1'); }
+function aewClearUnset(){ var el=G('add-end-wall'); if(el && el.dataset) delete el.dataset.aewUnset; _aewAdopted=''; }
+// Rep note when an old quote's shown default became the position (below).
+var _aewAdopted='';
+// An old quote's default End Storage position becomes THE position once an
+// opening sits on the partition: the 3D already draws that door on the wall
+// there, so the contract plan, spacing page and revised layout must draw the
+// wall + door there too (they skip an unset wall — verifier 10/2/26). Runs on
+// every pass (updateAddEndWallDisplay). View / paperwork only — no price reads it.
+function aewAdoptForPartitionOpenings(sp){
+  if(!sp || !sp.on || !sp.unset || sp.kind!=='end' || typeof collectElevItems!=='function') return false;
+  if(!((collectElevItems().partition||[]).length)) return false;
+  aewClearUnset();
+  _aewAdopted='Storage wall kept where it&rsquo;s shown ('+sp.depthFt+'′ in from the '+sp.end+' end) because an opening is on it &mdash; the quote and contract now print it there. Change the end / depth if that isn&rsquo;t right.';
+  return true;
+}
+// Rep picked an end / depth / width.
+function aewSpecChange(){
+  aewClearUnset();
+  aewPopulate(); // the depth list depends on which end (also clears the moved note)
+  updateAddEndWallDisplay();
+  rc();
+}
+// Rep picked the storage type (None / End / Left / Right): a note about the
+// previous type's move no longer applies.
+function aewModeChange(){
+  aewClearUnset();
+  _aewMoved='';
+  updateAddEndWallDisplay();
+  rc();
+}
+// The storage partition as the 3D host should draw it (and the paperwork names
+// it). on=false → nothing to draw: None, no building type yet, a GCH (its
+// divider is the Enclosed Storage split), no valid position for this size, or a
+// wall the quote doesn't charge (CA Left/Right: no chart, $0 — so the 3D and
+// the contract never show a wall that isn't on the price; Input mode prices by
+// hand, so it draws there). unset = an old quote's default position (above).
+function aewSpec(){
+  var v=(G('add-end-wall')||{}).value||'no';
+  var bt=(G('btype')||{}).value||'';
+  var end=((G('aew-end')||{}).value==='front')?'front':'back';
+  var depth=parseFloat((G('aew-depth')||{}).value)||0;
+  var width=parseFloat((G('aew-width')||{}).value)||0;
+  var sp={on:false, kind:'none', end:end, depthFt:depth, widthFt:width, priced:false, unset:aewUnset()};
+  if(!bt || bt==='gch' || (v!=='yes'&&v!=='left'&&v!=='right')) return sp;
+  sp.kind=(v==='yes')?'end':v;
+  sp.priced=(typeof INPUT_MODE!=='undefined' && INPUT_MODE===true) || gAddEndWall()>0;
+  sp.on=((v==='yes')?depth>0:width>0) && sp.priced;
+  return sp;
+}
+// What the storage looks like for a revision diff (as ordered vs now).
+function aewSig(){
+  var v=(G('add-end-wall')||{}).value||'no', sp=aewSpec();
+  return v+'|'+((sp.on&&!sp.unset)?(sp.kind==='end'?sp.end+':'+sp.depthFt:String(sp.widthFt)):'');
+}
 function aewLabel(){
   var el=G('add-end-wall'); var v=el?el.value:'no';
-  if(v==='left') return 'Left Storage — Lengthwise Partition Wall';
-  if(v==='right') return 'Right Storage — Lengthwise Partition Wall';
-  return 'End Storage — Interior Partition Wall';
+  var sp=aewSpec(), at=sp.on&&!sp.unset;
+  if(v==='left'||v==='right'){
+    return (v==='left'?'Left':'Right')+' Storage — Lengthwise Partition Wall'+(at?' ('+sp.widthFt+'′ wide)':'');
+  }
+  return 'End Storage — Interior Partition Wall'+(at&&sp.kind==='end'?' ('+sp.depthFt+'′ deep at '+sp.end+' end)':'');
+}
+// Eave openings the End Storage wall would run through (rep warning only — no
+// price effect). Eave positions follow getPosItems: Right Eave x is measured
+// from the FRONT, Left Eave x from the BACK; the wall stands L − depth from the
+// front (back-end storage) or depth from the front (front-end storage).
+function aewEaveConflicts(sp){
+  if(!sp || !sp.on || sp.kind!=='end' || typeof collectElevItems!=='function') return [];
+  var L=parseInt(G('bl')&&G('bl').value)||0; if(!L) return [];
+  var z=(sp.end==='front')?sp.depthFt:L-sp.depthFt;
+  var names={rollup:'roll-up door', wtd:'walk door', win:'window', fo:'framed opening'};
+  var r1=function(n){ return Math.round(n*10)/10; };
+  var it=collectElevItems(), out=[];
+  function chk(arr, side, fromBack){
+    (arr||[]).forEach(function(o){
+      var a=fromBack?L-o.x-o.w:o.x, b=a+o.w;
+      if(z>a+0.05 && z<b-0.05) out.push('the '+side+' '+(names[o.type]||'opening')+' ('+r1(a)+'′–'+r1(b)+'′ from the front)');
+    });
+  }
+  chk(it.right, 'Right Eave', false);
+  chk(it.left, 'Left Eave', true);
+  return out;
 }
 function gAddEndWall(){
   var el=G('add-end-wall');
@@ -5763,41 +5967,58 @@ function gAddEndWall(){
 function updateAddEndWallDisplay(){
   var el=G('add-end-wall');
   var noteEl=G('add-end-wall-cost');
-  var valEl=G('add-end-wall-cost-val');
   if(!el || !noteEl) return;
   var v=el.value;
   var on=(v==='yes'||v==='left'||v==='right');
+  var bt=G('btype')?G('btype').value:'';
   noteEl.style.display = on ? '' : 'none';
-  if(on && valEl){
-    var bt=G('btype')?G('btype').value:'';
-    var noteBodyEl=noteEl.querySelector('strong');
-    if(noteBodyEl && noteBodyEl.parentNode){
-      var span=noteBodyEl.parentNode;
-      if(bt==='gch'){
-        span.innerHTML = '<strong>GCH:</strong> the divider end wall is already included in the ' +
-                         '<em>Utility Storage</em> line &mdash; no extra charge here.';
-      } else if(v==='left'||v==='right'){
-        var cl = gAddEndWall();
-        if(ACTIVE_MFR!=='CCI'){
-          span.innerHTML = '<strong style="color:#f87171">Left/Right storage is priced for CCI (Carolina) only.</strong> ' +
-                           'Carports Anywhere has no verified lengthwise-storage chart &mdash; $0 added. ' +
-                           'Use End Storage, or price the lengthwise wall manually.';
-        } else {
-          span.innerHTML = '<strong>'+(v==='left'?'Left':'Right')+' Storage partition:</strong> ' +
-                           '<span id="add-end-wall-cost-val">$' + cl.toLocaleString() + '</span>' +
-                           ' &mdash; interior wall running the FULL building length (Sensei-matched CCI chart; ' +
-                           'vertical walls auto-add the vertical rate). Storage width is the customer’s ' +
-                           'choice &mdash; no price change. Add storage doors below like any other door.';
-        }
-      } else {
-        var c = gAddEndWall();
-        span.innerHTML = '<strong>End Storage partition:</strong> ' +
-                         '<span id="add-end-wall-cost-val">$' + c.toLocaleString() + '</span>' +
-                         ' &mdash; full interior end wall, priced like a closed end. Position along ' +
-                         'the length is the customer’s choice (no price change). Add storage ' +
-                         'doors below like any other door.';
-      }
+  // Storage position rows — not on a GCH (its divider is the Enclosed Storage split).
+  function showRow(id, vis){ var r=G(id); if(r) r.style.display=vis?'':'none'; }
+  showRow('aew-end-row',   v==='yes' && bt!=='gch');
+  showRow('aew-depth-row', v==='yes' && bt!=='gch');
+  showRow('aew-width-row', (v==='left'||v==='right') && bt!=='gch');
+  if(!on) return;
+  // Rewritten in full every pass (the old code stopped updating once a branch
+  // without the -val span — GCH / CA Left-Right — had replaced the note body).
+  var sp=aewSpec();
+  if(aewAdoptForPartitionOpenings(sp)) sp=aewSpec();
+  var moved=(_aewMoved?' <strong>&#9888; '+_aewMoved+'</strong>':'')+(_aewAdopted?' <strong>&#9888; '+_aewAdopted+'</strong>':'');
+  // An old quote (no saved position): drawn at the default, kept off the paperwork.
+  // Re-picking the value already shown fires no change event, so the note has
+  // its own button to keep the shown default (verifier 10/2/26).
+  var unsetNote=(sp.on&&sp.unset)?' <strong>&#9888; This quote was saved before storage positions existed &mdash; shown at the default ('+(sp.kind==='end'?sp.depthFt+'′ in from the '+sp.end+' end':sp.widthFt+'′ wide')+'); the quote and contract don&rsquo;t print a position until you pick the '+(sp.kind==='end'?'end / depth':'width')+' or keep this one.</strong>'+
+    ' <button type="button" id="aew-keep-shown" onclick="aewSpecChange()" style="margin-left:4px;font-size:10px;padding:1px 7px;border:1px solid currentColor;border-radius:3px;background:transparent;color:inherit;cursor:pointer;font-weight:700">Keep shown position</button>':'';
+  if(bt==='gch'){
+    noteEl.innerHTML = '<strong>GCH:</strong> the divider end wall is already included in the ' +
+                       '<em>Utility Storage</em> line &mdash; no extra charge here.';
+  } else if(v==='left'||v==='right'){
+    var side=(v==='left'?'Left':'Right');
+    var where=sp.widthFt>0 ? (sp.widthFt+'′ wide from the '+side.toLowerCase()+' side') : 'pick the storage width';
+    if(ACTIVE_MFR!=='CCI'){
+      // No CA chart: $0, so nothing is drawn (3D / contract) unless Input mode prices it by hand.
+      noteEl.innerHTML = '<strong style="color:#f87171">Left/Right storage is priced for CCI (Carolina) only.</strong> ' +
+                         'Carports Anywhere has no verified lengthwise-storage chart &mdash; $0 added' +
+                         (sp.on ? '. Drawn ' + where + ' &mdash; Input mode: price it on a manual line.'
+                                : ', so the wall isn&rsquo;t drawn (3D or contract). Use End Storage, or price the lengthwise wall manually in Input mode.') +
+                         unsetNote + moved;
+    } else {
+      noteEl.innerHTML = '<strong>'+side+' Storage partition:</strong> ' +
+                         '<span id="add-end-wall-cost-val">$' + gAddEndWall().toLocaleString() + '</span>' +
+                         ' &mdash; interior wall running the FULL building length, ' + where +
+                         ' (Sensei-matched CCI chart; vertical walls auto-add the vertical rate). ' +
+                         'Width doesn&rsquo;t change the price. Doors on a lengthwise partition aren&rsquo;t priced yet &mdash; ask CCI.' +
+                         unsetNote + moved;
     }
+  } else {
+    var at=sp.depthFt>0 ? (sp.depthFt+'′ in from the '+sp.end+' end') : '&mdash; pick the storage depth &mdash;';
+    var noPrice=(sp.depthFt>0 && !sp.priced)?' <strong>No chart price for this size, so the wall isn&rsquo;t drawn.</strong>':'';
+    var cross=aewEaveConflicts(sp);
+    var crossNote=cross.length?' <strong>&#9888; The storage wall ('+(sp.end==='front'?sp.depthFt:((parseInt(G('bl').value)||0)-sp.depthFt))+'′ from the front) runs through '+cross.join(' and ')+' &mdash; move the opening or pick another depth.</strong>':'';
+    noteEl.innerHTML = '<strong>End Storage partition:</strong> ' +
+                       '<span id="add-end-wall-cost-val">$' + gAddEndWall().toLocaleString() + '</span>' +
+                       ' &mdash; full interior end wall ' + at + ', priced like a closed end ' +
+                       '(depth doesn&rsquo;t change the price). Storage doors: pick the ' +
+                       '&ldquo;Partition Wall&rdquo; location (priced like a gable-end door).' + noPrice + unsetNote + crossNote + moved;
   }
 }
 function sidePanelLength(){
@@ -7835,6 +8056,8 @@ function exitInputMode(){
 }
 // Parallel recalc for INPUT mode — drives the SAME breakdown panel + totals as rc().
 function rcManual(){
+  // Storage note / rows follow Input mode too (wording only — never a price).
+  if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
   var base=_ip('ip-base'), leg=_ip('ip-leg'), framing=_ip('ip-framing'), pitch=_ip('ip-pitch');
   var walls=_ip('ip-frontend')+_ip('ip-backend')+_ip('ip-leftside')+_ip('ip-rightside');
   var rud=_ip('ip-rud'), wtd=_ip('ip-wtd'), win=_ip('ip-win');
@@ -8017,6 +8240,7 @@ function _rvClear(){
   window._rvOrig=null; window._rvForce=false;
   document.querySelectorAll('[data-rv-orig]').forEach(function(el){ delete el.dataset.rvOrig; });
   document.querySelectorAll('[data-rv-stor]').forEach(function(el){ delete el.dataset.rvStor; }); // lean-to storage signature (as ordered)
+  window._rvAewSig=null; // main-building storage wall (as ordered)
 }
 // Reopened-quote price lock (see window.PriceLock at the end of this file). The
 // difference between the SAVED building subtotal and today's engine price for
@@ -8076,6 +8300,7 @@ function cpWallChanged(wallId, spId){
 }
 function rc(){
   window._qTotals=null; // republished below (or by rcManual) once this pass has priced the build
+  if(typeof updateGchEncWarn==='function') updateGchEncWarn();
   if(INPUT_MODE) return rcManual();
   // Lean-to storage length dropdowns follow the lean length + frame spacing
   // BEFORE anything is priced (a spacing change snaps them with a rep note).
@@ -9540,6 +9765,8 @@ function collectQuoteData(){
     // reloaded fully enclosed (doBldType resets walls to the type default and
     // nothing restored them). Restore Step 2 now puts them back after that reset.
     'wfg','wbg','wre','wle','add-end-wall',
+    // Storage partition position (10/1/26, view + paperwork only — never priced).
+    'aew-end','aew-depth','aew-width',
     'gch-enc','gch-open','gch-gable','gch-left','gch-right','overhang-sel','sp-left','sp-right',
     // Free-standing lean-to (fslean) controls — pitch + walls drive the price.
     'fs-pitch','fs-walls-mode','fs-wf','fs-wb','fs-wt','fs-wl2','fs-orient',
@@ -9558,6 +9785,9 @@ function collectQuoteData(){
     if(el.tagName==='SELECT'||el.tagName==='INPUT'||el.tagName==='TEXTAREA') data.fields[id]=el.value;
     else if(el.textContent!==undefined) data.fields[id]=el.textContent;
   });
+  // An old quote whose storage position was never picked stays that way on the
+  // next save (it reopens drawn at the default, with no position on the paperwork).
+  if(typeof aewUnset==='function' && aewUnset()){ delete data.fields['aew-end']; delete data.fields['aew-depth']; delete data.fields['aew-width']; }
 
   // Active manufacturer (CA / CCI) — drives pricing tables + every per-mfr
   // dropdown. Was never saved, so reloads reverted to the CA default.
@@ -9913,6 +10143,7 @@ function printRevisionForm(){
 async function printRevisedLayout(){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
   if(ltStoragePrintBlock()) return; // its 3D views would show a storage partition door that can't fit
+  if(gchEncPrintBlock()) return;
   var pwin=window.open('','_blank');
   if(!pwin){ toast('Popup blocked — please allow popups','err'); return; }
   try { pwin.document.write('<!doctype html><html><body style="margin:0;background:#fff;color:#94a3b8;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px">Generating revised layout…</body></html>'); } catch(e){}
@@ -9933,8 +10164,13 @@ async function printRevisedLayout(){
   var framingGA=fuVal==='12'?'12 Gauge':'14 Gauge';
   var now=new Date();
   var todayStr=(now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
-  var walls={Front:[],Back:[],Left:[],Right:[]};
+  var walls={Front:[],Back:[],Partition:[],Left:[],Right:[]};
+  // 'Partition Wall': a GCH's divider is what the Front view shows (same rule as
+  // collectElevItems._partOnFront); an End Storage partition (10/1/26) is an
+  // interior wall — its own schedule group, not the Front Wall (verifier 10/2/26).
+  var _rlPartOnFront=((G('btype')||{}).value)==='gch';
   function wallKey(loc){
+    if(loc==='Partition Wall' && !_rlPartOnFront) return 'Partition';
     if(/front/i.test(loc)) return 'Front';
     if(/back/i.test(loc)) return 'Back';
     if(/left/i.test(loc)) return 'Left';
@@ -10017,10 +10253,14 @@ async function printRevisedLayout(){
     return '#7c3aed';
   }
   var schedHTML='';
-  ['Front','Back','Left','Right'].forEach(function(wn){
+  // Same title as the spacing page's Storage Partition view (its position only
+  // once one is picked — an old quote's default isn't printed).
+  var _rlSp=(typeof aewSpec==='function')?aewSpec():null;
+  var _rlPartHdr='Storage Partition (interior)'+((_rlSp&&_rlSp.on&&_rlSp.kind==='end'&&!_rlSp.unset)?' — '+_rlSp.depthFt+'′ from the '+_rlSp.end+' end':'');
+  ['Front','Back','Partition','Left','Right'].forEach(function(wn){
     var items=walls[wn];
     if(!items.length) return;
-    schedHTML+='<tr class="wall-hdr"><td colspan="5">'+wn+' Wall</td></tr>';
+    schedHTML+='<tr class="wall-hdr"><td colspan="5">'+(wn==='Partition'?_rlPartHdr:wn+' Wall')+'</td></tr>';
     items.forEach(function(it){
       var c=typeColor(it.type);
       schedHTML+='<tr>'+
@@ -10191,7 +10431,10 @@ var CCI_LEGACY_HEX = {
 // or a CRM restore that beats the host's load handler): setting the saved value then drops the
 // select to '' and the opening loses its placement. Add it first, the same way the host does.
 function _ensureLocOpt(sel, v){
-  if(!sel || v!=='Partition Wall' || (((G('btype')||{}).value)||'')!=='gch') return;
+  // GCH divider, or an End Storage partition on any other type (owner 10/1/26 —
+  // same location, same gable-end door pricing; the host offers it on both).
+  var _bt=((G('btype')||{}).value)||'', _aew=((G('add-end-wall')||{}).value)||'';
+  if(!sel || v!=='Partition Wall' || !(_bt==='gch' || _aew==='yes')) return;
   for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===v) return;
   var o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o);
 }
@@ -10479,6 +10722,25 @@ function restoreQuoteData(data, opts){
     populateGchEnc(f['gch-enc']);   // builds options + snaps the saved length to a valid tier
     updateGchOpen();
   }
+  // Storage partition: build the depth / width lists for the restored size + OC,
+  // then re-apply the saved picks (Step 2 ran before the lists existed). Quotes
+  // saved before 10/1/26 have no picks and reopen at the defaults — price unchanged.
+  if(typeof aewPopulate==='function'){
+    // A pick the quote never saved starts from the default for THIS size (not
+    // whatever the build pass in Step 1 chose for the previous quote's size).
+    if(f['aew-end']===undefined){ var _aeE=G('aew-end'); if(_aeE) _aeE.value='back'; }
+    if(f['aew-depth']===undefined){ var _aeD=G('aew-depth'); if(_aeD) _aeD.value=''; }
+    if(f['aew-width']===undefined){ var _aeW=G('aew-width'); if(_aeW) _aeW.value=''; }
+    aewPopulate(f['aew-depth'], f['aew-width']);
+    // No saved position at all (saved before 10/1/26): drawn at the default, but
+    // the quote / contract / text quote don't print a position nobody chose.
+    var _aeM=G('add-end-wall');
+    _aewAdopted=''; // a previous quote's "kept where it's shown" note
+    if(_aeM && _aeM.dataset){
+      if(f['aew-depth']===undefined && f['aew-width']===undefined) _aeM.dataset.aewUnset='1';
+      else delete _aeM.dataset.aewUnset;
+    }
+  }
   sy();
   // Re-run the building pass so size-driven rows (OC Spacing, fslean badges) match the restored quote.
   try{ if(typeof _prevOcWidth!=='undefined') _prevOcWidth=parseInt(G('bw').value)||0; doBld(); }catch(e){}
@@ -10510,6 +10772,7 @@ function restoreQuoteData(data, opts){
         :{ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent), dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) };
       document.querySelectorAll('.re,.we,.ne,.ace,.lte').forEach(function(el){ el.dataset.rvOrig='1'; });
       document.querySelectorAll('.lte').forEach(function(el){ el.dataset.rvStor=ltStorSig(el); });
+      window._rvAewSig=(typeof aewSig==='function')?aewSig():null; // storage wall as ordered
     }catch(e){}
   }, 900);
 
@@ -10521,6 +10784,7 @@ function _rvNum(t){ var n=parseFloat(String(t||'').replace(/[^0-9.-]/g,'')); ret
 async function printQuote(){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
   if(ltStoragePrintBlock()) return;
+  if(gchEncPrintBlock()) return;
 
   // 3D-rendering option: capture the live modeler for the PDF. Open the print
   // window NOW (synchronous, inside the click gesture) so the popup isn't
@@ -11293,10 +11557,15 @@ function _dimIn(ft){ return parseFloat((ft*12).toFixed(2))+'"'; }
 // Collect the openings placed on each wall (same dispatch the elevations use).
 function collectElevItems(){
   var W=parseInt(G('bw').value)||30, L=parseInt(G('bl').value)||40;
-  var front=[],back=[],right=[],left=[];
+  var front=[],back=[],right=[],left=[],partition=[];
   // GCH "Partition Wall" openings (e.g. the roll-up) live on the partition, which
-  // is what the Front dimensioned view shows — so route them to `front`.
-  function dispatch(loc,a,W2,L2,fw){ if(loc==='Front Gable End'||loc==='Partition Wall')fw(front,W2); else if(loc==='Back Gable End')fw(back,W2); else if(loc==='Left Eave Side')fw(left,L2); else if(loc==='Right Eave Side')fw(right,L2); }
+  // is what the Front dimensioned view shows — so route them to `front`. An End
+  // Storage partition (10/1/26) is an INTERIOR wall behind a sheeted front: its
+  // openings are not on an exterior elevation — they go to `partition` (the
+  // spacing page's Storage Partition view + the contract plan's storage wall),
+  // measured like the Front view (x from the left, as seen from the front).
+  var _partOnFront=((G('btype')||{}).value)==='gch';
+  function dispatch(loc,a,W2,L2,fw){ if(loc==='Front Gable End'||(loc==='Partition Wall'&&_partOnFront))fw(front,W2); else if(loc==='Partition Wall')fw(partition,W2); else if(loc==='Back Gable End')fw(back,W2); else if(loc==='Left Eave Side')fw(left,L2); else if(loc==='Right Eave Side')fw(right,L2); }
   document.querySelectorAll('.re').forEach(function(el){
     var loc=el.querySelector('.rloc').value, sz=(el.querySelector('.rsz').value||'10x8').split('x');
     var dW=parseFloat(sz[0])||10,dH=parseFloat(sz[1])||8,qty=parseInt(el.querySelector('.rqt').value)||1;
@@ -11321,7 +11590,7 @@ function collectElevItems(){
     var _duEl=el.querySelector('.fo-disp-unit'), _du=_duEl?_duEl.value:'ft';
     dispatch(el.querySelector('.fo-loc').value,0,W,L,function(a,fw){ getPosItems(el,qty,foW,fw,foH,'fo',foYo).forEach(function(it){ it.dispUnit=_du; a.push(it); }); });
   });
-  return {front:front,back:back,right:right,left:left,W:W,L:L};
+  return {front:front,back:back,right:right,left:left,partition:partition,W:W,L:L};
 }
 
 // CCI interior clearances (Dealer Handbook p7, "all figures approximate"),
@@ -11428,9 +11697,15 @@ function dimSpacingPageHTML(){
       '<div style="padding:10px 12px;background:#fff">'+dimElevSVG(faceW,H,peakH,isGable,items,gchFront,frontSide,isGable?cciClearance(W,(G('rs')||{}).value,H):null)+'</div>'+
     '</div>';
   }
+  // End Storage partition doors (10/1/26): their own view, measured like the
+  // Front view (seen from the front), placed only where the wall is drawn.
+  var _sp=(typeof aewSpec==='function')?aewSpec():null, partBox='';
+  if(_sp && _sp.on && _sp.kind==='end' && it.partition && it.partition.length){
+    partBox=box('Storage Partition (interior)'+(_sp.unset?'':' — '+_sp.depthFt+'′ from the '+_sp.end+' end')+' · seen from the front',W,true,it.partition,false);
+  }
   return '<div style="page-break-before:always;background:#ffffff;min-height:100vh;padding:24px;box-sizing:border-box;font-family:Arial,sans-serif">'+
     '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#0D1B2A;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1B8A8A;text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
-    box('Front',W,true,it.front,isGCH)+box('Back',W,true,it.back,false)+box('Right Eave',L,false,it.right,false,'left')+box('Left Eave',L,false,it.left,false,'right')+
+    box('Front',W,true,it.front,isGCH)+box('Back',W,true,it.back,false)+partBox+box('Right Eave',L,false,it.right,false,'left')+box('Left Eave',L,false,it.left,false,'right')+
     '<div style="margin-top:4px;font-size:8pt;color:#64748b;text-align:center">All dimensions measured along grade from the wall corners.'+(cciClearance(W,(G('rs')||{}).value,H)?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
   '</div>';
 }
@@ -11466,6 +11741,7 @@ async function printContract(){
   // record of the signed order, so it is never blocked).
   if(!EXEC_COPY && window.PriceLock && PriceLock.contractBlocked()){ PriceLock.showGate(); return; }
   if(ltStoragePrintBlock()) return;
+  if(!EXEC_COPY && gchEncPrintBlock()) return; // the signed order's executed copy is a record — never blocked
 
   // Open the print window NOW (inside the click gesture) so it isn't popup-
   // blocked, then capture the live 3D modeler before assembling — the contract's
@@ -11710,6 +11986,9 @@ async function printContract(){
   // window._rvForce: set by the CRM's Finish Revision — marks the contract
   // REVISED even for no-charge changes (e.g. doors moved to another wall).
   var _rvMode=!!(window._rvForce===true||(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5)));
+  // Storage wall added / moved / removed since the order (no-charge moves need
+  // Finish Revision like a moved door; on a revised contract its row is highlighted).
+  var _rvAewChanged=!!(_rvMode&&window._rvOrig&&window._rvAewSig!=null&&typeof aewSig==='function'&&window._rvAewSig!==aewSig());
   window._rvHlCur=false;
   if(_rvMode&&G('pdf-dims')) G('pdf-dims').checked=true;
   function row(desc,qty,unit,amt){ lineItems.push({desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}); } // amounts show cents wherever they have them (lean-to / storage rows included)
@@ -11802,7 +12081,11 @@ async function printContract(){
   if(wainP) row('Wainscot',null,null,wainP);
   if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
   gHoldRows(holdPC).forEach(function(hr){ row(hr.label,null,null,hr.amt); });
-  if(aewP) row(aewLabel(),null,null,aewP);
+  if(aewP){
+    window._rvHlCur=_rvAewChanged; row(aewLabel(),null,null,aewP); window._rvHlCur=false;
+    // Storage that was on the order but moved: CHANGED, not NEW.
+    if(_rvAewChanged && String(window._rvAewSig).indexOf('no|')!==0) lineItems[lineItems.length-1].tag='CHANGED';
+  }
 
   document.querySelectorAll('.re').forEach(function(el){
     window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
@@ -11996,7 +12279,7 @@ async function printContract(){
   lineItems.forEach(function(it){
     var amtStr=it.amt===0?'<span style="color:#15803d;font-weight:800">INCLUDED</span>':(it.amt<0?'\u2212'+(it.amt%1?fD(-it.amt):fC(-it.amt)):(it.amt%1?fD(it.amt):fC(it.amt)));
     rowsHTML+='<tr'+(it.hl?' style="background:#fff4dc"':'')+'>'+
-      '<td class="li-desc">'+(it.hl?'<span style="display:inline-block;background:#f59e0b;color:#7c2d12;font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">NEW</span>':'')+it.desc+'</td>'+
+      '<td class="li-desc">'+(it.hl?'<span style="display:inline-block;background:#f59e0b;color:#7c2d12;font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">'+(it.tag||'NEW')+'</span>':'')+it.desc+'</td>'+
       '<td class="li-c">'+(it.qty!==null?it.qty:'—')+'</td>'+
       '<td class="li-c">'+(it.unit?fC(it.unit):'—')+'</td>'+
       '<td class="li-r">'+amtStr+'</td>'+
@@ -12153,6 +12436,46 @@ async function printContract(){
       // Label on a white chip so it stays readable over the divider line.
       s += '<rect x="'+(bx+bw/2-44)+'" y="'+(py-8)+'" width="88" height="14" fill="#ffffff" stroke="none"/>';
       s += '<text x="'+(bx+bw/2)+'" y="'+(py+2.5)+'" text-anchor="middle" font-family="Arial" font-size="8.5" font-weight="800" fill="#111827" letter-spacing="1">PARTITION WALL</text>';
+    })();
+
+    // ── Storage partition (End / Left / Right Storage, 10/1/26) ──────────────
+    // Same wall + chip as the GCH divider. End Storage runs across the width at
+    // its depth from the back (top) or front (bottom); Left/Right runs the full
+    // length at its width in from that eave (plan left = the building's left).
+    // Not drawn when the quote doesn't charge it (aewSpec on=false) or when an old
+    // quote never picked a position (unset). End Storage partition doors sit on
+    // the line, measured from the plan's left like the front wall's icons.
+    (function(){
+      var sp=(typeof aewSpec==='function')?aewSpec():null;
+      if(!sp||!sp.on||sp.unset) return;
+      var chip=function(cx,cy,txt,vert){
+        var tw=txt.length*6+12;
+        s += '<rect x="'+(vert?cx-7:cx-tw/2)+'" y="'+(vert?cy-tw/2:cy-8)+'" width="'+(vert?14:tw)+'" height="'+(vert?tw:14)+'" fill="#ffffff" stroke="none"/>';
+        s += '<text x="'+cx+'" y="'+(cy+2.5)+'" text-anchor="middle" font-family="Arial" font-size="8.5" font-weight="800" fill="#111827" letter-spacing="1"'+(vert?' transform="rotate(-90,'+cx+','+(cy)+')"':'')+'>'+txt+'</text>';
+      };
+      if(sp.kind==='end'){
+        var d=Math.min(sp.depthFt, L);
+        var py=by+(sp.end==='front'?(L-d):d)*scale;
+        s += '<line x1="'+bx+'" y1="'+py+'" x2="'+(bx+bw)+'" y2="'+py+'" stroke="#111827" stroke-width="'+wt+'" stroke-linecap="square"/>';
+        // Its doors / windows / framed openings (same codes + colors as the outer
+        // walls). The wall's label moves off the line onto the main-room side when
+        // an opening sits under it.
+        var pItems=(typeof collectElevItems==='function')?(collectElevItems().partition||[]):[];
+        var pStyle=function(t){ return t==='rollup'?{f:'#fef3c7',k:'#c4421e',c:'C1'}:t==='wtd'?{f:'#dbeafe',k:'#1d4ed8',c:'C3'}:t==='win'?{f:'#dcfce7',k:'#15803d',c:'C5'}:{f:'#f3f4f6',k:'#4b5563',c:'C7'}; };
+        var lbl='STORAGE WALL — '+d+'′', lw=lbl.length*6+12, lx0=bx+bw/2-lw/2, lx1=bx+bw/2+lw/2, ly=py;
+        pItems.forEach(function(it){ var a=bx+it.x*scale, b=a+it.w*scale; if(b>lx0 && a<lx1) ly=py+(sp.end==='front'?-14:14); });
+        chip(bx+bw/2, ly, lbl, false);
+        pItems.forEach(function(it){
+          var st=pStyle(it.type), ix=bx+Math.max(0,Math.min(it.x,W-it.w))*scale, iw=it.w*scale, ih=10, iy=py-ih/2;
+          s += '<rect x="'+ix+'" y="'+iy+'" width="'+iw+'" height="'+ih+'" fill="'+st.f+'" stroke="'+st.k+'" stroke-width="1.4"/>';
+          s += '<text x="'+(ix+iw/2)+'" y="'+(iy+ih/2+2.5)+'" text-anchor="middle" font-family="Arial" font-size="6.8" font-weight="800" fill="'+st.k+'">'+st.c+'</text>';
+        });
+      } else {
+        var wd=Math.min(sp.widthFt, W);
+        var px=(sp.kind==='left')?bx+wd*scale:bx+bw-wd*scale;
+        s += '<line x1="'+px+'" y1="'+by+'" x2="'+px+'" y2="'+(by+bl)+'" stroke="#111827" stroke-width="'+wt+'" stroke-linecap="square"/>';
+        chip(px, by+bl/2, 'STORAGE WALL — '+wd+'′', true);
+      }
     })();
 
     // ── Translate each item from elevation coords → "floor plan position" (fp)
@@ -12573,7 +12896,7 @@ async function printContract(){
     '</div>'+
     '</div>'+
 
-    (_rvMode?'<div style="background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;margin:4px 0 8px;font-size:8pt;color:#7c2d12"><strong style="letter-spacing:.5px">REVISED CONTRACT</strong> \u2014 supersedes the previously signed agreement. '+(_rvSizeChanged?('Building size revised: '+window._rvOrig.dims.split("x").join("\u00d7")+' \u2192 '+_rvDimsNow.split("x").join("\u00d7")+'. '):'')+'Added items are highlighted below; renderings, floor plan and spacing pages reflect the revised building.</div>':'')+
+    (_rvMode?'<div style="background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;margin:4px 0 8px;font-size:8pt;color:#7c2d12"><strong style="letter-spacing:.5px">REVISED CONTRACT</strong> \u2014 supersedes the previously signed agreement. '+(_rvSizeChanged?('Building size revised: '+window._rvOrig.dims.split("x").join("\u00d7")+' \u2192 '+_rvDimsNow.split("x").join("\u00d7")+'. '):'')+(_rvAewChanged?'Storage wall revised. ':'')+'Added items are highlighted below; renderings, floor plan and spacing pages reflect the revised building.</div>':'')+
     '<div class="c-sec">'+
     '<div class="c-sec-title">Itemized Pricing</div>'+
     '<table class="c-tbl"><thead><tr><th>Description</th><th class="c">Qty</th><th class="c">Unit</th><th class="r">Amount</th></tr></thead>'+
@@ -12988,6 +13311,15 @@ function resetAll(){
   var insulSelR=G('insul-sel'); if(insulSelR) insulSelR.value='none';
   var insulDetailR=G('insul-detail'); if(insulDetailR) insulDetailR.classList.add('hidden');
   ['wfg','wbg','wre','wle'].forEach(function(id){ G(id).value='Closed'; });
+  // Storage partition: none, rows back to their defaults (nothing drawn until a
+  // type + storage is picked). A type pick (doBldType) sets this again anyway,
+  // so no price can move — it just stops the old rows / 3D wall lingering.
+  var aewR=G('add-end-wall'); if(aewR) aewR.value='no';
+  var aewER=G('aew-end'); if(aewER) aewER.value='back';
+  ['aew-depth','aew-width'].forEach(function(id){ var s=G(id); if(s) s.value=''; });
+  if(typeof aewClearUnset==='function') aewClearUnset();
+  _aewMoved='';
+  if(typeof updateAddEndWallDisplay==='function') updateAddEndWallDisplay();
   ['cr','cw','ct','cwn'].forEach(function(id){
     G(id).value='';
     var swMap={'cr':'swr','cw':'sww','ct':'swt','cwn':'swn'};
@@ -14754,7 +15086,7 @@ function drawBlueprintWall(wt,fw,wh,items,wn,bw){var SW=540,MX=50,MT=38,MB=26,dW
 function getBPItems(wt,W,L){var fw=(wt==='front'||wt==='back')?W:L,items=[];document.querySelectorAll('.re').forEach(function(el){var loc=el.querySelector('.rloc').value,wm=(loc==='Front Gable End'&&wt==='front')||(loc==='Back Gable End'&&wt==='back')||(loc==='Left Eave Side'&&wt==='left')||(loc==='Right Eave Side'&&wt==='right');if(!wm)return;var sz=(el.querySelector('.rsz').value||'10x8').split('x'),dW=parseFloat(sz[0])||10,dH=parseFloat(sz[1])||8,qty=parseInt(el.querySelector('.rqt').value)||1;var its=getPosItems(el,qty,dW,fw,dH,'rollup');var _is45=(el.querySelector('.r45')&&el.querySelector('.r45').value==='yes');its.forEach(function(it){if(_is45)it.angle45=true;items.push(it);});});document.querySelectorAll('.we').forEach(function(el){var loc=el.querySelector('.wloc').value,wm=(loc==='Front Gable End'&&wt==='front')||(loc==='Back Gable End'&&wt==='back')||(loc==='Left Eave Side'&&wt==='left')||(loc==='Right Eave Side'&&wt==='right');if(!wm)return;var its=getPosItems(el,(parseInt((el.querySelector('.wqt')||{}).value)||1),3,fw,6.67,'wtd');its.forEach(function(it){items.push(it);});});document.querySelectorAll('.ne').forEach(function(el){var loc=el.querySelector('.nloc').value,wm=(loc==='Front Gable End'&&wt==='front')||(loc==='Back Gable End'&&wt==='back')||(loc==='Left Eave Side'&&wt==='left')||(loc==='Right Eave Side'&&wt==='right');if(!wm)return;var qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;var its=getPosItems(el,qty,2.5,fw,2.5,'win',winSillFt(el));its.forEach(function(it){items.push(it);});});return items;}
 function renderBlueprintViews(){adjustViewProportions();var W=parseInt(G('bw').value)||30,L=parseInt(G('bl').value)||40,H=parseInt(G('bh').value)||10,wn=G('wain')&&G('wain').value==='yes';var _bpLTs=collectLTsForViews();['front','back','right','left'].forEach(function(w){var fw=(w==='front'||w==='back')?W:L,el=G('bp-'+w);if(el)el.innerHTML=drawBlueprintWall(w,fw,H,getBPItems(w,W,L),wn,W,_bpLTs[w]);});}
 var _bvMode='color';function setBldViewMode(m){_bvMode=m;var cv=G('bld-views'),bv=G('bld-blueprint-views'),cb=G('bvt-color'),bb=G('bvt-bp');if(m==='color'){if(cv)cv.style.display='grid';if(bv)bv.style.display='none';if(cb)cb.classList.add('active');if(bb)bb.classList.remove('active');renderBuildingViews();}else{if(cv)cv.style.display='none';if(bv)bv.style.display='grid';if(cb)cb.classList.remove('active');if(bb)bb.classList.add('active');renderBlueprintViews();}}
-function sendToClient(mode){if(!G('bw').value||!G('bl').value){toast('Set dimensions first','err');return;}var W=parseInt(G('bw').value)||30,L=parseInt(G('bl').value)||40,H=parseInt(G('bh').value)||10,pt=G('pitch')?G('pitch').textContent:'3:12',pitch=parseInt(pt)||3,cn=G('cn').value||'Client';function ics(id){var e=G(id);return e&&e.value&&e.value!=='TBD';}var rH=ics('cr')?G('cr').value:'#F0EFE8',wH=ics('cw')?G('cw').value:'#9EA5A8',tH2=ics('ct')?G('ct').value:'#F0EFE8',waH=ics('cwn')?G('cwn').value:'#F0EFE8',wn=G('wain')&&G('wain').value==='yes',ws=G('ws')?G('ws').value:'Vertical';var fI=[],bI=[],rI=[],lI=[];document.querySelectorAll('.re').forEach(function(el){var loc=el.querySelector('.rloc').value,sz=(el.querySelector('.rsz').value||'10x8').split('x'),dW=parseFloat(sz[0])||10,dH=parseFloat(sz[1])||8,qty=parseInt(el.querySelector('.rqt').value)||1;function pl(a,fw){getPosItems(el,qty,dW,fw,dH,'rollup').forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});document.querySelectorAll('.we').forEach(function(el){var loc=el.querySelector('.wloc').value;function pl(a,fw){getPosItems(el,(parseInt((el.querySelector('.wqt')||{}).value)||1),3,fw,6.67,'wtd').forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});document.querySelectorAll('.ne').forEach(function(el){var loc=el.querySelector('.nloc').value,qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;function pl(a,fw){getPosItems(el,qty,2.5,fw,2.5,'win',winSillFt(el)).forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});var tmp=document.createElement('div');document.body.appendChild(tmp);var _stcLTs=collectLTsForViews();var _stcSpC=getSidePanelConfig();var _stcSpR=(_stcSpC.right.hasPanels||_stcSpC.right.full)?_stcSpC.right:null;var _stcSpL=(_stcSpC.left.hasPanels||_stcSpC.left.full)?_stcSpC.left:null;function _stcWallOpen(loc){var wo={front:G('wfg')?G('wfg').value:'Closed',back:G('wbg')?G('wbg').value:'Closed',left:baseWallMode(G('wle')?G('wle').value:'Closed'),right:baseWallMode(G('wre')?G('wre').value:'Closed')};return wo[loc]||'Closed';}function mkC(id,fw,isSide,items,viewKey,gchSp,spCfg){tmp.innerHTML='';var d=document.createElement('div');d.id=id;tmp.appendChild(d);drawElev(id,fw,H,pitch,rH,wH,tH2,waH,wn,items,isSide,ws,_stcWallOpen(viewKey),_stcLTs[viewKey],gchSp,spCfg);return d.innerHTML;}var pages='',bx=function(l,svg,bg,tc){return'<div style="background:'+bg+';border-radius:6px;overflow:hidden;border:1px solid #333"><div style="background:'+(tc||'#1C2E3F')+';color:#fff;font-size:9pt;font-weight:800;letter-spacing:2px;text-align:center;padding:5px;font-family:Arial">'+l+'</div>'+svg+'</div>';},pw=function(t,v,bg){return'<div style="page-break-before:always;background:'+bg+';min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial;font-size:11pt;font-weight:800;letter-spacing:2px;color:'+(bg==='#06101a'?'#1fcec4':'#0D1B2A')+';margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid '+(bg==='#06101a'?'#1fcec4':'#1B8A8A')+';text-transform:uppercase">'+t+' - '+cn+' | '+W+"x"+L+"x"+H+"</div><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:16px\">"+v+'</div></div>';};var _pGchR=null,_pGchL=null;if(G('btype')&&G('btype').value==='gch'){var _peL=parseInt(G('gch-enc').value)||0,_poL=parseInt(G('gch-open').value)||0;if(_peL>0&&_poL>0){_pGchR={encLen:_peL,openLen:_poL,encSide:'right'};_pGchL={encLen:_peL,openLen:_poL,encSide:'left'};}}if(mode==='colored'||mode==='both'){var cF=mkC('_cf',W,false,fI,'front'),cR=mkC('_cr',L,true,rI,'right',_pGchR,_stcSpR),cB=mkC('_cb',W,false,bI,'back'),cL=mkC('_cl',L,true,lI,'left',_pGchL,_stcSpL);pages+=pw('Color Rendering',bx('FRONT',cF,'#fff')+bx('RIGHT',cR,'#fff')+bx('BACK',cB,'#fff')+bx('LEFT',cL,'#fff'),'#f5f0e8');}if(mode==='blueprint'||mode==='both'){var bF=drawBlueprintWall('front',W,H,getBPItems('front',W,L),wn,W,_stcLTs.front),bR=drawBlueprintWall('right',L,H,getBPItems('right',W,L),wn,W,_stcLTs.right),bB=drawBlueprintWall('back',W,H,getBPItems('back',W,L),wn,W,_stcLTs.back),bL=drawBlueprintWall('left',L,H,getBPItems('left',W,L),wn,W,_stcLTs.left);pages+=pw('Engineering Blueprint',bx('FRONT',bF,'#06101a','#0f1e2e')+bx('RIGHT',bR,'#06101a','#0f1e2e')+bx('BACK',bB,'#06101a','#0f1e2e')+bx('LEFT',bL,'#06101a','#0f1e2e'),'#06101a');}document.body.removeChild(tmp);var doc='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>StormSafe Elevations</title><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{background:#0D1B2A}@media print{@page{margin:0;size:letter landscape}}</style></head><body>'+pages+'</body></html>';var w2=window.open('','_blank');if(w2){w2.document.open();w2.document.write(doc);w2.document.close();setTimeout(function(){try{w2.focus();w2.print();}catch(e){}},900);toast('Opening elevations','ok');}else{toast('Popup blocked — please allow popups for this page, then try again','err');console.warn('sendToClient: window.open returned null — popup blocker enabled');}}
+function sendToClient(mode){if(!G('bw').value||!G('bl').value){toast('Set dimensions first','err');return;}if(gchEncPrintBlock())return;var W=parseInt(G('bw').value)||30,L=parseInt(G('bl').value)||40,H=parseInt(G('bh').value)||10,pt=G('pitch')?G('pitch').textContent:'3:12',pitch=parseInt(pt)||3,cn=G('cn').value||'Client';function ics(id){var e=G(id);return e&&e.value&&e.value!=='TBD';}var rH=ics('cr')?G('cr').value:'#F0EFE8',wH=ics('cw')?G('cw').value:'#9EA5A8',tH2=ics('ct')?G('ct').value:'#F0EFE8',waH=ics('cwn')?G('cwn').value:'#F0EFE8',wn=G('wain')&&G('wain').value==='yes',ws=G('ws')?G('ws').value:'Vertical';var fI=[],bI=[],rI=[],lI=[];document.querySelectorAll('.re').forEach(function(el){var loc=el.querySelector('.rloc').value,sz=(el.querySelector('.rsz').value||'10x8').split('x'),dW=parseFloat(sz[0])||10,dH=parseFloat(sz[1])||8,qty=parseInt(el.querySelector('.rqt').value)||1;function pl(a,fw){getPosItems(el,qty,dW,fw,dH,'rollup').forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});document.querySelectorAll('.we').forEach(function(el){var loc=el.querySelector('.wloc').value;function pl(a,fw){getPosItems(el,(parseInt((el.querySelector('.wqt')||{}).value)||1),3,fw,6.67,'wtd').forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});document.querySelectorAll('.ne').forEach(function(el){var loc=el.querySelector('.nloc').value,qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;function pl(a,fw){getPosItems(el,qty,2.5,fw,2.5,'win',winSillFt(el)).forEach(function(it){a.push(it);});}if(loc==='Front Gable End')pl(fI,W);else if(loc==='Back Gable End')pl(bI,W);else if(loc==='Left Eave Side')pl(lI,L);else if(loc==='Right Eave Side')pl(rI,L);});var tmp=document.createElement('div');document.body.appendChild(tmp);var _stcLTs=collectLTsForViews();var _stcSpC=getSidePanelConfig();var _stcSpR=(_stcSpC.right.hasPanels||_stcSpC.right.full)?_stcSpC.right:null;var _stcSpL=(_stcSpC.left.hasPanels||_stcSpC.left.full)?_stcSpC.left:null;function _stcWallOpen(loc){var wo={front:G('wfg')?G('wfg').value:'Closed',back:G('wbg')?G('wbg').value:'Closed',left:baseWallMode(G('wle')?G('wle').value:'Closed'),right:baseWallMode(G('wre')?G('wre').value:'Closed')};return wo[loc]||'Closed';}function mkC(id,fw,isSide,items,viewKey,gchSp,spCfg){tmp.innerHTML='';var d=document.createElement('div');d.id=id;tmp.appendChild(d);drawElev(id,fw,H,pitch,rH,wH,tH2,waH,wn,items,isSide,ws,_stcWallOpen(viewKey),_stcLTs[viewKey],gchSp,spCfg);return d.innerHTML;}var pages='',bx=function(l,svg,bg,tc){return'<div style="background:'+bg+';border-radius:6px;overflow:hidden;border:1px solid #333"><div style="background:'+(tc||'#1C2E3F')+';color:#fff;font-size:9pt;font-weight:800;letter-spacing:2px;text-align:center;padding:5px;font-family:Arial">'+l+'</div>'+svg+'</div>';},pw=function(t,v,bg){return'<div style="page-break-before:always;background:'+bg+';min-height:100vh;padding:24px;box-sizing:border-box"><div style="font-family:Arial;font-size:11pt;font-weight:800;letter-spacing:2px;color:'+(bg==='#06101a'?'#1fcec4':'#0D1B2A')+';margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid '+(bg==='#06101a'?'#1fcec4':'#1B8A8A')+';text-transform:uppercase">'+t+' - '+cn+' | '+W+"x"+L+"x"+H+"</div><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:16px\">"+v+'</div></div>';};var _pGchR=null,_pGchL=null;if(G('btype')&&G('btype').value==='gch'){var _peL=parseInt(G('gch-enc').value)||0,_poL=parseInt(G('gch-open').value)||0;if(_peL>0&&_poL>0){_pGchR={encLen:_peL,openLen:_poL,encSide:'right'};_pGchL={encLen:_peL,openLen:_poL,encSide:'left'};}}if(mode==='colored'||mode==='both'){var cF=mkC('_cf',W,false,fI,'front'),cR=mkC('_cr',L,true,rI,'right',_pGchR,_stcSpR),cB=mkC('_cb',W,false,bI,'back'),cL=mkC('_cl',L,true,lI,'left',_pGchL,_stcSpL);pages+=pw('Color Rendering',bx('FRONT',cF,'#fff')+bx('RIGHT',cR,'#fff')+bx('BACK',cB,'#fff')+bx('LEFT',cL,'#fff'),'#f5f0e8');}if(mode==='blueprint'||mode==='both'){var bF=drawBlueprintWall('front',W,H,getBPItems('front',W,L),wn,W,_stcLTs.front),bR=drawBlueprintWall('right',L,H,getBPItems('right',W,L),wn,W,_stcLTs.right),bB=drawBlueprintWall('back',W,H,getBPItems('back',W,L),wn,W,_stcLTs.back),bL=drawBlueprintWall('left',L,H,getBPItems('left',W,L),wn,W,_stcLTs.left);pages+=pw('Engineering Blueprint',bx('FRONT',bF,'#06101a','#0f1e2e')+bx('RIGHT',bR,'#06101a','#0f1e2e')+bx('BACK',bB,'#06101a','#0f1e2e')+bx('LEFT',bL,'#06101a','#0f1e2e'),'#06101a');}document.body.removeChild(tmp);var doc='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>StormSafe Elevations</title><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{background:#0D1B2A}@media print{@page{margin:0;size:letter landscape}}</style></head><body>'+pages+'</body></html>';var w2=window.open('','_blank');if(w2){w2.document.open();w2.document.write(doc);w2.document.close();setTimeout(function(){try{w2.focus();w2.print();}catch(e){}},900);toast('Opening elevations','ok');}else{toast('Popup blocked — please allow popups for this page, then try again','err');console.warn('sendToClient: window.open returned null — popup blocker enabled');}}
 
 
 // ══ MINI SIDEBAR BLUEPRINT ════════════════════════════════════════════════
@@ -14808,6 +15140,7 @@ setTimeout(function(){try{updateMiniPreview();}catch(e){}},200);
 function textQuote(){
   if(!G('bw').value||!G('bl').value){toast('Set dimensions first','err');return;}
   if(ltStoragePrintBlock()) return; // same lean-to storage guard as the quote PDF / contract
+  if(gchEncPrintBlock()) return;
   // Price with the SAME pass the screen uses (rc() hands off to rcManual() in
   // INPUT mode), then read the totals it published. No price math of its own
   // here any more — the old private copy drifted (missed the lean-to connection
@@ -16211,5 +16544,879 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   if(typeof module!=='undefined' && module.exports) module.exports=PL;
 })(typeof window!=='undefined'?window:this);
 </script>
+<!-- ═════════ BEGIN SECTION 5 — Doors, Windows & Add-ons (wall-first layout) ═════════
+     A skin over the program's REAL Roll-Up / Walk-Through / Window / Lean-To / Additional
+     Component entries. The five lists (#rl #wl #nl #ltl #acl) are moved into one
+     "Doors, Windows & Add-ons" section and shown as cards outlined in their wall colour; every
+     field, price, rule, PDF, contract, text quote, saved quote and the 3D bridge still run on
+     the program's own entries (same ids, same containers). Nothing above this block was changed.
+     "Classic layout" (a quiet link in the section title, remembered in localStorage ss_s5_layout)
+     puts the five lists back in today's Sections 5-10 as a rep fallback; the default is New.
+     Also follows the storage-partition program: the Partition tile is offered exactly when the
+     program offers the "Partition Wall" location (GCH divider, or End Storage on any other type),
+     it is named "Storage wall" with its position for End Storage, the 3D turns to its Interior
+     view for it, and the program's GCH Enclosed Storage warning is repeated at the top of this
+     section. -->
+<style id="s5-css">
+#s5-sec{--wf:#22d3c8;--wb:#c3cdd8;--wl:#7fa6f0;--wr:#f0883e;--wp:#e58bb0;--wlt:#a78bfa;--s5or:#f0883e;--s5red:#f87171;--s5ok:#34d399;--kre:#22d3c8;--kwe:#f0883e;--kne:#7fa6f0;--klte:#a78bfa;--kace:#e58bb0}
+.s5-gone{display:none!important}
+#s5-sec{position:relative}
+#s5-sec button,#s5-sec select{font-family:var(--b),Arial,sans-serif}
+#s5-sec :focus-visible{outline:2px solid var(--t);outline-offset:2px}
+/* "Classic layout" / "New layout": a quiet link in the section title (left of the collapse chevron) */
+.sec>.st>.s5-layout{position:absolute;right:24px;top:-1px;background:transparent;border:0;padding:2px 6px;border-radius:4px;color:var(--sb);font:500 11px/1.4 var(--b),Arial,sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;opacity:.8}
+.sec>.st>.s5-layout:hover{color:var(--tx);opacity:1;background:var(--d4)}
+.sec>.st>.s5-layout:focus-visible{outline:2px solid var(--t);outline-offset:1px}
+.s5-lede{font-size:13.5px;line-height:1.45;color:var(--sb);margin:0 0 14px}
+/* the program's GCH "pick the Enclosed Storage length" warning (Section 3), repeated at the top of this section */
+.s5-gchw{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 12px;padding:7px 10px;background:rgba(248,113,113,.08);color:#f8cfcf;border-left:3px solid var(--s5red);border-radius:0 6px 6px 0;font-size:12.5px;font-weight:500;line-height:1.45}
+.s5-gchw .s5-gcht{flex:1 1 220px;min-width:0}
+/* wall tiles */
+.s5-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.s5-tile{--wc:var(--wf);display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:11px 12px 10px;background:var(--d4);border:1px solid var(--bv);border-radius:6px;color:var(--tx);cursor:pointer;text-align:left;transition:border-color .15s,background .15s}
+.s5-tile:hover{border-color:#3a5570}
+.s5-tile[aria-checked=true]{background:#1b2b3d;border-color:var(--wc)}
+.s5-tl{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--wc) 72%,var(--sb));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;line-height:1.3}
+.s5-ts{font-size:13px;color:var(--sb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;line-height:1.3}
+.s5-tile[aria-checked=true] .s5-tl,.s5-tile[aria-checked=true] .s5-ts{color:var(--wc)}
+.s5-tile.s5-w-partition{grid-column:1/-1;border-style:dashed;border-color:color-mix(in srgb,var(--wp) 45%,var(--bv))}
+.s5-tile.s5-w-partition:hover{border-color:color-mix(in srgb,var(--wp) 70%,var(--bv))}
+.s5-tile.s5-w-partition[aria-checked=true]{border-color:var(--wp)}
+.s5-w-front{--wc:var(--wf)}.s5-w-back{--wc:var(--wb)}.s5-w-left{--wc:var(--wl)}.s5-w-right{--wc:var(--wr)}.s5-w-partition{--wc:var(--wp)}
+/* add row */
+.s5-addto{display:flex;align-items:baseline;gap:6px;margin:16px 0 8px;font-size:13px;color:var(--sb)}
+.s5-addto b{color:var(--tx);font-weight:600}
+.s5-adds{display:flex;flex-wrap:wrap;gap:8px}
+.s5-add{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 12px;background:var(--d4);border:1px solid var(--bv);border-radius:6px;color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:border-color .15s,background .15s}
+.s5-add .s5-plus{color:var(--kc);font-size:16px;font-weight:500;line-height:1}
+.s5-add:hover:not(:disabled){border-color:#3a5570;background:var(--d5)}
+.s5-add:disabled{opacity:.4;cursor:not-allowed}
+.s5-hint{font-size:12.5px;line-height:1.45;color:var(--sb);margin-top:8px}
+.s5-hint b{color:var(--tx);font-weight:600}
+/* the 3D is turned to a different wall than the one the add buttons use (same wording as the approved Section 4 demo) */
+.s5-hint.s5-mm{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;color:#f5caa9;background:rgba(240,136,62,.06);border:1px solid rgba(240,136,62,.3);border-radius:6px;padding:7px 10px}
+.s5-mmt{flex:1 1 220px;min-width:0}
+.s5-mma{flex:none;display:flex;flex-wrap:wrap;gap:6px}
+.s5-mmb{background:var(--d4);border:1px solid var(--bv);border-radius:6px;color:var(--tx);font-size:12px;font-weight:600;padding:5px 10px;min-height:28px;cursor:pointer;white-space:nowrap}
+.s5-mmb:hover{border-color:#3a5570;background:var(--d5)}
+.s5-notes:empty{display:none}
+.s5-notes{margin-top:10px}
+#s5-sec #lift-note{background:rgba(240,136,62,.08)!important;color:#f5caa9!important;border-left:3px solid var(--s5or)!important;border-radius:0 6px 6px 0!important;font-size:12.5px!important;font-weight:500!important;line-height:1.45;padding:7px 10px!important;margin:0!important}
+.s5-rules{margin-top:12px;border:1px solid var(--bv);border-radius:6px;background:var(--d2)}
+.s5-rules:has(#cci-door-spacing-note[style*="none"]),.s5-rules:not(:has(#cci-door-spacing-note)){display:none}
+.s5-rules>summary{cursor:pointer;list-style:none;padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--sb);display:flex;align-items:center;gap:8px}
+.s5-rules>summary::-webkit-details-marker{display:none}
+.s5-rules>summary::before{content:"\203a";font-size:15px;transition:transform .2s}
+.s5-rules[open]>summary::before{transform:rotate(90deg)}
+.s5-rules>summary:hover{color:var(--tx)}
+#s5-sec #cci-door-spacing-note{margin:0!important;padding:0 12px 10px}
+#s5-sec #cci-door-spacing-note .pnote{background:var(--d2)!important;border-left-color:var(--bv)!important;color:var(--sb)!important;font-size:12px!important;margin:0!important;border-radius:0 6px 6px 0}
+#s5-sec #cci-door-spacing-note .pnote strong{color:var(--tx)}
+/* list head */
+.s5-lhead{display:flex;align-items:center;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;margin:20px 0 10px}
+.s5-count{font-size:13px;font-weight:600;color:var(--tx)}
+.s5-tools{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.s5-chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--sb);cursor:pointer;margin-right:6px;user-select:none}
+.s5-chk input{accent-color:var(--t);width:15px;height:15px;margin:0}
+.s5-link{background:transparent;border:0;color:var(--sb);font-size:12.5px;font-weight:500;padding:5px 6px;cursor:pointer;border-radius:4px}
+.s5-link:hover{color:var(--tx)}
+/* the moved program lists become one mixed list */
+.s5-cards{display:flex;flex-direction:column;gap:10px}
+.s5-cards>#rl,.s5-cards>#wl,.s5-cards>#nl,.s5-cards>#ltl,.s5-cards>#acl{display:contents}
+.s5-empty{border:1px dashed var(--bv);border-radius:6px;padding:22px 16px;text-align:center;color:var(--sb);font-size:13px}
+.s5-hidden{margin:8px 2px 0;font-size:12.5px;color:var(--sb)}
+.s5-hidden:empty,.s5-empty[hidden]{display:none}
+/* no subtotal strip (owner 10/1) — only the Input-mode note lives here */
+.s5-sum{margin-top:18px;padding-top:14px;border-top:1px solid var(--bv)}
+.s5-sum:empty{display:none}
+.s5-fine{margin-top:8px;font-size:11.5px;line-height:1.4;color:var(--sb)}
+
+/* ── cards: the program's own entry boxes, restyled only while the New layout is on ── */
+.s5-ch{display:none}
+body.s5-new .s5-card{--wc:rgba(255,255,255,.24);background:var(--d4);border:1px solid color-mix(in srgb,var(--wc) 55%,transparent);border-radius:8px;padding:0;margin:0;transition:border-color .2s}
+body.s5-new .s5-card.s5-w-front{--wc:var(--wf)}body.s5-new .s5-card.s5-w-back{--wc:var(--wb)}body.s5-new .s5-card.s5-w-left{--wc:var(--wl)}body.s5-new .s5-card.s5-w-right{--wc:var(--wr)}body.s5-new .s5-card.s5-w-partition{--wc:var(--wp)}
+body.s5-new .s5-card:hover{border-color:color-mix(in srgb,var(--wc) 85%,transparent)}
+body.s5-new .s5-card.s5-open{border-color:var(--wc)}
+body.s5-new .s5-card.s5-flag{border-color:rgba(248,113,113,.6)}
+body.s5-new .s5-card.s5-flag.s5-open,body.s5-new .s5-card.s5-flag:hover{border-color:var(--s5red)}
+body.s5-new .s5-card.s5-filtered{display:none!important}
+body.s5-new .s5-card:not(.s5-open)>:not(.s5-ch){display:none!important}
+body.s5-new .s5-card>.rm,body.s5-new .s5-card .s5-hide-new{display:none!important}
+body.s5-new .s5-card.s5-open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;gap:12px;padding:0 14px 14px}
+body.s5-new .s5-card.s5-open>*{grid-column:1/-1;min-width:0;margin-top:0!important;margin-bottom:0!important}
+body.s5-new .s5-card.s5-open>.row:not(.s5-full){grid-column:auto}
+/* side-by-side fields: when one label wraps to two lines, keep both boxes on the same line (no field has anything under its box) */
+body.s5-new .s5-card.s5-open,body.s5-new .s5-card .lt-stor-block,body.s5-new .s5-card .lt-custom-rows{align-items:end}
+/* header */
+body.s5-new .s5-card>.s5-ch{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 2px;min-height:64px;cursor:pointer}
+body.s5-new .s5-card.s5-open>.s5-ch{margin:0 -14px!important;border-bottom:1px solid var(--bd)}
+.s5-chb{flex:1;min-width:0;display:block;background:transparent;border:0;text-align:left;padding:4px 8px 4px 12px;color:inherit;cursor:pointer;border-radius:6px}
+.s5-kind{display:block;font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--wc);margin-bottom:3px;line-height:1.3}
+.s5-nowall .s5-kind{color:var(--sb)}
+.s5-flag .s5-kind{color:var(--s5red)}
+.s5-title{display:block;font-size:15px;font-weight:600;line-height:1.25;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s5-sub{display:block;font-size:12.5px;line-height:1.35;color:var(--sb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.s5-sub .s5-wn{color:var(--s5or)}
+.s5-sub .s5-bd{color:#f59b9b}
+.s5-meta{flex:none;display:flex;align-items:center;gap:8px;min-width:0}
+.s5-wsel{-webkit-appearance:none;appearance:none;max-width:150px;min-height:30px;padding:4px 22px 4px 7px;border:1px solid transparent;border-radius:6px;font-size:12.5px;font-weight:500;color:var(--wc);cursor:pointer;outline:none;background-color:transparent;background-image:linear-gradient(45deg,transparent 50%,var(--sb) 50%),linear-gradient(135deg,var(--sb) 50%,transparent 50%);background-position:calc(100% - 13px) 52%,calc(100% - 9px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+.s5-wsel:hover,.s5-wsel:focus{border-color:var(--bv);background-color:var(--d3)}
+.s5-wsel option{background:var(--d4);color:var(--tx)}
+.s5-wtxt{font-size:12.5px;color:var(--sb);white-space:nowrap}
+.s5-pc{display:inline-flex;align-items:center;gap:8px}
+#s5-sec [hidden]{display:none!important}
+.s5-price{font-size:15px;font-weight:600;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
+.s5-price.s5-zero{color:var(--sb);font-weight:500}
+.s5-chev{display:inline-grid;place-items:center;width:16px;height:16px;color:var(--sb);font-size:17px;line-height:1;transition:transform .2s}
+.s5-open .s5-chev{transform:rotate(90deg)}
+.s5-x{flex:none;width:30px;height:30px;display:grid;place-items:center;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--sb);font-size:18px;line-height:1;cursor:pointer}
+.s5-x:hover{color:var(--s5red);border-color:rgba(248,113,113,.35)}
+/* body fields (the program's real rows) */
+body.s5-new .s5-card .row{display:flex;flex-direction:column;align-items:stretch;gap:5px;margin:0}
+body.s5-new .s5-card .row>label{font-size:12.5px!important;font-weight:500;color:var(--sb)!important;line-height:1.3;margin:0!important}
+body.s5-new .s5-card .row select,body.s5-new .s5-card .row input[type=number],body.s5-new .s5-card .row input:not([type]),body.s5-new .s5-card .row input[type=text],body.s5-new .s5-card .row textarea{
+  width:100%!important;min-height:38px;padding:8px 10px!important;font-size:14px!important;font-weight:500!important;color:var(--tx)!important;background-color:var(--d3)!important;border:1px solid var(--bv)!important;border-radius:6px!important;font-family:var(--b),Arial,sans-serif!important}
+body.s5-new .s5-card .row select{padding-right:28px!important;background-image:linear-gradient(45deg,transparent 50%,var(--sb) 50%),linear-gradient(135deg,var(--sb) 50%,transparent 50%)!important;background-position:calc(100% - 15px) 52%,calc(100% - 11px) 52%!important;background-size:4px 4px!important;background-repeat:no-repeat!important}
+body.s5-new .s5-card .row select:focus,body.s5-new .s5-card .row input:focus{border-color:var(--t)!important;outline:none}
+body.s5-new .s5-card .row select:disabled{opacity:.6}
+body.s5-new .s5-card .row select option{background:var(--d4);color:var(--tx)}
+body.s5-new .s5-card ::placeholder{color:#5f7385;font-weight:400}
+/* positions */
+body.s5-new .s5-card .pos-section{padding:0;display:flex;flex-direction:column;gap:6px}
+body.s5-new .s5-card .pos-section:not(:empty)::before{content:"Position on the wall — leave blank for auto";font-size:12.5px;font-weight:500;color:var(--sb);margin-bottom:1px}
+body.s5-new .s5-card .pos-row{margin:0;gap:6px;font-size:13px;flex-wrap:wrap}
+body.s5-new .s5-card .pos-row label{width:auto;min-width:44px;font-size:13px;color:var(--tx)}
+body.s5-new .s5-card .pos-row input[type=number]{width:70px;min-height:36px;padding:6px 9px;background:var(--d3);border:1px solid var(--bv);border-radius:6px;font-size:14px;color:var(--tx)}
+body.s5-new .s5-card .pos-toggle{border-radius:6px;border-color:var(--bv)}
+body.s5-new .s5-card .pos-toggle button{padding:8px 8px;font-size:12px;white-space:nowrap;background:var(--d3);color:var(--sb);font-family:var(--b),Arial,sans-serif}
+body.s5-new .s5-card .pos-toggle button+button{border-left:1px solid var(--bv)}
+body.s5-new .s5-card .pos-toggle button.active{background:var(--t2);color:var(--d)}
+/* program notes inside a card: dark versions, orange for warnings, red for problems, never yellow */
+body.s5-new .s5-card .enote{font-size:12.5px;line-height:1.45;border-radius:0 6px 6px 0;padding:7px 10px}
+body.s5-new .s5-card .rlift,body.s5-new .s5-card .truss-warn,body.s5-new .s5-card .lt-sensei-note,body.s5-new .s5-card .lt-stor-note,body.s5-new .s5-card .lt-acc-warn,body.s5-new .s5-card .lt-conn-note[data-s5=warn]{
+  background:rgba(240,136,62,.08)!important;color:#f5caa9!important;border:0!important;border-left:3px solid var(--s5or)!important;border-radius:0 6px 6px 0!important;font-size:12.5px!important;font-weight:500!important;line-height:1.45!important;padding:7px 10px!important}
+body.s5-new .s5-card .lt-price-note,body.s5-new .s5-card .lt-acc-pwarn,body.s5-new .s5-card .lt-acc-fitwarn,body.s5-new .s5-card .lt-conn-note[data-s5=bad],body.s5-new .s5-card .lt-stor-note[data-s5=bad]{
+  background:rgba(248,113,113,.08)!important;color:#f8cfcf!important;border:0!important;border-left:3px solid var(--s5red)!important;border-radius:0 6px 6px 0!important;font-size:12.5px!important;font-weight:500!important;line-height:1.45!important;padding:7px 10px!important}
+body.s5-new .s5-card .lt-conn-note[data-s5=ok]{background:rgba(52,211,153,.07)!important;color:#bdeedc!important;border-left:3px solid var(--s5ok)!important;font-size:12.5px!important;padding:7px 10px!important}
+/* lean-to internals */
+body.s5-new .s5-card .lt-wm-btn{padding:8px 13px!important;font-size:13px!important;border-radius:6px!important}
+body.s5-new .s5-card .lt-custom-rows:not([style*="none"]){display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+body.s5-new .s5-card .lt-stor-block{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0!important}
+body.s5-new .s5-card .lt-stor-block>:not(.row){grid-column:1/-1}
+body.s5-new .s5-card .lt-acc-section{border-top-color:var(--bv)!important;padding-top:12px!important}
+body.s5-new .s5-card .lt-acc-e{background:var(--d3)!important;border:1px solid color-mix(in srgb,var(--wlt) 45%,transparent)!important;border-radius:6px!important;padding:10px 12px!important;margin-bottom:8px!important}
+body.s5-new .s5-card .lt-acc-e .row{margin-bottom:8px}
+body.s5-new .s5-card .lt-acc-e .rm{width:26px;height:26px;font-size:16px}
+body.s5-new .s5-card .ab{width:auto}
+/* framed openings */
+body.s5-new .s5-card .fo-custom-size-box:not(.hidden){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0!important;padding:10px 12px!important;background:var(--d3)!important;border-left-color:var(--wp)!important;border-radius:0 6px 6px 0!important}
+body.s5-new .s5-card .fo-custom-size-box>div:first-child{grid-column:1/-1;color:var(--sb)!important;margin:0!important}
+body.s5-new .s5-card .fo-sf-incl-note{font-size:12px!important;color:var(--sb)!important}
+@media(max-width:768px){
+  .s5-tiles{grid-template-columns:1fr 1fr;gap:8px}
+  .s5-tile{padding:10px 12px 9px}
+  /* narrow panel (the 3D build page): title gets the full width, wall + price on the line under it */
+  body.s5-new .s5-card>.s5-ch{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;row-gap:0;padding:8px 6px 10px 2px}
+  body.s5-new .s5-card>.s5-ch .s5-chb{grid-column:1;grid-row:1;padding:4px 6px 2px 12px}
+  body.s5-new .s5-card>.s5-ch .s5-x{grid-column:2;grid-row:1;align-self:start;margin-top:2px}
+  body.s5-new .s5-card>.s5-ch .s5-meta{grid-column:1/-1;grid-row:2;justify-content:space-between;padding:2px 8px 0 6px}
+  .s5-wsel{max-width:none;flex:0 1 auto;min-width:0}
+  .s5-meta .s5-pc{display:flex;align-items:center;gap:8px;margin-left:auto}
+}
+
+@media(prefers-reduced-motion:reduce){.s5-chev,.s5-tile,.s5-add,body.s5-new .s5-card{transition:none!important}}
+</style>
+<script id="s5-js">
+(function(){
+'use strict';
+if(window.__s5Section) return; window.__s5Section=true;
+var D=document;
+function $(id){ return D.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+/* ---------- walls & kinds (program location values -> wall keys) ---------- */
+var WALLS=[
+  {k:'front',tile:'Front gable',add:'front gable',loc:'Front Gable End',lt:'Front Gable',cam:'front'},
+  {k:'back',tile:'Back gable',add:'back gable',loc:'Back Gable End',lt:'Back Gable',cam:'back'},
+  {k:'left',tile:'Left eave',add:'left eave',loc:'Left Eave Side',lt:'Left Eave',cam:'right'},   // 3D's internal sides are mirrored (BuildHost SIDE_MAP)
+  {k:'right',tile:'Right eave',add:'right eave',loc:'Right Eave Side',lt:'Right Eave',cam:'left'},
+  {k:'partition',tile:'Partition',add:'partition wall',loc:'Partition Wall',lt:null,cam:null}
+];
+var W={}; WALLS.forEach(function(w){ W[w.k]=w; });
+function wallOf(v){ for(var i=0;i<WALLS.length;i++){ if(v===WALLS[i].loc||(WALLS[i].lt&&v===WALLS[i].lt)) return WALLS[i].k; } return null; }
+var KINDS={
+  re:{cont:'rl',label:'Roll-up',add:'aRUD',btn:'Roll-up door',one:'roll-up',many:'roll-ups',loc:'.rloc'},
+  we:{cont:'wl',label:'Walk door',add:'aWTD',btn:'Walk door',one:'walk door',many:'walk doors',loc:'.wloc'},
+  ne:{cont:'nl',label:'Window',add:'aWIN',btn:'Window',one:'window',many:'windows',loc:'.nloc'},
+  lte:{cont:'ltl',label:'Lean-to',add:'aLT',btn:'Lean-to',one:'lean-to',many:'lean-tos',loc:'.lts'},
+  ace:{cont:'acl',label:'Component',add:'aAC',btn:'Component',one:'opening',many:'openings',loc:'.fo-loc'}
+};
+var ORDER=['re','we','ne','lte','ace'];
+
+var S={mode:'new',wall:'front',view:null,only:false,seq:0,timer:0,home:{},notes:{},renum:[]};
+var ALL_OPEN=false;   // "Expand all" pauses the auto-minimize until a card is opened / folded by hand, "Collapse all", or an add
+
+/* Layout choice (New = this section; Classic = today's Sections 5-10), remembered per browser as a rep fallback. */
+var LS_KEY='ss_s5_layout';
+function savedMode(){ try{ return localStorage.getItem(LS_KEY)==='classic'?'classic':'new'; }catch(e){ return 'new'; } }
+function rememberMode(m){ try{ localStorage.setItem(LS_KEY,m); }catch(e){} }
+
+/* ---------- small helpers ---------- */
+function optText(sel){ var o=sel&&sel.options&&sel.options[sel.selectedIndex]; return o?o.text:''; }
+function stripPrice(t){ return String(t||'').replace(/\s+[—-]\s+\$[\d,.]+.*$/,'').replace(/\s*\(\+\$[\d,.]+[^)]*\)\s*$/,'').trim(); }
+function ft(n){ n=parseFloat(n); if(!isFinite(n)) return ''; var f=Math.floor(n+1e-9), i=Math.round((n-f)*12); if(i===12){ f++; i=0; } return i?(f+'′ '+i+'″'):(f+'′'); }
+function money(n){ var neg=n<0; n=Math.abs(Math.round(n*100)/100); var cents=Math.round(n*100)%100!==0; return (neg?'−':'')+'$'+n.toLocaleString('en-US',{minimumFractionDigits:cents?2:0,maximumFractionDigits:2}); }
+function shown(el){ return !!el && !el.classList.contains('hidden') && el.style.display!=='none'; }
+function inlineShown(el){ return !!el && !!el.style.display && el.style.display!=='none'; }
+function hasOpt(sel,v){ return !!sel && Array.prototype.some.call(sel.options,function(o){ return o.value===v; }); }
+function locSel(el,k){ return el.querySelector(KINDS[k].loc); }
+function isFO(el){ var a=el.querySelector('.act'); return !!a && a.value.indexOf('Framed Opening')===0; }
+function entriesOf(k){ var c=$(KINDS[k].cont); if(!c) return []; return Array.prototype.filter.call(c.children,function(n){ return n.classList&&n.classList.contains(k)&&n.classList.contains('entry'); }); }
+
+/* 3D: turn the camera of the build page (parent window) to a wall — the shell's own goToView. Silent when not in the build page. */
+function turn3D(wall){
+  var w=W[wall]; if(!w||!w.cam) return;
+  try{ var p=window.parent; if(!p||p===window) return; var ed=p.__ssEditor; var st=ed&&ed.getState&&ed.getState(); if(st&&typeof st.goToView==='function') st.goToView(w.cam); }catch(e){}
+}
+function inBuildShell(){ try{ return window.parent!==window && !!window.parent.__ssStore; }catch(e){ return false; } }
+function camWall(p){ for(var i=0;i<WALLS.length;i++){ if(WALLS[i].cam&&WALLS[i].cam===p) return WALLS[i].k; } return null; }
+
+/* ---------- the partition wall: a GCH's divider, or the End Storage partition ---------- */
+// Offered exactly when the program offers the "Partition Wall" location. That rule is the program's own _ensureLocOpt
+// (GCH, or End Storage on any other type; the build page's partitionLocationAllowed is its twin) — it is asked here on a
+// throw-away dropdown, so nothing in this section re-derives it. Left / Right lengthwise storage never gets one.
+function partAllowed(){
+  if(typeof window._ensureLocOpt!=='function') return ((window.G&&G('btype'))||{}).value==='gch';   // older program: GCH only
+  try{ var s=D.createElement('select'); window._ensureLocOpt(s,'Partition Wall'); return s.options.length>0; }catch(e){ return false; }
+}
+// The End Storage partition as the program describes it (aewSpec: depth, which end, whether the 3D draws it), else null.
+function endStorage(){
+  try{ if(typeof window.aewSpec!=='function') return null; var sp=window.aewSpec(); return sp&&sp.kind==='end'?sp:null; }catch(e){ return null; }
+}
+// an old quote saved before storage positions existed is drawn at the default spot until one is picked (program note in Section 4)
+function partWhere(es){ return es&&es.depthFt>0?(ft(es.depthFt)+' from '+(es.end==='front'?'front':'back')+(es.unset?' (default)':'')):''; }
+
+/* The build page around this panel: follow its 3D camera, whatever turned it (opening a card, a tile, the 3D's own
+   camera buttons), so the add row can say when the 3D and the add buttons point at different walls. Only reads the
+   page; the shell's own code is untouched. Retried until the shell has wired itself to this panel. */
+var SH={unsub:null};
+function ensureShell(){
+  if(!inBuildShell()) return false;
+  var p=window.parent;
+  if(!SH.unsub){
+    try{ var ed=p.__ssEditor; if(ed&&typeof ed.subscribe==='function'&&typeof ed.getState==='function'){
+      var cur=ed.getState().cameraCmd; S.view=camWall(cur&&cur.preset);
+      SH.unsub=ed.subscribe(function(st,prev){ try{
+        var v=S.view;
+        if(st.cameraCmd!==prev.cameraCmd) v=camWall(st.cameraCmd&&st.cameraCmd.preset);
+        // The walk-in Interior view also starts / ends WITHOUT a camera command (a Look switch, Structure, a quote
+        // PDF capture going out and back in): follow its on/off flag too, so a wall shown only from inside never
+        // counts as "on screen" once the 3D is back outside.
+        if(st.interiorView!==prev.interiorView) v=st.interiorView?camWall('interior'):((v&&W[v]&&W[v].cam==='interior')?null:v);
+        if(v!==S.view){ S.view=v; schedule(); }
+      }catch(e){} });
+    } }catch(e){}
+  }
+  return !!SH.unsub;
+}
+// leaving/reloading this panel: take the camera listener back off the page
+window.addEventListener('pagehide',function(){
+  try{ if(SH.unsub) SH.unsub(); }catch(e){}
+  SH.unsub=null;
+});
+window.addEventListener('load',function(){ var n=0; (function tick(){ if(ensureShell()){ schedule(); return; } if(++n<60) setTimeout(tick,250); })(); });
+// The 3D and the add buttons point at different walls (only on the build page, and only for a wall the 3D can show)
+function viewMismatch(){
+  if(!S.view||!S.wall||S.view===S.wall||!W[S.wall].cam||!W[S.view]||!inBuildShell()) return null;
+  return {v:W[S.view],w:W[S.wall]};
+}
+// The storage wall is only seen from inside (the 3D's Interior view). When it is the picked wall and the 3D is back
+// outside on no particular wall (ISO / TOP / Structure / after a Look switch), offer the way back in.
+function insideOnlyOut(){
+  var w=W[S.wall];
+  if(!w||w.cam!=='interior'||S.view||!inBuildShell()) return null;
+  return w;
+}
+
+/* ---------- per-item line price: the program's OWN category function with and without this entry ---------- */
+function lineDiff(el,cls,fn){
+  var a=+fn()||0, b=0;
+  el.classList.remove(cls);
+  try{ b=+fn()||0; } finally { el.classList.add(cls); }
+  return Math.round((a-b)*100)/100;
+}
+function linePrice(el,k){
+  if(window.INPUT_MODE) return null;
+  try{
+    if(k==='re') return lineDiff(el,'re',function(){ return gRUD().rud; });
+    if(k==='we') return lineDiff(el,'we',function(){ var r=gWTD(); return r.wtd+r.sf; });
+    if(k==='ne') return lineDiff(el,'ne',function(){ var r=gWIN(); return r.win+r.sf; });
+    if(k==='lte') return lineDiff(el,'lte',function(){ return gLT()+gConnectionFees(); });
+    if(k==='ace') return lineDiff(el,'ace',gAC);
+  }catch(e){ return null; }
+  return null;
+}
+
+/* ---------- describe one entry from its real fields ---------- */
+function posText(el){
+  var rows=el.querySelectorAll('.pos-section .pos-row'); if(!rows.length) return '';
+  var parts=[], anySet=false;
+  Array.prototype.forEach.call(rows,function(r){
+    var inp=r.querySelector('input'), b=r.querySelector('.pos-toggle button.active');
+    var v=inp?inp.value:'';
+    if(v===''){ parts.push('auto'); } else { anySet=true; parts.push(ft(v)+' '+(b?b.textContent.trim().toLowerCase():'')); }
+  });
+  if(!anySet) return rows.length>1?'auto-spaced':'auto position';
+  return parts.join(', ');
+}
+function trussNote(el){
+  var tw=el.querySelector(':scope > .truss-warn');
+  if(!tw||tw.style.display==='none'||!tw.textContent) return '';
+  var m=tw.textContent.match(/at ([^(]+)\(/);
+  return 'side frame auto-set'+(m?' (truss at '+m[1].trim().replace(/'/g,'′')+')':'');
+}
+function describe(el,k){
+  var d={k:k,wall:null,qty:1,kind:KINDS[k].label,title:'',sub:[],warn:[],bad:[],locText:null};
+  var q=function(s){ return el.querySelector(s); };
+  if(k==='re'){
+    d.wall=wallOf((q('.rloc')||{}).value);
+    d.qty=parseInt((q('.rqt')||{}).value)||1;
+    var sz=(q('.rsz')||{}).value||'', dt=(q('.rdtype')||{}).value||'rollup', p=sz.split('x');
+    var typ=dt==='hiimpact'?'hi-impact roll-up':dt==='noncert'?'non-cert roll-up':'roll-up';
+    if(sz&&p.length===2) d.title=(d.qty>1?d.qty+' × ':'')+p[0]+'′ × '+p[1]+'′ '+typ+(d.qty>1?'s':'');
+    else { d.title='Roll-up — no size fits'; d.bad.push('No door size fits this wall'); }
+    var pt=posText(el); if(pt) d.sub.push(pt);
+    if(shown(q('.rco-row'))){ var c=stripPrice(optText(q('.rco'))); if(c) d.sub.push(c.toLowerCase()); }
+    var n=function(s){ var e=q(s); return e&&shown(e.closest('.row'))?(parseInt(e.value)||0):0; };
+    if(n('.rch')) d.sub.push('chain hoist'+(n('.rch')>1?' ×'+n('.rch'):''));
+    if(n('.rop')) d.sub.push('opener'+(n('.rop')>1?' ×'+n('.rop'):''));
+    if(n('.rsl')) d.sub.push('brush seal');
+    if((q('.r45')||{}).value==='yes') d.sub.push('45° cut');
+    if(inlineShown(q('.rlift'))) d.warn.push('reach lift required');
+  } else if(k==='we'||k==='ne'){
+    var isW=k==='we';
+    d.wall=wallOf((q(isW?'.wloc':'.nloc')||{}).value);
+    d.qty=parseInt((q(isW?'.wqt':'.nqt')||{}).value)||1;
+    var lbl=stripPrice(optText(q(isW?'.whi':'.ntp')));
+    if(!isW && !/window/i.test(lbl)) lbl+=' window';
+    d.title=(d.qty>1?d.qty+' × ':'')+(lbl||KINDS[k].label);
+    var pt2=posText(el); if(pt2) d.sub.push(pt2);
+    if(!isW){ var sill=(q('.nsill')||{}).value; if(sill!=='' && sill!=null) d.sub.push('sill '+ft(sill)); }
+    var tn=trussNote(el);
+    var sf=q(isW?'.wsf':'.nsf'), sfn=sf&&shown(sf.closest('.row'))?(parseInt(sf.value)||0):0;
+    var sfv=sf?(parseInt(sf.value)||0):0;
+    if(tn) d.warn.push(tn); else if(sfn) d.sub.push(sfn+' side frame'+(sfn>1?'s':''));
+    else if(sfv&&!shown(sf.closest('.row'))) d.warn.push(sfv+' side frame still charged (row hidden by the program)');
+  } else if(k==='lte'){
+    var free=(q('.lt-type')||{}).value==='freestanding';
+    var lw=(q('.ltw')||{}).value, ll=(q('.ltl2')||{}).value;
+    d.title=ll?(lw+'′ × '+ll+'′ lean-to'):(lw+'′-wide lean-to');
+    if(!ll) d.warn.push('enter a length to price it');
+    if(free){ d.wall=null; d.locText='Free-standing'; d.kind='Lean-to · free-standing'; var th=(q('.lt-tall-h')||{}).value; if(th) d.sub.push('tall side '+th+'′'); }
+    else { d.wall=wallOf((q('.lts')||{}).value); var lh=(q('.lth')||{}).value; if(lh) d.sub.push(lh+'′ low leg'); }
+    var wm=(q('.lt-wm')||{}).value||'open'; d.sub.push(wm==='enclosed'?'fully enclosed':wm==='custom'?'custom walls':'open');
+    var st=(q('.lt-stor')||{}).value;
+    if(!free&&(st==='front'||st==='back')){ var sl=(q('.lt-stor-len')||{}).value; d.sub.push('storage at '+st+(sl?' '+sl+'′':'')); }
+    var accs=el.querySelectorAll('.lt-acc-e').length; if(accs) d.sub.push(accs+' opening'+(accs>1?'s':''));
+    var cn=q('.lt-conn-note');
+    if(cn){ var bad=/⚠/.test(cn.textContent); cn.setAttribute('data-s5',bad?'bad':'ok'); if(bad) d.bad.push(cn.textContent.replace(/^.*?⚠\s*/,'').trim()||'connection problem'); }
+    var pn=q('.lt-price-note'); if(inlineShown(pn)&&pn.textContent.trim()) d.bad.push('not fully priced — see note');
+    var sn=q('.lt-stor-note'); if(sn){ var sb=inlineShown(sn)&&/NOT priced/i.test(sn.textContent); sn.setAttribute('data-s5',sb?'bad':'warn'); if(sb) d.bad.push('storage not priced'); }
+    if(inlineShown(q('.lt-sensei-note'))) d.warn.push('Sensei prices this size differently');
+    if(el.querySelector('.lt-acc-warn,.lt-acc-pwarn,.lt-acc-fitwarn')) d.bad.push('an opening doesn’t fit — see card');
+  } else if(k==='ace'){
+    var key=(q('.act')||{}).value||'';
+    d.qty=parseInt((q('.acq')||{}).value)||1;
+    d.title=(d.qty>1?d.qty+' × ':'')+(key||'Component');
+    if(isFO(el)){
+      d.kind='Framed opening';
+      d.wall=wallOf((q('.fo-loc')||{}).value);
+      var pt3=posText(el); if(pt3) d.sub.push(pt3);
+      var tn3=trussNote(el); if(tn3) d.warn.push(tn3);
+    } else { d.wall=null; d.locText='Whole building'; d.sub.push('not on a wall'); }
+    var acp=q('.acp'); if(acp&&shown(q('.acp-row'))&&!(parseFloat(acp.value)>0)) d.warn.push('enter the custom price');
+  }
+  return d;
+}
+
+/* ---------- decorate a program entry as a card (idempotent) ---------- */
+var HEAD='<button type="button" class="s5-chb" aria-expanded="false"><span class="s5-kind"></span><span class="s5-title"></span><span class="s5-sub"></span></button>'+
+  '<div class="s5-meta"><select class="s5-wsel" aria-label="Wall this item is on"></select><span class="s5-wtxt"></span><span class="s5-pc"><span class="s5-price"></span><span class="s5-chev" aria-hidden="true">›</span></span></div>'+
+  '<button type="button" class="s5-x" aria-label="Remove this item" title="Remove">×</button>';
+function mark(el,sel,cls){ var e=typeof sel==='string'?el.querySelector(sel):sel; if(e) e.classList.add(cls); return e; }
+function rowOf(el,sel){ var f=el.querySelector(sel); return f?f.closest('.row'):null; }
+function decorate(el,k){
+  if(!el.__s5){ el.__s5={k:k,seq:++S.seq}; el.classList.add('s5-card'); el.style.order=String(el.__s5.seq); }
+  var h=el.querySelector(':scope > .s5-ch');
+  if(!h){ h=D.createElement('div'); h.className='s5-ch'; h.innerHTML=HEAD; el.insertBefore(h,el.firstChild); }
+  // the location row is replaced by the header's wall dropdown (still the real field underneath)
+  if(k==='lte'){ mark(el,'.lt-attach-row','s5-hide-new'); Array.prototype.forEach.call(el.children,function(c){ if(c.tagName==='DIV'&&!c.className&&c.textContent.trim()==='Lean-To') c.classList.add('s5-hide-new'); }); }
+  else if(k==='ace') mark(el,'.fo-loc-row','s5-hide-new');
+  else mark(el,rowOf(el,KINDS[k].loc),'s5-hide-new');
+  // wide fields span the full card
+  ['.rsz','.whi','.ntp','.act','.lt-wm','.lt-type'].forEach(function(s){ var r=rowOf(el,s); if(r) r.classList.add('s5-full'); });
+  return h;
+}
+function syncProxy(sel,real){
+  var sig=Array.prototype.map.call(real.options,function(o){ return o.value+'\u0001'+o.text+(o.disabled?'\u0002':''); }).join('|');
+  if(sel.__sig!==sig){
+    sel.innerHTML='';
+    Array.prototype.forEach.call(real.options,function(o){ var n=D.createElement('option'); n.value=o.value; n.textContent=o.text; n.disabled=o.disabled; sel.appendChild(n); });
+    sel.__sig=sig;
+  }
+  if(sel.value!==real.value) sel.value=real.value;
+}
+function paint(el,d,price){
+  var h=el.querySelector(':scope > .s5-ch');
+  WALLS.forEach(function(w){ el.classList.toggle('s5-w-'+w.k,d.wall===w.k); });
+  el.classList.toggle('s5-nowall',!d.wall);
+  el.classList.toggle('s5-flag',d.bad.length>0);
+  h.querySelector('.s5-kind').textContent=d.kind;
+  h.querySelector('.s5-title').textContent=d.title;
+  var sub=d.bad.map(function(s){ return '<span class="s5-bd">⚠ '+esc(s)+'</span>'; })
+    .concat(d.warn.map(function(s){ return '<span class="s5-wn">⚠ '+esc(s)+'</span>'; }))
+    .concat(d.sub.map(esc));
+  var subH=sub.join(' · ');
+  var subEl=h.querySelector('.s5-sub'); if(subEl.innerHTML!==subH) subEl.innerHTML=subH;
+  var subT=subEl.textContent; if(subEl.title!==subT) subEl.title=subT;
+  var real=(d.k==='ace'&&!isFO(el))?null:locSel(el,d.k);
+  if(d.k==='lte'&&d.locText) real=null;
+  var ws=h.querySelector('.s5-wsel'), wt=h.querySelector('.s5-wtxt');
+  if(real){ ws.hidden=false; wt.hidden=true; syncProxy(ws,real); }
+  else { ws.hidden=true; wt.hidden=false; wt.textContent=d.locText||''; }
+  var pr=h.querySelector('.s5-price');
+  if(price==null){ pr.hidden=true; }
+  else { pr.hidden=false; pr.textContent=money(price); pr.classList.toggle('s5-zero',!price);
+    pr.title=d.k==='lte'?'Program line total: lean-to + storage + its openings + connection fee (before tax / discount)':'Program line total for this item (before tax / discount)'; }
+  h.querySelector('.s5-chb').setAttribute('aria-expanded',el.classList.contains('s5-open')?'true':'false');
+}
+
+/* ---------- full refresh (after every rc() pass, add, remove, restore) ---------- */
+function schedule(){ if(!S.timer) S.timer=setTimeout(refresh,0); }
+function refresh(){
+  S.timer=0;
+  var sec=$('s5-sec'); if(!sec) return;
+  ensureShell();
+  var cards=[], counts={};
+  WALLS.forEach(function(w){ counts[w.k]={n:0,by:{}}; });
+  ORDER.forEach(function(k){ entriesOf(k).forEach(function(el){ decorate(el,k); cards.push(el); }); });
+  var hiddenN=0, partUsed=false;
+  cards.forEach(function(el){
+    var k=el.__s5.k, d=describe(el,k), price=linePrice(el,k);
+    paint(el,d,price);
+    if(d.wall){ counts[d.wall].n+=d.qty; counts[d.wall].by[k]=(counts[d.wall].by[k]||0)+d.qty; if(d.wall==='partition') partUsed=true; }
+    var filt=S.only&&d.wall!==S.wall;
+    el.classList.toggle('s5-filtered',filt);
+    if(filt) hiddenN++;
+  });
+  // tiles
+  var pa=partAllowed(), es=pa?endStorage():null, P=W.partition, pw=partWhere(es);
+  P.tile=es?'Storage wall':'Partition';
+  P.add=es?'storage wall':'partition wall';
+  // the 3D's Interior view stands in the main room and looks at the storage wall (only while the 3D draws it);
+  // a GCH divider has no view of its own, so the camera is left alone for it (as before)
+  P.cam=(es&&es.on)?'interior':null;
+  var showPart=partUsed||(pa&&inBuildShell());
+  if(!showPart&&S.wall==='partition') S.wall='front';
+  WALLS.forEach(function(w){
+    var t=sec.querySelector('.s5-tile[data-wall="'+w.k+'"]'); if(!t) return;
+    t.hidden=(w.k==='partition'&&!showPart);
+    t.setAttribute('aria-checked',S.wall===w.k?'true':'false');
+    var c=counts[w.k], kinds=Object.keys(c.by), txt;
+    if(!c.n) txt='Empty';
+    else if(kinds.length===1) txt=c.n+' '+(c.n===1?KINDS[kinds[0]].one:KINDS[kinds[0]].many);
+    else txt=c.n+' items';
+    if(w.k==='partition'){
+      var tl=t.querySelector('.s5-tl'); if(tl.textContent!==P.tile) tl.textContent=P.tile;
+      if(es) txt=(pw||'pick its depth (Section 4)')+' · '+txt;
+      var tt=es?('End Storage partition'+(pw?', '+ft(es.depthFt)+' in from the '+es.end+' end':'')+' — the program’s “Partition Wall” location. Its depth and end are set in Section 4.'):'Partition Wall (the GCH divider)';
+      if(t.title!==tt) t.title=tt;
+    }
+    t.querySelector('.s5-ts').textContent=txt;
+  });
+  var w=W[S.wall];
+  $('s5-addw').textContent=w.add;
+  sec.querySelector('.s5-add[data-kind="lte"]').disabled=!w.lt;
+  var mm=viewMismatch(), io=mm?null:insideOnlyOut(), hint=$('s5-hint'), hh;
+  if(mm) hh='<span class="s5-mmt">Viewing the <b>'+esc(mm.v.loc)+'</b> in 3D — adds still go to the <b>'+esc(mm.w.loc)+'</b>.</span>'+
+    '<span class="s5-mma"><button type="button" class="s5-mmb" data-act="addhere">Add here instead</button><button type="button" class="s5-mmb" data-act="showwall">Show '+esc(mm.w.add)+'</button></span>';
+  else if(io) hh='<span class="s5-mmt">The 3D is showing the outside — the <b>'+esc(io.add)+'</b> is inside the building.</span>'+
+    '<span class="s5-mma"><button type="button" class="s5-mmb" data-act="showwall">Show '+esc(io.add)+'</button></span>';
+  else hh=w.lt?('New items go on the <b>'+esc(w.loc)+'</b>. Roll-up sizes only list what fits that wall.')
+    :es?('New items go on the <b>storage wall</b> (Partition Wall'+(pw?', '+esc(ft(es.depthFt))+' in from the '+esc(es.end)+' end':'')+'). A lean-to attaches to an outside wall — pick one first.')
+    :('New items go on the <b>Partition Wall</b>. A lean-to attaches to an outside wall — pick one first.');
+  // The orange "Viewing … in 3D" box is ~50px taller than the plain line, and it flips whenever the 3D follows a card
+  // (often while the mouse button is still down on that card's header). Keep what the user is pressing / working on
+  // where it is, so the list under this line never jumps — and a header press still lands on that header.
+  var anc=null, a0=0;
+  if(hint.__h!==hh||hint.classList.contains('s5-mm')!==!!(mm||io)){
+    anc=userAnchor(); if(anc&&hint.contains(anc)) anc=hint;
+    if(anc) a0=anc.getBoundingClientRect().top;
+  }
+  hint.classList.toggle('s5-mm',!!(mm||io));
+  if(hint.__h!==hh){ hint.innerHTML=hh; hint.__h=hh; }
+  if(anc) keepAt(anc,a0);
+  // list head / empty / hidden note
+  $('s5-count').textContent=S.only?('On the '+w.add+' ('+(cards.length-hiddenN)+')'):('All items ('+cards.length+')');
+  $('s5-empty').hidden=cards.length>0&&!(S.only&&hiddenN===cards.length);
+  $('s5-empty').textContent=cards.length?'Nothing on the '+w.add+' yet.':'Nothing added yet — pick a wall, then use the buttons above.';
+  $('s5-hidden').textContent=hiddenN?(hiddenN+' item'+(hiddenN>1?'s':'')+' on other walls (or the whole building) hidden — untick “This wall only” to see '+(hiddenN>1?'them':'it')+'.'):'';
+  paintGch();
+  paintSum();
+}
+
+/* The program's GCH check (gchEncMissing — its own red note sits in Section 3 and is left as it is). The same warning
+   is repeated on one line at the top of this section, next to the add buttons. Display only: the program does the blocking. */
+function paintGch(){
+  var box=$('s5-gchw'), miss=false;
+  try{ miss=typeof window.gchEncMissing==='function'&&!!window.gchEncMissing(); }catch(e){}
+  box.hidden=!miss;
+  if(!miss) return;
+  var txt=window.INPUT_MODE?'⚠ GCH: the Enclosed Storage length isn’t picked yet (Section 3).'
+    :'⚠ GCH: pick the Enclosed Storage length (Section 3) — until then its walls, sides and divider aren’t priced and the quote PDF / contract / text quote won’t generate.';
+  var tx=box.querySelector('.s5-gcht'); if(tx.textContent!==txt) tx.textContent=txt;
+}
+function goGchEnc(){
+  var el=window.G&&G('gch-enc'); if(!el) return;
+  var sc=el.closest('.sec'); if(sc) sc.classList.remove('collapsed');
+  try{ el.scrollIntoView({block:'center',behavior:'instant'}); el.focus({preventScroll:true}); }catch(e){}
+}
+
+/* No subtotal strip (owner 10/1: "this section seems unnecessary if we have a summary already and breakdown plus every
+   time you add a component you see the price of it too"). Only the Input-mode note stays, so a rep knows where prices come from. */
+function paintSum(){
+  var box=$('s5-sum'), T=window._qTotals;
+  var html=(T&&T.mode==='input')?'<div class="s5-fine">Manual pricing (Input mode) — item prices come from the Manual Pricing panel.</div>':'';
+  if(box.__h!==html){ box.innerHTML=html; box.__h=html; }
+  box.hidden=!html;
+}
+
+/* ---------- open / close ---------- */
+function setOpen(el,open){ el.classList.toggle('s5-open',open); var b=el.querySelector(':scope > .s5-ch .s5-chb'); if(b) b.setAttribute('aria-expanded',open?'true':'false'); }
+function allCards(){ var a=[]; ORDER.forEach(function(k){ a=a.concat(entriesOf(k)); }); return a; }
+function openOnly(el){
+  allCards().forEach(function(c){ if(c!==el) setOpen(c,false); });
+  setOpen(el,true);
+  var d=describe(el,el.__s5.k); if(d.wall) turn3D(d.wall);
+}
+/* Scroll an opened card fully into the clear part of the panel: below the sticky "View quote summary" bar and above the
+   fixed Save / Reset bar. A card taller than that space lines its header up under the top bar. Insets are measured
+   live, so this fits whichever bars the current layout shows. */
+function topInset(){
+  var st=$('summary-toggle');
+  if(st){ var cs=getComputedStyle(st), r=st.getBoundingClientRect(); if(cs.display!=='none'&&r.height&&(cs.position==='sticky'||cs.position==='fixed')) return (parseFloat(cs.top)||0)+r.height+8; }
+  return 8;
+}
+function reveal(el){
+  var top=topInset(), bot=8;
+  [D.querySelector('.mobile-action-bar')].forEach(function(b){
+    if(!b) return; var cs=getComputedStyle(b), r=b.getBoundingClientRect();
+    if(cs.display!=='none'&&cs.visibility!=='hidden'&&cs.position==='fixed'&&r.height&&r.top>innerHeight/2) bot=Math.max(bot,Math.ceil(innerHeight-r.top)+8);
+  });
+  el.style.scrollMarginTop=top+'px'; el.style.scrollMarginBottom=bot+'px';
+  var calm=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  try{ el.scrollIntoView({block:'nearest',behavior:calm?'auto':'smooth'}); }catch(e){ el.scrollIntoView(false); }
+}
+
+/* The program's truss warning starts with "⚠️" (U+26A0 + U+FE0F), which draws as a yellow colour emoji that CSS can't
+   recolour. Inside the New cards only, drop the U+FE0F so the mark takes the note's orange like every other ⚠.
+   Classic puts the program's original text back. Display only: nothing reads this text. */
+function fixEmoji(){
+  if(S.mode!=='new') return;
+  var ws=D.querySelectorAll('#s5-cards .truss-warn');
+  for(var i=0;i<ws.length;i++){
+    var w=ws[i]; if(w.textContent.indexOf('⚠️')<0) continue;
+    var tw=D.createTreeWalker(w,NodeFilter.SHOW_TEXT), n;
+    while((n=tw.nextNode())){ if(n.nodeValue.indexOf('⚠️')>=0) n.nodeValue=n.nodeValue.replace(/⚠️/g,'⚠'); }
+    w.setAttribute('data-s5e','1');
+  }
+}
+function unfixEmoji(){
+  D.querySelectorAll('.truss-warn[data-s5e]').forEach(function(w){
+    var n=w.firstChild;
+    if(n&&n.nodeType===3&&n.nodeValue.charAt(0)==='⚠'&&n.nodeValue.charAt(1)!=='️') n.nodeValue='⚠️'+n.nodeValue.slice(1);
+    w.removeAttribute('data-s5e');
+  });
+}
+
+/* ---------- scrolling helpers (instant: the program sets scroll-behavior:smooth on the page) ---------- */
+// the boxes that scroll this element, innermost first; null = the page itself
+function scrollersOf(el){
+  var out=[];
+  for(var n=el.parentElement;n&&n!==D.body&&n!==D.documentElement;n=n.parentElement){
+    var oy=getComputedStyle(n).overflowY;
+    if((oy==='auto'||oy==='scroll'||oy==='overlay')&&n.scrollHeight>n.clientHeight+1) out.push(n);
+  }
+  out.push(null);
+  return out;
+}
+function scrollOn(s,d){ if(s) s.scrollBy({top:d,behavior:'instant'}); else window.scrollBy({top:d,behavior:'instant'}); }
+// put el back at viewport y=top0 after the layout above or around it changed. Folding only ever removes height, so a
+// leftover push-down means the page hit its bottom: a spacer at the end of the panel makes room (dropped once it is
+// scrolled out of sight below).
+var PAD=null;
+function keepPad(){
+  if(PAD&&PAD.isConnected) return PAD;
+  var host=D.querySelector('.left')||D.body;
+  PAD=D.createElement('div'); PAD.id='s5-keeppad'; PAD.setAttribute('aria-hidden','true'); PAD.style.cssText='height:0;pointer-events:none';
+  host.appendChild(PAD); return PAD;
+}
+function keepAt(el,top0){
+  var off=function(){ return el.getBoundingClientRect().top-top0; };
+  for(var pass=0;pass<2;pass++){
+    var list=scrollersOf(el);
+    for(var i=0;i<list.length;i++){ var d=off(); if(Math.abs(d)<=0.5) return; scrollOn(list[i],d); }
+    var r=off(); if(r<=0.5) return;
+    var pad=keepPad(); pad.style.height=(pad.offsetHeight+Math.ceil(r))+'px';
+  }
+}
+// What the user is working on in this panel right now: the last thing pressed here (or, after a key press, the focused
+// field). Forgotten once focus leaves for the 3D / the page around the panel — a change the 3D's own buttons cause is
+// left to the browser.
+var HIT=null;
+D.addEventListener('keydown',function(e){ if(e.isTrusted) HIT=null; },true);
+window.addEventListener('blur',function(){ HIT=null; });
+function userAnchor(){
+  try{ if(!D.hasFocus()) return null; }catch(e){}
+  var el=(HIT&&HIT.isConnected)?HIT:D.activeElement;
+  for(;el&&el!==D.body&&el!==D.documentElement;el=el.parentElement){ if(el.getClientRects().length) return el; }
+  return null;
+}
+D.addEventListener('scroll',function(){
+  if(!PAD||!PAD.offsetHeight) return;
+  var s=scrollersOf(PAD)[0], bottom=s?s.getBoundingClientRect().bottom:innerHeight;
+  if(PAD.getBoundingClientRect().top>bottom) PAD.style.height='0px';
+},true);
+
+/* ---------- Auto-minimize (owner 10/1: "like the MBHQ one — the component box minimizes automatically when I click on
+   something else, everything stays nice and neat"). Same rules as the approved Section 4 demo:
+   - a card opened by hand (or by an add) folds as soon as you click anywhere else in the quote panel: a wall tile, an add
+     button, another section's field, blank space, a section header…
+   - clicks inside the open card (its fields, position rows, its ×) keep it open; another card's header keeps the
+     accordion (opens that one, folds the rest)
+   - after "Expand all" nothing folds on its own until a card is opened / folded by hand, "Collapse all", or an add
+   - the fold runs after the click has fully done its job (the program's onclick / onchange, a checkbox's change event),
+     and whatever you clicked stays put on screen (also when a header click folds the card above it, and when the 3D
+     hint line above the list changes height — see userAnchor / refresh)
+   - never for the 3D / the build page around this panel (a different page, so its clicks never reach here), the quote
+     summary / price column, the Save bar, toasts, the "Show <wall>" 3D button or the layout link; a select's list always
+     opens undisturbed (see selectPress)
+   - New layout only (Classic stays exactly today's tool); UI only — it never touches a field, a location or the quote. */
+var NOFOLD='#summary-toggle,#mobile-summary-panel,.right,.mobile-action-bar,.toast,.s5-layout,[data-act="showwall"]';
+function onScrollbar(e){   // dragging a scrollbar is not "clicking something else"
+  var t=e.target, de=D.documentElement;
+  if(e.clientX>=de.clientWidth||e.clientY>=de.clientHeight) return true;
+  if(!t||!t.clientWidth||t===de) return false;
+  var cs=getComputedStyle(t), bx=(parseFloat(cs.borderLeftWidth)||0)+(parseFloat(cs.borderRightWidth)||0), by=(parseFloat(cs.borderTopWidth)||0)+(parseFloat(cs.borderBottomWidth)||0);
+  return (t.offsetWidth-t.clientWidth-bx>0&&e.offsetX>=t.clientWidth)||(t.offsetHeight-t.clientHeight-by>0&&e.offsetY>=t.clientHeight);
+}
+function snapFold(t){
+  if(S.mode!=='new'||!t||!t.closest||!$('s5-sec')) return null;
+  if((t.closest('#s5-cards .s5-ch')&&!t.closest('.s5-wsel,.s5-x'))||t.closest('[data-act="collapse"]')) ALL_OPEN=false;
+  if(ALL_OPEN||t.closest(NOFOLD)) return null;
+  var open=allCards().filter(function(c){ return c.classList.contains('s5-open'); }); if(!open.length) return null;
+  var keep=[], c=t.closest('.s5-card');
+  while(c){ keep.push(c); c=c.parentElement?c.parentElement.closest('.s5-card'):null; }
+  var chain=[]; for(var n=t;n&&n!==D.documentElement;n=n.parentElement) chain.push(n);
+  return {open:open,keep:keep,chain:chain};
+}
+function autoFold(a){
+  if(S.mode!=='new'||ALL_OPEN) return;
+  var fold=a.open.filter(function(c){ return c.isConnected&&c.classList.contains('s5-open')&&a.keep.indexOf(c)<0; });
+  if(!fold.length) return;
+  // what was clicked (or its nearest still-shown parent, if the click re-drew it) is the anchor that must not move
+  var ref=null;
+  for(var i=0;i<a.chain.length&&!ref;i++){
+    var n=a.chain[i];
+    if(n.isConnected&&n.getClientRects().length&&!fold.some(function(f){ return f.contains(n); })) ref=n;
+  }
+  var top0=ref?ref.getBoundingClientRect().top:0;
+  fold.forEach(function(c){ setOpen(c,false); });
+  if(ref) keepAt(ref,top0);
+}
+/* A select outside the open card opens its list on the press (the release may go to the list, not the page). If nothing
+   above the select would change, the card folds right away and the list stays where it opened; if the card sits above
+   it (folding would shift the select under the open list), it folds once a value is picked. */
+var PEND=null;
+function selectPress(s){
+  var a=snapFold(s); if(!a){ PEND=null; return; }
+  var below=a.open.every(function(c){ return a.keep.indexOf(c)>=0||!!(s.compareDocumentPosition(c)&Node.DOCUMENT_POSITION_FOLLOWING); });
+  if(below){ PEND={sel:s,a:null}; setTimeout(function(){ autoFold(a); },0); }
+  else PEND={sel:s,a:a};
+}
+D.addEventListener('pointerdown',function(e){
+  if(!e.isTrusted) return;
+  HIT=e.target;
+  if(e.button!==0) return;
+  var s=e.target&&e.target.closest?e.target.closest('select'):null;
+  if(s) selectPress(s);
+},true);
+D.addEventListener('click',function(e){
+  if(!e.isTrusted) return;            // the program's / this section's own scripted clicks are not the user's
+  var t=e.target, s=t&&t.closest?t.closest('select'):null;
+  if(s){ if(!PEND||PEND.sel!==s) selectPress(s); return; }
+  PEND=null;
+  if(onScrollbar(e)) return;
+  var a=snapFold(t);
+  if(a) setTimeout(function(){ autoFold(a); },0);
+},true);
+D.addEventListener('change',function(e){
+  if(!PEND||e.target!==PEND.sel||!PEND.a) return;
+  var a=PEND.a; PEND={sel:PEND.sel,a:null};   // Chrome also sends the select a click after the pick: absorb it
+  setTimeout(function(){ autoFold(a); },0);
+});
+
+/* ---------- add to the picked wall: the program's own add function, then its location field + change event ---------- */
+function addItem(k){
+  var w=W[S.wall]; if(!w) return;
+  if(k==='lte'&&!w.lt) return;
+  var fn=window[KINDS[k].add]; if(typeof fn!=='function') return;
+  ALL_OPEN=false;
+  fn();
+  var list=D.querySelectorAll('.'+k+'.entry'), el=list[list.length-1];
+  if(!el) return;
+  var real=locSel(el,k), val=(k==='lte')?w.lt:w.loc;
+  if(real){
+    if(!hasOpt(real,val)&&typeof window._ensureLocOpt==='function') window._ensureLocOpt(real,val);
+    if(hasOpt(real,val)&&real.value!==val){ real.value=val; real.dispatchEvent(new Event('change',{bubbles:true})); }
+  }
+  decorate(el,k);
+  openOnly(el);
+  turn3D(S.wall);   // before the refresh, so the 3D hint is already final when the scroll to the new card starts
+  refresh();
+  setTimeout(function(){ reveal(el); },30);
+}
+
+/* ---------- build the new section ---------- */
+function tileHTML(w){ return '<button type="button" class="s5-tile s5-w-'+w.k+'" role="radio" aria-checked="false" data-wall="'+w.k+'"><span class="s5-tl">'+w.tile+'</span><span class="s5-ts">Empty</span></button>'; }
+var LINK=null;   // the "Classic layout" / "New layout" link: lives in this section's title (New) or in "5 — Roll-Up Doors" (Classic)
+function build(){
+  var rl=$('rl'); if(!rl) return false;
+  var sec5=rl.closest('.sec');
+  S.secs=ORDER.map(function(k){ return $(KINDS[k].cont).closest('.sec'); });
+  ORDER.forEach(function(k){ var c=$(KINDS[k].cont); S.home[k]={c:c,parent:c.parentNode,next:c.nextSibling}; });
+  ['lift-note','cci-door-spacing-note'].forEach(function(id){ var n=$(id); if(n) S.notes[id]={n:n,parent:n.parentNode,next:n.nextSibling}; });
+
+  var sec=D.createElement('div'); sec.className='sec s5'; sec.id='s5-sec';
+  sec.innerHTML='<div class="st">5 — Doors, Windows &amp; Add-ons</div>'+
+    '<div class="s5-gchw" id="s5-gchw" aria-live="polite" hidden><span class="s5-gcht"></span><button type="button" class="s5-mmb" data-act="gchenc">Go to it</button></div>'+
+    '<p class="s5-lede">Pick a wall, add to it, then open a card to fine-tune it.</p>'+
+    '<div class="s5-tiles" role="radiogroup" aria-label="Wall">'+WALLS.map(tileHTML).join('')+'</div>'+
+    '<div class="s5-addto">Add to <b id="s5-addw">front gable</b></div>'+
+    '<div class="s5-adds">'+ORDER.map(function(k){ return '<button type="button" class="s5-add" data-kind="'+k+'" style="--kc:var(--k'+k+')"><span class="s5-plus" aria-hidden="true">+</span>'+KINDS[k].btn+'</button>'; }).join('')+'</div>'+
+    '<div class="s5-hint" id="s5-hint" aria-live="polite"></div>'+
+    '<div class="s5-notes" id="s5-notes-top"></div>'+
+    '<div class="s5-lhead"><span class="s5-count" id="s5-count">All items (0)</span><div class="s5-tools"><label class="s5-chk"><input type="checkbox" id="s5-only"> This wall only</label><button type="button" class="s5-link" data-act="collapse">Collapse all</button><button type="button" class="s5-link" data-act="expand">Expand all</button></div></div>'+
+    '<div class="s5-cards" id="s5-cards"></div>'+
+    '<div class="s5-empty" id="s5-empty">Nothing added yet.</div>'+
+    '<div class="s5-hidden" id="s5-hidden"></div>'+
+    '<details class="s5-rules"><summary>CCI roll-up door leg-height rules</summary><div id="s5-notes-bottom"></div></details>'+
+    '<div class="s5-sum" id="s5-sum"></div>';
+  sec5.parentNode.insertBefore(sec,sec5);
+
+  // the layout link: one button, moved between the two section titles by setMode; its click never collapses the section
+  LINK=D.createElement('button'); LINK.type='button'; LINK.className='s5-layout';
+  LINK.addEventListener('click',function(e){ e.stopPropagation(); setMode(S.mode==='new'?'classic':'new'); });
+
+  // section title collapses like the program's own (its handler was bound before this section existed)
+  sec.querySelector('.st').addEventListener('click',function(){ sec.classList.toggle('collapsed'); });
+  sec.addEventListener('click',function(e){
+    var t=e.target;
+    if(t.closest('[data-act="gchenc"]')){ goGchEnc(); return; }
+    if(t.closest('[data-act="addhere"]')){ if(S.view&&W[S.view]){ S.wall=S.view; refresh(); } return; }
+    if(t.closest('[data-act="showwall"]')){ S.view=S.wall; turn3D(S.wall); refresh(); return; }
+    var tile=t.closest('.s5-tile'); if(tile){ S.wall=tile.dataset.wall; refresh(); turn3D(S.wall); return; }
+    var add=t.closest('.s5-add'); if(add){ if(!add.disabled) addItem(add.dataset.kind); return; }
+    if(t.closest('[data-act="collapse"]')){ ALL_OPEN=false; allCards().forEach(function(c){ setOpen(c,false); }); return; }
+    if(t.closest('[data-act="expand"]')){ ALL_OPEN=true; allCards().forEach(function(c){ setOpen(c,true); }); return; }
+    var x=t.closest('.s5-x'); if(x){ var el=x.closest('.s5-card'); var rm=el&&el.querySelector(':scope > .rm'); if(rm) rm.click(); else if(el){ el.remove(); window.rc(); } schedule(); return; }
+    var ch=t.closest('.s5-ch');
+    if(ch&&!t.closest('.s5-wsel')){
+      // the header you clicked stays under the pointer while the card(s) above fold and the 3D hint re-draws (like the
+      // approved demo); only then, if the opened card runs under the Save bar, a smooth scroll shows the rest of it
+      ALL_OPEN=false; var card=ch.parentNode, t0=ch.getBoundingClientRect().top;
+      if(card.classList.contains('s5-open')){ setOpen(card,false); keepAt(ch,t0); }
+      else { openOnly(card); refresh(); keepAt(ch,t0); setTimeout(function(){ reveal(card); },30); }
+    }
+  });
+  sec.addEventListener('change',function(e){
+    var t=e.target;
+    if(t.id==='s5-only'){ S.only=t.checked; refresh(); return; }
+    if(t.classList.contains('s5-wsel')){
+      var el=t.closest('.s5-card'), k=el&&el.__s5&&el.__s5.k; if(!k) return;
+      var real=locSel(el,k); if(!real) return;
+      if(!hasOpt(real,t.value)&&typeof window._ensureLocOpt==='function') window._ensureLocOpt(real,t.value);
+      real.value=t.value; real.dispatchEvent(new Event('change',{bubbles:true}));
+      turn3D(wallOf(t.value));
+      schedule(); return;
+    }
+    schedule();
+  });
+  sec.addEventListener('input',schedule);
+  // keep a proxy's option list current before it opens (the build page adds "Partition Wall" on GCH and End Storage builds)
+  var resync=function(e){ var t=e.target; if(!t.classList||!t.classList.contains('s5-wsel')) return; var el=t.closest('.s5-card'); if(el&&el.__s5){ var r=locSel(el,el.__s5.k); if(r) syncProxy(t,r); } };
+  sec.addEventListener('mousedown',resync,true); sec.addEventListener('focusin',resync);
+  // new / removed / restored entries
+  var mo=new MutationObserver(schedule);
+  ORDER.forEach(function(k){ mo.observe($(KINDS[k].cont),{childList:true}); });
+  // the program rewrites its truss warning on every pricing pass; fix the emoji before it is painted
+  new MutationObserver(fixEmoji).observe($('s5-cards'),{subtree:true,childList:true,characterData:true});
+  return true;
+}
+
+/* ---------- New <-> Classic: move the program's five lists between the new section and their original sections ---------- */
+var RENUM={'8':'6','11':'7','12':'8','13':'9','14':'10'};
+function renumber(on){
+  D.querySelectorAll('.left > .sec > .st').forEach(function(st){
+    var tn=st.firstChild; if(!tn||tn.nodeType!==3) return;
+    if(on){ var m=tn.nodeValue.match(/^(\s*)(\d+)( — )/); if(m&&RENUM[m[2]]){ st.dataset.s5orig=tn.nodeValue; tn.nodeValue=m[1]+RENUM[m[2]]+tn.nodeValue.slice(m[1].length+m[2].length); } }
+    else if(st.dataset.s5orig!=null){ tn.nodeValue=st.dataset.s5orig; delete st.dataset.s5orig; }
+  });
+}
+function placeLink(m){
+  if(!LINK) return;
+  var host=m==='new'?$('s5-sec'):S.secs[0], st=host&&host.querySelector(':scope > .st'); if(!st) return;
+  LINK.textContent=m==='new'?'Classic layout':'New layout';
+  LINK.title=m==='new'?'Show today’s Sections 5–10 (same items and prices)':'Back to the Doors, Windows & Add-ons section';
+  if(LINK.parentNode!==st) st.appendChild(LINK);
+}
+function setMode(m){
+  m=m==='classic'?'classic':'new';
+  S.mode=m;
+  var sec=$('s5-sec'), cards=$('s5-cards');
+  if(m==='new'){
+    ORDER.forEach(function(k){ cards.appendChild(S.home[k].c); });
+    if(S.notes['lift-note']) $('s5-notes-top').appendChild(S.notes['lift-note'].n);
+    if(S.notes['cci-door-spacing-note']) $('s5-notes-bottom').appendChild(S.notes['cci-door-spacing-note'].n);
+    S.secs.forEach(function(s){ s.classList.add('s5-gone'); });
+    sec.classList.remove('s5-gone');
+    D.body.classList.add('s5-new');
+    renumber(true);
+    fixEmoji();
+  } else {
+    ORDER.forEach(function(k){ var h=S.home[k]; h.parent.insertBefore(h.c,h.next); });
+    Object.keys(S.notes).forEach(function(id){ var h=S.notes[id]; h.parent.insertBefore(h.n,h.next); });
+    S.secs.forEach(function(s){ s.classList.remove('s5-gone'); });
+    sec.classList.add('s5-gone');
+    D.body.classList.remove('s5-new');
+    renumber(false);
+    unfixEmoji();
+  }
+  placeLink(m);
+  rememberMode(m);
+  refresh();
+}
+
+/* ---------- hook the program's pricing pass (the 3D build page wraps this wrapper in turn) ---------- */
+if(typeof window.rc==='function'){
+  var _rc=window.rc;
+  window.rc=function(){ var r=_rc.apply(this,arguments); schedule(); return r; };
+}
+
+if(build()){ setMode(savedMode()); }
+window.__s5={refresh:refresh,setMode:setMode,state:S,linePrice:linePrice,describe:describe};
+})();
+</script>
+<!-- ═════════ END SECTION 5 ═════════ -->
 </body>
 </html>
