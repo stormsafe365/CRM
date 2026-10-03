@@ -11473,7 +11473,7 @@ async function printQuote(){
     '.qfooter-r{font-size:7.5pt;color:#4e6070;text-align:right}'+
     '.print-only{display:none}'+
     '@media print{@page{margin:0;size:letter portrait}body{background:#080f14;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-only{display:block}.qpg{display:block!important;background:#080f14!important}.qbody{display:flex!important;align-items:stretch!important}.qsidebar{align-self:stretch!important}.qmain{display:flex!important;flex-direction:column!important;align-self:stretch!important;background:#111d28!important}.qfooter{margin-top:12px!important;position:static!important}.qsec{margin-bottom:8px!important;padding-bottom:6px!important}.qfield{margin-bottom:4px!important}.qsec-title{margin-bottom:5px!important;font-size:6pt!important}.qfield .fl{font-size:5.5pt!important}.qfield .fv{font-size:8pt!important}.qspec-box{padding:4px 5px!important}.qspec-box .fl{font-size:5pt!important}.qspec-box .fv{font-size:8pt!important}.qcolor-row{padding:2px 0!important}}'+
-    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+zoningChecklistHTML()+colorChartPageHTML(_printTiles)+'</div>'+'</body></html>';
+    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : buildingPageHTML())+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML('dark') : '')+zoningChecklistHTML()+colorChartPageHTML(_printTiles)+'</div>'+'</body></html>';
 
   // Desktop app → real PDF + Save dialog + preview; browser → popup + print.
   if(!_ssSavePdfViaElectron(fullDoc, _ssPdfName('Quote'), pwin)){
@@ -11609,104 +11609,393 @@ function cciClearance(W, rs, legH){
   if(rs==='Vertical') p+=3;
   return {center:legH+c/12, peak:legH+p/12};
 }
-// One clean dimensioned elevation (SVG): wall outline (+gable), openings with
-// W×H + sill labels, a horizontal dimension chain (corner->opening->corner),
-// overall width, and wall height on the left.
-function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, clr){
-  var PADL=46, PADR=(clr?96:20), PADT=(frontSide?32:18), PADB=60, DRAWW=660;
-  var sc=DRAWW/Math.max(faceW,1);
-  var wallHpx=wallH*sc, peakHpx=(isGable?Math.max(peakH-wallH,0):0)*sc, totH=wallHpx+peakHpx;
-  var SVGW=DRAWW+PADL+PADR, SVGH=totH+PADT+PADB;
-  function X(xf){return +(PADL+xf*sc).toFixed(1);}
-  function Y(yf){return +(PADT+totH-yf*sc).toFixed(1);}
-  var sorted=items.slice().sort(function(a,b){return a.x-b.x;});
-  var s='<svg viewBox="0 0 '+SVGW+' '+SVGH+'" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">';
-  // GCH front: the gable triangle is sheeted, the wall below is the OPEN carport
-  // (dashed) and what you see/dimension is the set-back PARTITION wall (solid).
-  s+='<rect x="'+X(0)+'" y="'+Y(wallH)+'" width="'+(faceW*sc).toFixed(1)+'" height="'+wallHpx.toFixed(1)+'" fill="#ffffff" stroke="#1f2937" stroke-width="1.6"'+(gchFront?' stroke-dasharray="6 4"':'')+'/>';
-  if(gchFront){
-    // partition wall (solid, inset to read as set-back) — carries the openings.
-    var pin=7;
-    s+='<rect x="'+(X(0)+pin)+'" y="'+(Y(wallH)+pin)+'" width="'+(faceW*sc-2*pin).toFixed(1)+'" height="'+(wallHpx-2*pin).toFixed(1)+'" fill="#f8fafc" stroke="#1f2937" stroke-width="1.2"/>';
-    s+='<text x="'+X(faceW/2)+'" y="'+(Y(wallH)+pin+12)+'" font-size="8" fill="#0d6e6e" text-anchor="middle" font-family="Arial" font-weight="700">PARTITION WALL &#183; gable-only sheeting &#183; open carport front</text>';
-  }
-  if(isGable&&peakHpx>0.5){ s+='<polygon points="'+X(0)+','+Y(wallH)+' '+X(faceW/2)+','+Y(peakH)+' '+X(faceW)+','+Y(wallH)+'" fill="'+(gchFront?'#e8edf2':'#ffffff')+'" stroke="#1f2937" stroke-width="1.6"/>'; }
-  sorted.forEach(function(it){
-    var yo=it.yo||0, ox=X(it.x), oy=Y(yo+it.h), ow=it.w*sc, oh=it.h*sc;
-    // Framed openings can opt into inch labels (display only — the spacing chain,
-    // overall width and wall height below always stay in feet-inches).
-    var _f=(it.type==='fo'&&it.dispUnit==='in')?_dimIn:_dimFtIn;
-    s+='<rect x="'+ox+'" y="'+oy+'" width="'+ow.toFixed(1)+'" height="'+oh.toFixed(1)+'" fill="#eef2f7" stroke="#1d4ed8" stroke-width="1.2"/>';
-    s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+(oy+oh/2).toFixed(1)+'" font-size="9" fill="#0f172a" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="700">'+_f(it.w)+'×'+_f(it.h)+'</text>';
-    if(yo>0.1){ s+='<text x="'+(ox+ow/2).toFixed(1)+'" y="'+((Y(0)+Y(yo))/2).toFixed(1)+'" font-size="7.5" fill="#475569" text-anchor="middle" dominant-baseline="middle" font-family="Arial">sill '+_f(yo)+'</text>'; }
+// ── Section 4 demo look (owner 10/3/26, screenshot of Demos/stormsafe-section4-
+//    prototype.html): each wall gets a small TOP-DOWN plan beside a large thin-
+//    line ELEVATION on a dark azul panel — gable / eave outline with peak + leg
+//    labels, openings as outlined rectangles in their kind colour with a faint
+//    hatch and a W×H label, lean-tos dashed in violet, storage partitions where
+//    the quote has them, a dimension chain under the wall (every clearance and
+//    opening width) and the overall width / length with the end names. Inter,
+//    thin strokes, teal accent, no yellow (orange for the CCI clearance line).
+//    Every number is the same program data as before — collectElevItems /
+//    getPosItems, cciClearance, getLTDims, getLTWalls, ltStorage, ltPartGeom /
+//    ltPartDims / ltPartLayout / ltPartWallH, getTrussInfo / getTrussPositions —
+//    nothing is re-derived in the drawing.
+var DIM_K={rollup:'#22d3c8',wtd:'#f0883e',win:'#7fa6f0',fo:'#e58bb0',lt:'#a78bfa',ltText:'#b8a6fb'};
+var DIM_C={page:'#080f14',panel:'#0d1820',band:'#1C2E3F',edge:'#243c50',line:'rgba(255,255,255,.16)',wall:'#b7c2cd',dim:'#8a97a5',text:'#dfe6ee',teal:'#22d3c8',orange:'#f0883e',font:"'Inter',Arial,sans-serif"};
+var _dimSvgN=0;
+function _dimT(x,y,txt,a){
+  a=a||{};
+  return '<text x="'+(+x).toFixed(1)+'" y="'+(+y).toFixed(1)+'"'+(a.anchor?' text-anchor="'+a.anchor+'"':'')+' font-size="'+(a.size||10)+'"'+(a.weight?' font-weight="'+a.weight+'"':'')+
+    ' fill="'+(a.fill||DIM_C.dim)+'" font-family="'+DIM_C.font+'"'+(a.cls?' class="'+a.cls+'"':'')+(a.ls?' letter-spacing="'+a.ls+'"':'')+(a.tr?' transform="'+a.tr+'"':'')+'>'+txt+'</text>';
+}
+// Attached lean-tos as the drawings need them, read with the program's own
+// readers (getLTDims incl. continuous legs, getLTWalls, ltStorage) under the
+// same clamps the contract floor plan applies (_floorPlanSVG: eave offsets run
+// from the FRONT, gable offsets from the LEFT, run ≤ host wall) and the same
+// connection height the 3D / blueprint use (min(H, low leg + w·pitch/12)).
+// The storage partition sits where the 3D puts it (geometry.ts runAt): front
+// end → start + length, back end → end − length.
+function _dimLeanTos(W,L,H){
+  var out=[];
+  document.querySelectorAll('.lte').forEach(function(el,i){
+    var t=el.querySelector('.lt-type'); if(t&&t.value!=='attached') return;
+    var side=(el.querySelector('.lts')||{}).value||'';
+    var eave=(side==='Left Eave'||side==='Right Eave'), gable=(side==='Front Gable'||side==='Back Gable');
+    if(!eave&&!gable) return;
+    var ll=parseFloat((el.querySelector('.ltl2')||{}).value)||0, off=parseFloat((el.querySelector('.ltoff')||{}).value)||0;
+    var d=getLTDims(el); if(!(d.w>0)||!(ll>0)) return;
+    var p=((el.querySelector('.ltp')||{}).value==='3:12')?3:2;
+    var host=eave?L:W, run=Math.min(ll,host), start=Math.max(0,Math.min(off,host-run));
+    var st=(typeof ltStorage==='function')?ltStorage(el):null;
+    var stor=(st&&st.on&&st.valid&&(st.end==='front'||st.end==='back')&&st.len>0)?{end:st.end,len:st.len,at:(st.end==='front'?start+st.len:start+run-st.len)}:null;
+    out.push({n:i+1,el:el,side:side,eave:eave,k:(side==='Left Eave'?'left':side==='Right Eave'?'right':side==='Front Gable'?'front':'back'),
+      w:d.w,low:d.h,pitch:p,conn:Math.min(H,d.h+d.w*p/12),len:run,ll:ll,start:start,walls:getLTWalls(el),stor:stor});
   });
-  var dimY=PADT+totH+22;
-  var stops=[0]; sorted.forEach(function(it){stops.push(it.x);stops.push(it.x+it.w);}); stops.push(faceW);
+  return out;
+}
+// Small top-down plan for one wall card (the demo's renderPlan): building
+// outline (open walls dashed), attached lean-tos (dashed when their outer side
+// is open) with their storage partition, the GCH divider / storage partition
+// wall, every opening as a tick on its wall from the same collectElevItems
+// arrays the elevations draw (Right-Eave x runs from the FRONT, Left-Eave x
+// from the BACK — the contract plan's toFp), the card's wall in teal, FRONT /
+// BACK labels. `part` = {kind:'y'|'x', at, items} (y: ft from the FRONT across
+// the width; x: ft from the LEFT along the length).
+function dimPlanSVG(sel, it, lts, W, L, part, open){
+  var ext={left:0,right:0,front:0,back:0};
+  lts.forEach(function(l){ ext[l.k]=Math.max(ext[l.k],l.w); });
+  var tw=W+ext.left+ext.right, tl=L+ext.front+ext.back;
+  var s=Math.min(150/tw,190/tl);
+  var x0=(200-tw*s)/2+ext.left*s, y0=(234-tl*s)/2+ext.back*s+14;
+  function px(x){return +(x0+x*s).toFixed(1);} function py(y){return +(y0+(L-y)*s).toFixed(1);}
+  var o='<svg viewBox="0 0 200 260" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">';
+  o+='<rect x="'+px(0)+'" y="'+py(L)+'" width="'+(W*s).toFixed(1)+'" height="'+(L*s).toFixed(1)+'" fill="rgba(255,255,255,.03)"/>';
+  lts.forEach(function(l){
+    var a=l.start, e=l.start+l.len, w=l.w*s, hl=(sel==='ltpart:'+l.n), r;
+    if(l.k==='left') r=[px(0)-w,py(e),w,l.len*s]; else if(l.k==='right') r=[px(W),py(e),w,l.len*s];
+    else if(l.k==='front') r=[px(a),py(0),l.len*s,w]; else r=[px(a),py(L)-w,l.len*s,w];
+    o+='<rect x="'+r[0].toFixed(1)+'" y="'+r[1].toFixed(1)+'" width="'+r[2].toFixed(1)+'" height="'+r[3].toFixed(1)+'" fill="rgba(167,139,250,'+(hl?'.12':'.04')+')" stroke="'+DIM_K.lt+'" stroke-opacity="'+(hl?'1':'.7')+'" stroke-width="'+(hl?'1.6':'.9')+'"'+(l.walls.sideClosed?'':' stroke-dasharray="3 3"')+'/>';
+    if(l.stor){
+      var d=l.stor.at, ln=l.eave?[r[0],py(d),r[0]+w,py(d)]:[px(d),r[1],px(d),r[1]+w];
+      o+='<line x1="'+ln[0].toFixed(1)+'" y1="'+ln[1].toFixed(1)+'" x2="'+ln[2].toFixed(1)+'" y2="'+ln[3].toFixed(1)+'" stroke="'+(hl?DIM_C.teal:DIM_K.lt)+'" stroke-opacity="'+(hl?'1':'.7')+'" stroke-width="'+(hl?'2.6':'1')+'"'+(hl?'':' stroke-dasharray="2 2"')+' stroke-linecap="round"/>';
+    }
+    o+=_dimT(r[0]+r[2]/2, r[1]+r[3]/2+3, 'LT'+l.n, {anchor:'middle',size:8,fill:DIM_K.ltText});
+  });
+  if(part){
+    var on=(sel==='partition'||(sel==='front'&&part.gch));
+    if(part.kind==='y'){
+      var yy=py(part.at);
+      o+='<line x1="'+px(0)+'" y1="'+yy+'" x2="'+px(W)+'" y2="'+yy+'" stroke="'+(on?DIM_C.teal:'rgba(255,255,255,.35)')+'" stroke-width="'+(on?3:1.4)+'" stroke-dasharray="4 3"/>';
+      (part.items||[]).forEach(function(u){ o+='<line x1="'+px(u.x)+'" y1="'+(yy+6)+'" x2="'+px(u.x+u.w)+'" y2="'+(yy+6)+'" stroke="'+(DIM_K[u.type]||DIM_K.fo)+'" stroke-width="3.2"/>'; });
+    } else {
+      var xx=px(part.at);
+      o+='<line x1="'+xx+'" y1="'+py(0)+'" x2="'+xx+'" y2="'+py(L)+'" stroke="rgba(255,255,255,.35)" stroke-width="1.4" stroke-dasharray="4 3"/>';
+    }
+  }
+  var WL={front:[px(0),py(0),px(W),py(0)],back:[px(0),py(L),px(W),py(L)],left:[px(0),py(0),px(0),py(L)],right:[px(W),py(0),px(W),py(L)]};
+  Object.keys(WL).forEach(function(k){
+    var ln=WL[k], on=(sel===k);
+    o+='<line x1="'+ln[0]+'" y1="'+ln[1]+'" x2="'+ln[2]+'" y2="'+ln[3]+'" stroke="'+(on?DIM_C.teal:'rgba(255,255,255,.4)')+'" stroke-width="'+(on?3.2:1.6)+'" stroke-linecap="square"'+((open&&open[k])?' stroke-dasharray="4 3"':'')+'/>';
+    if(k==='front'&&part&&part.gch) return; // GCH: the "front" openings sit on the partition line above
+    (it[k]||[]).forEach(function(u){
+      var a,c;
+      if(k==='front'){a=[px(u.x),py(0)+6];c=[px(u.x+u.w),py(0)+6];}
+      else if(k==='back'){a=[px(u.x),py(L)-6];c=[px(u.x+u.w),py(L)-6];}
+      else if(k==='left'){a=[px(0)-6,py(L-u.x)];c=[px(0)-6,py(L-u.x-u.w)];}
+      else {a=[px(W)+6,py(u.x)];c=[px(W)+6,py(u.x+u.w)];}
+      o+='<line x1="'+a[0]+'" y1="'+a[1]+'" x2="'+c[0]+'" y2="'+c[1]+'" stroke="'+(DIM_K[u.type]||DIM_K.fo)+'" stroke-width="3.2"/>';
+    });
+  });
+  o+=_dimT(100,10,'BACK',{anchor:'middle',size:7.5,ls:1.5})+_dimT(100,257,'FRONT',{anchor:'middle',size:7.5,ls:1.5});
+  o+='</svg>';
+  return o;
+}
+// One dimensioned elevation (SVG). `items` = {type,x,w,h,yo?,dispUnit?} from
+// collectElevItems (or the lean-to partition's ltPartLayout). `x` extras:
+// {pitch, ends:[left,right], sideLeans:[{l,onLeft,closed}], foot:[{l,x0}],
+// truss:[ft], oc, open, prof:fn(ft)→wall height (lean-to partition)}.
+function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, clr, x){
+  x=x||{}; var E=1e-6, VW=700, mL=36, mR=74, mT=38, mB=74, id='dsp'+(++_dimSvgN);
+  var sideLeans=x.sideLeans||[], foot=x.foot||[], truss=x.truss||[], ends=x.ends||['LEFT','RIGHT'];
+  var sorted=items.slice().sort(function(a,b){return a.x-b.x;});
+  var extL=0, extR=0;
+  sideLeans.forEach(function(q){ if(q.onLeft) extL=Math.max(extL,q.l.w); else extR=Math.max(extR,q.l.w); });
+  sorted.forEach(function(it){ extL=Math.max(extL,-it.x); extR=Math.max(extR,it.x+it.w-faceW); }); // a typed spot past a corner still gets drawn
+  var hAt=x.prof?x.prof:(isGable?function(xx){ return wallH+Math.min(Math.max(xx,0),Math.max(faceW-xx,0))*(Math.max(peakH-wallH,0)/(faceW/2||1)); }:function(){ return wallH; });
+  var peak=x.prof?Math.max(hAt(0),hAt(faceW)):(isGable?Math.max(peakH,wallH):wallH);
+  var span=faceW+extL+extR, s=Math.min((VW-mL-mR)/span, 230/Math.max(peak,1));
+  var ox=mL+((VW-mL-mR)-span*s)/2+extL*s, gy=mT+peak*s, VH=Math.round(gy+mB);
+  function X(xf){return +(ox+xf*s).toFixed(1);} function Y(h){return +(gy-h*s).toFixed(1);}
+  function poly(pts){ return pts.map(function(p){return X(p[0])+','+Y(p[1]);}).join(' '); }
+  var P=x.prof?poly([[0,0],[0,hAt(0)],[faceW,hAt(faceW)],[faceW,0]]):isGable?poly([[0,0],[0,wallH],[faceW/2,peak],[faceW,wallH],[faceW,0]]):poly([[0,0],[0,wallH],[faceW,wallH],[faceW,0]]);
+  var o='<svg viewBox="0 0 '+VW+' '+VH+'" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">';
+  o+='<defs>'+Object.keys(DIM_K).map(function(k){ return '<pattern id="'+id+k+'" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="'+DIM_K[k]+'" stroke-opacity=".28" stroke-width=".8"/></pattern>'; }).join('')+'</defs>';
+  o+='<line x1="0" y1="'+gy.toFixed(1)+'" x2="'+VW+'" y2="'+gy.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+  // lean-tos seen end-on beside this wall (eave lean-tos on the gable views,
+  // gable lean-tos on the eave views): low leg at the outer post, rafter up to
+  // the connection height. Dashed when the end wall facing the reader is open.
+  sideLeans.forEach(function(q){
+    var l=q.l, c=l.conn, q2=q.onLeft?[[-l.w,0],[-l.w,l.low],[0,c],[0,0]]:[[faceW,0],[faceW,c],[faceW+l.w,l.low],[faceW+l.w,0]];
+    o+='<polygon points="'+poly(q2)+'" fill="rgba(167,139,250,.05)" stroke="'+DIM_K.lt+'" stroke-opacity=".7" stroke-width="1"'+(q.closed?'':' stroke-dasharray="4 3"')+'/>';
+    o+=_dimT(X(q.onLeft?-l.w/2:faceW+l.w/2), Y(l.low/2)+3, 'LT'+l.n, {anchor:'middle',size:10,fill:DIM_K.ltText});
+  });
+  // the wall: one thin light outline (dashed = open side / GCH open carport front)
+  var openWall=!!x.open||!!gchFront;
+  o+='<polygon points="'+P+'" fill="rgba(255,255,255,'+(openWall?'.015':'.025')+')" stroke="'+DIM_C.wall+'"'+(openWall?' stroke-opacity=".7" stroke-width="1" stroke-dasharray="6 4"':' stroke-width="1.2"')+' stroke-linejoin="round"/>';
+  if(gchFront){
+    // GCH front: the gable triangle is sheeted, the wall below is the OPEN
+    // carport (dashed) and what you see / dimension is the set-back PARTITION
+    // wall (solid, inset to read as set-back) — it carries the openings.
+    o+='<polygon points="'+poly([[0,wallH],[faceW/2,peak],[faceW,wallH]])+'" fill="rgba(255,255,255,.03)" stroke="'+DIM_C.wall+'" stroke-width="1.2" stroke-linejoin="round"/>';
+    var pin=6;
+    o+='<rect x="'+(X(0)+pin).toFixed(1)+'" y="'+(Y(wallH)+pin).toFixed(1)+'" width="'+(faceW*s-2*pin).toFixed(1)+'" height="'+(wallH*s-2*pin).toFixed(1)+'" fill="none" stroke="'+DIM_C.wall+'" stroke-width="1"/>';
+    // caption: 8.5 where the partition is wide enough, shrunk (never below 7) so it stays inside the inset on a narrow GCH
+    var capSz=Math.max(7,Math.min(8.5,((faceW*s-2*pin-12)/55-0.4)/0.58));
+    o+=_dimT(X(faceW/2), Y(wallH)+pin+11, 'PARTITION WALL &#183; gable-only sheeting &#183; open carport front', {anchor:'middle',size:+capSz.toFixed(1),weight:600,fill:DIM_C.teal,ls:.4});
+  } else if(x.open){
+    o+=_dimT(X(faceW/2), Y(wallH)+16, 'open wall', {anchor:'middle',size:10});
+  }
+  // a lean-to hanging off THIS wall: dashed footprint to its connection height.
+  // Its label is NEVER drawn on top of an opening rectangle or an opening's
+  // W×H / sill label (a door / frame-out into the lean-to is a normal layout)
+  // and never leaves the drawing. Placement order (verifier round 3):
+  //   1. inside the footprint, clear of every opening and label — centred,
+  //      else the widest opening-free span across it (mid-height, then higher
+  //      up under the connection line);
+  //   2. OUTSIDE the footprint, above its roof line (the dashed connection
+  //      line): centred on the lean-to, the lowest row that stays inside the
+  //      viewBox and clear of the openings, the peak / clearance / frame-line /
+  //      open-wall / leg labels and the other lean-to labels, tied to the
+  //      footprint by a thin leader tick (which stops at the footprint top or
+  //      at the first opening under it);
+  //   3. beside the footprint on the free side of the wall — past its far end,
+  //      else before its near end — at mid-height, then higher, then lower;
+  //   4. last resort: the label shrinks to "LTn" (same ladder, then the lowest
+  //      row above the connection line that the openings alone leave clear —
+  //      openings never rise past the eave, so that row exists) and the full
+  //      text goes to the card's legend line under the drawing
+  //      (dimElevSVG.notes, read by dimSpacingPageHTML's card()).
+  // There is no backing rectangle: nothing is ever painted over an opening.
+  var blocks=[]; // px boxes {x0,x1,y0,y1} a footprint label must stay clear of — blocks[0..opN) are the openings (the hard rule)
+  sorted.forEach(function(it){
+    var yo=it.yo||0; blocks.push({x0:X(it.x),x1:X(it.x+it.w),y0:Y(yo+it.h),y1:Y(yo)});
+    // its W×H label as the opening loop below draws it — a narrow door's text is wider than its rectangle
+    var lf=(it.type==='fo'&&it.dispUnit==='in')?_dimIn:_dimFtIn, ln=(lf(it.w)+'×'+lf(it.h)).length, ls=(it.w*s<56)?8:9.5, lb=(it.h*s>=26)?Y(yo+it.h)+13:Y(yo+it.h)+it.h*s/2+3, lcx=X(it.x+it.w/2);
+    blocks.push({x0:lcx-ln*ls*0.3-2,x1:lcx+ln*ls*0.3+2,y0:lb-ls,y1:lb+3});
+    if(yo>0.1){ var scx=X(it.x+it.w/2), scy=(Y(0)+Y(yo))/2; blocks.push({x0:scx-28,x1:scx+28,y0:scy-6,y1:scy+8}); } // its sill label
+  });
+  var opN=blocks.length;
+  if(clr&&isGable&&!x.prof){ var ccy=Y(Math.min(clr.center,peak)); blocks.push({x0:X(faceW/2)-72,x1:X(faceW/2)+72,y0:ccy-2,y1:ccy+12}); } // Center clearance label
+  if(truss.length&&x.oc) blocks.push({x0:X(0),x1:X(0)+96,y0:Y(wallH)-20,y1:Y(wallH)-7}); // "frame lines N′ OC"
+  if(x.open&&!gchFront) blocks.push({x0:X(faceW/2)-32,x1:X(faceW/2)+32,y0:Y(wallH)+6,y1:Y(wallH)+19}); // "open wall"
+  if(gchFront) blocks.push({x0:X(faceW/2)-150,x1:X(faceW/2)+150,y0:Y(wallH)+4,y1:Y(wallH)+20}); // GCH partition caption
+  if(isGable&&!x.prof) blocks.push({x0:X(faceW/2)-70,x1:X(faceW/2)+70,y0:Y(peak)-19,y1:Y(peak)-7}); // "Peak …"
+  var hR=hAt(faceW), dx=X(faceW+extR)+20; // leg dimension line + label, right of the wall (drawn below)
+  blocks.push({x0:dx-6,x1:VW,y0:Y(hR)-8,y1:Y(0)+8});
+  sideLeans.forEach(function(q){ var l=q.l; blocks.push(q.onLeft?{x0:X(-l.w),x1:X(0),y0:Y(l.conn),y1:Y(0)}:{x0:X(faceW),x1:X(faceW+l.w),y0:Y(l.conn),y1:Y(0)}); }); // end-on lean-tos + their LTn
+  function hits(b,from,to){ for(var i=from;i<to;i++){ var q=blocks[i]; if(b.x0<q.x1&&b.x1>q.x0&&b.y0<q.y1&&b.y1>q.y0) return true; } return false; }
+  function clearOf(b){ return !hits(b,0,blocks.length); }
+  function inView(b){ return b.x0>=2&&b.x1<=VW-2&&b.y0>=2; }
+  var notes=[]; dimElevSVG.notes=notes; // legend lines for this card (step 4 only)
+  var ltLab=''; // footprint labels + leader ticks, painted after the openings
+  foot.forEach(function(q){
+    var l=q.l, c=l.conn, x0=q.x0, x1=x0+l.len, full='LT'+l.n+' · '+l.w+'′ × '+l.ll+'′ lean-to', th=12, cxF=X(x0+l.len/2), top=Y(c);
+    o+='<rect x="'+X(x0)+'" y="'+top+'" width="'+(l.len*s).toFixed(1)+'" height="'+(c*s).toFixed(1)+'" fill="rgba(167,139,250,.05)" stroke="'+DIM_K.lt+'" stroke-opacity=".8" stroke-width="1.2" stroke-dasharray="5 4"/>';
+    function place(txt){
+      var tw=txt.length*6.4, pos=null;
+      function mbox(cx,base){ return {x0:cx-tw/2,x1:cx+tw/2,y0:base-th+2,y1:base+3}; }
+      function lbox(lx,base){ return {x0:lx,x1:lx+tw,y0:base-th+2,y1:base+3}; }
+      // 1. inside the footprint: centred, else the widest opening-free span (mid-height, then higher up)
+      if(c*s>=36 && l.len*s>=tw+12 && clearOf(mbox(cxF,Y(c/2)+4))) pos={x:cxF,y:Y(c/2)+4,a:'middle'};
+      if(!pos && c*s>=36) [c/2, c*0.78].some(function(hh){
+        var base=Y(hh)+4, by0=base-th+2, by1=base+3, edges=[X(x0),X(x1)], best=null;
+        blocks.forEach(function(bb){ if(bb.y0<by1&&bb.y1>by0){ edges.push(bb.x0); edges.push(bb.x1); } });
+        edges=edges.filter(function(v){ return v>=X(x0)-E&&v<=X(x1)+E; }).sort(function(a,b){ return a-b; });
+        for(var i=0;i<edges.length-1;i++){ var gw=edges[i+1]-edges[i], mid=(edges[i]+edges[i+1])/2; if(gw>=tw+10 && clearOf(mbox(mid,base)) && (!best||gw>best.w)) best={cx:mid,w:gw}; }
+        if(best) pos={x:best.cx,y:base,a:'middle'};
+        return !!best;
+      });
+      // 2. above the roof line, centred on the lean-to (nudged left of the leg dimension when that keeps it over the footprint), lowest clear row
+      if(!pos){
+        var c1=Math.max(tw/2+4,Math.min(VW-tw/2-4,cxF)), c2=Math.min(c1,dx-8-tw/2), cands=(c2<c1-E && c2+tw/2>X(x0)+6)?[c1,c2]:[c1];
+        for(var base=top-6; base-th+2>=2 && !pos; base-=13) cands.some(function(cx){ var b=mbox(cx,base); if(inView(b)&&clearOf(b)){ pos={x:cx,y:base,a:'middle',tick:true}; return true; } return false; });
+      }
+      // 3. beside the footprint on the free side, inside the wall: past its far end, else before its near end
+      if(!pos && c*s>=36) [c/2, c*0.75, c*0.25].some(function(hh){
+        var by=Y(hh)+4, rx=X(x1)+8, lx=X(x0)-8-tw;
+        if(rx+tw<=X(faceW)-4 && clearOf(lbox(rx,by))) pos={x:rx,y:by,a:'start'};
+        else if(lx>=X(0)+4 && clearOf(lbox(lx,by))) pos={x:lx,y:by,a:'start'};
+        return !!pos;
+      });
+      if(pos) pos.tw=tw;
+      return pos;
+    }
+    var txt=full, pos=place(full);
+    if(!pos){
+      // 4. "LTn" + legend line; its final spot is decided by the openings alone
+      txt='LT'+l.n; pos=place(txt);
+      if(!pos){
+        var tw2=txt.length*6.4, cx2=Math.max(tw2/2+4,Math.min(VW-tw2/2-4,cxF)), base2;
+        for(base2=top-6; base2-th+2>=2; base2-=13){ if(!hits({x0:cx2-tw2/2,x1:cx2+tw2/2,y0:base2-th+2,y1:base2+3},0,opN)) break; }
+        if(base2-th+2<2) base2=th; // top row of the viewBox (only an opening drawn past the top could force this)
+        pos={x:cx2,y:base2,a:'middle',tick:true,tw:tw2};
+      }
+      notes.push(txt+' = '+l.w+'′ × '+l.ll+'′ lean-to');
+    }
+    var bx=(pos.a==='middle')?{x0:pos.x-pos.tw/2,x1:pos.x+pos.tw/2,y0:pos.y-th+2,y1:pos.y+3}:{x0:pos.x,x1:pos.x+pos.tw,y0:pos.y-th+2,y1:pos.y+3};
+    if(pos.tick){
+      // leader tick: from the label down to the footprint top (or the first opening under it), on a path clear of the other labels when one exists
+      var lo=Math.max(X(x0)+3,bx.x0+2), hi=Math.min(X(x1)-3,bx.x1-2), tx=Math.max(lo,Math.min(hi,pos.x)), best=null;
+      function tEnd(xx){ var e=top; for(var i=0;i<opN;i++){ var q=blocks[i]; if(q.x0<=xx&&xx<=q.x1&&q.y0<e) e=q.y0; } return e; }
+      for(var d=0; d<=hi-lo && !best; d+=6){ [tx-d,tx+d].some(function(xx){ if(xx<lo-E||xx>hi+E) return false; var e=tEnd(xx); if(!hits({x0:xx-1,x1:xx+1,y0:bx.y1,y1:e},opN,blocks.length)){ best={x:xx,e:e}; return true; } return false; }); }
+      if(!best) best={x:tx,e:tEnd(tx)};
+      if(best.e-bx.y1>3){
+        ltLab+='<line x1="'+best.x.toFixed(1)+'" y1="'+(bx.y1+1).toFixed(1)+'" x2="'+best.x.toFixed(1)+'" y2="'+best.e.toFixed(1)+'" stroke="'+DIM_K.lt+'" stroke-opacity=".8" stroke-width="1"/>';
+        blocks.push({x0:best.x-2,x1:best.x+2,y0:bx.y1,y1:best.e}); // later labels stay off the tick
+      }
+    }
+    ltLab+=_dimT(pos.x, pos.y, txt, {anchor:pos.a,size:pos.a==='middle'?10.5:10,fill:DIM_K.ltText,cls:'dim-lt'});
+    blocks.push(bx); // the next lean-to's label stays clear of this one
+  });
+  // frame lines (eave views) at the build's OC spacing
+  truss.forEach(function(t){ if(t<=E||t>=faceW-E) return; o+='<line x1="'+X(t)+'" y1="'+gy.toFixed(1)+'" x2="'+X(t)+'" y2="'+Y(hAt(t))+'" stroke="rgba(255,255,255,.12)" stroke-width="1" stroke-dasharray="3 4"/>'; });
+  if(truss.length&&x.oc) o+=_dimT(X(0), Y(wallH)-10, 'frame lines '+x.oc+'′ OC', {size:10});
+  // leg height: a dimension line to the right of the wall (hR / dx computed above, where the label rule needs them)
+  o+='<line x1="'+dx+'" y1="'+Y(0)+'" x2="'+dx+'" y2="'+Y(hR)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
+     '<line x1="'+(dx-4)+'" y1="'+Y(0)+'" x2="'+(dx+4)+'" y2="'+Y(0)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
+     '<line x1="'+(dx-4)+'" y1="'+Y(hR)+'" x2="'+(dx+4)+'" y2="'+Y(hR)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+  o+=_dimT(dx+8, (Y(0)+Y(hR))/2+4, _dimFtIn(hR)+' leg', {size:10.5,fill:DIM_C.text});
+  if(x.prof) o+=_dimT(X(0)-6, Y(hAt(0))+4, _dimFtIn(hAt(0)), {anchor:'end',size:10,fill:DIM_C.text});
+  // peak above a gable: the CCI handbook figure where there is one, else the
+  // geometric ridge (H + W/2 · pitch/12)
+  if(isGable&&!x.prof) o+=_dimT(X(faceW/2), Y(peak)-10, (clr?('Peak ≈ '+_dimFtIn(clr.peak)):('Peak '+_dimFtIn(peak)))+(x.pitch?' · '+x.pitch+':12':''), {anchor:'middle',size:10});
+  // CCI centre clearance: dashed line across the interior, labelled approx.
+  if(clr&&isGable&&!x.prof){
+    var cy=Y(Math.min(clr.center,peak));
+    o+='<line x1="'+X(0)+'" y1="'+cy+'" x2="'+X(faceW)+'" y2="'+cy+'" stroke="'+DIM_C.orange+'" stroke-width="1" stroke-dasharray="5 3"/>';
+    o+=_dimT(X(faceW/2), cy+9, 'Center clearance ≈ '+_dimFtIn(clr.center), {anchor:'middle',size:9,weight:500,fill:DIM_C.orange});
+  }
+  // openings: outlined rectangle in the kind colour, faint hatch, W×H label
+  // (+ sill). Framed openings can opt into inch labels (display only — the
+  // spacing chain, overall and leg height below always stay in feet-inches).
+  sorted.forEach(function(it){
+    var yo=it.yo||0, fo=(it.type==='fo'), k=DIM_K[it.type]?it.type:'fo', col=DIM_K[k];
+    var rx=X(it.x), ry=Y(yo+it.h), rw=it.w*s, rh=it.h*s, _f=(fo&&it.dispUnit==='in')?_dimIn:_dimFtIn;
+    o+='<rect x="'+rx+'" y="'+ry+'" width="'+rw.toFixed(1)+'" height="'+rh.toFixed(1)+'" fill="url(#'+id+k+')" stroke="'+col+'" stroke-width="1.1"'+(fo?' stroke-dasharray="5 3"':'')+'/>';
+    if(it.type==='win') o+='<line x1="'+(rx+rw/2).toFixed(1)+'" y1="'+ry+'" x2="'+(rx+rw/2).toFixed(1)+'" y2="'+(ry+rh).toFixed(1)+'" stroke="'+col+'" stroke-opacity=".45" stroke-width=".8"/><line x1="'+rx+'" y1="'+(ry+rh/2).toFixed(1)+'" x2="'+(rx+rw).toFixed(1)+'" y2="'+(ry+rh/2).toFixed(1)+'" stroke="'+col+'" stroke-opacity=".45" stroke-width=".8"/>';
+    if(it.type==='wtd') o+='<circle cx="'+(rx+rw*.8).toFixed(1)+'" cy="'+(ry+rh*.55).toFixed(1)+'" r="'+Math.max(1.5,s*.12).toFixed(1)+'" fill="'+col+'"/>';
+    o+=_dimT(rx+rw/2, (rh>=26)?ry+13:ry+rh/2+3, _f(it.w)+'×'+_f(it.h), {anchor:'middle',size:(rw<56?8:9.5),weight:500,fill:DIM_C.text});
+    if(yo>0.1) o+=_dimT(rx+rw/2, (Y(0)+Y(yo))/2+3, 'sill '+_f(yo), {anchor:'middle',size:8.5});
+  });
+  o+=ltLab; // lean-to footprint labels on top of the openings
+  // dimension chain: corner → opening edges → corner, then the overall
+  var dy=gy+18, stops=[0];
+  sorted.forEach(function(it){ stops.push(it.x); stops.push(it.x+it.w); }); stops.push(faceW);
   stops=stops.filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
-  for(var i=0;i<stops.length-1;i++){
-    var x1=X(stops[i]),x2=X(stops[i+1]),d=stops[i+1]-stops[i]; if(d<=0.02) continue;
-    s+='<line x1="'+x1+'" y1="'+dimY+'" x2="'+x2+'" y2="'+dimY+'" stroke="#64748b" stroke-width="0.8"/>';
-    s+='<line x1="'+x1+'" y1="'+(dimY-4)+'" x2="'+x1+'" y2="'+(dimY+4)+'" stroke="#64748b" stroke-width="0.8"/>';
-    s+='<line x1="'+x2+'" y1="'+(dimY-4)+'" x2="'+x2+'" y2="'+(dimY+4)+'" stroke="#64748b" stroke-width="0.8"/>';
-    s+='<text x="'+((x1+x2)/2).toFixed(1)+'" y="'+(dimY-5)+'" font-size="8.5" fill="#0f172a" text-anchor="middle" font-family="Arial">'+_dimFtIn(d)+'</text>';
+  if(sorted.length){
+    o+='<line x1="'+X(stops[0])+'" y1="'+dy.toFixed(1)+'" x2="'+X(stops[stops.length-1])+'" y2="'+dy.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+    stops.forEach(function(t){ o+='<line x1="'+X(t)+'" y1="'+(dy-4).toFixed(1)+'" x2="'+X(t)+'" y2="'+(dy+4).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'; });
+    var lastBelow=[-1e9,-1e9]; // right edge of the last label on each of the two rows under the line
+    for(var i=0;i<stops.length-1;i++){
+      var a=stops[i], b=stops[i+1], d=b-a; if(d<=0.02) continue;
+      var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d), cx=X((a+b)/2), ly=dy-5;
+      if(wpx<24){ var half=lab.length*2.5+2, row=(cx-half>=lastBelow[0]+3)?0:1; ly=dy+13+row*11; lastBelow[row]=cx+half; } // narrow gaps: labelled below the line, a second row when two would touch
+      o+=_dimT(cx, ly, lab, {anchor:'middle',size:wpx<24?8.5:9,weight:inside?500:400,fill:inside?DIM_C.text:DIM_C.dim});
+    }
   }
-  var oy2=PADT+totH+44;
-  s+='<line x1="'+X(0)+'" y1="'+oy2+'" x2="'+X(faceW)+'" y2="'+oy2+'" stroke="#1f2937" stroke-width="0.9"/>';
-  s+='<text x="'+((X(0)+X(faceW))/2).toFixed(1)+'" y="'+(oy2-4)+'" font-size="9" fill="#0f172a" text-anchor="middle" font-family="Arial" font-weight="700">'+_dimFtIn(faceW)+' overall</text>';
-  var lx=PADL-24;
-  s+='<line x1="'+lx+'" y1="'+Y(0)+'" x2="'+lx+'" y2="'+Y(wallH)+'" stroke="#64748b" stroke-width="0.8"/>';
-  s+='<line x1="'+(lx-3)+'" y1="'+Y(0)+'" x2="'+(lx+3)+'" y2="'+Y(0)+'" stroke="#64748b" stroke-width="0.8"/>';
-  s+='<line x1="'+(lx-3)+'" y1="'+Y(wallH)+'" x2="'+(lx+3)+'" y2="'+Y(wallH)+'" stroke="#64748b" stroke-width="0.8"/>';
-  s+='<text x="'+(lx-5)+'" y="'+Y(wallH/2)+'" font-size="8.5" fill="#0f172a" text-anchor="middle" font-family="Arial" transform="rotate(-90 '+(lx-5)+' '+Y(wallH/2)+')">'+_dimFtIn(wallH)+'</text>';
-  // CCI clearances (gable views): dashed center-clearance line across the
-  // interior + a ground-to-peak dimension on the right, labeled approx.
-  if(clr&&isGable){
-    var cy=Y(Math.min(clr.center,peakH));
-    s+='<line x1="'+X(0)+'" y1="'+cy+'" x2="'+X(faceW)+'" y2="'+cy+'" stroke="#b45309" stroke-width="1" stroke-dasharray="5 3"/>';
-    s+='<text x="'+(X(faceW)+6)+'" y="'+(cy+3)+'" font-size="8" fill="#b45309" font-family="Arial" font-weight="700">Center clearance \u2248 '+_dimFtIn(clr.center)+'</text>';
-    var px=X(faceW)+46;
-    s+='<line x1="'+px+'" y1="'+Y(0)+'" x2="'+px+'" y2="'+Y(peakH)+'" stroke="#0d6e6e" stroke-width="0.9"/>';
-    s+='<line x1="'+(px-3)+'" y1="'+Y(0)+'" x2="'+(px+3)+'" y2="'+Y(0)+'" stroke="#0d6e6e" stroke-width="0.9"/>';
-    s+='<line x1="'+(px-3)+'" y1="'+Y(peakH)+'" x2="'+(px+3)+'" y2="'+Y(peakH)+'" stroke="#0d6e6e" stroke-width="0.9"/>';
-    s+='<line x1="'+X(faceW/2)+'" y1="'+Y(peakH)+'" x2="'+px+'" y2="'+Y(peakH)+'" stroke="#0d6e6e" stroke-width="0.6" stroke-dasharray="2 2"/>';
-    s+='<text x="'+(px+5)+'" y="'+Y(peakH/2)+'" font-size="8.5" fill="#0d6e6e" text-anchor="middle" font-family="Arial" font-weight="700" transform="rotate(90 '+(px+5)+' '+Y(peakH/2)+')">Peak \u2248 '+_dimFtIn(clr.peak)+'</text>';
-  }
-  // Front-gable-end marker on eave views so the reader knows which end the
-  // dimensions are measured from. Convention: Left Eave shows FRONT on screen-
-  // right, Right Eave shows FRONT on screen-left (see getPosItems note).
-  if(frontSide){
-    var fx=frontSide==='right'?X(faceW):X(0);
-    var lbl=frontSide==='right'?'FRONT GABLE END ▸':'◂ FRONT GABLE END';
-    var anc=frontSide==='right'?'end':'start';
-    s+='<text x="'+fx+'" y="13" font-size="8.5" fill="#0d6e6e" text-anchor="'+anc+'" font-family="Arial" font-weight="800" letter-spacing="0.4">'+lbl+'</text>';
-    s+='<line x1="'+fx+'" y1="18" x2="'+fx+'" y2="'+Y(wallH)+'" stroke="#0d6e6e" stroke-width="1" stroke-dasharray="3 2"/>';
-  }
-  s+='</svg>';
-  return s;
+  var dy2=sorted.length?gy+52:gy+24;
+  o+='<line x1="'+X(0)+'" y1="'+dy2.toFixed(1)+'" x2="'+X(faceW)+'" y2="'+dy2.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
+     '<line x1="'+X(0)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(0)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
+     '<line x1="'+X(faceW)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(faceW)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+  o+='<rect x="'+(X(faceW/2)-26).toFixed(1)+'" y="'+(dy2-9).toFixed(1)+'" width="52" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X(faceW/2), dy2+4, _dimFtIn(faceW), {anchor:'middle',size:11.5,weight:500,fill:DIM_C.text});
+  o+=_dimT(X(0), dy2+17, ends[0], {size:8.5,ls:1.2})+_dimT(X(faceW), dy2+17, ends[1], {anchor:'end',size:8.5,ls:1.2});
+  o+='</svg>';
+  return o;
 }
 
-// Full dimensioned-spacing page (own page, clean white shop-drawing look).
-function dimSpacingPageHTML(){
+// Full dimensioned-spacing page: a card per wall (top-down plan + elevation).
+// theme 'dark' = the page itself is dark azul like the rest of the quote PDF
+// (printQuote); anything else = a white, print-safe page (contract, revised
+// layout) with the drawing panels as dark blocks inside white text margins.
+function dimSpacingPageHTML(theme){
   if(!G('bw').value||!G('bl').value) return '';
+  var dark=(theme==='dark');
   var H=parseInt(G('bh').value)||10, pitch=parseInt(G('pitch')?G('pitch').textContent:'3')||3;
   var it=collectElevItems(); var W=it.W, L=it.L, peakH=H+(W/2)*(pitch/12);
   var isGCH=G('btype')&&G('btype').value==='gch'&&parseInt(G('gch-enc').value)>0&&parseInt(G('gch-open').value)>0;
-  function box(label, faceW, isGable, items, gchFront, frontSide){
-    return '<div style="break-inside:avoid;page-break-inside:avoid;margin-bottom:16px;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;background:#fff">'+
-      '<div style="background:#1C2E3F;color:#fff;font-size:9pt;font-weight:800;letter-spacing:1.8px;text-align:center;padding:6px;text-transform:uppercase">'+label+'</div>'+
-      '<div style="padding:10px 12px;background:#fff">'+dimElevSVG(faceW,H,peakH,isGable,items,gchFront,frontSide,isGable?cciClearance(W,(G('rs')||{}).value,H):null)+'</div>'+
+  var clr=cciClearance(W,(G('rs')||{}).value,H);
+  var lts=_dimLeanTos(W,L,H), eaveLTs=lts.filter(function(l){return l.eave;}), gableLTs=lts.filter(function(l){return !l.eave;});
+  var ti=(typeof getTrussInfo==='function')?getTrussInfo():null, oc=(ti&&ti.spacing)?ti.spacing:0;
+  var trussFront=(oc&&typeof getTrussPositions==='function')?getTrussPositions(L):[]; // from the FRONT gable
+  // Walls drawn dashed in the plan when the quote has them open.
+  var open={front:(G('wfg')||{}).value==='Open', back:(G('wbg')||{}).value==='Open', left:(G('wle')||{}).value==='Open', right:(G('wre')||{}).value==='Open'};
+  if(isGCH){ open.left=false; open.right=false; } // a GCH eave is sheeted on the enclosed bay and open on the carport bay — no whole-wall mark
+  // The interior wall for the plan: the GCH divider (enclosed bay at the BACK,
+  // its openings are the "Front" view) or the storage partition (aewSpec) — the
+  // same placements the contract floor plan draws.
+  var _sp=(typeof aewSpec==='function')?aewSpec():null, part=null;
+  if(isGCH) part={kind:'y',at:L-Math.min(parseInt(G('gch-enc').value)||0,L),items:it.front,gch:true};
+  else if(_sp&&_sp.on&&!_sp.unset){
+    if(_sp.kind==='end'){ var dd=Math.min(_sp.depthFt,L); part={kind:'y',at:(_sp.end==='front'?dd:L-dd),items:it.partition}; }
+    else { var wd=Math.min(_sp.widthFt,W); part={kind:'x',at:(_sp.kind==='left'?wd:W-wd)}; }
+  }
+  function card(label, sel, elev){
+    var notes=(dimElevSVG.notes||[]).slice(); dimElevSVG.notes=[]; // legend lines the elevation asked for (a lean-to label shortened to LTn)
+    return '<div style="break-inside:avoid;page-break-inside:avoid;margin-bottom:12px;border:1px solid '+DIM_C.edge+';border-radius:6px;overflow:hidden;background:'+DIM_C.panel+'">'+
+      '<div style="background:'+DIM_C.band+';color:#fff;font-size:9pt;font-weight:700;letter-spacing:1.8px;text-align:center;padding:6px;text-transform:uppercase">'+label+'</div>'+
+      '<div style="display:flex;align-items:center">'+
+        '<div style="flex:0 0 24%;padding:8px 6px;border-right:1px solid rgba(255,255,255,.08)">'+
+          '<div style="font-size:7pt;font-weight:600;letter-spacing:1.5px;color:'+DIM_C.dim+';text-align:center;text-transform:uppercase;margin-bottom:2px">Top-down</div>'+
+          dimPlanSVG(sel,it,lts,W,L,part,open)+
+        '</div>'+
+        '<div style="flex:1;min-width:0;padding:8px 10px">'+elev+(notes.length?'<div style="font-size:7.5pt;color:'+DIM_K.ltText+';text-align:center;margin-top:2px;letter-spacing:.2px">'+notes.join(' &nbsp;&#183;&nbsp; ')+'</div>':'')+'</div>'+
+      '</div>'+
     '</div>';
   }
+  var html='';
+  html+=card('Front','front',dimElevSVG(W,H,peakH,true,it.front,isGCH,null,clr,{pitch:pitch,ends:['LEFT','RIGHT'],open:open.front&&!isGCH,
+    sideLeans:eaveLTs.map(function(l){return {l:l,onLeft:l.side==='Left Eave',closed:l.walls.frontClosed};}),
+    foot:gableLTs.filter(function(l){return l.side==='Front Gable';}).map(function(l){return {l:l,x0:l.start};})}));
+  html+=card('Back','back',dimElevSVG(W,H,peakH,true,it.back,false,null,clr,{pitch:pitch,ends:['LEFT','RIGHT'],open:open.back,
+    sideLeans:eaveLTs.map(function(l){return {l:l,onLeft:l.side==='Left Eave',closed:l.walls.backClosed};}),
+    foot:gableLTs.filter(function(l){return l.side==='Back Gable';}).map(function(l){return {l:l,x0:l.start};})}));
   // End Storage partition doors (10/1/26): their own view, measured like the
   // Front view (seen from the front), placed only where the wall is drawn.
-  var _sp=(typeof aewSpec==='function')?aewSpec():null, partBox='';
   if(_sp && _sp.on && _sp.kind==='end' && it.partition && it.partition.length){
-    partBox=box('Storage Partition (interior)'+(_sp.unset?'':' — '+_sp.depthFt+'′ from the '+_sp.end+' end')+' · seen from the front',W,true,it.partition,false);
+    html+=card('Storage Partition (interior)'+(_sp.unset?'':' — '+_sp.depthFt+'′ from the '+_sp.end+' end')+' · seen from the front','partition',
+      dimElevSVG(W,H,peakH,true,it.partition,false,null,clr,{pitch:pitch,ends:['LEFT','RIGHT']}));
   }
-  return '<div style="page-break-before:always;background:#ffffff;min-height:100vh;padding:24px;box-sizing:border-box;font-family:Arial,sans-serif">'+
-    '<div style="font-size:11pt;font-weight:800;letter-spacing:2px;color:#0D1B2A;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1B8A8A;text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
-    box('Front',W,true,it.front,isGCH)+box('Back',W,true,it.back,false)+partBox+box('Right Eave',L,false,it.right,false,'left')+box('Left Eave',L,false,it.left,false,'right')+
-    '<div style="margin-top:4px;font-size:8pt;color:#64748b;text-align:center">All dimensions measured along grade from the wall corners.'+(cciClearance(W,(G('rs')||{}).value,H)?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
+  // Eave views keep getPosItems' convention: Right Eave x runs from the FRONT
+  // (front on the left of the drawing), Left Eave x from the BACK.
+  html+=card('Right Eave','right',dimElevSVG(L,H,peakH,false,it.right,false,'left',null,{ends:['FRONT GABLE','BACK GABLE'],open:open.right,truss:trussFront,oc:oc,
+    sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Front Gable',closed:l.walls.mode!=='open'};}),
+    foot:eaveLTs.filter(function(l){return l.side==='Right Eave';}).map(function(l){return {l:l,x0:l.start};})}));
+  html+=card('Left Eave','left',dimElevSVG(L,H,peakH,false,it.left,false,'right',null,{ends:['BACK GABLE','FRONT GABLE'],open:open.left,truss:trussFront.map(function(t){return L-t;}),oc:oc,
+    sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Back Gable',closed:l.walls.mode!=='open'};}),
+    foot:eaveLTs.filter(function(l){return l.side==='Left Eave';}).map(function(l){return {l:l,x0:L-l.start-l.len};})}));
+  // Lean-to storage partitions that carry openings: the partition under the
+  // lean-to rafter (ltPartGeom / ltPartWallH), its openings where ltPartLayout
+  // puts them (the same spots the 3D draws and the fit rules check), measured
+  // from the partition's left end — outer post / main wall named on the chain.
+  lts.forEach(function(l){
+    if(!l.stor||typeof ltPartGeom!=='function') return;
+    var g=ltPartGeom(l.el), pItems=[];
+    l.el.querySelectorAll('.lt-acc-e').forEach(function(ae){
+      if(((ae.querySelector('.lt-acc-loc')||{}).value)!=='partition') return;
+      var dm=ltPartDims(ae); if(!dm||!(dm.w>0)||!(dm.h>0)) return;
+      var t=(ae.querySelector('.lt-acc-type')||{}).value||'rollup';
+      ltPartLayout(ae,dm.w).forEach(function(px){ pItems.push({type:(t==='frameout'?'fo':t),x:px,w:dm.w,h:dm.h,yo:dm.sill}); });
+    });
+    if(!pItems.length) return;
+    html+=card('Lean-to '+l.n+' · Storage Partition — '+l.stor.len+'′ storage at the '+l.stor.end+' end','ltpart:'+l.n,
+      dimElevSVG(g.len,g.low,0,false,pItems,false,null,null,{ends:g.lowAtZero?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],prof:function(xx){return ltPartWallH(g,xx);}}));
+  });
+  return '<div data-dim-page="1" style="page-break-before:always;background:'+(dark?DIM_C.page:'#ffffff')+';min-height:100vh;padding:24px;box-sizing:border-box;font-family:'+DIM_C.font+';color:'+(dark?DIM_C.text:'#0f1b2d')+'">'+
+    '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">'+
+    '<div style="font-size:11pt;font-weight:700;letter-spacing:2px;color:'+(dark?'#1fcec4':'#0D1B2A')+';margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid '+(dark?'#1fcec4':'#1B8A8A')+';text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
+    html+
+    '<div style="margin-top:4px;font-size:8pt;color:'+(dark?'#8aa3b5':'#64748b')+';text-align:center">All dimensions measured along grade from the wall corners.'+(clr?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
   '</div>';
 }
 
