@@ -687,6 +687,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div class="csw" id="swn"></div>
   </div>
   <div id="wain-print-note" class="anote hidden" style="margin:-2px 0 8px">Print panel wainscot: <strong>+25%</strong> on the wainscot price · vertical panels only · 29GA today — 26GA &amp; FL-approved versions “coming soon” per CCI memo 3/9/26.</div>
+  <div id="wain-cci-note" class="anote hidden" style="margin:-2px 0 8px"></div>
 </div>
 
 <!-- 12. SITE INFO -->
@@ -3509,6 +3510,9 @@ var MANUFACTURERS = {
       return 'Upgrade — '+pitchVal;
     },
     // ── Wainscot column buckets ───────────────────────────────────────────────
+    // CCI no longer prices wainscot from these (Sensei per-wall rule 10/5/26,
+    // cciWainscot). Kept for cciWainscotPre: the free-standing lean-to main and
+    // PriceLock's replay of quotes priced before 10/5.
     wainscotBuckets: function(w) {
       var isStd=(w<=30);
       return isStd
@@ -5366,19 +5370,19 @@ function winRowLabel(v){
   for(var i=0;i<arr.length;i++){ if(arr[i].v===v) return arr[i].label+' Window'; }
   return '30" \xD7 30" Window';
 }
-function gWainscot(){
+// ── CCI wainscot AS PRICED BEFORE 10/5/26 ────────────────────────────────────
+// Kept for two jobs only: (1) PriceLock names the change on reopened quotes
+// ("Wainscot (as originally quoted)"), (2) the Free-Standing Lean-To main
+// (btype fslean), which the 10/5 Sensei sampling did not cover — it keeps this
+// rule unchanged (UNVERIFIED). Everything else prices through cciWainscot().
+// Under 17': MANUFACTURERS.CCI.wainscotBuckets = the brochure BOTH SIDES row
+// only. 17'+: the 8/31/26 Sensei chart (W30 series by length, widths shift
+// $50/ft, +$10/ft past 100'), scaled by the closed share of the perimeter.
+function cciWainscotPre(){
   if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return 0;
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
-  // CCI TALL (17'+): Sensei-sampled wainscot chart (8/31/26) — REPLACES the 8/17
-  // Tejada $12.50/lf single-point rate (Sensei now prices lower: 30x40 = $1,600
-  // vs Tejada's $1,750). Chart: W30 series by LENGTH; doors do NOT deduct
-  // (verified vs Fraga QTE-000279: 30x50x20 with 4 doors = $1,800 = the no-door
-  // price); widths shift $50/ft (verified 26/28/30 at L50). Beyond 100' extra-
-  // polates at $10/ft; widths >30 extrapolate upward (unverified — CCI tall
-  // standard widths cap at 30). Partly-open buildings scale by the closed share
-  // of the perimeter (the chart is for a fully-enclosed building).
-  if(ACTIVE_MFR==='CCI' && h>=17){
+  if(h>=17){
     var WAIN_L=[20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
     var WAIN_V=[1400,1450,1500,1550,1600,1750,1800,1850,1900,1950,2000,2050,2100,2250,2300,2350,2400];
     var _wci=WAIN_L.length-1;
@@ -5395,6 +5399,139 @@ function gWainscot(){
     var _wfrac=Math.min(1,_wlf/(2*(w+l)));
     return Math.round(_wchart*_wfrac*(wainscotPrintOpt()?1.25:1));
   }
+  var _wb=MANUFACTURERS.CCI.wainscotBuckets(w), _wc=0;
+  for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
+  return Math.round(_wb.vals[_wc]*(wainscotPrintOpt()?1.25:1));
+}
+// ── CCI wainscot = Sensei "Add Wainscot (Full Building)", sampled 10/5/26 ─────
+// 149 Sensei readings (3D-Render-Handoff/review/sensei-wainscot: RULES.md,
+// sensei-wainscot-2026-10-05.md #1-64, sensei-wainscot-2026-10-05-part2.md
+// #65-149), every one reproduced to the dollar (cciWainscot.test.ts). It is
+// CCI's brochure "VERTICAL TWO TONE" price charged PER CLOSED VERTICAL WALL,
+// the same at every wall height (6'-20'):
+//   • each Closed end wall (front / back)      + E(W)   by the building width
+//   • each Closed side wall (left / right)     + S(L)   by the building length
+//   • End Storage partition                    + E(W)   (one more end wall)
+//   • Left / Right Storage partition           + S(L)   (one more side wall)
+//   • GCH (Sensei "Utility Carports"): the divider + E(W); a side that is not
+//     Closed full-length still has the enclosed room's side + S(enclosed length)
+//   • attached lean-to: each Closed lean end + E_lean(lean width), Closed lean
+//     side + S(lean length); lean storage = partition E_lean + the storage end
+//     E_lean (when that end isn't Closed already) + the outer side S(storage
+//     length) (when the lean side isn't Closed already)
+// ONLY "Closed" is charged: Gable Only, Half Closed, Extended Gable, panels and
+// 1/4-3/4 Closed walls add $0 (Sensei #68-76, #82, #85-87, #145-146).
+// Horizontal walls = $0 (gate). Doors in a wall don't deduct. Off-column sizes
+// round UP like the rest of CCI's price: odd width → next even (#90-95, #120,
+// #131), length → next 5' column (#96-105) / 4' column over 30 wide (#121-122).
+// E(W), 12'-30' wide — brochure p2/p4 "VERTICAL TWO TONE (PER END)"; 14/16 use
+// the 18' column (#2-4, #93-95: 13-17 wide price as 14-18).
+var CCI_WAIN_END={12:200,14:250,16:250,18:250,20:300,22:350,24:400,26:450,28:500,30:550};
+function cciWainEnd(w){
+  var we=Math.ceil(w/2)*2;
+  if(we<=12) return 200;
+  if(we<=30) return CCI_WAIN_END[we];
+  // 32'-70': brochure p6 "TWO TONE (PER END)" $600 at 32' +$25 per 2' (Sensei #106-130).
+  if(we<=70) return 600+12.5*(we-32);
+  // 72'-100' (no brochure): Sensei #124-135 = the same slope +$900 from 72' (71 → 72).
+  // ⚠ CCI to confirm the +$900 step — it may be a Sensei table error (rep note in rc).
+  return 1100+12.5*we;
+}
+// S(L) — one side wall by length (half the brochure "BOTH SIDES" row).
+//   12'-30' wide: 20' 150 … 40' 250, per connected unit past 40' (handbook
+//   combinations, cciUnits) → 5·L' + 50·units, L' = length up to the next 5',
+//   20' minimum; verified to 300' (#96-105).
+//   Over 30' wide (commercial): p6 4' columns 20' 150 … 52' 350, per connected
+//   unit of at most 52' → 6.25·L' + 25·ceil(L'/52), L' = length up to the next
+//   4' (#106-122: 60 = 28+32, 100 = 52+48, 108 = 36+36+36).
+function cciWainSide(l, w){
+  if(w>30){ var l4=Math.max(20, Math.ceil(l/4)*4); return 6.25*l4 + 25*Math.ceil(l4/52); }
+  return cciUnitSum(l,[300,350,400,450,500])/2;
+}
+// Lean-to end wall by lean width: under 12' wide it is HALF the end wall of a
+// building twice as wide, ½·E(2W) (6 → 100, 8 → 125, 10 → 150; #137-140); from
+// 12' up it is the main table E(W) (12 → 200, 14-18 → 250, 20 → 300; #54,
+// #141-144). Odd lean widths → next even (not sampled; the program offers even
+// widths only).
+function cciWainLeanEnd(lw){
+  var we=Math.ceil(lw/2)*2;
+  return we<12 ? cciWainEnd(2*we)/2 : cciWainEnd(we);
+}
+// The CCI wainscot of the build on screen: {total, sum, parts:[{k,label,amt}],
+// covers, warn}. total = what the quote charges (print panel ×1.25 on the
+// whole amount, as before — Sensei has no print option to check it against).
+function cciWainscot(){
+  var r={total:0, sum:0, parts:[], covers:'', warn:''};
+  if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return r;
+  var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0;
+  if(!w||!l) return r;
+  var bt=(G('btype')||{}).value||'';
+  if(bt==='fslean'){
+    // Free-standing lean-to main: not in the 10/5 sampling — the rule as before.
+    r.total=r.sum=cciWainscotPre();
+    if(r.total){ r.parts.push({k:'fslean', label:'free-standing lean-to (rule before 10/5)', amt:r.total}); r.covers='free-standing lean-to'; }
+    r.warn='Free-standing lean-to wainscot was not sampled in Sensei — verify with CCI.';
+    return r;
+  }
+  var E=cciWainEnd(w), S=cciWainSide(l,w);
+  function add(k, label, amt){ if(amt>0){ r.parts.push({k:k, label:label, amt:amt}); r.sum+=amt; } }
+  if(G('wfg').value==='Closed') add('front','front',E);
+  if(G('wbg').value==='Closed') add('back','back',E);
+  if(bt==='gch'){
+    // The Section 4 eave rows forward to gch-left / gch-right (cpWallChanged) —
+    // the same source gWalls prices: 'closed' = the full-length side.
+    var encL=parseInt((G('gch-enc')||{}).value)||0;
+    if(encL>0){
+      var gl=(G('gch-left')||{}).value||'open', gr=(G('gch-right')||{}).value||'open';
+      add('left','left', gl==='closed'?S:cciWainSide(encL,w));
+      add('right','right', gr==='closed'?S:cciWainSide(encL,w));
+      add('partition','storage partition',E);
+    }
+  } else {
+    if(G('wle').value==='Closed') add('left','left',S);
+    if(G('wre').value==='Closed') add('right','right',S);
+    var sp=aewSpec();
+    if(sp.priced && sp.kind==='end') add('partition','storage partition',E);
+    else if(sp.priced && (sp.kind==='left'||sp.kind==='right')) add('partition','lengthwise storage partition',S);
+  }
+  var ltAmt=0, ltStor=false, ltFree=false;
+  document.querySelectorAll('.lte').forEach(function(el){
+    // Free-standing lean-tos: not sampled — no wainscot, as before.
+    if(((el.querySelector('.lt-type')||{}).value)==='freestanding'){ if(getLTWalls(el).mode!=='open') ltFree=true; return; }
+    var lw=parseInt((el.querySelector('.ltw')||{}).value)||0, ll=parseInt((el.querySelector('.ltl2')||{}).value)||0;
+    if(!lw||!ll) return;
+    var lwl=getLTWalls(el), LE=cciWainLeanEnd(lw);
+    if(lwl.front==='closed') ltAmt+=LE;
+    if(lwl.back==='closed') ltAmt+=LE;
+    if(lwl.side==='closed') ltAmt+=cciWainSide(ll,0);
+    var s=ltStorage(el);
+    if(s.valid){
+      ltStor=true;
+      ltAmt+=LE;                                          // the storage partition
+      if(lwl[s.end]!=='closed') ltAmt+=LE;                // the storage end, closed by the room
+      if(lwl.side!=='closed') ltAmt+=cciWainSide(s.len,0); // the room's outer side
+    }
+  });
+  add('lean', ltStor?'lean-to walls + storage':'lean-to walls', ltAmt);
+  r.total=Math.round(r.sum*(wainscotPrintOpt()?1.25:1));
+  // What the line covers (rep note + Price Breakdown tooltip).
+  var walls=[], extra=[];
+  r.parts.forEach(function(p){ if(p.k==='front'||p.k==='back'||p.k==='left'||p.k==='right') walls.push(p.label); else extra.push(p.label); });
+  var cv=(walls.length===4)?'4 walls':(walls.length?walls.join(' + ')+(walls.length===1?' wall':' walls'):'');
+  r.covers=[cv].concat(extra).filter(function(x){ return x; }).join(' + ');
+  var warns=[];
+  if(w>30 && Math.ceil(w/2)*2>=72 && r.parts.some(function(p){ return p.k==='front'||p.k==='back'||p.k==='partition'; }))
+    warns.push("72'+ wide: Sensei's end-wall wainscot steps up $900 at 72' — confirm with CCI.");
+  if(ltFree) warns.push('Free-standing lean-to walls carry no wainscot (not sampled in Sensei) — verify with CCI.');
+  r.warn=warns.join(' ');
+  return r;
+}
+function gWainscot(){
+  if(!G('wain')||G('wain').value!=='yes'||G('ws').value!=='Vertical') return 0;
+  var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
+  if(!w||!l) return 0;
+  // CCI: Sensei per-wall rule (10/5/26) for every height — see cciWainscot().
+  if(ACTIVE_MFR==='CCI') return cciWainscot().total;
   var _wb=MFR().wainscotBuckets(w), _wc=0;
   for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
   return Math.round(_wb.vals[_wc]*(wainscotPrintOpt()?1.25:1));
@@ -8660,6 +8797,13 @@ function rc(){
   G('pwi').textContent=wainP?fC(wainP):'—';
   var _pwk=G('pwi-k'); if(_pwk) _pwk.textContent = (wainP && wainscotPrintOpt()) ? 'Wainscot — Print Panel (+25%)' : 'Wainscot';
   var _wpn=G('wain-print-note'); if(_wpn) _wpn.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes'));
+  // CCI: what the wainscot line covers (rep-only; the line keeps its name).
+  var _wcd=(ACTIVE_MFR==='CCI' && wainP)?cciWainscot():null, _wcn=G('wain-cci-note');
+  if(_pwk) _pwk.title=(_wcd&&_wcd.covers)?('Covers: '+_wcd.covers):'';
+  if(_wcn){
+    _wcn.classList.toggle('hidden', !_wcd);
+    _wcn.textContent=_wcd?('Wainscot '+fC(wainP)+(_wcd.covers?' covers: '+_wcd.covers:'')+' — CCI charges each Closed wall (Sensei 10/5); gable, half, panel and partial walls add $0.'+(_wcd.warn?' ⚠ '+_wcd.warn:'')):'';
+  }
   if(G('paew')) G('paew').textContent=aewP?fC(aewP):'—';
   // Insulation
   var pinsEl=G('pins'); if(pinsEl) pinsEl.textContent=insulTotal?fC(insulTotal):'—';
@@ -15958,7 +16102,11 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   function num(t){ var n=parseFloat(String(t==null?'':t).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
   function tms(iso){ var t=Date.parse(iso); return isNaN(t)?0:t; }
 
-  var PL = { on:false, ENGINE_REV:'2026-09-30', st:null, _data:null, _opts:null, _silent:false };
+  // ENGINE_REV is written into every price snapshot (engineRev). 2026-10-05 = the
+  // CCI per-wall wainscot (cciWainscot): a snapshot from an older engine carries
+  // the old wainscot, which wainDrift names on reopen.
+  var PL = { on:false, ENGINE_REV:'2026-10-05', st:null, _data:null, _opts:null, _silent:false };
+  var WAIN_REV = '2026-10-05';
   PL.SOLD = { verbal_accept:1, deposit_paid:1, revised:1 };
 
   // ── Rule registry (internal wording — never printed on customer documents) ──
@@ -15984,7 +16132,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'no-service':  { commit:'4930a13', date:'9/28/26', text:'CCI does not service Broward / Miami-Dade / Monroe (material-only orders)', flag:'ns' },
     'lean-walls':  { commit:'20114d9 / c87e523', date:'9/30/26', text:'CCI attached lean-to walls priced like Sensei: closed side by length sections, ends keep cents, partial / panel sides with J trim' },
     'lean-oc4':    { commit:'c87e523', date:'9/30/26', text:"CCI 4' OC now also charged on each attached lean-to (Sensei)" },
-    'anchor-70':   { commit:'c87e523', date:'9/30/26', text:'Ground (mobile home) anchors $68 → $70 each (Sensei)' }
+    'anchor-70':   { commit:'c87e523', date:'9/30/26', text:'Ground (mobile home) anchors $68 → $70 each (Sensei)' },
+    'cci-wainscot':{ commit:'wainscot-pricing', date:'10/5/26', text:'Wainscot (Sensei per-wall rule, 10/5): CCI charges each Closed end / side wall, storage partition and lean-to wall, at every height' }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
   // Customer-facing wording when a rule change is applied at no charge.
@@ -16105,6 +16254,24 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   }
   PL._ltEncPre=function(el){ var u=root.ltUnit(el); return (u&&u.w&&u.l)?ltEncPre(el,u):0; }; // test hook
 
+  // ── CCI wainscot before the Sensei per-wall rule (10/5/26) ──
+  // A price saved by an older engine — legacy card totals, or a snapshot whose
+  // engineRev is before WAIN_REV — charged the old wainscot: under 17' only the
+  // brochure BOTH SIDES bucket, 17'+ the 8/31 chart scaled by the closed share of
+  // the perimeter, nothing for partitions or lean-tos (cciWainscotPre). The
+  // snapshot's own wainscot line is used when it has one (exactly what was
+  // charged); otherwise the old rule is replayed on the reopened build.
+  // amt > 0 = the saved price carried more wainscot than today's rule.
+  function wainDrift(data, rcl, src){
+    if(root.ACTIVE_MFR!=='CCI' || !rcl || rcl.manual || typeof root.cciWainscotPre!=='function') return null;
+    var pr=(data && data.priced) || null;
+    if(src==='snapshot' && String((pr && pr.engineRev) || '')>=WAIN_REV) return null; // priced by this rule already
+    var was=(src==='snapshot' && pr && pr.lines && pr.lines.wainscot!=null && isFinite(+pr.lines.wainscot)) ? +pr.lines.wainscot : root.cciWainscotPre();
+    var d=r2(was-(+rcl.wainP||0));
+    return d ? { k:'wainscot', label:'Wainscot (as originally quoted)', amt:d, rules:['cci-wainscot'] } : null;
+  }
+  PL._wainDrift=wainDrift; // test hook
+
   // ── Drift detectors: $ the saved price carries that today's engine no longer charges ──
   // Returns [{k, label, amt, rules:[ids]}] (amt > 0 = the saved price was higher).
   // src: where the saved price came from ('snapshot' = a v3 price snapshot, priced by
@@ -16167,6 +16334,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         if(aD) out.push({ k:'anchors', label:'Ground anchors (as originally quoted)', amt:aD, rules:['anchor-70'], outside:true });
       }
     }
+    // 4) CCI wainscot, Sensei per-wall rule (10/5/26) — legacy prices and snapshots
+    //    from an engine before WAIN_REV (see wainDrift).
+    var wd=wainDrift(data, rcl, src); if(wd) out.push(wd);
     return out;
   }
 
@@ -16446,7 +16616,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     // 3) Roof style was never saved before v3: pick the one that reproduces the saved price.
     var parts=S.src==='snapshot'?S.parts.slice():[];
-    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source}:data, rcl, S.src);
+    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source, priced:pr}:data, rcl, S.src);
     drift.forEach(function(d){ parts.push(d); });
     var attributed=0; parts.forEach(function(x){ attributed+=(+x.amt||0); });
     // A part priced after the 26GA line (ground anchors) moves the subtotal 1:1, but the
