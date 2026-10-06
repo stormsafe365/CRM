@@ -93,7 +93,7 @@ function App() {
     async function getSheetHtml() {
       setMode("sheet");
       await new Promise((r) => setTimeout(r, 450));
-      const el = document.querySelector(".sheet");
+      const el = document.querySelector(".sheet-doc") || document.querySelector(".sheet");
       if (!el) return "";
       const base = location.href.replace(/[^/]*$/, "");
       let css = "";
@@ -110,9 +110,11 @@ function App() {
         } catch (e) {
         }
       }
-      css = css.replace(/@import[^;]+;/g, "");
+      const IMP = /@import\s+url\((['"]?)([^'")]*)\1\)[^;]*;/g;
+      const remote = Array.from(new Set(Array.from(css.matchAll(IMP)).map((m) => m[2]).filter((u) => /^https?:/.test(u))));
+      css = remote.map((u) => "@import url('" + u + "');").join("\n") + "\n" + css.replace(IMP, "");
       css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => "url(" + q + base);
-      return '<!doctype html><html><head><meta charset="utf-8"><style>' + css + "\nbody{margin:0;background:#fff}</style></head><body>" + el.outerHTML + "</body></html>";
+      return '<!doctype html><html><head><meta charset="utf-8"><style>' + css + "\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>" + el.outerHTML + "</body></html>";
     }
     window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName };
     return () => {
@@ -277,6 +279,7 @@ function App() {
     { key: "blueprint", label: "Blueprint" }
   ];
   function fitForPrint() {
+    if (document.querySelector(".sheet-doc")) return;
     const sheet = document.querySelector(".sheet");
     if (!sheet) return;
     sheet.style.zoom = "";

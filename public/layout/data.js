@@ -6,7 +6,8 @@
 
 // Opening type catalog. color = CSS var used in plan + schedule + legend.
 const OPENING_TYPES = {
-  rollup:  { key: 'rollup',  label: 'Roll-Up Door',     abbr: 'RU', color: 'var(--storm-500)', w: 10,    h: 10,   swing: false },
+  // roll-ups wear the warm accent (#f0883e — brand: no yellow, owner 10/6/26)
+  rollup:  { key: 'rollup',  label: 'Roll-Up Door',     abbr: 'RU', color: '#f0883e', w: 10,    h: 10,   swing: false },
   walk:    { key: 'walk',    label: 'Walk Door',        abbr: 'WD', color: 'var(--teal-500)',  w: 3,     h: 6.667, swing: true  },
   double:  { key: 'double',  label: 'Double Walk Door', abbr: 'DD', color: 'var(--teal-700)',  w: 6,     h: 6.667, swing: true  },
   window:  { key: 'window',  label: 'Window',           abbr: 'WN', color: 'var(--navy-500)',  w: 3,     h: 4,    swing: false },
@@ -527,6 +528,10 @@ function crmDocInfo(prev, d) {
   if (d.mfr && COLOR_CATALOGS[d.mfr]) next.mfr = d.mfr;
   if (d.finishes) next.finishes = { ...DEFAULT_FINISHES, ...(prev.finishes || {}), ...d.finishes };
   if (Array.isArray(d.notes)) next.notes = d.notes.filter(Boolean).map(String);
+  // The quote's extra geometry the paginated sheet draws (lean-tos with their
+  // openings, frame lines, End Storage partition, open walls) — sheetGeom.js.
+  // null clears it (another quote / a hand-typed one).
+  if (d.geom !== undefined) next.geom = d.geom && typeof d.geom === 'object' ? d.geom : null;
   return next;
 }
 

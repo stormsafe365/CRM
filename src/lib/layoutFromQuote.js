@@ -244,7 +244,16 @@ export function buildingFromRaw(raw, catalogs) {
   return { building, finishes, mfr, notes }
 }
 
-/** Lean-tos (the layout can't draw them) -> sheet notes. */
+const LT_LOC_NAME = { outer: 'outer wall', front: 'front end wall', back: 'back end wall', partition: 'storage partition' }
+const LT_LOC_NAME_GABLE = { outer: 'outer wall', front: 'right-eave end wall', back: 'left-eave end wall', partition: 'storage partition' }
+/** One lean-to opening for the note: "1× Walk-Through Door 3′×6′8″ (storage partition)" — the real size, never a stale size field. */
+export function ltOpeningText(o, side) {
+  const names = /gable/i.test(side || '') ? LT_LOC_NAME_GABLE : LT_LOC_NAME
+  const size = o.w > 0 ? ` ${fmtFtIn(o.w)}×${fmtFtIn(o.h)}` : ''
+  return `${o.qty || 1}× ${o.label || 'Opening'}${size} (${names[o.loc] || 'outer wall'}${o.xs ? '' : ', position TBD'})`
+}
+
+/** Lean-tos -> sheet notes (the sheet also draws them, from seed.geom). */
 export function leanToNotes(leanTos) {
   return (leanTos || []).map((l, i) => {
     const n = l.n || i + 1
@@ -255,7 +264,8 @@ export function leanToNotes(leanTos) {
     if (l.low) parts.push(`${fmtFtIn(l.low)} low eave`)
     if (l.start != null && l.len) parts.push(`starts ${fmtFtIn(l.start)} from ${ref}`)
     if (l.stor) parts.push(`storage ${fmtFtIn(l.stor.len)} at the ${l.stor.end} end`)
-    if (l.openings) parts.push(`openings: ${l.openings}`)
+    if (Array.isArray(l.openingList) && l.openingList.length) parts.push(`openings: ${l.openingList.map((o) => ltOpeningText(o, side)).join(', ')}`)
+    else if (l.openings) parts.push(`openings: ${l.openings}`)
     return parts.join(', ')
   })
 }
@@ -287,7 +297,26 @@ export function seedFromQuote(quote, raw, { client, catalogs } = {}) {
   }
   allNotes.push(...leanToNotes(raw?.leanTos))
   seed.notes = allNotes
+  // What the paginated sheet draws beyond the openings (lean-tos, frame lines,
+  // storage partition, open walls) — only for the quote's own size.
+  seed.geom = sheetGeomFromRaw(raw, building)
   return seed
+}
+
+/** raw.geom (quoteLayoutEngine.readGeom) -> seed.geom, or null (manual quote / unreadable / size mismatch). */
+export function sheetGeomFromRaw(raw, building) {
+  const g = raw?.geom
+  if (!g || typeof g !== 'object') return null
+  const W = Number(building?.width) || 0, L = Number(building?.length) || 0
+  if (Number(g.W) !== W || Number(g.L) !== L) return null
+  return {
+    W, L, H: Number(g.H) || Number(building?.height) || 0,
+    truss: Array.isArray(g.truss) ? g.truss.filter((t) => isFinite(t) && t > 0 && t < L) : [],
+    oc: Number(g.oc) || 0,
+    leanTos: Array.isArray(g.leanTos) ? g.leanTos : [],
+    partition: g.partition || null,
+    open: g.open || {},
+  }
 }
 
 export function clientAddress(client) {

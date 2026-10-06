@@ -105,7 +105,8 @@ function App() {
     async function getSheetHtml() {
       setMode('sheet');
       await new Promise(r => setTimeout(r, 450));
-      const el = document.querySelector('.sheet');
+      // the paginated document (SheetDoc: page 1 + elevation pages), else the single sheet
+      const el = document.querySelector('.sheet-doc') || document.querySelector('.sheet');
       if (!el) return '';
       const base = location.href.replace(/[^/]*$/, ''); // .../layout/
       let css = '';
@@ -117,11 +118,18 @@ function App() {
       for (const rel of imports) {
         try { css += await (await fetch(new URL(rel, base).href)).text() + '\n'; } catch (e) { /* ignore */ }
       }
-      css = css.replace(/@import[^;]+;/g, '');
+      // Whole @import statements only: a Google Fonts URL carries ';' inside it
+      // ("wght@400;500"), and cutting at the first ';' left its tail in the CSS,
+      // which swallowed the next rule (the token sheet's :root -> no colours /
+      // fonts in the filed PDF).
+      // Remote ones (the brand fonts) go back at the very top, where @import is valid.
+      const IMP = /@import\s+url\((['"]?)([^'")]*)\1\)[^;]*;/g;
+      const remote = Array.from(new Set(Array.from(css.matchAll(IMP)).map(m => m[2]).filter(u => /^https?:/.test(u))));
+      css = remote.map(u => "@import url('" + u + "');").join('\n') + '\n' + css.replace(IMP, '');
       // Relative url(...) refs must become absolute to resolve in the PDF renderer.
       css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => 'url(' + q + base);
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
-        '\nbody{margin:0;background:#fff}</style></head><body>' + el.outerHTML + '</body></html>';
+        '\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>' + el.outerHTML + '</body></html>';
     }
     window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName };
     return () => { try { delete window.SS_LAYOUT; } catch (e) { window.SS_LAYOUT = undefined; } };
@@ -284,6 +292,9 @@ function App() {
   ];
 
   function fitForPrint() {
+    // The paginated Approval Sheet prints page-for-page (each page is a letter
+    // sheet, styles.css @media print) — nothing to squeeze.
+    if (document.querySelector('.sheet-doc')) return;
     const sheet = document.querySelector('.sheet');
     if (!sheet) return;
     sheet.style.zoom = '';

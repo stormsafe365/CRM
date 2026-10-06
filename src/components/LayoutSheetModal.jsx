@@ -7,8 +7,10 @@
 // colors + wainscot, enclosed / carport / GCH) and EVERY opening at its exact
 // spot are read from the quote program itself (quoteLayoutEngine.js) and mapped
 // into the builder's coordinates (layoutFromQuote.js), then seeded through the
-// builder's window.SS_LAYOUT.seedFromCRM. Lean-tos / storage-partition openings
-// the plan can't draw are listed as notes under the opening schedule.
+// builder's window.SS_LAYOUT.seedFromCRM. Lean-tos (with their openings at the
+// program's spots), frame lines and the storage partition ride along as
+// `geom`: the Approval Sheet draws them on its plan + per-wall elevations
+// (layout-src/SheetDoc.jsx); they are also listed as notes under the schedule.
 //
 // No quotes on the lead → the old behavior (lead's size + customer only).
 // "Save to lead" renders the approval sheet to PDF and files it under Layout.
@@ -76,7 +78,7 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
 
     // No quote on this lead: the lead's own size + customer, as before.
     if (!q) {
-      try { a.seedFromCRM({ size: client?.building_size, customer: client?.name, phone: client?.phone, address: addr || undefined }) } catch { /* manual flow */ }
+      try { a.seedFromCRM({ size: client?.building_size, customer: client?.name, phone: client?.phone, address: addr || undefined, geom: null }) } catch { /* manual flow */ }
       setSeedNote(quotes.length ? '' : 'No quotes on this lead yet — showing the lead’s size; place openings by hand.')
       return
     }
@@ -85,7 +87,7 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
       try {
         a.seedFromCRM({
           size: q.building_size || client?.building_size, customer: client?.name, phone: client?.phone, address: addr || undefined,
-          quoteNo: q.quote_number || '', openings: [], notes: [],
+          quoteNo: q.quote_number || '', openings: [], notes: [], geom: null,
         })
       } catch { /* ignore */ }
       setSeedNote(`Quote ${q.quote_number ? '#' + q.quote_number : ''} was entered by hand (no saved build) — size only; place the openings by hand.`)
