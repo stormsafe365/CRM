@@ -6,8 +6,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { deleteQuotePdf } from '../lib/storage'
+import { usd } from '../lib/money'
 
-const money = (n) => (n == null || n === '' ? '—' : '$' + Number(n).toLocaleString())
+const money = (n) => usd(n) ?? '—'
 const when = (iso) => { try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return '—' } }
 
 export default function Trash() {

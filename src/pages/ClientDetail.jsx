@@ -31,6 +31,7 @@ function rcTextHref(phone) {
 }
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
+import { usd } from '../lib/money'
 
 const MFR_LABEL = { ca: 'Carolina Carports', cci: 'CCI', other: 'Other' }
 
@@ -58,8 +59,7 @@ function CopyBtn({ value, what }) {
 }
 
 function fmtMoney(n) {
-  if (n == null) return null
-  return '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
+  return usd(n)
 }
 
 function formatDate(yyyyMMdd) {

@@ -21,6 +21,7 @@ import {
   Star, Package, Ruler, Stamp as StampIco, CalendarClock, BadgeCheck, Timer, ShieldAlert, FileCheck2,
   Receipt, Shovel, Truck, Activity, Flag, ClipboardCheck,
 } from 'lucide-react'
+import { usd } from '../lib/money'
 
 const ICONS = {
   target: Target, 'columns-3': Columns3, 'bar-chart-3': BarChart3, play: Play, users: Users, filter: Filter,
@@ -434,7 +435,7 @@ const ClientModal = ({ clientId, onClose, onComplete, onSnooze, onReschedule, on
                 <button className="fuhq-iconbtn-dark" onClick={onClose}><Icon name="x" size={20} /></button>
               </div>
               <div className="cm-spec">
-                {[['Building', c.building || '—'], ['Area', c.sqft || '—'], ['Rated', c.wind || '—'], ['Value', '$' + (c.value || 0).toLocaleString()]].map((s, i) => (
+                {[['Building', c.building || '—'], ['Area', c.sqft || '—'], ['Rated', c.wind || '—'], ['Value', usd(c.value || 0)]].map((s, i) => (
                   <div key={i} className="cm-spec-cell"><div className="cm-spec-l">{s[0]}</div><div className="cm-spec-v" style={{ fontFamily: i >= 2 ? 'var(--font-mono)' : 'var(--font-body)', color: i === 2 ? 'var(--teal-300)' : '#fff' }}>{s[1]}</div></div>
                 ))}
               </div>

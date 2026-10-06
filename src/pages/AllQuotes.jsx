@@ -10,6 +10,7 @@ import { getQuotePdfSignedUrl } from '../lib/storage'
 import QuoteStatusPill from '../components/QuoteStatusPill'
 import ReplacedBadge from '../components/ReplacedBadge'
 import { StarBadge } from '../components/QuoteStar'
+import { usd } from '../lib/money'
 
 function fmtDate(s) {
   if (!s) return '—'
@@ -17,8 +18,7 @@ function fmtDate(s) {
   return `${m}/${d}/${y}`
 }
 function fmtMoney(n) {
-  if (n == null) return '—'
-  return '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
+  return usd(n) ?? '—'
 }
 
 export default function AllQuotes() {
