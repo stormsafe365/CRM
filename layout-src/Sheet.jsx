@@ -1,29 +1,89 @@
 /* ============================================================
    Sheet.jsx — the client-facing approval document (print page).
-   Plan diagram dominates; optional elevation band; no footer.
+   Edit view: the interactive plan (drag openings) on one page.
+   Approval Sheet / PDF: SheetDoc.jsx (paginated plan + elevations).
    ============================================================ */
 
 function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrames = true,
                  showElevation, elevWall, selectedId, onSelect, onMove,
-                 placeType, onPlace }) {
+                 placeType, onPlace, revisionMode }) {
   const blueprint = style === 'blueprint';
-  const today = docInfo.date && docInfo.date.trim() ? docInfo.date.trim() : '';
-  const has = (s) => s && String(s).trim().length > 0;
+  // Approval Sheet mode / PDF: the paginated document (plan + elevations).
+  if (!onMove && window.SheetDoc) {
+    return <SheetDoc building={building} docInfo={docInfo} openings={openings} tagMap={tagMap} style={style} revisionMode={revisionMode} />;
+  }
 
   return (
     <div className={'sheet style-' + style + (showElevation ? ' has-elev' : '')}>
-      {/* ---------- header (dark masthead) ---------- */}
+      {SheetParts.Masthead({ revisionMode })}
+
+      {SheetParts.InfoStrip({ docInfo })}
+
+      {revisionMode && SheetParts.RevStrip()}
+
+      {SheetParts.SpecBand({ building, docInfo })}
+
+      {/* ---------- plan ---------- */}
+      <div className="block-title">
+        <h2>Opening Plan</h2>
+        <span className="hint">{onMove ? '↔ Drag any opening · snaps + aligns · arrow keys to nudge' : 'Top view · all dimensions to opening edge'}</span>
+      </div>
+      <div className="plan-wrap">
+        <PlanDiagram building={building} openings={openings} tagMap={tagMap}
+          showDims={showDims} showFrames={showFrames} blueprint={blueprint}
+          selectedId={selectedId} onSelect={onSelect} onMove={onMove}
+          placeType={placeType} onPlace={onPlace} />
+      </div>
+
+      {/* ---------- elevation (optional) ---------- */}
+      {showElevation && (
+        <>
+          <div className="block-title">
+            <h2>{WALLS[elevWall].label} Elevation</h2>
+            <span className="hint">Opening heights · {ftInTight(building.height)} eave</span>
+          </div>
+          <div className="elev-wrap">
+            <Elevation building={building} openings={openings} tagMap={tagMap}
+              wall={elevWall} blueprint={blueprint} compact />
+          </div>
+        </>
+      )}
+
+      {/* ---------- schedule ---------- */}
+      <div className="block-title">
+        <h2>Opening Schedule</h2>
+        <span className="hint">Tags match plan callouts</span>
+      </div>
+      <Schedule building={building} openings={openings} tagMap={tagMap} />
+
+      {revisionMode && SheetParts.RevChanges()}
+
+      {SheetParts.SignOff({ revisionMode })}
+    </div>
+  );
+}
+
+
+/* ---- shared sheet parts (the edit view above + the paginated SheetDoc) ---- */
+const SheetParts = {
+  Masthead({ revisionMode }) {
+    return (
       <div className="sheet-head">
         <div className="brand">
           <div className="wordmark"><span>STORM</span><span className="t">SAFE</span><span>&nbsp;STEEL</span></div>
           <div className="tagline">Hurricane-Rated Steel Buildings</div>
         </div>
         <div className="head-right">
-          <div className="masthead">Building Approval Sheet</div>
+          <div className="masthead">{revisionMode ? 'Revised Layout Approval' : 'Building Approval Sheet'}</div>
+          {revisionMode && <div className="rev-badge-sheet">REVISION</div>}
         </div>
       </div>
-
-      {/* ---------- customer / job info ---------- */}
+    );
+  },
+  InfoStrip({ docInfo }) {
+    const today = docInfo.date && docInfo.date.trim() ? docInfo.date.trim() : '';
+    const has = (s) => s && String(s).trim().length > 0;
+    return (
       <div className="info-strip">
         <div className="info-cell">
           <div className="k">Customer</div>
@@ -49,8 +109,20 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
           </div>
         )}
       </div>
-
-      {/* ---------- building spec ---------- */}
+    );
+  },
+  RevStrip() {
+    return (
+        <div className="rev-strip">
+          <div className="rev-strip-cell"><span className="rev-k">Revision #</span><span className="rev-v-line" /></div>
+          <div className="rev-strip-cell"><span className="rev-k">Original Approval Date</span><span className="rev-v-line" /></div>
+          <div className="rev-strip-cell"><span className="rev-k">Revision Date</span><span className="rev-v-line" /></div>
+        </div>
+    );
+  },
+  SpecBand({ building, docInfo }) {
+    return (
+      <>
       <div className="spec-row">
         <div className="spec-stat"><div className="n">{ftInTight(building.width)}<span className="u"> W</span></div><div className="l">Width</div></div>
         <div className="spec-stat"><div className="n">{ftInTight(building.length)}<span className="u"> L</span></div><div className="l">Length</div></div>
@@ -108,45 +180,32 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
           </div>
         );
       })()}
-
-      {/* ---------- plan ---------- */}
-      <div className="block-title">
-        <h2>Opening Plan</h2>
-        <span className="hint">{onMove ? '↔ Drag any opening · snaps + aligns · arrow keys to nudge' : 'Top view · all dimensions to opening edge'}</span>
-      </div>
-      <div className="plan-wrap">
-        <PlanDiagram building={building} openings={openings} tagMap={tagMap}
-          showDims={showDims} showFrames={showFrames} blueprint={blueprint}
-          selectedId={selectedId} onSelect={onSelect} onMove={onMove}
-          placeType={placeType} onPlace={onPlace} />
-      </div>
-
-      {/* ---------- elevation (optional) ---------- */}
-      {showElevation && (
-        <>
-          <div className="block-title">
-            <h2>{WALLS[elevWall].label} Elevation</h2>
-            <span className="hint">Opening heights · {ftInTight(building.height)} eave</span>
+      </>
+    );
+  },
+  RevChanges() {
+    return (
+        <div className="rev-changes">
+          <h2 className="rev-changes-title">Summary of Layout Changes</h2>
+          <div className="rev-changes-lines">
+            <div className="rev-ch-line" /><div className="rev-ch-line" /><div className="rev-ch-line" />
+            <div className="rev-ch-line" /><div className="rev-ch-line" />
           </div>
-          <div className="elev-wrap">
-            <Elevation building={building} openings={openings} tagMap={tagMap}
-              wall={elevWall} blueprint={blueprint} compact />
-          </div>
-        </>
-      )}
-
-      {/* ---------- schedule ---------- */}
-      <div className="block-title">
-        <h2>Opening Schedule</h2>
-        <span className="hint">Tags match plan callouts</span>
-      </div>
-      <Schedule building={building} openings={openings} tagMap={tagMap} />
-
-      {/* ---------- sign-off ---------- */}
+        </div>
+    );
+  },
+  SignOff({ revisionMode }) {
+    return (
       <div className="signoff">
         <div className="ack">
-          <strong>Customer approval.</strong> I have reviewed the openings shown above — type, size, wall, and
-          position — and confirm they are correct. <strong>Fabrication begins on this layout</strong>.
+          {revisionMode ? (
+            <><strong>Sign-off on revised layout.</strong> I have reviewed the revised opening locations, sizes,
+            and layout changes described above. I approve this revised layout for production.
+            Changes after production begins may incur additional cost and delay.</>
+          ) : (
+            <><strong>Customer approval.</strong> I have reviewed the openings shown above — type, size, wall, and
+            position — and confirm they are correct. <strong>Fabrication begins on this layout</strong>.</>
+          )}
         </div>
         <div className="sign-lines">
           <div className="sign-line">
@@ -157,10 +216,17 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
             <div className="ln" />
             <div className="cap">Date</div>
           </div>
+          {revisionMode && (
+            <div className="sign-line">
+              <div className="ln" />
+              <div className="cap">StormSafe rep signature / date</div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  },
+};
+window.SheetParts = SheetParts;
 
 window.Sheet = Sheet;

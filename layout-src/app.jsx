@@ -56,6 +56,7 @@ function App() {
   const [selectedId, setSelectedId] = React.useState(null);
   const [placeType, setPlaceType] = React.useState(null);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [revisionMode, setRevisionMode] = React.useState(false);
   const [savedLayouts, setSavedLayouts] = React.useState(() => {
     const layouts = loadLayouts();
     layouts.forEach(L => bumpIdsPast(L.openings));
@@ -104,7 +105,8 @@ function App() {
     async function getSheetHtml() {
       setMode('sheet');
       await new Promise(r => setTimeout(r, 450));
-      const el = document.querySelector('.sheet');
+      // the paginated document (SheetDoc: page 1 + elevation pages), else the single sheet
+      const el = document.querySelector('.sheet-doc') || document.querySelector('.sheet');
       if (!el) return '';
       const base = location.href.replace(/[^/]*$/, ''); // .../layout/
       let css = '';
@@ -116,11 +118,18 @@ function App() {
       for (const rel of imports) {
         try { css += await (await fetch(new URL(rel, base).href)).text() + '\n'; } catch (e) { /* ignore */ }
       }
-      css = css.replace(/@import[^;]+;/g, '');
+      // Whole @import statements only: a Google Fonts URL carries ';' inside it
+      // ("wght@400;500"), and cutting at the first ';' left its tail in the CSS,
+      // which swallowed the next rule (the token sheet's :root -> no colours /
+      // fonts in the filed PDF).
+      // Remote ones (the brand fonts) go back at the very top, where @import is valid.
+      const IMP = /@import\s+url\((['"]?)([^'")]*)\1\)[^;]*;/g;
+      const remote = Array.from(new Set(Array.from(css.matchAll(IMP)).map(m => m[2]).filter(u => /^https?:/.test(u))));
+      css = remote.map(u => "@import url('" + u + "');").join('\n') + '\n' + css.replace(IMP, '');
       // Relative url(...) refs must become absolute to resolve in the PDF renderer.
       css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => 'url(' + q + base);
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
-        '\nbody{margin:0;background:#fff}</style></head><body>' + el.outerHTML + '</body></html>';
+        '\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>' + el.outerHTML + '</body></html>';
     }
     window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName };
     return () => { try { delete window.SS_LAYOUT; } catch (e) { window.SS_LAYOUT = undefined; } };
@@ -283,6 +292,9 @@ function App() {
   ];
 
   function fitForPrint() {
+    // The paginated Approval Sheet prints page-for-page (each page is a letter
+    // sheet, styles.css @media print) — nothing to squeeze.
+    if (document.querySelector('.sheet-doc')) return;
     const sheet = document.querySelector('.sheet');
     if (!sheet) return;
     sheet.style.zoom = '';
@@ -337,6 +349,11 @@ function App() {
           </button>
         </div>
 
+        <button className={'tbtn' + (revisionMode ? ' tbtn-rev-on' : ' tbtn-rev')} onClick={() => setRevisionMode(r => !r)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /><path d="M15 5l3 3" /></svg>
+          {revisionMode ? 'Original' : 'Revision'}
+        </button>
+
         <button className="tbtn tbtn-primary" onClick={doPrint}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
           Save PDF
@@ -386,6 +403,7 @@ function App() {
             <Sheet building={building} docInfo={docInfo} openings={openings} tagMap={tagMap}
               style={t.style} showDims={t.showDims} showFrames={t.showFrames}
               showElevation={t.showElev} elevWall={t.elevWall}
+              revisionMode={revisionMode}
               selectedId={editing ? selectedId : null}
               onSelect={editing ? setSelectedId : null}
               placeType={editing ? placeType : null}

@@ -23,12 +23,15 @@ if (!existsSync(src)) {
 mkdirSync(out, { recursive: true })
 
 // Load order matters — each file attaches its exports to `window`.
-const FILES = ['tweaks-panel', 'PlanDiagram', 'Elevation', 'Schedule', 'Editor', 'Sheet', 'app']
+// SheetDoc imports the pure geometry (sheetGeom.js, unit-tested) -> bundled as an IIFE.
+const FILES = ['tweaks-panel', 'PlanDiagram', 'Elevation', 'Schedule', 'Editor', 'SheetDoc', 'Sheet', 'app']
+const BUNDLED = new Set(['SheetDoc'])
 for (const f of FILES) {
   await build({
     entryPoints: [join(src, `${f}.jsx`)],
     outfile: join(out, `${f}.js`),
     logLevel: 'error',
+    ...(BUNDLED.has(f) ? { bundle: true, format: 'iife', charset: 'utf8' } : {}),
   })
 }
 
