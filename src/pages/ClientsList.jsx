@@ -115,12 +115,12 @@ export default function ClientsList() {
     if (!expanded) { setExpandedQuote(null); return }
     let cancelled = false
     supabase.from('quotes')
-      .select('total_amount, deleted_at, quote_date')
+      .select('total_amount, deleted_at, quote_date, status')
       .eq('client_id', expanded)
       .order('quote_date', { ascending: false, nullsFirst: false })
       .then(({ data }) => {
         if (cancelled) return
-        const live = (data || []).filter(q => !q.deleted_at)
+        const live = (data || []).filter(q => !q.deleted_at && q.status !== 'superseded') // replaced by a revised order: never the current quote
         setExpandedQuote({ id: expanded, total: live[0]?.total_amount ?? null })
       })
     return () => { cancelled = true }

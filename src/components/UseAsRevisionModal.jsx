@@ -29,7 +29,7 @@ const MUTED = { color: 'var(--fg-3, #8598AC)' }
 const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const fmtDate = (s) => { if (!s) return '—'; const [y, m, d] = String(s).slice(0, 10).split('-'); return `${m}/${d}/${y}` }
 const KIND = { add: 'Add', remove: 'Remove', change: 'Change', move: 'Moved', field: 'Change', drift: 'Rule', residual: 'Other' }
-const KIND_COLOR = { add: '#22d3c8', remove: '#f87171', move: '#94a3b8', drift: '#f59e0b', residual: '#f59e0b' }
+const KIND_COLOR = { add: '#22d3c8', remove: '#f87171', move: '#94a3b8', drift: '#f0883e', residual: '#f0883e' }
 
 export default function UseAsRevisionModal({ client, currentQuote, getProgramWindow, onClose, onManual, onFinish }) {
   const [step, setStep] = useState('pick') // pick | how | auto
@@ -130,7 +130,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
         {loadErr && <div style={{ color: 'var(--danger, #f87171)', fontSize: 13 }}>{loadErr}</div>}
         {quotes && !quotes.length && !loadErr && <div style={{ ...MUTED, fontSize: 13, padding: '8px 0' }}>This lead has no other quotes.</div>}
         <div role="radiogroup" aria-label="Signed quote" style={{ display: 'grid', gap: 6, maxHeight: 320, overflow: 'auto' }}>
-          {(quotes || []).map(({ q, sold, builder }) => {
+          {(quotes || []).map(({ q, sold, builder, replaced }) => {
             const c = quoteStatusColor(q.status)
             const on = q.id === origId
             return (
@@ -144,7 +144,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
                 </span>
                 <span className="status-pill" style={{ background: c.bg, color: c.fg }}>{quoteStatusLabel(q.status)}</span>
                 <b style={{ minWidth: 92, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{q.total_amount != null ? fmtMoney(q.total_amount) : '—'}</b>
-                {!sold && <span title="Not signed / ordered yet" style={{ color: 'var(--warning, #fbbf24)', fontSize: 11 }}>unsigned</span>}
+                {!sold && !replaced && <span title="Not signed / ordered yet" style={{ color: '#f0883e', fontSize: 11 }}>unsigned</span>}{replaced && <span style={{ color: 'var(--fg-3, #8598AC)', fontSize: 11 }}>already replaced</span>}
               </label>
             )
           })}
@@ -197,12 +197,12 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
         )}
         {!busy && result && !blockers.length && (
           <>
-            {(result.signed?.notes || []).map((n, i) => <div key={i} style={{ color: 'var(--warning, #fbbf24)', fontSize: 12.5, margin: '4px 0' }}>{n}</div>)}
+            {(result.signed?.notes || []).map((n, i) => <div key={i} style={{ color: '#f0883e', fontSize: 12.5, margin: '4px 0' }}>{n}</div>)}
             <label style={LBL}>Changes found ({rows.length})</label>
             {!rows.length && <div style={{ ...MUTED, fontSize: 13 }}>No differences — the revised contract will be at the signed price.</div>}
             <div style={{ display: 'grid', gap: 6 }}>
               {rows.map((r, i) => (
-                <div key={r.id} style={{ border: `1px solid ${r.unpriced && r.include ? 'rgba(245,158,11,.6)' : 'var(--line, #294059)'}`, borderRadius: 10, padding: '8px 10px', opacity: r.include ? 1 : 0.55 }}>
+                <div key={r.id} style={{ border: `1px solid ${r.unpriced && r.include ? 'rgba(240,136,62,.6)' : 'var(--line, #294059)'}`, borderRadius: 10, padding: '8px 10px', opacity: r.include ? 1 : 0.55 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                     <input type="checkbox" aria-label={`Include: ${r.desc}`} checked={r.include} onChange={(e) => setRow(i, { include: e.target.checked })} />
                     <span style={{ flex: 'none', fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', border: `1px solid ${KIND_COLOR[r.kind] || 'var(--line, #294059)'}`, color: KIND_COLOR[r.kind] || 'var(--fg-3, #8598AC)', borderRadius: 99, padding: '1px 8px' }}>{KIND[r.kind] || 'Change'}</span>
@@ -215,7 +215,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
                       </b>
                     )}
                   </div>
-                  {r.unpriced && r.include && <div style={{ fontSize: 11.5, color: 'var(--warning, #fbbf24)', marginTop: 4, paddingLeft: 26 }}>{r.reason}. Type the amount (list price, before discount / tax; 0 = no charge){Number.isFinite(r.engineDelta) ? ` — the price engine’s difference was ${fmtMoney(r.engineDelta)}` : ''}.</div>}
+                  {r.unpriced && r.include && <div style={{ fontSize: 11.5, color: '#f0883e', marginTop: 4, paddingLeft: 26 }}>{r.reason}. Type the amount (list price, before discount / tax; 0 = no charge){Number.isFinite(r.engineDelta) ? ` — the price engine’s difference was ${fmtMoney(r.engineDelta)}` : ''}.</div>}
                   {!r.include && <div style={{ ...MUTED, fontSize: 11.5, marginTop: 4, paddingLeft: 26 }}>Left off the revision — not charged.</div>}
                 </div>
               ))}
@@ -228,7 +228,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
             <label style={LBL}>Note (shows on the order)</label>
             <input style={FIELD} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional — e.g. Requested by customer by phone 10/6" />
             <div style={{ marginTop: 12, border: '1px solid var(--line, #294059)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }} aria-live="polite">
-              {missing.length > 0 && <div style={{ color: 'var(--warning, #fbbf24)' }}>Type an amount for {missing.length} line{missing.length === 1 ? '' : 's'} (or untick {missing.length === 1 ? 'it' : 'them'}) to see the revised totals.</div>}
+              {missing.length > 0 && <div style={{ color: '#f0883e' }}>Type an amount for {missing.length} line{missing.length === 1 ? '' : 's'} (or untick {missing.length === 1 ? 'it' : 'them'}) to see the revised totals.</div>}
               {moneyErr && <div style={{ color: 'var(--danger, #f87171)' }}>{moneyErr}</div>}
               {money && (
                 <>
@@ -253,7 +253,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
           <span style={{ display: 'flex', gap: 8 }}>
             <button className="btn-secondary" disabled={!!busy} onClick={onClose}>Cancel</button>
             {result && !blockers.length && (
-              <button className="btn-primary" disabled={!!busy || !money} onClick={finish} style={{ fontWeight: 800 }} title="Holds this quote at the revised price, saves the Revision Order, marks the signed quote revised and generates the Revised Contract">
+              <button className="btn-primary" disabled={!!busy || !money} onClick={finish} style={{ fontWeight: 800 }} title="Holds this quote at the revised price, saves the Revision Order, marks the signed quote as replaced and generates the Revised Contract">
                 Create revised contract →
               </button>
             )}

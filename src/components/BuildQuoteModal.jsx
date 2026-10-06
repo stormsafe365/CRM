@@ -680,28 +680,27 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       await onSave(upd)
       quoteRef.current = mergeSaved(cur, upd)
 
-      // 3) The signed quote: marked revised and linked to this one.
+      // 3) The signed quote: 'superseded' (base enum — no migration needed), linked
+      //    to this one; its card shows "Replaced by #<this quote>". It is no longer
+      //    an active order (not sold, not open), so nothing counts it twice.
       const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at }
       const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
       const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...prev, link] }
-      let origMark = 'revised'
+      let origMark = 'superseded'
       try {
-        const { error } = await supabase.from('quotes').update({ status: 'revised', payload_json: origPayload }).eq('id', original.id)
+        const { error } = await supabase.from('quotes').update({ status: 'superseded', payload_json: origPayload }).eq('id', original.id)
         if (error) {
-          console.warn('revised status not saved', error)
-          const { error: e2 } = await supabase.from('quotes').update({ payload_json: origPayload }).eq('id', original.id)
-          origMark = e2 ? 'failed' : 'linked'
-          toast(e2
-            ? `Quote #${escHtml(original.quote_number)} could not be marked revised: ${escHtml(e2.message)}`
-            : `Linked to #${escHtml(original.quote_number)}. The REVISED badge needs the one-time database update (migration 018) — it keeps its current status.`)
+          origMark = 'failed'
+          console.warn('original not marked superseded', error)
+          toast(`Quote #${escHtml(original.quote_number)} could not be marked as replaced: ${escHtml(error.message)}`)
         }
-      } catch (e) { origMark = 'failed'; console.warn('original not marked revised', e) }
+      } catch (e) { origMark = 'failed'; console.warn('original not marked superseded', e) }
 
       // 4) Revised Contract from the held build (changes highlighted, the signed
       //    deposit shown as paid, additional deposit due, new balance).
       try { pg._rvForce = true } catch { /* ignore */ }
       try { await saveContractThenPrint(pg, { confirmed: true }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
-      toast(`Revised contract created at ${fmtMoney(money.total)} (signed ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'revised' ? `#${escHtml(original.quote_number)} is marked revised; this` : origMark === 'linked' ? `#${escHtml(original.quote_number)} is linked (not marked revised — migration 018 needed); this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
+      toast(`Revised contract created at ${fmtMoney(money.total)} (signed ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
     } catch (e) {
       console.warn('use as revision failed', e)
       toast('Use as Revision failed: ' + escHtml(e.message || e))
@@ -757,7 +756,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
               </div>}
           <div className="qb-bar-actions">
             {revisionChanges && (
-              <button type="button" className="btn-primary" style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#161006', fontWeight: 800 }} onClick={finishRevision} disabled={!!status} title="Saves the Revision Order + generates the Revised Contract (renderings, floor plan, spacing sheet) from the build as placed">
+              <button type="button" className="btn-primary" style={{ background: '#f0883e', borderColor: '#f0883e', color: '#161006', fontWeight: 800 }} onClick={finishRevision} disabled={!!status} title="Saves the Revision Order + generates the Revised Contract (renderings, floor plan, spacing sheet) from the build as placed">
                 {status || '✓ Finish Revision'}
               </button>
             )}

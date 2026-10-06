@@ -266,7 +266,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
           </div>
         </div>
         {honored && !signed && (
-          <p style={{ margin: '6px 0 0', color: 'var(--warning, #fbbf24)', fontSize: 12 }}>
+          <p style={{ margin: '6px 0 0', color: '#f0883e', fontSize: 12 }}>
             This order was signed with Honor Signed Pricing, so the card total is not the signed price. Apply to Building → Finish Revision
             uses the signed contract&apos;s price as the original on both the Revision Order and the Revised Contract. For “Revision Order only”, type the signed contract total here.
           </p>

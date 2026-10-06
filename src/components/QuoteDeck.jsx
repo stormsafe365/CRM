@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
+import ReplacedBadge from './ReplacedBadge'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
@@ -64,7 +65,7 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
 
           <div className="qcard-body">
             <div className="qcard-num">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
-              {q.status === 'revised' && <span style={{ marginLeft: 10, background: '#2d2210', color: '#f59e0b', border: '1px solid rgba(245,158,11,.45)', borderRadius: 4, padding: '2px 8px', fontSize: 10, fontWeight: 800, letterSpacing: '.08em', verticalAlign: 2 }}>REVISED ORDER</span>}
+              <ReplacedBadge quote={q} revisedLabel="REVISED ORDER" style={{ marginLeft: 10 }} />
             </div>
             <div className="qcard-dims num">{fmtDims(q.building_size) || q.building_summary || 'Building quote'}</div>
             {q.building_summary && q.building_size && <div className="qcard-subtitle">{c.buildingType || q.building_summary}</div>}

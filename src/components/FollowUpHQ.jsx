@@ -534,11 +534,12 @@ export default function FollowUpHQ() {
     async function load() {
       const [cRes, qRes] = await Promise.all([
         supabase.from('clients').select('*').order('updated_at', { ascending: false }),
-        supabase.from('quotes').select('client_id,total_amount,quote_date'),
+        supabase.from('quotes').select('client_id,total_amount,quote_date,status'),
       ])
       if (cancelled || cRes.error) return
       const valueBy = {}
       for (const q of (qRes.data || [])) {
+        if (q.status === 'superseded') continue // replaced by a revised order: never the current quote
         const cur = valueBy[q.client_id]
         if (!cur || (q.quote_date || '') >= cur.d) valueBy[q.client_id] = { d: q.quote_date || '', v: q.total_amount || 0 }
       }

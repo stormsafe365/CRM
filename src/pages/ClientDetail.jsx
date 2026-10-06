@@ -101,6 +101,7 @@ export default function ClientDetail() {
         .from('quotes')
         .select('total_amount, manufacturer, quote_number, status')
         .eq('client_id', id)
+        .neq('status', 'superseded') // replaced by a revised order: never the current quote
         .order('quote_date', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(1)

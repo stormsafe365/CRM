@@ -10,6 +10,7 @@ import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
+import ReplacedBadge from './ReplacedBadge'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -362,6 +363,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                     <span className="quote-date">{formatDate(q.quote_date)}</span>
                     {q.quote_number && <span className="quote-number">#{q.quote_number}</span>}
                     <QuoteStatusPill status={q.status} />
+                    <ReplacedBadge quote={q} />
                   </div>
                   <div className="quote-row-meta">
                     {q.building_size && <span>{q.building_size}</span>}
@@ -495,7 +497,7 @@ function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateCon
       <div className="q-head">
         <div>
           <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
-            {q.status === 'revised' && <span style={{ marginLeft: 8, background: '#2d2210', color: '#f59e0b', border: '1px solid rgba(245,158,11,.45)', borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 800, letterSpacing: '.08em' }}>REVISED</span>}
+            <ReplacedBadge quote={q} />
           </div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
         </div>

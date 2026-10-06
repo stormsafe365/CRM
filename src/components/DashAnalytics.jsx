@@ -54,6 +54,7 @@ export default function DashAnalytics({ clients, quotes }) {
     // latest quote per client → order value
     const latestQ = {}
     for (const q of quotes) {
+      if (q.status === 'superseded') continue // replaced by a revised order: never the current quote
       const cur = latestQ[q.client_id]
       if (!cur || ts(q.created_at) > ts(cur.created_at)) latestQ[q.client_id] = q
     }

@@ -46,13 +46,14 @@ export default function Calendar() {
           .from('clients')
           .select('*')
           .order('updated_at', { ascending: false }),
-        supabase.from('quotes').select('client_id,total_amount,quote_date'),
+        supabase.from('quotes').select('client_id,total_amount,quote_date,status'),
       ])
       if (cRes.error) console.warn('Calendar: client load failed —', cRes.error.message)
       if (cancelled || cRes.error) return   // on error keep the last good list, don't blank the calendar
       // Latest quote total per client → the popup's "Value" stat.
       const valueByClient = {}
       for (const q of (qRes.data || [])) {
+        if (q.status === 'superseded') continue // replaced by a revised order: never the current quote
         const cur = valueByClient[q.client_id]
         if (!cur || (q.quote_date || '') >= cur.d) valueByClient[q.client_id] = { d: q.quote_date || '', v: q.total_amount || 0 }
       }

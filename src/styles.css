@@ -3327,7 +3327,9 @@ html.cursor-fx-active * { cursor: none !important; }
 /* =============================================================================
    TOAST
    ============================================================================= */
-.toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+/* Toasts sit above every overlay — incl. the 3D builder (1000) and its dialogs (1200-1300) —
+   and never take clicks away from what is under them. */
+.toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1400; pointer-events: none; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .toast {
   display: flex; align-items: center; gap: 11px;
   background: linear-gradient(180deg, var(--elev), var(--card));

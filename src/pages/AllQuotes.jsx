@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getQuotePdfSignedUrl } from '../lib/storage'
 import QuoteStatusPill from '../components/QuoteStatusPill'
+import ReplacedBadge from '../components/ReplacedBadge'
 
 function fmtDate(s) {
   if (!s) return '—'
@@ -126,7 +127,7 @@ export default function AllQuotes() {
                   <td><div className="cell-primary">{q.client?.name || '—'}</div></td>
                   <td>{q.building_size || '—'}</td>
                   <td><div className="cell-primary">{fmtMoney(q.total_amount)}</div></td>
-                  <td><QuoteStatusPill status={q.status} /></td>
+                  <td><QuoteStatusPill status={q.status} /><ReplacedBadge quote={q} /></td>
                   <td>
                     {q.pdf_snapshot_url
                       ? <button className="link-btn" onClick={(e) => { e.stopPropagation(); viewPdf(q.pdf_snapshot_url) }}>View PDF</button>

@@ -447,6 +447,7 @@ const SOLD = ['deposit_paid', 'verbal_accept', 'revised']
 export function revisionCandidates(quotes, currentId) {
   return (quotes || [])
     .filter((q) => q && q.id !== currentId && !q.deleted_at)
-    .map((q) => ({ q, sold: SOLD.includes(q.status), builder: !!(q.payload_json && q.payload_json.fields) }))
-    .sort((a, b) => (Number(b.sold) - Number(a.sold)) || String(b.q.quote_date || b.q.created_at || '').localeCompare(String(a.q.quote_date || a.q.created_at || '')))
+    .map((q) => ({ q, sold: SOLD.includes(q.status), replaced: q.status === 'superseded', builder: !!(q.payload_json && q.payload_json.fields) }))
+    // signed / ordered first, an already-replaced quote last
+    .sort((a, b) => (Number(b.sold) - Number(a.sold)) || (Number(a.replaced) - Number(b.replaced)) || String(b.q.quote_date || b.q.created_at || '').localeCompare(String(a.q.quote_date || a.q.created_at || '')))
 }
