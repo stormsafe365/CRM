@@ -250,7 +250,8 @@ export function diffBuilds(base, next, { labelOf = null } = {}) {
       if (n.pair && !n.same && !n.kindSet) {
         n.kindSet = true
         moves.push({ id: uid(), cat: kind, kind: 'move', printKind: 'Modify', placement: true, baseIndex: n.pair.i, nextIndex: n.i,
-          desc: `${itemDesc(kind, n.it, labelOf)} — moved (placement only)`, op: { type: 'replace', kind, baseIndex: n.pair.i, item: n.it } })
+          desc: `${itemDesc(kind, n.it, labelOf)} — moved (placement only)`, op: { type: 'replace', kind, baseIndex: n.pair.i, item: n.it },
+          ...movePlace(kind, n.pair.it, n.it) })
       }
     })
     N.forEach((n) => { if (n.pair) n.kindSet = true })
@@ -276,6 +277,15 @@ export function diffBuilds(base, next, { labelOf = null } = {}) {
   const priced = units.filter((u) => !u.placement)
   const place = units.filter((u) => u.placement)
   return { blockers, units: [...priced, ...place] }
+}
+// Where a moved component was and is (the revised contract prints old → new with the
+// program's feet-inch formatter): its wall, typed positions and sill.
+function movePlace(kind, a, b) {
+  if (kind === 'leantos') return {}
+  const o = { wall: str(b[ITEMS[kind].wall]), from: (a && a.positions) || [], to: (b && b.positions) || [] }
+  const sill = kind === 'windows' ? 'nsill' : kind === 'addcomps' ? 'fo-sill' : null
+  if (sill) { o.fromSill = str(a && a[sill]); o.toSill = str(b && b[sill]) }
+  return o
 }
 const lowerFirst = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s)
 
@@ -443,11 +453,12 @@ export function forwardMoney(sub, p) {
 
 // Lead's quotes for step 1: signed / ordered first, newest first; the quote
 // being revised from (the duplicate) is left out.
+const candRank = (c) => (c.replaced ? 3 : c.sold ? 0 : c.sent ? 1 : 2)
 const SOLD = ['deposit_paid', 'verbal_accept', 'revised']
 export function revisionCandidates(quotes, currentId) {
   return (quotes || [])
     .filter((q) => q && q.id !== currentId && !q.deleted_at)
-    .map((q) => ({ q, sold: SOLD.includes(q.status), replaced: q.status === 'superseded', builder: !!(q.payload_json && q.payload_json.fields) }))
-    // signed / ordered first, an already-replaced quote last
-    .sort((a, b) => (Number(b.sold) - Number(a.sold)) || (Number(a.replaced) - Number(b.replaced)) || String(b.q.quote_date || b.q.created_at || '').localeCompare(String(a.q.quote_date || a.q.created_at || '')))
+    .map((q) => ({ q, sold: SOLD.includes(q.status), replaced: q.status === 'superseded', builder: !!(q.payload_json && q.payload_json.fields), sent: !!(q.payload_json && q.payload_json.contractSent && q.payload_json.contractSent.at) }))
+    // signed / ordered first, then contract sent, then the rest; an already-replaced quote last
+    .sort((a, b) => (candRank(a) - candRank(b)) || String(b.q.quote_date || b.q.created_at || '').localeCompare(String(a.q.quote_date || a.q.created_at || '')))
 }

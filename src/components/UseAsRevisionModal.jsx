@@ -18,7 +18,9 @@ import { supabase } from '../lib/supabase'
 import { quoteStatusColor, quoteStatusLabel } from '../lib/constants'
 import { analyzeRevision, analyzeSignedOnly } from '../lib/revisionEngine'
 import { r2, revisionCandidates, revisionMoney } from '../lib/revisionDiff'
-import { REVISION_ADJ_LABEL, fmtMoney } from '../lib/priceLockCrm'
+import { REVISION_ADJ_LABEL, fmtMoney, isSold } from '../lib/priceLockCrm'
+import { nextRevNo } from '../lib/contractDocs'
+import { ContractSentTag } from './ReplacedBadge'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
@@ -64,9 +66,8 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
 
   const original = useMemo(() => (quotes || []).find((c) => c.q.id === origId)?.q || null, [quotes, origId])
   useEffect(() => {
-    // Revision # follows the signed order's earlier revisions (rep can change it).
-    const n = Array.isArray(original?.payload_json?.revisions) ? original.payload_json.revisions.length + 1 : 1
-    setRevNo(String(n))
+    // Revision # follows the order's earlier revisions — a revision of a revision counts on (rep can change it).
+    setRevNo(original ? nextRevNo(original) : '1')
   }, [original])
 
   async function runAuto() {
@@ -103,6 +104,8 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     try { money = revisionMoney({ signed: result.signed, lines, forward: result.forward }) } catch (e) { moneyErr = e.message }
   }
   const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  // An original that was never signed: its saved total is the starting price, and no deposit was paid on it.
+  const origSigned = isSold(original?.status)
 
   function finish() {
     if (!money || !original) return
@@ -125,7 +128,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
   if (step === 'pick') {
     body = (
       <>
-        <label style={LBL}>Which signed quote does this revise?</label>
+        <label style={LBL}>Which quote does this revise? <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(signed / ordered first, then contract sent)</span></label>
         {quotes == null && <div style={{ ...MUTED, fontSize: 13, padding: '8px 0' }}>Loading the lead’s quotes…</div>}
         {loadErr && <div style={{ color: 'var(--danger, #f87171)', fontSize: 13 }}>{loadErr}</div>}
         {quotes && !quotes.length && !loadErr && <div style={{ ...MUTED, fontSize: 13, padding: '8px 0' }}>This lead has no other quotes.</div>}
@@ -139,6 +142,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontWeight: 700 }}>#{q.quote_number || '—'}</span>
                   <span style={{ ...MUTED, marginLeft: 8, fontSize: 12.5 }}>{fmtDate(q.quote_date)}{q.building_size ? ` · ${q.building_size}` : ''}</span>
+                  <ContractSentTag quote={q} />
                   {!builder && <span style={{ ...MUTED, display: 'block', fontSize: 11.5 }}>Added manually — no build to compare with</span>}
                   {currentQuote?.payload_json?.duplicatedFrom?.id === q.id && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--accent, #22d3c8)' }}>This quote was duplicated from it</span>}
                 </span>
@@ -160,7 +164,9 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     body = (
       <>
         <p style={{ margin: '0 0 10px', fontSize: 13 }}>
-          Revising <b>#{original?.quote_number}</b> — signed at <b>{original?.total_amount != null ? fmtMoney(original.total_amount) : '—'}</b>. Everything that didn’t change stays at the signed price; only the changes are priced (today’s prices).
+          {origSigned
+            ? <>Revising <b>#{original?.quote_number}</b> — signed at <b>{original?.total_amount != null ? fmtMoney(original.total_amount) : '—'}</b>. Everything that didn’t change stays at the signed price; only the changes are priced (today’s prices).</>
+            : <>Revising <b>#{original?.quote_number}</b> — <b>Original quote (not signed yet)</b> — its saved total <b>{original?.total_amount != null ? fmtMoney(original.total_amount) : '—'}</b> is the starting price. Everything that didn’t change stays at that price; only the changes are priced (today’s prices).</>}
         </p>
         <div style={{ display: 'grid', gap: 10 }}>
           <button type="button" style={card} disabled={!!busy} onClick={runAuto}>
@@ -169,7 +175,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
           </button>
           <button type="button" style={card} disabled={!!busy} onClick={runManual}>
             <div style={{ fontWeight: 800, fontSize: 14.5 }}>Manual — type the changes</div>
-            <div style={{ ...MUTED, fontSize: 12.5, marginTop: 3 }}>The Revision Order form, filled in with the signed quote. You type each change and its price.</div>
+            <div style={{ ...MUTED, fontSize: 12.5, marginTop: 3 }}>The Revision Order form, filled in with the {origSigned ? 'signed quote' : 'original quote'}. You type each change and its price.</div>
           </button>
         </div>
         {busy && <div style={{ ...MUTED, fontSize: 12.5, marginTop: 10 }}>{busy}</div>}
@@ -199,7 +205,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
           <>
             {(result.signed?.notes || []).map((n, i) => <div key={i} style={{ color: '#f0883e', fontSize: 12.5, margin: '4px 0' }}>{n}</div>)}
             <label style={LBL}>Changes found ({rows.length})</label>
-            {!rows.length && <div style={{ ...MUTED, fontSize: 13 }}>No differences — the revised contract will be at the signed price.</div>}
+            {!rows.length && <div style={{ ...MUTED, fontSize: 13 }}>No differences — the revised contract will be at the {origSigned ? 'signed price' : 'original quote’s saved total'}.</div>}
             <div style={{ display: 'grid', gap: 6 }}>
               {rows.map((r, i) => (
                 <div key={r.id} style={{ border: `1px solid ${r.unpriced && r.include ? 'rgba(240,136,62,.6)' : 'var(--line, #294059)'}`, borderRadius: 10, padding: '8px 10px', opacity: r.include ? 1 : 0.55 }}>
@@ -232,15 +238,17 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
               {moneyErr && <div style={{ color: 'var(--danger, #f87171)' }}>{moneyErr}</div>}
               {money && (
                 <>
-                  <Row l="Original contract (signed)" v={fmtMoney(result.signed.total)} />
+                  <Row l={origSigned ? 'Original contract (signed)' : 'Original quote (not signed yet)'} v={fmtMoney(result.signed.total)} />
                   <Row l="Changes (list prices)" v={(money.changesSub >= 0 ? '+' : '') + fmtMoney(money.changesSub)} />
                   {money.adjustment ? <Row l={REVISION_ADJ_LABEL} v={(money.adjustment > 0 ? '+' : '') + fmtMoney(money.adjustment)} /> : null}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 1px', marginTop: 4, borderTop: '1px solid var(--line, #294059)', fontSize: 14.5 }}>
                     <b>Revised contract price</b><b style={{ color: 'var(--accent, #22d3c8)' }}>{fmtMoney(money.total)} <span style={{ fontSize: 11.5, ...MUTED }}>({money.net >= 0 ? '+' : ''}{fmtMoney(money.net)})</span></b>
                   </div>
                   <div style={{ borderTop: '1px dashed var(--line, #294059)', marginTop: 6, paddingTop: 4 }}>
-                    <Row l="Deposit already paid" v={fmtMoney(result.signed.deposit)} />
-                    <Row l="Additional deposit due" v={fmtMoney(Math.max(0, r2(money.deposit - result.signed.deposit)))} />
+                    {origSigned
+                      ? <><Row l="Deposit already paid" v={fmtMoney(result.signed.deposit)} />
+                        <Row l="Additional deposit due" v={fmtMoney(Math.max(0, r2(money.deposit - result.signed.deposit)))} /></>
+                      : <Row l="Deposit due (nothing paid yet)" v={fmtMoney(money.deposit)} />}
                     <Row l="New balance (due at scheduling)" v={fmtMoney(money.balance)} />
                   </div>
                 </>

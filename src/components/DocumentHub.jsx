@@ -4,6 +4,7 @@
 // filter a combined file table; upload targets the active category.
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { uploadClientDoc, uploadClientDocBlob, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
 import { stampExecutedPdf } from '../lib/stampExecuted'
 import { supabase } from '../lib/supabase'
@@ -11,6 +12,9 @@ import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
+import { executedStatus, fmtShortDate, matchContractQuote } from '../lib/contractDocs'
+import { starSupported } from '../lib/layoutFromQuote'
+import { quoteStatusLabel } from '../lib/constants'
 
 const SECTIONS = [
   { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
@@ -62,6 +66,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [error, setError] = useState('')
   const [layoutOpen, setLayoutOpen] = useState(false)
   const [stamping, setStamping] = useState(null) // path of the file being stamped
+  const [pickFor, setPickFor] = useState(null) // { label, candidates, why, resolve } — which quote an executed contract belongs to
   const inputRef = useRef(null)
   const uploadCat = useRef('quote')
   const [docExpanded, setDocExpanded] = useState(false)
@@ -146,11 +151,48 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       await uploadClientDocBlob(clientId, 'contract', blob, `${base}-EXECUTED-deposit-paid.pdf`, 'application/pdf')
       await refresh()
       toast('Executed copy created — saved under Contracts', 'success')
+      await markExecutedQuote(f)
     } catch (e) {
       setError('Could not stamp this file: ' + (e.message || e))
     } finally {
       setStamping(null)
     }
+  }
+
+  // The quote that signed contract belongs to → Deposit Paid (never a step back:
+  // a status already further along stays), the executed date on payload_json.executed,
+  // and the star (Open Layout's quote; skipped without the starred column).
+  // Contract file ↔ quote by number (lib/contractDocs); otherwise the rep picks.
+  async function markExecutedQuote(f) {
+    let quotes = []
+    try {
+      const { data, error } = await supabase.from('quotes').select('*').eq('client_id', clientId)
+      if (error) throw error
+      quotes = (data || []).filter((q) => q && !q.deleted_at)
+    } catch (e) { toast('The quote could not be read to mark it Deposit Paid — set its status by hand. (' + (e.message || e) + ')'); return }
+    const m = matchContractQuote(f.label, quotes)
+    let q = m.quote
+    if (!q) {
+      if (!m.candidates.length) { toast('No quote on this lead to mark Deposit Paid.'); return }
+      q = await new Promise((resolve) => setPickFor({ label: f.label, candidates: m.candidates, why: m.how, resolve }))
+      setPickFor(null)
+      if (!q) { toast('No quote was marked — set the status by hand if needed.'); return }
+    }
+    const at = new Date().toISOString()
+    const next = executedStatus(q.status)
+    const upd = { payload_json: { ...(q.payload_json || {}), executed: { at, file: f.label } } }
+    if (next !== q.status) upd.status = next
+    const { error } = await supabase.from('quotes').update(upd).eq('id', q.id)
+    if (error) { toast(`Quote #${q.quote_number || ''} could not be marked Deposit Paid: ${error.message}`); return }
+    let starred = q.starred === true
+    if (!starred && q.status !== 'superseded' && starSupported(quotes)) {
+      try {
+        const { error: e1 } = await supabase.from('quotes').update({ starred: false }).eq('client_id', clientId).eq('starred', true).neq('id', q.id)
+        if (!e1) { const { error: e2 } = await supabase.from('quotes').update({ starred: true }).eq('id', q.id); starred = !e2 }
+      } catch { /* the star is best effort */ }
+    }
+    const what = next !== q.status ? 'marked Deposit Paid' : `kept as ${quoteStatusLabel(q.status)} (already further along)`
+    toast(`Quote #${q.quote_number || ''} ${what} · executed ${fmtShortDate(at)}${starred ? ' · ★ starred' : ''}`, 'success')
   }
 
   async function onDelete(path) {
@@ -262,8 +304,37 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         <span className="num">Updated {fmtDate(new Date().toISOString())}</span>
       </div>
 
+      {pickFor && <ExecutedQuotePicker {...pickFor} />}
       {layoutOpen && <LayoutSheetModal client={client || { id: clientId, name: clientName }} onSaved={refresh} onClose={() => setLayoutOpen(false)} />}
     </section>
+  )
+}
+
+// Which quote does this executed contract belong to? (the file name did not say)
+function ExecutedQuotePicker({ label, candidates, why, resolve }) {
+  const [id, setId] = useState(candidates.length === 1 ? candidates[0].id : '')
+  const pick = candidates.find((q) => q.id === id) || null
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label="Which quote was signed?" style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(4,9,16,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 'min(520px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 64px)', overflow: 'auto', background: 'var(--card, #0D1929)', border: '1px solid var(--line, #294059)', borderRadius: 14, padding: 18 }}>
+        <h2 style={{ margin: '2px 0 4px', fontSize: 16 }}>Which quote was signed?</h2>
+        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--fg-3, #8598AC)' }}>“{label}” — {why}. The quote you pick is marked Deposit Paid (unless it is already further along) and starred.</p>
+        <div role="radiogroup" style={{ display: 'grid', gap: 6 }}>
+          {candidates.map((q) => (
+            <label key={q.id} style={{ display: 'flex', gap: 10, alignItems: 'center', border: `1px solid ${q.id === id ? 'var(--accent, #22d3c8)' : 'var(--line, #294059)'}`, borderRadius: 10, padding: '8px 10px', cursor: 'pointer' }}>
+              <input type="radio" name="exec-quote" checked={q.id === id} onChange={() => setId(q.id)} />
+              <span style={{ flex: 1 }}><b>#{q.quote_number || '—'}</b> <span style={{ color: 'var(--fg-3, #8598AC)', fontSize: 12 }}>{q.building_size || ''} · {quoteStatusLabel(q.status)}</span></span>
+              <b style={{ fontVariantNumeric: 'tabular-nums' }}>{q.total_amount != null ? '$' + Number(q.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</b>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+          <button className="btn-secondary" onClick={() => resolve(null)}>Skip</button>
+          <button className="btn-primary" disabled={!pick} onClick={() => resolve(pick)} style={{ fontWeight: 800 }}>Mark Deposit Paid</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

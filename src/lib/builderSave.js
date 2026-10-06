@@ -9,6 +9,7 @@
 import { uploadClientDocBlob } from './storage'
 import { readBuilderTotals, buildSummary, capturePrintHtml, dataUrlToThumb, quoteNumberFromHtml, htmlToPdfBlob } from './quoteCapture'
 import { appendPriceHistory, planQuoteFields, savedTotalsOf, totalsDiffer, withPrintCheck } from './priceLockCrm'
+import { carryCrmMarkers } from './contractDocs'
 
 // Render the captured quote document to a PDF blob. Prefer Electron's native
 // print-to-PDF (honors the quote's print styles + dark theme exactly like the
@@ -77,12 +78,13 @@ export async function harvestQuoteState({ pg, buildWin, initialQuote = null, rea
   const card = { roofColor: colorName('cr'), wallColor: colorName('cw'), foundation: optText('foundation'), buildingType: optText('btype') }
 
   const price_history = appendPriceHistory({ initialQuote, reason, next: totals })
-  const payload_json = {
+  // The CRM's own markers (contract sent / executed / revision links) ride along on every re-save.
+  const payload_json = carryCrmMarkers(initialQuote?.payload_json, {
     ...data,
     ...(priced ? { priced } : {}),
     totals, manufacturer, building_summary, source: '3d-builder', rendering_thumb, card,
     ...(price_history.length ? { price_history } : {}),
-  }
+  })
   return { totals, data, payload_json, manufacturer, building_summary, building_size: dims }
 }
 

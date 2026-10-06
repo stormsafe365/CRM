@@ -49,6 +49,9 @@ export function componentsFromPayload(payload) {
  *   quote:    { quote_number, quote_date, building_size, building_summary,
  *               manufacturer, payload_json },
  *   revision: { number, revNo, date, rows: [{ desc, kind, amount }],
+ *               contractNo (the revised contract's number, e.g. "SS-2026-00144 Rev 1"),
+ *               originalLabel (default "Original Contract Price"; an unsigned original
+ *               reads "Original Quote Price (not signed yet)"),
  *               original, additions, credits, revised, note }
  * }
  */
@@ -136,6 +139,7 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
       <div class="t">Revision Order</div>
       <div class="n">Document <b>${esc(revision.number || '—')}</b></div>
       <div class="n">Revision <b>#${esc(revision.revNo || '1')}</b> · Issued <b>${esc(fmtDate(revision.date))}</b></div>
+      ${revision.contractNo ? `<div class="n">Revised Contract <b>${esc(revision.contractNo)}</b></div>` : ''}
     </div>
   </div>
 
@@ -178,7 +182,7 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
   </table>
 
   <table class="sum">
-    <tr><td>Original Contract Price</td><td>${money(revision.original)}</td></tr>
+    <tr><td>${esc(revision.originalLabel || 'Original Contract Price')}</td><td>${money(revision.original)}</td></tr>
     <tr><td>Total Additions (+)</td><td>${money(revision.additions)}</td></tr>
     <tr><td>Total Credits (−)</td><td>${Number(revision.credits) ? '−' + money(revision.credits).replace('−', '') : '$0.00'}</td></tr>
     <tr class="rev"><td>Revised Contract Price</td><td>${money(revision.revised)}</td></tr>

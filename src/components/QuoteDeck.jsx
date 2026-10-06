@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
-import ReplacedBadge from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag } from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
@@ -77,6 +77,7 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
           <div className="qcard-body">
             <div className="qcard-num" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
               <ReplacedBadge quote={q} revisedLabel="REVISED ORDER" style={{ marginLeft: 10 }} />
+              <ContractSentTag quote={q} />
               <StarBadge quote={q} />
               {onToggleStar && <span style={{ marginLeft: 'auto' }}><StarButton quote={q} onToggle={onToggleStar} busy={starBusy} /></span>}
             </div>

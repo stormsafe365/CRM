@@ -10,7 +10,7 @@ import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
-import ReplacedBadge from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag } from './ReplacedBadge'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -20,6 +20,7 @@ import RevisionModal from './RevisionModal'
 import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
 import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
 import { StarBadge, StarButton } from './QuoteStar'
+import { nextRevNo } from '../lib/contractDocs'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
@@ -411,6 +412,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                     {q.quote_number && <span className="quote-number">#{q.quote_number}</span>}
                     <QuoteStatusPill status={q.status} />
                     <ReplacedBadge quote={q} />
+                    <ContractSentTag quote={q} />
                     <StarBadge quote={q} />
                   </div>
                   <div className="quote-row-meta">
@@ -474,6 +476,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
         <RevisionModal
           client={client ?? { id: clientId }}
           quote={revisionQuote}
+          defaultRevNo={nextRevNo(revisionQuote)}
           onClose={() => setRevisionQuote(null)}
           onApplyToBuild={(changes) => {
             // "Generate + Apply to Building": reopen the quote in the builder
@@ -547,6 +550,7 @@ function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, on
         <div>
           <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
             <ReplacedBadge quote={q} />
+            <ContractSentTag quote={q} />
             <StarBadge quote={q} />
           </div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
