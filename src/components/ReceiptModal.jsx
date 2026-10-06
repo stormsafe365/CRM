@@ -10,6 +10,7 @@ import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
 import { buildReceiptHtml, makeReceiptNumber } from '../lib/receiptHtml'
 import { toast } from '../lib/uiFx'
+import { usd } from '../lib/money'
 
 const METHODS = ['Credit / Debit Card', 'Check', 'Cash', 'ACH / Bank Transfer', 'Wire Transfer', 'Financing', 'Other']
 const APPLIED = ['Deposit', 'Progress Payment', 'Final Balance', 'Paid in Full']
@@ -108,7 +109,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
       }}>
         <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>{docLabel}</h2>
         <p style={{ margin: '0 0 6px', color: 'var(--fg-3, #8598AC)', fontSize: 13 }}>
-          {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}{total ? ` · Total $${total.toLocaleString()}` : ''}
+          {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}{total ? ` · Total ${usd(total)}` : ''}
           {isCCI ? ' · Seller: Carolina Carports, Inc.' : ''}
         </p>
 

@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { CLIENT_STATUSES, DEAD_STATUSES, sourceLabel } from '../lib/constants'
+import { usd } from '../lib/money'
 
 const DAY = 86400000
 const PERIODS = [
@@ -23,7 +24,7 @@ const PERIODS = [
   { key: '12M', label: '12 Months' },
   { key: 'ALL', label: 'All Time' },
 ]
-const money = (n) => '$' + Math.round(n || 0).toLocaleString()
+const money = (n) => usd(n || 0)
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) + '%' : '—')
 const ts = (v) => (v ? new Date(v).getTime() : NaN)
 

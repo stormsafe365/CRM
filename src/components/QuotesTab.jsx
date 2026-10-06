@@ -20,8 +20,9 @@ import RevisionModal from './RevisionModal'
 import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
 import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
 import { StarBadge, StarButton } from './QuoteStar'
+import { usd } from '../lib/money'
 
-const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
+const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 
 export default function QuotesTab({ clientId, client, clientBuildingSize, building: buildingProp, setBuilding: setBuildingProp }) {
   const { user } = useAuth()

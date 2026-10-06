@@ -8,8 +8,9 @@ import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
 import ReplacedBadge from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
+import { usd } from '../lib/money'
 
-const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
+const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
 
 const fmtDate = (d) => {

@@ -26,6 +26,7 @@
 //   front -> offset = x            back  -> offset = W - x - w
 //   right -> offset = L - x - w    left  -> offset = x
 // computed on the 1/8" grid (1/96 ft), so the layout's numbers are the quote's.
+import { usd } from './money.js'
 
 // ── formatting ─────────────────────────────────────────────────────────────
 const EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞']
@@ -37,7 +38,7 @@ export function fmtFtIn(ft) {
   const neg = e < 0, a = Math.abs(e), f = Math.floor(a / 96), r = a - f * 96
   return (neg ? '−' : '') + (r ? `${f}′${Math.floor(r / 8)}${EIGHTHS[r % 8]}″` : `${f}′`)
 }
-const money = (n) => (n == null || n === '' || !isFinite(Number(n)) ? null : '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }))
+const money = usd // $33,521.50 with cents, $5,351 whole (./money)
 function fmtQuoteDate(q) {
   const d = q?.quote_date || (q?.created_at ? String(q.created_at).slice(0, 10) : '')
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || '')

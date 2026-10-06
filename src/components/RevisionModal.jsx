@@ -14,6 +14,7 @@ import { renderQuotePdf } from '../lib/builderSave'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { honoredLegacyOrder } from '../lib/priceLockCrm'
 import { toast } from '../lib/uiFx'
+import { usd } from '../lib/money'
 
 // Structured change rows (owner request 9/21/26): a change is either a
 // component added/removed on a specific wall, a building-size change, or a
@@ -243,7 +244,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
         <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>{onUseAsRevision ? 'Use as revision — type the changes' : 'Revision Order'}</h2>
         <p style={{ margin: '0 0 6px', color: 'var(--fg-3, #8598AC)', fontSize: 13 }}>
           {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}
-          {quote?.total_amount ? ` · Contract $${Number(quote.total_amount).toLocaleString()}` : ''}
+          {quote?.total_amount ? ` · Contract ${usd(quote.total_amount)}` : ''}
         </p>
         <p style={{ margin: '0 0 2px', color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }}>
           {onUseAsRevision

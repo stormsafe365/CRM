@@ -10,6 +10,7 @@ import { BUILDING_TYPES, buildingTypeLabel, sourceLabel, projectStageLabel } fro
 import { useUsers, userLabel } from '../lib/useUsers'
 import { derivedProjectStage } from '../lib/projectStage'
 import { readState } from '../lib/ssfuEngine'
+import { usd } from '../lib/money'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -474,7 +475,7 @@ function FollowUpCell({ date }) {
 // Inline expand-for-detail drawer beneath a lead row: contact, project spec, an
 // inline stage changer, and a jump to the client portal.
 function LeadDrawer({ c, loc, quote, onChangeStage, onOpenPortal }) {
-  const money = (n) => (n == null ? '—' : '$' + Number(n).toLocaleString())
+  const money = (n) => usd(n) ?? '—'
   const ic = (d) => <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
   return (
     <div className="lead-drawer">
