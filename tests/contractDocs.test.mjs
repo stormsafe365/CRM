@@ -201,3 +201,14 @@ test('markExecuted: deposit paid (never a step back), executed date, star; no st
   assert.equal(sb2.writes.length, 1) // no star writes without the column
   assert.equal(executedToast(r2, 'Revised Order'), 'Quote #SS-2 kept as Revised Order (already further along) · executed 10/06/2026')
 })
+
+test('approval sheet revision label: same "Rev n" scheme, none for an unrevised quote', async () => {
+  const { revLabelOf } = await import('../src/lib/contractDocs.js')
+  assert.equal(revLabelOf({ payload_json: {} }), '')
+  assert.equal(revLabelOf({ payload_json: { contractSent: { number: 'SS-2026-00144' } } }), '')
+  assert.equal(revLabelOf({ payload_json: { revisionOf: { rev_no: '2' } } }), 'Rev 2')
+  assert.equal(revLabelOf({ payload_json: { contractSent: { number: 'SS-2026-00144 Rev 1' } } }), 'Rev 1')
+  const { seedFromQuote } = await import('../src/lib/layoutFromQuote.js')
+  assert.equal(seedFromQuote({ quote_number: 'SS-2026-22222', payload_json: { revisionOf: { rev_no: '1' } } }, { fields: { bw: '30', bl: '40', bh: '12' } }).rev, 'Rev 1')
+  assert.equal(seedFromQuote({ quote_number: 'SS-2026-00144', payload_json: {} }, { fields: { bw: '30', bl: '40', bh: '12' } }).rev, '')
+})

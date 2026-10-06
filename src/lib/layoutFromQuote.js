@@ -27,6 +27,7 @@
 //   right -> offset = L - x - w    left  -> offset = x
 // computed on the 1/8" grid (1/96 ft), so the layout's numbers are the quote's.
 import { usd } from './money.js'
+import { revLabelOf } from './contractDocs.js'
 
 // ── formatting ─────────────────────────────────────────────────────────────
 const EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞']
@@ -282,6 +283,7 @@ export function seedFromQuote(quote, raw, { client, catalogs } = {}) {
   const seed = {
     building, finishes, mfr,
     quoteNo: quote?.quote_number || '',
+    rev: revLabelOf(quote), // "Rev n" on a revised order (same scheme as its contract number); '' otherwise
     customer: (f.cn || '').trim() || client?.name || undefined,
     address: (f['ct-siteaddr'] || '').trim() || clientAddress(client) || undefined,
     phone: client?.phone,

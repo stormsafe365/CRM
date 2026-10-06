@@ -252,3 +252,11 @@ export async function markExecuted(sb, quoteId, { file = null, at = new Date().t
 export function executedToast(res, label) {
   return `Quote #${res.quote_number || ''} ${res.changed ? 'marked Deposit Paid' : `kept as ${label} (already further along)`} · executed ${fmtShortDate(res.at)}${res.starred ? ' · ★ starred' : ''}`
 }
+
+/** The revision label a quote's papers carry — the same "Rev <n>" as its contract
+ *  number ("SS-2026-00144 Rev 1"); '' for a quote that is not a revision. */
+export function revLabelOf(q) {
+  const p = q?.payload_json || {}
+  const n = (p.revisionOf && str(p.revisionOf.rev_no)) || revOf(p.contractSent && p.contractSent.number)
+  return n ? revisionLabel(n) : ''
+}

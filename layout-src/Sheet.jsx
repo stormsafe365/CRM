@@ -99,7 +99,9 @@ const SheetParts = {
           <div className="info-cell">
             <div className="k">Quote No.</div>
             <div className="v mono">{docInfo.quoteNo}</div>
-            <div className="v" style={{ fontWeight: 500, fontSize: '12px', color: 'var(--fg-3)', marginTop: '2px' }}>Rev A{today ? ' · ' + today : ''}</div>
+            {(has(docInfo.rev) || today) && (
+              <div className="v" style={{ fontWeight: 500, fontSize: '12px', color: 'var(--fg-3)', marginTop: '2px' }}>{[has(docInfo.rev) ? docInfo.rev : '', today].filter(Boolean).join(' · ')}</div>
+            )}
           </div>
         )}
         {has(docInfo.rep) && (

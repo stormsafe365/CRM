@@ -22,6 +22,7 @@ import { htmlToPdfBlob } from '../lib/quoteCapture'
 import { toast } from '../lib/uiFx'
 import { clientAddress, hasBuild, pickLayoutQuote, quoteOptionLabel, rawFromPayload, seedFromQuote, sortStarredFirst } from '../lib/layoutFromQuote'
 import { readQuoteForLayout } from '../lib/quoteLayoutEngine'
+import { revLabelOf } from '../lib/contractDocs'
 
 const SRC = '/layout/index.html'
 
@@ -87,7 +88,7 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
       try {
         a.seedFromCRM({
           size: q.building_size || client?.building_size, customer: client?.name, phone: client?.phone, address: addr || undefined,
-          quoteNo: q.quote_number || '', openings: [], notes: [], geom: null,
+          quoteNo: q.quote_number || '', rev: revLabelOf(q), openings: [], notes: [], geom: null,
         })
       } catch { /* ignore */ }
       setSeedNote(`Quote ${q.quote_number ? '#' + q.quote_number : ''} was entered by hand (no saved build) — size only; place the openings by hand.`)

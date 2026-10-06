@@ -525,6 +525,8 @@ function crmDocInfo(prev, d) {
     address: d.address || prev.address,
   };
   if (d.quoteNo !== undefined) next.quoteNo = d.quoteNo || '';
+  // "Rev n" on a revised order (the CRM's contract-number scheme); '' = not a revision
+  if (d.quoteNo !== undefined || d.rev !== undefined) next.rev = d.rev || '';
   if (d.mfr && COLOR_CATALOGS[d.mfr]) next.mfr = d.mfr;
   if (d.finishes) next.finishes = { ...DEFAULT_FINISHES, ...(prev.finishes || {}), ...d.finishes };
   if (Array.isArray(d.notes)) next.notes = d.notes.filter(Boolean).map(String);
