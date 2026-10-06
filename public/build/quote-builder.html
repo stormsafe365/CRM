@@ -5307,7 +5307,10 @@ var CCI_GA12_V=[410,530,650,770,890,940,1060,1180,1300,1420,1540,1660,1780,1830,
 // Lean-to leg height for printed quote/contract lines, in feet-inches.
 // Attached: the LOW leg (continuous-roof lean-tos use their auto-computed
 // .lth-cont value, e.g. 8'10"). Free-standing: low / high legs.
-function _ltFtIn(v){ var ft=Math.floor(v), inch=Math.round((v-ft)*12); if(inch===12){ft++;inch=0;} return inch?ft+"'"+inch+'"':ft+"'"; }
+function _ltFtIn(v){ return _dimFtIn(v); } // one dimension formatter (10/6/26)
+// A lean-to frame-out size on the quote / contract rows: whole feet stay "9x8'" (as before); anything else
+// prints in feet-inches to the 1/8" (a typed 6.6667 was printed "6.6667'") - text only, never the price.
+function _ltFoSzTxt(w,h){ return (w===Math.round(w)&&h===Math.round(h))?(w+'x'+h+"'"):(_dimFtIn(w)+' x '+_dimFtIn(h)); }
 function _ltLegTxt(el){
   var free=((el.querySelector('.lt-type')||{}).value==='freestanding');
   var cont=((el.querySelector('.ltst')||{}).value==='cont');
@@ -7217,20 +7220,20 @@ function ltPartDims(ae,sizeOvr){
   if(t==='rollup'){
     var sz=String(sizeOvr!=null?sizeOvr:((ae.querySelector('.lt-acc-size')||{}).value||'')).split('x');
     var rw=parseFloat(sz[0])||0, rh=parseFloat(sz[1])||0;
-    return {kind:'door', what:(rw&&rh?(rw+'x'+rh+' roll-up door'):'roll-up door'), w:rw, h:rh, sill:0};
+    return {kind:'door', what:(rw&&rh?(rw+'x'+rh+' roll-up door'):'roll-up door'), w:dimQ(rw), h:dimQ(rh), sill:0};
   }
-  if(t==='wtd') return {kind:'door', what:'walk door', w:3, h:6.67, sill:0};
+  if(t==='wtd') return {kind:'door', what:'walk door', w:3, h:dimQ(6.67), sill:0}; // 36"x80" exactly
   if(t==='win'){
     var wv=(ae.querySelector('.lt-acc-win-hi')||{}).value;
     var row=(MFR().winTypes||[]).find(function(r){return r.v===wv;})||{};
-    return {kind:'win', what:'window', w:(row.fw>0?row.fw/12:2.5), h:(row.fh>0?row.fh/12:2.5), sill:4.16667};
+    return {kind:'win', what:'window', w:dimQ(row.fw>0?row.fw/12:2.5), h:dimQ(row.fh>0?row.fh/12:2.5), sill:dimQ(4.16667)};
   }
   var ft=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
   if(ft.indexOf('45')>=0) return null;
   var isWin=ft.indexOf('Window')>=0, sl=parseFloat((ae.querySelector('.lt-acc-fo-sill')||{}).value);
   return {kind:isWin?'win':'door', what:'framed opening',
-    w:parseFloat((ae.querySelector('.lt-acc-fo-w')||{}).value)||10, h:parseFloat((ae.querySelector('.lt-acc-fo-h')||{}).value)||10,
-    sill:isWin?((isFinite(sl)&&sl>=0)?sl:4.16667):0};
+    w:dimQ(parseFloat((ae.querySelector('.lt-acc-fo-w')||{}).value)||10), h:dimQ(parseFloat((ae.querySelector('.lt-acc-fo-h')||{}).value)||10),
+    sill:isWin?dimQ((isFinite(sl)&&sl>=0)?sl:4.16667):0}; // 1/8" grid (10/6/26)
 }
 // Left edges (ft from the partition's left end) of an entry's openings, per its
 // Position setting. Auto / Centered = the main gable's Auto spacing (getPosItems:
@@ -9635,7 +9638,7 @@ function _ovlTag(el){
   return el._ovlUid;
 }
 // Feet-inches to the inch for messages (a minus sign for a spot past a corner).
-function _ovlFt(ft){ var i=Math.round(ft*12); return (i<0?'−':'')+_dimFtIn(Math.abs(i)/12); }
+function _ovlFt(ft){ return _dimFtIn(ft); } // exact, 1/8" (10/6/26)
 // A main-building framed opening's size (ft) — the derivation every elevation
 // collector and the 3D readOpenings use. null = not an opening on a wall: the
 // 45° angle and the Double-Tubed End are charges, not openings.
@@ -9670,6 +9673,7 @@ function ovlMainDesc(el,ov){
     var fd=ovlFoDims(el,comp); if(!fd) return null;
     w=fd.w; h=fd.h; yo=fd.yo; loc=v('.fo-loc'); qty=parseInt(v('.acq'))||1; kind='fo'; what=_ovlFt(w)+' framed opening';
   } else return null;
+  w=dimQ(w); h=dimQ(h); yo=dimQ(yo); // the 1/8" grid getPosItems uses (10/6/26)
   if(ov.loc!=null) loc=ov.loc;
   if(ov.qty!=null) qty=ov.qty;
   var wall=OVL_MAIN_WALL[loc]; if(!wall || !(w>0)) return null;
@@ -9680,10 +9684,10 @@ function ovlMainDesc(el,ov){
     if(r){
       inp=r.querySelector('input'); sb=r.querySelector('.pos-toggle button.active');
       sv=sb?sb.dataset.side:'left'; eff=flip?(sv==='left'?'right':'left'):sv;
-      if(inp && inp.value!==''){ var p=parseFloat(inp.value); if(isFinite(p)) x=(eff==='right')?(len-p-w):p; }
+      if(inp && inp.value!==''){ var p=dimQ(parseFloat(inp.value)); if(isFinite(p)) x=(eff==='right')?(len-p-w):p; }
     }
     typed.push(x!==null);
-    xs.push(x!==null?x:(sp*(i+1)+w*i));
+    xs.push(dimQ(x!==null?x:(sp*(i+1)+w*i)));
   }
   var uid=_ovlTag(el);
   return {el:el, uid:uid, seq:parseInt(el.dataset.ovlSeq)||0, keep:el.dataset.ovlKeep==='1', wall:'m:'+wall, name:'the '+loc, len:len,
@@ -9725,7 +9729,7 @@ function ovlLtDesc(ae,ov,ltLen){
   var lk=lte._ovlUid+':'+(loc==='outer'?'o':'w'), len=ltLen?ltLen[lk]:undefined; // one read per lean-to per scan
   if(len===undefined){ len=(loc==='outer')?(parseFloat((lte.querySelector('.ltl2')||{}).value)||0):getLTDims(lte).w; if(ltLen) ltLen[lk]=len; }
   var pos=v('.lt-acc-pos')||'auto';
-  var xs=(loc==='partition')?ltPartLayoutLegacy(ae,w,qty,!!ov.sim):ovlLtLegacyXs(ae,pos,w,qty,len,!!ov.sim);
+  var xs=((loc==='partition')?ltPartLayoutLegacy(ae,w,qty,!!ov.sim):ovlLtLegacyXs(ae,pos,w,qty,len,!!ov.sim)).map(dimQ); // 1/8" grid (10/6/26)
   var fs=((lte.querySelector('.lt-type')||{}).value==='freestanding'), side=(lte.querySelector('.lts')||{}).value||'';
   if(!lte._ovlUid) lte._ovlUid=++_ovlUidN;
   var uid=_ovlTag(ae);
@@ -9791,7 +9795,7 @@ function _ovlEnt(el,m){ m=m||ovlModel(); return (el && el._ovlUid && m.ent[el._o
 // (the wall has no clash, so it places and prices exactly as before).
 function ovlAutoXs(el,w,faceW){
   var e=_ovlEnt(el); if(!e) return null;
-  if(Math.abs(e.d.w-w)>1e-6 || Math.abs(e.wall.len-faceW)>1e-6) return null;
+  if(Math.abs(e.d.w-dimQ(w))>1e-6 || Math.abs(e.wall.len-faceW)>1e-6) return null;
   if(!e.items.some(function(it){ return it && it.moved; })) return null;
   return e.items.map(function(it){ return (it && it.moved)?it.x:null; });
 }
@@ -9800,7 +9804,7 @@ function ovlAutoXs(el,w,faceW){
 function ovlEntryXs(el,w,qty){
   var e=_ovlEnt(el); if(!e) return null;
   if(qty!=null && qty!==e.d.qty) return null;
-  if(w!=null && Math.abs(e.d.w-w)>1e-6) return null;
+  if(w!=null && Math.abs(e.d.w-dimQ(w))>1e-6) return null;
   return e.items.map(function(it){ return it.x; });
 }
 // True when the model re-spaced this entry's wall (runTrussChecks then prices the
@@ -10090,6 +10094,9 @@ function _ovlApply(el,d){
 }
 
 function getPosItems(entry, qty, itemW, faceW, itemH, type, extraH){
+  // ONE grid (owner 10/6/26): sizes, sills and spots on the 1/8" grid (dimQ),
+  // so every printed dimension is exact and a wall's chain sums to its length.
+  itemW = dimQ(itemW); if(itemH) itemH = dimQ(itemH); if(extraH!==undefined) extraH = dimQ(extraH);
   // Read position inputs from pos-section
   var sec = entry.querySelector('.pos-section');
   var rows = sec ? sec.querySelectorAll('.pos-row') : [];
@@ -10111,7 +10118,7 @@ function getPosItems(entry, qty, itemW, faceW, itemH, type, extraH){
       // Flip side semantics on left eave so "From Front Gable" (data-side=left) means near FRONT (x=L)
       var effectiveSide = isLeftEave ? (sideVal==='left' ? 'right' : 'left') : sideVal;
       if(inp && inp.value!==''){
-        var pos = parseFloat(inp.value);
+        var pos = dimQ(parseFloat(inp.value)); // the typed number, on the 1/8" grid
         x = effectiveSide==='right' ? faceW - pos - itemW : pos;
       }
     }
@@ -10126,7 +10133,7 @@ function getPosItems(entry, qty, itemW, faceW, itemH, type, extraH){
       var sp = (faceW - qty*itemW)/(qty+1);
       x = sp*(i+1) + itemW*i;
     }
-    var item = {type:type, x:x, w:itemW, h:itemH||itemW};
+    var item = {type:type, x:dimQ(x), w:itemW, h:itemH||itemW};
     if(extraH!==undefined) item.yo = extraH;
     // For WTD items, look up the selected door style and color from the entry's type dropdown
     if(type==='wtd' && entry){
@@ -10147,6 +10154,9 @@ function getPosItems(entry, qty, itemW, faceW, itemH, type, extraH){
         var _ntv=_ntp.value;
         var _ntd=(MFR().winTypes||[]).find(function(t){return t.v===_ntv;});
         if(_ntd){ item.color = _ntd.color || 'white'; }
+        // The window's real height (a 30×36 is 36" tall). Every type is 30" wide,
+        // so the width (and every spot / truss check) stays itemW.
+        if(_ntd && _ntd.fh>0) item.h = dimQ(_ntd.fh/12);
       }
     }
     // For roll-up doors, attach color from entry's color dropdown (CCI only)
@@ -10829,8 +10839,8 @@ function printRevisionForm(){
     if(comp.indexOf('(Custom Size)')>=0){
       var s=foCustomFeet(el);
       var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
-      if(dispIn) sizeNote=' ('+Math.round(s.w*12)+'" x '+Math.round(s.h*12)+'")';
-      else sizeNote=" ("+s.w.toFixed(1)+"' x "+s.h.toFixed(1)+"')";
+      if(dispIn) sizeNote=' ('+_dimIn(s.w)+' x '+_dimIn(s.h)+')';
+      else sizeNote=' ('+_dimFtIn(s.w)+' x '+_dimFtIn(s.h)+')'; // one dimension formatter (10/6/26)
     }
     compRows+='<tr><td>'+comp+sizeNote+'</td><td>'+qty+'</td><td>'+loc+'</td></tr>';
   });
@@ -11014,12 +11024,14 @@ async function printRevisedLayout(){
         var side=posRows[i].querySelector('.pos-toggle button.active');
         if(inp&&inp.value) pos=posDescribe(loc, inp.value, side?side.dataset.side:'left');
       }
-      walls[wallKey(loc)].push({tag:tagNum++, type:'Walk-Through Door', size:"3' × 7'", pos:pos});
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Walk-Through Door', size:_dimFtIn(3)+' × '+_dimFtIn(80/12), pos:pos});
     }
   });
   document.querySelectorAll('.ne').forEach(function(el){
     var loc=el.querySelector('.nloc').value;
     var qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;
+    var _ntv=(el.querySelector('.ntp')||{}).value, _ntd=(MFR().winTypes||[]).find(function(t){return t.v===_ntv;})||{};
+    var _winSz=_dimIn((_ntd.fw||30)/12)+' × '+_dimIn((_ntd.fh||30)/12); // the window's real size
     var posRows=el.querySelectorAll('.pos-row');
     for(var i=0;i<qty;i++){
       var pos='Auto-spaced';
@@ -11028,7 +11040,7 @@ async function printRevisedLayout(){
         var side=posRows[i].querySelector('.pos-toggle button.active');
         if(inp&&inp.value) pos=posDescribe(loc, inp.value, side?side.dataset.side:'left');
       }
-      walls[wallKey(loc)].push({tag:tagNum++, type:'Window', size:"3' × 4'", pos:pos});
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Window', size:_winSz, pos:pos});
     }
   });
   document.querySelectorAll('.ace').forEach(function(el){
@@ -11040,9 +11052,9 @@ async function printRevisedLayout(){
     if(comp.indexOf('(Custom Size)')>=0){
       var s=foCustomFeet(el);
       var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
-      if(dispIn) sizeNote=Math.round(s.w*12)+'" × '+Math.round(s.h*12)+'"';
-      else sizeNote=s.w.toFixed(1)+"' × "+s.h.toFixed(1)+"'";
-    }
+      if(dispIn) sizeNote=_dimIn(s.w)+' × '+_dimIn(s.h);
+      else sizeNote=_dimFtIn(s.w)+' × '+_dimFtIn(s.h);
+    } else { var _fd=ovlFoDims(el,comp); if(_fd) sizeNote=_dimFtIn(_fd.w)+' × '+_dimFtIn(_fd.h); } // stock framed openings: their size too
     var posRows=el.querySelectorAll('.pos-row');
     for(var i=0;i<qty;i++){
       var pos='Auto-spaced';
@@ -11987,8 +11999,8 @@ async function printQuote(){
           var afoH2=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
           var afoKey2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
           var afp=ltAccFoUnitPrice(ae, aloc);
-          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(afoW2+'x'+afoH2+"' opening");
-          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+afoW2+'x'+afoH2+"'";
+          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(_ltFoSzTxt(afoW2,afoH2)+' opening');
+          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+_ltFoSzTxt(afoW2,afoH2);
           if(afp) rows+=row('  Lean-To: Framed Opening — '+afoLbl+afoSz+' ('+alocLabel+')',aqty,afp,afp*aqty);
         }
         // Side frames (wtd / win / frameout on the outer wall, truss auto-set)
@@ -12372,12 +12384,18 @@ function threeDPageHTML(imgs){
 
 // ── Dimensioned "spacing" drawing — clean black-on-white shop-drawing elevations
 //    showing exactly where each opening sits + distances. Optional PDF/contract page.
-// Exact feet-inches — inches kept to 1/100" (decimal, trailing zeros trimmed) so
-// the sheet reflects the entered size/position precisely rather than snapping to
-// the nearest whole inch. e.g. 3.9583ft -> 3'11.5"  ·  51.0833ft -> 51'1"  ·  30ft -> 30'
-function _dimFtIn(ft){ var ti=parseFloat((ft*12).toFixed(2)), f=Math.floor(ti/12), i=parseFloat((ti-f*12).toFixed(2)); if(i>=12){f+=1;i=0;} return i?(f+"'"+i+'"'):(f+"'"); }
-// Exact inches label (decimal, trailing zeros trimmed). e.g. 3.9583ft -> 47.5"  ·  51.0833ft -> 613"
-function _dimIn(ft){ return parseFloat((ft*12).toFixed(2))+'"'; }
+// ONE formatter for every printed dimension (owner 10/6/26: "still showing
+// 8' 11.75 instead of 9' ... we need to be dialed in on every quote, contract,
+// layout"): feet-inches to the nearest 1/8", the fraction as a glyph — never
+// decimals. e.g. 3.0208ft -> 3'0¼"  ·  6.6667ft -> 6'8"  ·  30ft -> 30'.
+// Every size and spot lives ON the 1/8" grid (dimQ — getPosItems, the
+// no-overlap model, the truss checks, the 3D), so what prints is exact and a
+// wall's chain (end gaps + widths + gaps) adds up to the wall length.
+function dimQ(ft){ var e=Math.round(ft*96); return e===0?0:e/96; }
+function _dim8(r){ return ['','⅛','¼','⅜','½','⅝','¾','⅞'][r]; }
+function _dimFtIn(ft){ var e=Math.round(ft*96)||0, s=e<0?'−':'', a=Math.abs(e), f=Math.floor(a/96), r=a-f*96; return s+(r?(f+"'"+Math.floor(r/8)+_dim8(r%8)+'"'):(f+"'")); }
+// Exact inches label, nearest 1/8". e.g. 3.0208ft -> 36¼"  ·  6.6667ft -> 80"
+function _dimIn(ft){ var e=Math.round(ft*96)||0, s=e<0?'−':'', a=Math.abs(e); return s+Math.floor(a/8)+_dim8(a%8)+'"'; }
 
 // Collect the openings placed on each wall (same dispatch the elevations use).
 function collectElevItems(){
@@ -12724,7 +12742,7 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     stops.forEach(function(t){ o+='<line x1="'+X(t)+'" y1="'+(dy-4).toFixed(1)+'" x2="'+X(t)+'" y2="'+(dy+4).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'; });
     var lastBelow=[-1e9,-1e9]; // right edge of the last label on each of the two rows under the line
     for(var i=0;i<stops.length-1;i++){
-      var a=stops[i], b=stops[i+1], d=b-a; if(d<=0.02) continue;
+      var a=stops[i], b=stops[i+1], d=b-a; if(d<1/192) continue; // every gap down to 1/8": the chain adds up to the wall (10/6/26)
       var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d), cx=X((a+b)/2), ly=dy-5;
       if(wpx<24){ var half=lab.length*2.5+2, row=(cx-half>=lastBelow[0]+3)?0:1; ly=dy+13+row*11; lastBelow[row]=cx+half; } // narrow gaps: labelled below the line, a second row when two would touch
       o+=_dimT(cx, ly, lab, {anchor:'middle',size:wpx<24?8.5:9,weight:inside?500:400,fill:inside?DIM_C.text:DIM_C.dim});
@@ -13326,8 +13344,8 @@ async function printContract(){
           var afoH2=parseFloat(ae.querySelector('.lt-acc-fo-h')&&ae.querySelector('.lt-acc-fo-h').value)||10;
           var afoKey2=(ae.querySelector('.lt-acc-fo-type')||{}).value||'';
           var afp=ltAccFoUnitPrice(ae, aloc);
-          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(afoW2+'x'+afoH2+"' opening");
-          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+afoW2+'x'+afoH2+"'";
+          var afoLbl=afoKey2?afoKey2.replace('Framed Opening — ',''):(_ltFoSzTxt(afoW2,afoH2)+' opening');
+          var afoSz=(ltFoDefaults(afoKey2).noRender)?'':' '+_ltFoSzTxt(afoW2,afoH2);
           if(afp) row('  Lean-To: Framed Opening — '+afoLbl+afoSz+' ('+alocLabel+')',aqty,afp,afp*aqty);
         }
         // Side frames (wtd / win / frameout on the outer wall, truss auto-set)
@@ -13478,12 +13496,9 @@ async function printContract(){
     // Format decimal feet as feet+inches, e.g. 1.333 → "1'4""
     function fmtFt(f){
       if(f < 0) f = 0;
-      if(f < 0.04) return '0"';
-      var ti = Math.round(f*12);
-      var ft = Math.floor(ti/12), inc = ti % 12;
-      if(ft === 0) return inc + '"';
-      if(inc === 0) return ft + "'";
-      return ft + "'" + inc + '"';
+      if(f < 1/192) return '0"';
+      if(Math.round(f*96) < 96) return _dimIn(f); // under a foot: inches (1/8")
+      return _dimFtIn(f); // one dimension formatter (10/6/26)
     }
 
     var s='<svg viewBox="0 0 '+SW+' '+SH+'" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="max-width:100%;max-height:8in;width:auto;height:auto;display:block;margin:0 auto;background:#ffffff">';
@@ -13626,8 +13641,7 @@ async function printContract(){
       return {fill:'#f3f4f6', stroke:'#4b5563', code:'C7'};
     }
     function sizeLabel(it){
-      if(it.type==='wtd') return '36"\u00D780"';
-      if(it.type==='win') return '30"\u00D730"';
+      if(it.type==='wtd' || it.type==='win') return _dimIn(it.w)+'\u00D7'+_dimIn(it.h); // the real size (a 30×36 window too)
       // rollup: w × h, formatted
       var wl = (Math.abs(it.w - Math.round(it.w)) < 0.01) ? Math.round(it.w)+"'" : fmtFt(it.w);
       var hl = (Math.abs(it.h - Math.round(it.h)) < 0.01) ? Math.round(it.h)+"'" : fmtFt(it.h);
@@ -13683,7 +13697,7 @@ async function printContract(){
         });
         // Segment labels
         segs.forEach(function(seg){
-          if(seg.size < 0.04 && seg.type==='gap') return;
+          if(seg.size < 1/192 && seg.type==='gap') return;
           var midPx = bx + ((seg.start+seg.end)/2)*scale;
           var lbl = (seg.type==='gap') ? fmtFt(seg.size) : sizeLabel(seg.item);
           var sz   = (seg.type==='gap') ? '12' : '11';
@@ -13704,7 +13718,7 @@ async function printContract(){
           s2 += '<line x1="'+(dimX-TICK)+'" y1="'+py+'" x2="'+(dimX+TICK)+'" y2="'+py+'" stroke="#94a3b8" stroke-width="0.8"/>';
         });
         segs.forEach(function(seg){
-          if(seg.size < 0.04 && seg.type==='gap') return;
+          if(seg.size < 1/192 && seg.type==='gap') return;
           var midPy = by + ((seg.start+seg.end)/2)*scale;
           var lbl = (seg.type==='gap') ? fmtFt(seg.size) : sizeLabel(seg.item);
           var sz   = (seg.type==='gap') ? '12' : '11';
@@ -15310,7 +15324,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
       //   - LARGE  (fow > 28 px AND foh > 22 px): two-line "16'×12'" + "FRAMED OPENING"
       //   - MEDIUM (fow > 16 px AND foh > 10 px): single-line size only
       //   - TINY:   just "F.O." (label can't fit any size)
-      function _foD(v){ var ft=Math.floor(v+1e-6); var inc=Math.round((v-ft)*12); if(inc===12){ft++;inc=0;} if(inc===0) return ft+"'"; return ft+"'"+inc+'"'; }
+      function _foD(v){ return _dimFtIn(v); } // one dimension formatter (10/6/26)
       var _sizeLbl = _foD(it.w) + "\u00D7" + _foD(it.h);
       var _bigSz = Math.max(7, Math.min(16, fow * 0.10));
       var _smSz  = Math.max(4.5, Math.min(8, fow * 0.055));
@@ -16417,7 +16431,7 @@ function checkTrussHitFromFront(distFromFront, itemW, bldgLength){
   var L = distFromFront, R = distFromFront + itemW;
   for(var t = oc; t < bldgLength - 0.05; t += oc){
     var edgeDist = (t < L) ? (L - t) : (t > R) ? (t - R) : -1;
-    if(edgeDist < C) hits.push(t);   // strict: a truss exactly 2" away clears
+    if(edgeDist < C - 1e-9) hits.push(t);   // strict: a truss exactly 2" away clears (1/8" grid: exact)
   }
   return hits;
 }
@@ -16453,7 +16467,7 @@ function runTrussChecks(){
         var inp = row.querySelector('input[type=number]');
         var sideBtn = row.querySelector('.pos-toggle button.active');
         var sideVal = sideBtn ? sideBtn.dataset.side : 'left';
-        var rawPos = inp ? parseFloat(inp.value) : NaN;
+        var rawPos = inp ? dimQ(parseFloat(inp.value)) : NaN;
         if(!isNaN(rawPos) && inp && inp.value!==''){
           distFromFront = (sideVal==='left') ? rawPos : (L - rawPos - itemW);
         }
@@ -16468,7 +16482,7 @@ function runTrussChecks(){
         var sp = (L - qty * itemW) / (qty + 1);
         distFromFront = sp * (i + 1) + itemW * i;
       }
-      var hits = checkTrussHitFromFront(distFromFront, itemW, L);
+      var hits = checkTrussHitFromFront(dimQ(distFromFront), dimQ(itemW), L);
       if(hits.length > 0){ hitCount++; allHits = allHits.concat(hits); }
     }
     setTrussState(el, hitCount > 0, allHits, 'from the front gable'); // eave frames: getTrussPositions, from the front
@@ -16494,7 +16508,7 @@ function runTrussChecks(){
         var inp = row.querySelector('input[type=number]');
         var sideBtn = row.querySelector('.pos-toggle button.active');
         var sideVal = sideBtn ? sideBtn.dataset.side : 'left';
-        var rawPos = inp ? parseFloat(inp.value) : NaN;
+        var rawPos = inp ? dimQ(parseFloat(inp.value)) : NaN;
         if(!isNaN(rawPos) && inp && inp.value!==''){
           distFromFront = (sideVal==='left') ? rawPos : (L - rawPos - itemW);
         }
@@ -16509,7 +16523,7 @@ function runTrussChecks(){
         var sp = (L - qty * itemW) / (qty + 1);
         distFromFront = sp * (i + 1) + itemW * i;
       }
-      var hits = checkTrussHitFromFront(distFromFront, itemW, L);
+      var hits = checkTrussHitFromFront(dimQ(distFromFront), dimQ(itemW), L);
       if(hits.length > 0){ hitCount++; allHits = allHits.concat(hits); }
     }
     setTrussState(el, hitCount > 0, allHits, 'from the front gable'); // eave frames: getTrussPositions, from the front
@@ -16545,7 +16559,7 @@ function runTrussChecks(){
         var inp = prow.querySelector('input[type=number]');
         var sideBtn = prow.querySelector('.pos-toggle button.active');
         var sideVal = sideBtn ? sideBtn.dataset.side : 'left';
-        var rawPos = inp ? parseFloat(inp.value) : NaN;
+        var rawPos = inp ? dimQ(parseFloat(inp.value)) : NaN;
         if(!isNaN(rawPos) && inp && inp.value!==''){
           distFromFront = (sideVal==='left') ? rawPos : (L - rawPos - itemW);
         }
@@ -16560,7 +16574,7 @@ function runTrussChecks(){
         var sp = (L - qty * itemW) / (qty + 1);
         distFromFront = sp * (i + 1) + itemW * i;
       }
-      var hits = checkTrussHitFromFront(distFromFront, itemW, L);
+      var hits = checkTrussHitFromFront(dimQ(distFromFront), dimQ(itemW), L);
       if(hits.length > 0){ hitCount++; allHits = allHits.concat(hits); }
     }
     setTrussState(el, hitCount > 0, allHits, 'from the front gable'); // eave frames: getTrussPositions, from the front
@@ -16641,7 +16655,7 @@ function runTrussChecks(){
       try { if(ovlWallMoved(ae)){ var _ltx=ovlEntryXs(ae); if(_ltx && _ltx.length===positions.length) positions=_ltx; } } catch(e){}
       var anyHit = false, allHits = [], hitCount = 0;
       positions.forEach(function(itemX){
-        var hits = checkTrussHit(itemX, itemW, L);
+        var hits = checkTrussHit(dimQ(itemX), dimQ(itemW), L);
         if(hits.length>0){ anyHit = true; hitCount++; allHits = allHits.concat(hits); }
       });
       setTrussState(ae, anyHit, allHits);
@@ -17965,7 +17979,7 @@ function rememberMode(m){ try{ localStorage.setItem(LS_KEY,m); }catch(e){} }
 /* ---------- small helpers ---------- */
 function optText(sel){ var o=sel&&sel.options&&sel.options[sel.selectedIndex]; return o?o.text:''; }
 function stripPrice(t){ return String(t||'').replace(/\s+[—-]\s+\$[\d,.]+.*$/,'').replace(/\s*\(\+\$[\d,.]+[^)]*\)\s*$/,'').trim(); }
-function ft(n){ n=parseFloat(n); if(!isFinite(n)) return ''; var f=Math.floor(n+1e-9), i=Math.round((n-f)*12); if(i===12){ f++; i=0; } return i?(f+'′ '+i+'″'):(f+'′'); }
+function ft(n){ n=parseFloat(n); if(!isFinite(n)) return ''; var e=Math.round(n*96)||0, f=Math.floor(e/96), r=e-f*96; return r?(f+'′ '+Math.floor(r/8)+['','⅛','¼','⅜','½','⅝','¾','⅞'][r%8]+'″'):(f+'′'); } // 1/8" grid, same rule as _dimFtIn (10/6/26)
 function money(n){ var neg=n<0; n=Math.abs(Math.round(n*100)/100); var cents=Math.round(n*100)%100!==0; return (neg?'−':'')+'$'+n.toLocaleString('en-US',{minimumFractionDigits:cents?2:0,maximumFractionDigits:2}); }
 function shown(el){ return !!el && !el.classList.contains('hidden') && el.style.display!=='none'; }
 function inlineShown(el){ return !!el && !!el.style.display && el.style.display!=='none'; }
