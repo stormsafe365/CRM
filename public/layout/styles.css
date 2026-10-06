@@ -121,16 +121,16 @@ body {
 .tbtn-primary:hover { background: var(--ss-accent-hover); }
 .tbtn-ghost { background: transparent; color: var(--steel-200); border-color: var(--navy-700); }
 .tbtn-ghost:hover { border-color: var(--steel-400); color: var(--white); }
-.tbtn-rev { border-color: #fbbf24; color: #fbbf24; }
-.tbtn-rev:hover { background: rgba(251,191,36,.12); }
+.tbtn-rev { border-color: #f0883e; color: #f0883e; } /* warm accent, never yellow (owner 10/6) */
+.tbtn-rev:hover { background: rgba(240,136,62,.12); }
 .tbtn-rev-on { border-color: var(--ss-accent); color: var(--white); background: rgba(34,211,200,.15); }
 .tbtn-rev-on:hover { background: rgba(34,211,200,.22); }
 
 /* ── Revision badge on sheet masthead ── */
-.rev-badge-sheet { display: inline-block; background: rgba(251,191,36,.18); color: #b8860b; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 10px; border-radius: 3px; border: 1px solid rgba(251,191,36,.35); margin-top: 4px; }
+.rev-badge-sheet { display: inline-block; background: rgba(240,136,62,.14); color: #b35a1c; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 10px; border-radius: 3px; border: 1px solid rgba(240,136,62,.4); margin-top: 4px; }
 
 /* ── Revision info strip ── */
-.rev-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 22px; border: 1px solid var(--rule); border-left: 4px solid #fbbf24; border-radius: 6px; padding: 12px 16px; margin: 10px 24px 0; }
+.rev-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 22px; border: 1px solid var(--rule); border-left: 4px solid #f0883e; border-radius: 6px; padding: 12px 16px; margin: 10px 24px 0; }
 .rev-strip-cell { display: flex; flex-direction: column; gap: 4px; }
 .rev-k { font-family: var(--font-head); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); font-weight: 700; }
 .rev-v-line { border-bottom: 1.5px solid var(--fg-2); height: 20px; }
