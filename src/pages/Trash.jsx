@@ -38,7 +38,15 @@ export default function Trash() {
     if (!window.confirm('Permanently delete this lead and all its quotes & activity? This cannot be undone.')) return
     const { error } = await supabase.from('clients').delete().eq('id', id); if (error) setError(error.message); else load()
   }
-  async function restoreQuote(id) { const { error } = await supabase.from('quotes').update({ deleted_at: null, deleted_by: null }).eq('id', id); if (error) setError(error.message); else load() }
+  async function restoreQuote(id) {
+    let { error } = await supabase.from('quotes').update({ deleted_at: null, deleted_by: null }).eq('id', id)
+    // A quote deleted while starred can't come back starred if the lead has
+    // starred another one since (one star per lead, migration 019) — restore it unstarred.
+    if (error && (error.code === '23505' || /starred/i.test(error.message || ''))) {
+      ({ error } = await supabase.from('quotes').update({ deleted_at: null, deleted_by: null, starred: false }).eq('id', id))
+    }
+    if (error) setError(error.message); else load()
+  }
   async function purgeQuote(qr) {
     if (!window.confirm('Permanently delete this quote? This cannot be undone.')) return
     if (qr.pdf_snapshot_url) { try { await deleteQuotePdf(qr.pdf_snapshot_url) } catch { /* best effort */ } }

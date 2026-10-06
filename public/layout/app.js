@@ -77,19 +77,14 @@ function App() {
   React.useEffect(() => {
     function seedFromCRM(d) {
       if (!d) return;
-      if (d.size) {
-        const m = String(d.size).match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)(?:\s*[xX×]\s*(\d+(?:\.\d+)?))?/);
-        if (m) {
-          const edits = { width: Number(m[1]), length: Number(m[2]) };
-          if (m[3]) edits.height = Number(m[3]);
-          setTweak(edits);
-        }
+      const edits = crmTweaks(d);
+      if (Object.keys(edits).length) setTweak(edits);
+      if (Array.isArray(d.openings)) {
+        setOpenings(crmOpenings(d.openings));
+        setSelectedId(null);
+        setPlaceType(null);
       }
-      setDocInfo((prev) => ({
-        ...prev,
-        customer: d.customer || prev.customer,
-        address: d.address || prev.address
-      }));
+      setDocInfo((prev) => crmDocInfo(prev, d));
     }
     function customerName() {
       return docInfoRef.current && docInfoRef.current.customer || "";
@@ -146,7 +141,9 @@ function App() {
       config,
       openEnd,
       openLength,
-      gableSheet: t.gableSheet === "gable" ? "gable" : "open"
+      gableSheet: t.gableSheet === "gable" ? "gable" : "open",
+      notes: Array.isArray(docInfo.notes) ? docInfo.notes : []
+      // CRM quote notes (lean-tos etc.) → schedule
     };
   })();
   function changeConfig(patch) {
