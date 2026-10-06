@@ -18,11 +18,18 @@ export function mountCursorFx() {
   const HOT = 'a,button,.nav-item,.chip,.doc-cat,.note,.spread-card,.stack-card,.q-row,.seg button,.notes-tab,.icon-btn,.menu-item,input,select,textarea,.kpi-card,.lead-row,.step,.temp-track,.temp-knob,.list-tab,.qd-card,.qd-nav,.qd-toggle button,[role="button"]'
   addEventListener('mousemove', (e) => {
     mx = e.clientX; my = e.clientY
+    if (e.target && e.target.tagName === 'IFRAME') { on = false; ring.classList.remove('on'); dot.classList.remove('on'); return }
     if (!on) { on = true; ring.classList.add('on'); dot.classList.add('on') }
     const hot = !!(e.target.closest && e.target.closest(HOT))
     ring.classList.toggle('hot', hot); dot.classList.toggle('hot', hot)
   }, { passive: true })
   addEventListener('mouseleave', () => { on = false; ring.classList.remove('on'); dot.classList.remove('on') })
+  // Over an iframe (the 3D builder / layout) this page gets no more mousemoves and
+  // the iframe shows its own real cursor — hide the ring so it doesn't sit frozen
+  // on top. The next mousemove out here shows it again.
+  addEventListener('mouseover', (e) => {
+    if (e.target && e.target.tagName === 'IFRAME') { on = false; ring.classList.remove('on'); dot.classList.remove('on') }
+  }, { passive: true })
   addEventListener('mousedown', () => ring.classList.add('press'))
   addEventListener('mouseup', () => ring.classList.remove('press'))
   ;(function tick() {

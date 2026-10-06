@@ -3296,7 +3296,7 @@ html.cursor-fx-active,
 html.cursor-fx-active * { cursor: none !important; }
 .cursor-glow { display: none !important; }
 .cursor-ring {
-  position: fixed; top: 0; left: 0; z-index: 401;
+  position: fixed; top: 0; left: 0; z-index: 2147483646; /* above every modal (builder overlay 1000, dialogs 1200-1300, toasts 1400) so the cursor never vanishes behind one */
   width: 22px; height: 22px; margin: -11px 0 0 -11px;
   border-radius: 50%; pointer-events: none;
   border: 1px solid rgba(120,160,180,0.4);
@@ -3312,7 +3312,7 @@ html.cursor-fx-active * { cursor: none !important; }
 }
 .cursor-ring.press { width: 16px; height: 16px; margin: -8px 0 0 -8px; }
 .cursor-dot {
-  position: fixed; top: 0; left: 0; z-index: 402;
+  position: fixed; top: 0; left: 0; z-index: 2147483647;
   width: 4px; height: 4px; margin: -2px 0 0 -2px;
   border-radius: 50%; pointer-events: none;
   background: rgba(180,200,215,0.7);
