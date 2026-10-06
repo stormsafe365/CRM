@@ -18,6 +18,8 @@ import ColorSheetModal from './ColorSheetModal'
 import { openMenu, toast } from '../lib/uiFx'
 import RevisionModal from './RevisionModal'
 import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
+import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
+import { StarBadge, StarButton } from './QuoteStar'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
@@ -42,6 +44,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null)
   const [viewMode, setViewMode] = useState('deck') // 'deck' | 'spread' | 'list'
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
+  const [starBusy, setStarBusy] = useState(false)
+  const reloadRef = useRef(null)
 
   // Load quotes + subscribe to changes
   useEffect(() => {
@@ -57,10 +61,12 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
       if (cancelled) return
       if (error) setError(error.message)
-      else setQuotes((data ?? []).filter(q => !q.deleted_at))
+      // Starred quote first (when quotes.starred exists), then newest.
+      else setQuotes(sortStarredFirst(data ?? []))
       setLoading(false)
     }
     load()
+    reloadRef.current = load
 
     const channel = supabase
       .channel(`quotes-${clientId}`)
@@ -114,6 +120,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       quote_number,
       status: 'draft',
       pdf_snapshot_url: null,
+      // One starred quote per lead — a copy starts unstarred.
+      ...(Object.prototype.hasOwnProperty.call(quote, 'starred') ? { starred: false } : {}),
       valid_through: new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10),
       ...(builder ? {
         total_amount: null, deposit_amount: null, balance_amount: null,
@@ -126,6 +134,43 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
       toast(`Copy ${quote_number} created — opening it at today's pricing. Save to Lead to keep its price.`, 'success')
       setEditQuote(data)
       setBuilding(true)
+    }
+  }
+
+  // Star / unstar a quote (one per lead). Optimistic: the list updates at once;
+  // the DB unstars the lead's other quotes first, then stars this one (the
+  // partial unique index allows only one). On any failure the list goes back
+  // and is re-read from the database, with a toast.
+  const canStar = starSupported(quotes)
+  async function toggleStar(quote) {
+    if (starBusy || !quote) return
+    const on = quote.starred !== true
+    const before = quotes
+    const prevStar = quotes.find(q => q.starred === true && q.id !== quote.id) || null
+    let unstarred = false
+    setQuotes(qs => sortStarredFirst(applyStar(qs, quote.id, on)))
+    setStarBusy(true)
+    try {
+      if (on) {
+        const { error: e1 } = await supabase.from('quotes').update({ starred: false })
+          .eq('client_id', clientId).eq('starred', true).neq('id', quote.id)
+        if (e1) throw e1
+        unstarred = !!prevStar
+      }
+      const { data, error: e2 } = await supabase.from('quotes').update({ starred: on }).eq('id', quote.id).select('id')
+      if (e2) throw e2
+      if (!data || data.length === 0) throw new Error('the database blocked it (permission)')
+      toast(on ? `Quote ${quote.quote_number ? '#' + quote.quote_number + ' ' : ''}starred — Open Layout will use it` : 'Star removed', 'success')
+    } catch (err) {
+      // Put the previous star back if it was already cleared (best effort).
+      if (unstarred && prevStar) {
+        try { await supabase.from('quotes').update({ starred: true }).eq('id', prevStar.id) } catch { /* reload below shows the truth */ }
+      }
+      setQuotes(before)
+      toast('Could not update the star — ' + (err?.message || 'please try again.'))
+      try { reloadRef.current && reloadRef.current() } catch { /* ignore */ }
+    } finally {
+      setStarBusy(false)
     }
   }
 
@@ -340,9 +385,11 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           onRevisionForm={handleRevisionForm}
           onReceipt={setReceiptQuote}
           onColorSheet={setColorQuote}
+          onToggleStar={canStar ? toggleStar : null}
+          starBusy={starBusy}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onExecutedCopy={handleExecutedCopy} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
+        <QuoteSpread quotes={quotes} onToggleStar={canStar ? toggleStar : null} starBusy={starBusy} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onExecutedCopy={handleExecutedCopy} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -357,13 +404,14 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                 />
               </div>
             ) : (
-              <div key={q.id} className="quote-row">
+              <div key={q.id} className={`quote-row${q.starred === true ? ' is-starred' : ''}`}>
                 <div className="quote-row-main">
                   <div className="quote-row-top">
                     <span className="quote-date">{formatDate(q.quote_date)}</span>
                     {q.quote_number && <span className="quote-number">#{q.quote_number}</span>}
                     <QuoteStatusPill status={q.status} />
                     <ReplacedBadge quote={q} />
+                    <StarBadge quote={q} />
                   </div>
                   <div className="quote-row-meta">
                     {q.building_size && <span>{q.building_size}</span>}
@@ -371,6 +419,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                   </div>
                 </div>
                 <div className="quote-row-actions">
+                  <StarButton quote={q} onToggle={canStar ? toggleStar : null} busy={starBusy} />
                   {q.pdf_snapshot_url && (
                     <button onClick={() => handleViewPdf(q.pdf_snapshot_url)} className="link-btn">
                       View PDF
@@ -466,7 +515,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+function QuoteSpread({ quotes, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -480,7 +529,7 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGener
       {many && <button className="spread-arrow left" onClick={() => scrollBy(-1)} aria-label="Scroll left">‹</button>}
       <div className="spread-scroll" ref={ref}>
         <div className="spread-grid">
-          {quotes.map(q => <SpreadCard key={q.id} q={q} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onExecutedCopy={onExecutedCopy} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
+          {quotes.map(q => <SpreadCard key={q.id} q={q} onToggleStar={onToggleStar} starBusy={starBusy} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onExecutedCopy={onExecutedCopy} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
         </div>
       </div>
       {many && <button className="spread-arrow right" onClick={() => scrollBy(1)} aria-label="Scroll right">›</button>}
@@ -488,20 +537,24 @@ function QuoteSpread({ quotes, onOpen, onViewPdf, onDelete, onDuplicate, onGener
   )
 }
 
-function SpreadCard({ q, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const thumb = q.payload_json?.rendering_thumb || null
   const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
   return (
-    <div className="spread-card" onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
+    <div className={`spread-card${q.starred === true ? ' is-starred' : ''}`} onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
       {thumb && <div className="q-thumb"><img src={thumb} alt="3D rendering" /></div>}
       <div className="q-head">
         <div>
           <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
             <ReplacedBadge quote={q} />
+            <StarBadge quote={q} />
           </div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
         </div>
-        <span className="q-badge">{formatDate(q.quote_date)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="q-badge">{formatDate(q.quote_date)}</span>
+          <StarButton quote={q} onToggle={onToggleStar} busy={starBusy} />
+        </div>
       </div>
       {q.building_summary && <div className="q-sub">{q.building_summary}</div>}
       <div className="q-figures">

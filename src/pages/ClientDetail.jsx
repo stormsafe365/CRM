@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { loadCurrentQuote } from '../lib/layoutFromQuote'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { statusLabel, sourceLabel, buildingTypeLabel, projectStageLabel, projectStageColor } from '../lib/constants'
 import StatusPill from '../components/StatusPill'
@@ -96,16 +97,10 @@ export default function ClientDetail() {
       setLoading(false)
     }
     async function loadQuote() {
-      // Latest quote drives the summary's Manufacturer + Current Quote.
-      const { data } = await supabase
-        .from('quotes')
-        .select('total_amount, manufacturer, quote_number, status')
-        .eq('client_id', id)
-        .neq('status', 'superseded') // replaced by a revised order: never the current quote
-        .order('quote_date', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-      if (!cancelled) setLatestQuote((data ?? [])[0] ?? null)
+      // The starred quote (else the latest) drives the summary's Manufacturer +
+      // Current Quote. Without the starred column it is the latest, as before.
+      const q = await loadCurrentQuote(supabase, id)
+      if (!cancelled) setLatestQuote(q)
     }
     load()
     loadQuote()

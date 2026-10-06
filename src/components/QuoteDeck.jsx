@@ -3,10 +3,11 @@
 // saved; right = the quote details. Actions: View PDF · Open/Edit · Duplicate ·
 // Delete. Matches the client-portal quote-card design.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
 import ReplacedBadge from './ReplacedBadge'
+import { StarBadge, StarButton } from './QuoteStar'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
@@ -27,11 +28,20 @@ const calIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const userIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 const imgIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></svg>
 
-export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
-  const [idx, setIdx] = useState(0)
+export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+  // The deck follows a quote (by id), not a slot — starring moves a quote to
+  // the front of the list and the deck stays on it. A deleted quote falls back
+  // to the same slot, as before.
+  const [curId, setCurId] = useState(null)
+  const lastIdx = useRef(0)
   const n = quotes.length
-
-  useEffect(() => { setIdx(i => Math.min(i, Math.max(0, n - 1))) }, [n])
+  const found = curId ? quotes.findIndex(x => x.id === curId) : -1
+  const idx = found >= 0 ? found : Math.min(lastIdx.current, Math.max(0, n - 1))
+  lastIdx.current = idx
+  const setIdx = (fn) => {
+    const i = typeof fn === 'function' ? fn(idx) : fn
+    if (quotes[i]) setCurId(quotes[i].id)
+  }
 
   useEffect(() => {
     function onKey(e) {
@@ -40,7 +50,8 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [n])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [n, idx, quotes])
 
   if (!n) return null
   const q = quotes[Math.min(idx, n - 1)]
@@ -54,7 +65,7 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
 
   return (
     <div className="qcard-wrap">
-      <article className="qcard" key={q.id}>
+      <article className={`qcard${q.starred === true ? ' is-starred' : ''}`} key={q.id}>
         <div className="qcard-main">
           <div className="qcard-media">
             {thumb
@@ -64,8 +75,10 @@ export default function QuoteDeck({ quotes, users, onOpen, onViewPdf, onDelete, 
           </div>
 
           <div className="qcard-body">
-            <div className="qcard-num">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
+            <div className="qcard-num" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
               <ReplacedBadge quote={q} revisedLabel="REVISED ORDER" style={{ marginLeft: 10 }} />
+              <StarBadge quote={q} />
+              {onToggleStar && <span style={{ marginLeft: 'auto' }}><StarButton quote={q} onToggle={onToggleStar} busy={starBusy} /></span>}
             </div>
             <div className="qcard-dims num">{fmtDims(q.building_size) || q.building_summary || 'Building quote'}</div>
             {q.building_summary && q.building_size && <div className="qcard-subtitle">{c.buildingType || q.building_summary}</div>}

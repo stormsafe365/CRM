@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import { getQuotePdfSignedUrl } from '../lib/storage'
 import QuoteStatusPill from '../components/QuoteStatusPill'
 import ReplacedBadge from '../components/ReplacedBadge'
+import { StarBadge } from '../components/QuoteStar'
 
 function fmtDate(s) {
   if (!s) return '—'
@@ -123,7 +124,7 @@ export default function AllQuotes() {
                   style={{ '--ri': Math.min(i, 14) }}
                 >
                   <td>{fmtDate(q.quote_date)}</td>
-                  <td>{q.quote_number || '—'}</td>
+                  <td>{q.quote_number || '—'}<StarBadge quote={q} /></td>
                   <td><div className="cell-primary">{q.client?.name || '—'}</div></td>
                   <td>{q.building_size || '—'}</td>
                   <td><div className="cell-primary">{fmtMoney(q.total_amount)}</div></td>

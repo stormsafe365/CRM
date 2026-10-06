@@ -39,26 +39,29 @@ function openGableMode(b) {
 }
 
 // ---- formatting: decimal feet -> 12′ 6″ ----
+// Exact to 1/8″ (the quote program's grid, owner 10/6/26): whole inches print as
+// before (12′ 6″); a seeded quote position like 3′ 2⅞″ keeps its eighth instead
+// of rounding to the nearest inch.
+const FT_EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+function ftInParts(value) {
+  const e = Math.round(Math.abs(value) * 96);
+  const ft = Math.floor(e / 96), r = e - ft * 96;
+  return { ft, inch: Math.floor(r / 8), frac: FT_EIGHTHS[r % 8] };
+}
 function ftIn(value) {
   if (value == null || isNaN(value)) return '—';
   const neg = value < 0;
-  let v = Math.abs(value);
-  let ft = Math.floor(v + 1e-6);
-  let inch = Math.round((v - ft) * 12);
-  if (inch === 12) { ft += 1; inch = 0; }
-  let out = ft + '′';
-  if (inch > 0) out += ' ' + inch + '″';
+  const p = ftInParts(value);
+  let out = p.ft + '′';
+  if (p.inch > 0 || p.frac) out += ' ' + p.inch + p.frac + '″';
   return (neg ? '-' : '') + out;
 }
 
 // compact (no space) for tight labels: 10′ or 6′8″
 function ftInTight(value) {
   if (value == null || isNaN(value)) return '—';
-  let v = Math.abs(value);
-  let ft = Math.floor(v + 1e-6);
-  let inch = Math.round((v - ft) * 12);
-  if (inch === 12) { ft += 1; inch = 0; }
-  return inch > 0 ? `${ft}′${inch}″` : `${ft}′`;
+  const p = ftInParts(value);
+  return (p.inch > 0 || p.frac) ? (p.ft + '′' + p.inch + p.frac + '″') : (p.ft + '′');
 }
 
 function sizeLabel(op) {
@@ -455,7 +458,80 @@ function defaultOpenings() {
   ];
 }
 
+// ---- opening schedule: offset named like the quote program (owner 10/6/26) ----
+// "Dialed in on every quote, contract, layout": the schedule's number is
+// measured from the same end the quote's spacing page uses — front gable and
+// partition from the left eave corner, back gable from the RIGHT eave corner
+// (seen from behind), right eave from the FRONT gable, left eave from the back
+// gable. Display only: `offset` (and the plan) keep the WALLS.ref corners.
+const SCHEDULE_REF = {
+  front: 'Left Eave', divider: 'Left Eave', back: 'Right Eave',
+  right: 'Front Gable', left: 'Back Gable',
+};
+function scheduleOffset(op, building) {
+  const flip = op.wall === 'back' || op.wall === 'right';
+  // on the 1/8″ grid, so the far-end value is exact
+  const v = flip
+    ? (Math.round(wallLength(op.wall, building) * 96) - Math.round(op.offset * 96) - Math.round(op.w * 96)) / 96
+    : op.offset;
+  return { value: v < 0 ? 0 : v, ref: SCHEDULE_REF[op.wall] || WALLS[op.wall].ref };
+}
+
+// ---- CRM seeding (window.SS_LAYOUT.seedFromCRM) ----
+// The CRM's Open Layout seeds this builder from the lead's starred / chosen
+// quote (src/lib/layoutFromQuote.js maps the quote program's openings into THIS
+// coordinate model: offset = feet from the wall's reference corner, WALLS.ref).
+// All keys are optional — an old-style seed ({ size, customer, address }) still
+// works exactly as before.
+function crmTweaks(d) {
+  const out = {};
+  if (d && d.size) {
+    const m = String(d.size).match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)(?:\s*[xX×]\s*(\d+(?:\.\d+)?))?/);
+    if (m) {
+      out.width = Number(m[1]); out.length = Number(m[2]);
+      if (m[3]) out.height = Number(m[3]);
+    }
+  }
+  const b = d && d.building;
+  if (b) {
+    ['width', 'length', 'height', 'wind', 'openLength'].forEach(k => {
+      if (b[k] != null && isFinite(Number(b[k]))) out[k] = Number(b[k]);
+    });
+    if (b.pitch) out.pitch = String(b.pitch);
+    if (b.trussOC) out.trussOC = Number(b.trussOC);
+    if (b.gauge) out.gauge = String(b.gauge);
+    if (b.legType && LEG_TYPES[b.legType]) out.legType = b.legType;
+    if (b.config) out.config = normalizeConfig({ config: b.config });
+    if (b.openEnd) out.openEnd = b.openEnd === 'back' ? 'back' : 'front';
+    if (b.gableSheet) out.gableSheet = b.gableSheet === 'gable' ? 'gable' : 'open';
+    if (out.config === 'enclosed') out.openLength = 0;
+  }
+  return out;
+}
+function crmOpenings(list) {
+  return (list || []).filter(o => o && OPENING_TYPES[o.type] && WALLS[o.wall]).map(o => makeOpening(o.type, o.wall, Number(o.offset) || 0, {
+    w: Number(o.w) || OPENING_TYPES[o.type].w,
+    h: Number(o.h) || OPENING_TYPES[o.type].h,
+    sill: Number(o.sill) || 0,
+    name: o.name || '',
+    note: o.note || '',
+  }));
+}
+function crmDocInfo(prev, d) {
+  const next = {
+    ...prev,
+    customer: d.customer || prev.customer,
+    address: d.address || prev.address,
+  };
+  if (d.quoteNo !== undefined) next.quoteNo = d.quoteNo || '';
+  if (d.mfr && COLOR_CATALOGS[d.mfr]) next.mfr = d.mfr;
+  if (d.finishes) next.finishes = { ...DEFAULT_FINISHES, ...(prev.finishes || {}), ...d.finishes };
+  if (Array.isArray(d.notes)) next.notes = d.notes.filter(Boolean).map(String);
+  return next;
+}
+
 Object.assign(window, {
+  crmTweaks, crmOpenings, crmDocInfo, scheduleOffset, SCHEDULE_REF,
   OPENING_TYPES, TYPE_ORDER, WALLS, WALL_ORDER,
   ftIn, ftInTight, sizeLabel, parseFeet, wallLength, makeOpening, newId, bumpIdsPast,
   DEFAULT_BUILDING, defaultOpenings,

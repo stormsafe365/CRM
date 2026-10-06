@@ -695,6 +695,14 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           toast(`Quote #${escHtml(original.quote_number)} could not be marked as replaced: ${escHtml(error.message)}`)
         }
       } catch (e) { origMark = 'failed'; console.warn('original not marked superseded', e) }
+      // The star (the lead's current quote, Open Layout) moves to the active order.
+      // Best effort: without migration 019 there is no starred column.
+      if (original.starred === true && cur.id) {
+        try {
+          const { error: s1 } = await supabase.from('quotes').update({ starred: false }).eq('id', original.id)
+          if (!s1) await supabase.from('quotes').update({ starred: true }).eq('id', cur.id)
+        } catch (e) { console.warn('star not moved', e) }
+      }
 
       // 4) Revised Contract from the held build (changes highlighted, the signed
       //    deposit shown as paid, additional deposit due, new balance).
