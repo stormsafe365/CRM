@@ -17,7 +17,7 @@ import { dirname, resolve } from 'node:path'
 import vm from 'node:vm'
 import {
   applyStar, buildingFromRaw, cleanLabel, elevToLayoutOpenings, finishKey, fmtFtIn, layoutOffset, leanToNotes,
-  legTypeFor, pickLayoutQuote, q8, quoteOptionLabel, seedFromQuote, sortStarredFirst, starSupported,
+  legTypeFor, loadCurrentQuote, pickLayoutQuote, q8, quoteOptionLabel, seedFromQuote, sortStarredFirst, starSupported,
 } from '../src/lib/layoutFromQuote.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -240,4 +240,55 @@ test('layout seed helpers: backward compatible size seed + full quote seed', () 
   // the old seed ({ size, customer, address }) leaves quote / finishes / notes alone
   const old = D.crmDocInfo(prev, { customer: 'X' })
   assert.equal(old.quoteNo, 'Q-OLD'); assert.equal(old.finishes.roof, 'galvalume'); assert.equal('notes' in old, false)
+})
+
+test('schedule offset names the same end as the quote spacing page, every wall', () => {
+  const D = loadLayoutData()
+  const building = { width: 30, length: 40 }
+  const ops = elevToLayoutOpenings(ELEV).openings
+  const want = { front: 'Left Eave', back: 'Right Eave', right: 'Front Gable', left: 'Back Gable' }
+  const byWall = { front: [], back: [], left: [], right: [] }
+  ops.forEach((o) => byWall[o.wall].push(o))
+  for (const k of Object.keys(byWall)) {
+    byWall[k].forEach((o, i) => {
+      const so = D.scheduleOffset(o, building)
+      assert.equal(Math.round(so.value * 96), Math.round(ELEV[k][i].x * 96), `${k} #${i} = program x`)
+      assert.equal(so.ref, want[k])
+    })
+  }
+  // the typed numbers come back as typed
+  assert.equal(D.ftInTight(D.scheduleOffset(byWall.back[0], building).value), '4′') // "4 From Right Eave"
+  assert.equal(D.ftInTight(D.scheduleOffset(byWall.right[0], building).value), '6′') // "6 From Front Gable"
+  assert.equal(D.scheduleOffset({ wall: 'divider', offset: 5, w: 10 }, building).ref, 'Left Eave')
+  // display only: the layout's own offset is untouched
+  assert.equal(byWall.back[0].offset, 23)
+})
+
+function fakeSb(rows, { noStar = false } = {}) {
+  return { from: () => {
+    const f = []; let cols = '*'; let lim = null; const ord = []
+    const q = {
+      select(c) { cols = c; return q }, eq(k, v) { f.push([k, v]); return q },
+      order(k, o) { ord.push([k, o.ascending !== false]); return q }, limit(n) { lim = n; return q },
+      then(res) {
+        if (noStar && (cols.includes('starred') || f.some(([k]) => k === 'starred'))) return Promise.resolve({ data: null, error: { message: 'column quotes.starred does not exist' } }).then(res)
+        let out = rows.filter((r) => f.every(([k, v]) => r[k] === v))
+        for (const [k, asc] of ord.slice().reverse()) out.sort((a, b) => (a[k] === b[k] ? 0 : ((a[k] < b[k]) === asc ? -1 : 1)))
+        if (lim) out = out.slice(0, lim)
+        return Promise.resolve({ data: out, error: null }).then(res)
+      },
+    }
+    return q
+  } }
+}
+test('lead summary Current Quote: starred, else latest; latest when the column is missing', async () => {
+  const rows = [
+    { client_id: 'c', quote_number: 'OLD', quote_date: '2026-09-01', created_at: '1', total_amount: 100, starred: true, deleted_at: null },
+    { client_id: 'c', quote_number: 'NEW', quote_date: '2026-10-01', created_at: '2', total_amount: 200, starred: false, deleted_at: null },
+  ]
+  assert.equal((await loadCurrentQuote(fakeSb(rows), 'c')).quote_number, 'OLD')
+  assert.equal((await loadCurrentQuote(fakeSb(rows.map((r) => ({ ...r, starred: false }))), 'c')).quote_number, 'NEW')
+  assert.equal((await loadCurrentQuote(fakeSb([{ ...rows[0], deleted_at: 'x' }, rows[1]]), 'c')).quote_number, 'NEW')
+  assert.equal((await loadCurrentQuote(fakeSb(rows, { noStar: true }), 'c')).quote_number, 'NEW')
+  assert.equal(await loadCurrentQuote(fakeSb([]), 'c'), null)
 })

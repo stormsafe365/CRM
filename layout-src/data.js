@@ -458,6 +458,25 @@ function defaultOpenings() {
   ];
 }
 
+// ---- opening schedule: offset named like the quote program (owner 10/6/26) ----
+// "Dialed in on every quote, contract, layout": the schedule's number is
+// measured from the same end the quote's spacing page uses — front gable and
+// partition from the left eave corner, back gable from the RIGHT eave corner
+// (seen from behind), right eave from the FRONT gable, left eave from the back
+// gable. Display only: `offset` (and the plan) keep the WALLS.ref corners.
+const SCHEDULE_REF = {
+  front: 'Left Eave', divider: 'Left Eave', back: 'Right Eave',
+  right: 'Front Gable', left: 'Back Gable',
+};
+function scheduleOffset(op, building) {
+  const flip = op.wall === 'back' || op.wall === 'right';
+  // on the 1/8″ grid, so the far-end value is exact
+  const v = flip
+    ? (Math.round(wallLength(op.wall, building) * 96) - Math.round(op.offset * 96) - Math.round(op.w * 96)) / 96
+    : op.offset;
+  return { value: v < 0 ? 0 : v, ref: SCHEDULE_REF[op.wall] || WALLS[op.wall].ref };
+}
+
 // ---- CRM seeding (window.SS_LAYOUT.seedFromCRM) ----
 // The CRM's Open Layout seeds this builder from the lead's starred / chosen
 // quote (src/lib/layoutFromQuote.js maps the quote program's openings into THIS
@@ -512,7 +531,7 @@ function crmDocInfo(prev, d) {
 }
 
 Object.assign(window, {
-  crmTweaks, crmOpenings, crmDocInfo,
+  crmTweaks, crmOpenings, crmDocInfo, scheduleOffset, SCHEDULE_REF,
   OPENING_TYPES, TYPE_ORDER, WALLS, WALL_ORDER,
   ftIn, ftInTight, sizeLabel, parseFeet, wallLength, makeOpening, newId, bumpIdsPast,
   DEFAULT_BUILDING, defaultOpenings,

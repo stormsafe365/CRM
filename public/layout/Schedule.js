@@ -1,10 +1,8 @@
 function Schedule({ building, openings, tagMap }) {
   const rows = openings.slice().sort((a, b) => tagMap[a.id] - tagMap[b.id]);
   function offsetText(op) {
-    const wl = wallLength(op.wall, building);
-    const far = wl - op.offset - op.w;
-    const refCorner = WALLS[op.wall].ref;
-    return { near: ftInTight(op.offset), far: ftInTight(far < 0 ? 0 : far), ref: refCorner };
+    const s = scheduleOffset(op, building);
+    return { near: ftInTight(s.value), ref: s.ref };
   }
   if (!rows.length) {
     return /* @__PURE__ */ React.createElement("table", { className: "sched" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "tagcell" }, "#"), /* @__PURE__ */ React.createElement("th", null, "Type"), /* @__PURE__ */ React.createElement("th", null, "Wall"), /* @__PURE__ */ React.createElement("th", null, "Size (W \xD7 H)"), /* @__PURE__ */ React.createElement("th", null, "Offset from corner"), /* @__PURE__ */ React.createElement("th", null, "Notes"))), /* @__PURE__ */ React.createElement("tbody", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: "6", style: { textAlign: "center", color: "var(--fg-3)", padding: "20px" } }, "No openings placed yet."))), notesFoot(building));

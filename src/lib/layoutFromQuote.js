@@ -304,3 +304,27 @@ export function rawFromPayload(payload) {
     colors: { cr: { name: card.roofColor || '', hex: f.cr }, cw: { name: card.wallColor || '', hex: f.cw }, ct: { name: '', hex: f.ct }, cwn: { name: '', hex: f.cwn } },
   }
 }
+
+// ── lead page summary "Current Quote" (owner 10/6/26) ─────────────────────
+// The starred quote when the lead has one, else the latest (as before). If
+// quotes.starred doesn't exist yet (migration 019 not run) the first query
+// errors and the latest-quote query runs exactly as it always did.
+export const CURRENT_QUOTE_COLS = 'total_amount, manufacturer, quote_number, status'
+export async function loadCurrentQuote(sb, clientId) {
+  try {
+    const { data, error } = await sb.from('quotes')
+      .select(CURRENT_QUOTE_COLS + ', starred, deleted_at')
+      .eq('client_id', clientId).eq('starred', true).limit(5)
+    if (!error) {
+      const s = (data || []).find((q) => !q.deleted_at)
+      if (s) return s
+    }
+  } catch { /* fall back to the latest quote */ }
+  const { data } = await sb.from('quotes')
+    .select(CURRENT_QUOTE_COLS)
+    .eq('client_id', clientId)
+    .order('quote_date', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+  return (data ?? [])[0] ?? null
+}

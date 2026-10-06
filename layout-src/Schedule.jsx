@@ -6,11 +6,11 @@ function Schedule({ building, openings, tagMap }) {
   // sort by tag number for stable reading order
   const rows = openings.slice().sort((a, b) => tagMap[a.id] - tagMap[b.id]);
 
+  // The number names the SAME end as the quote program's spacing page
+  // (scheduleOffset in data.js); the plan's own reference corners are unchanged.
   function offsetText(op) {
-    const wl = wallLength(op.wall, building);
-    const far = wl - op.offset - op.w;
-    const refCorner = WALLS[op.wall].ref;
-    return { near: ftInTight(op.offset), far: ftInTight(far < 0 ? 0 : far), ref: refCorner };
+    const s = scheduleOffset(op, building);
+    return { near: ftInTight(s.value), ref: s.ref };
   }
 
   if (!rows.length) {
