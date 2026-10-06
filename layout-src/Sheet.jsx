@@ -5,7 +5,7 @@
 
 function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrames = true,
                  showElevation, elevWall, selectedId, onSelect, onMove,
-                 placeType, onPlace }) {
+                 placeType, onPlace, revisionMode }) {
   const blueprint = style === 'blueprint';
   const today = docInfo.date && docInfo.date.trim() ? docInfo.date.trim() : '';
   const has = (s) => s && String(s).trim().length > 0;
@@ -19,7 +19,8 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
           <div className="tagline">Hurricane-Rated Steel Buildings</div>
         </div>
         <div className="head-right">
-          <div className="masthead">Building Approval Sheet</div>
+          <div className="masthead">{revisionMode ? 'Revised Layout Approval' : 'Building Approval Sheet'}</div>
+          {revisionMode && <div className="rev-badge-sheet">REVISION</div>}
         </div>
       </div>
 
@@ -49,6 +50,15 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
           </div>
         )}
       </div>
+
+      {/* ---------- revision info (only in revision mode) ---------- */}
+      {revisionMode && (
+        <div className="rev-strip">
+          <div className="rev-strip-cell"><span className="rev-k">Revision #</span><span className="rev-v-line" /></div>
+          <div className="rev-strip-cell"><span className="rev-k">Original Approval Date</span><span className="rev-v-line" /></div>
+          <div className="rev-strip-cell"><span className="rev-k">Revision Date</span><span className="rev-v-line" /></div>
+        </div>
+      )}
 
       {/* ---------- building spec ---------- */}
       <div className="spec-row">
@@ -142,11 +152,28 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
       </div>
       <Schedule building={building} openings={openings} tagMap={tagMap} />
 
+      {/* ---------- changes summary (revision mode) ---------- */}
+      {revisionMode && (
+        <div className="rev-changes">
+          <h2 className="rev-changes-title">Summary of Layout Changes</h2>
+          <div className="rev-changes-lines">
+            <div className="rev-ch-line" /><div className="rev-ch-line" /><div className="rev-ch-line" />
+            <div className="rev-ch-line" /><div className="rev-ch-line" />
+          </div>
+        </div>
+      )}
+
       {/* ---------- sign-off ---------- */}
       <div className="signoff">
         <div className="ack">
-          <strong>Customer approval.</strong> I have reviewed the openings shown above — type, size, wall, and
-          position — and confirm they are correct. <strong>Fabrication begins on this layout</strong>.
+          {revisionMode ? (
+            <><strong>Sign-off on revised layout.</strong> I have reviewed the revised opening locations, sizes,
+            and layout changes described above. I approve this revised layout for production.
+            Changes after production begins may incur additional cost and delay.</>
+          ) : (
+            <><strong>Customer approval.</strong> I have reviewed the openings shown above — type, size, wall, and
+            position — and confirm they are correct. <strong>Fabrication begins on this layout</strong>.</>
+          )}
         </div>
         <div className="sign-lines">
           <div className="sign-line">
@@ -157,6 +184,12 @@ function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrame
             <div className="ln" />
             <div className="cap">Date</div>
           </div>
+          {revisionMode && (
+            <div className="sign-line">
+              <div className="ln" />
+              <div className="cap">StormSafe rep signature / date</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
