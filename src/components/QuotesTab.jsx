@@ -11,6 +11,7 @@ import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag } from './ReplacedBadge'
+import { nextRevNo } from '../lib/contractDocs'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -20,7 +21,6 @@ import RevisionModal from './RevisionModal'
 import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
 import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
 import { StarBadge, StarButton } from './QuoteStar'
-import { nextRevNo } from '../lib/contractDocs'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
 
