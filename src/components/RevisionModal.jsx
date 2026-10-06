@@ -66,10 +66,16 @@ const isoToday = () => {
 
 const fmt = (n) => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export default function RevisionModal({ client, quote, onClose, onApplyToBuild }) {
+// onUseAsRevision (Use as revision → Manual, 10/6/26): the build already has the
+// changes (a duplicate the rep edited) — the rep types the change lines and
+// "Create revised contract" hands them back; nothing is applied to a build.
+// signed / revisionPreview (Use as revision): the signed contract ({total, deposit})
+// and the price engine's exact revised totals for a subtotal change, so the
+// summary below is exactly what the documents will print.
+export default function RevisionModal({ client, quote, onClose, onApplyToBuild, onUseAsRevision, revisingWith = null, signed = null, revisionPreview = null }) {
   const [revNo, setRevNo] = useState('1')
   const [date, setDate] = useState(isoToday())
-  const [original, setOriginal] = useState(quote?.total_amount != null ? String(quote.total_amount) : '')
+  const [original, setOriginal] = useState(signed ? String(signed.total) : quote?.total_amount != null ? String(quote.total_amount) : '')
   const [rows, setRows] = useState([emptyRow()])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState('')
@@ -82,7 +88,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
   const taxPct = Number(qf.tax) || 0
   const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
   const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
-  const origDeposit = Number(quote?.deposit_amount) || 0
+  const origDeposit = signed ? (Number(signed.deposit) || 0) : (Number(quote?.deposit_amount) || 0)
   const honored = honoredLegacyOrder(quote)
 
   // Live engine pricing: load the actual quote-builder in a hidden iframe and
@@ -117,6 +123,26 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
   // Additions = positive adjustments; credits = negative ones. Revised price
   // tracks live so what the rep sees is exactly what prints.
   const totals = useMemo(() => {
+    if (revisionPreview && signed) {
+      // Exact: the change amounts go into the building subtotal (list prices as
+      // typed; final amounts taken back through the discount / tax), and the
+      // price engine's money chain gives the revised totals.
+      let dSub = 0
+      for (const r of rows) {
+        const a = Number(r.amount)
+        if (!rowFilled(r) || !isFinite(a)) continue
+        dSub += amtMode === 'list' || !(discPct || taxPct) ? Math.round(a * 100) / 100 : Math.round((a / (listFactor || 1)) * 100) / 100
+      }
+      const p = revisionPreview(Math.round(dSub * 100) / 100)
+      if (p) {
+        const orig = Number(signed.total) || 0
+        const net = p.total - orig
+        return {
+          additions: Math.max(net, 0), credits: Math.max(-net, 0), revised: p.total, net,
+          newDeposit: p.deposit, depDiff: p.deposit - origDeposit, newBalance: p.balance, balDiff: p.balance - (orig - origDeposit),
+        }
+      }
+    }
     let additions = 0, credits = 0
     const fac = amtMode === 'list' ? listFactor : 1
     for (const r of rows) {
@@ -136,11 +162,19 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
     const newBalance = newDeposit != null ? revised - newDeposit : null
     const balDiff = newBalance != null ? newBalance - origBalance : null
     return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff }
-  }, [rows, original, amtMode, listFactor, origDeposit])
+  }, [rows, original, amtMode, listFactor, origDeposit, revisionPreview, signed, discPct, taxPct])
 
   async function generate(applyAfter) {
     const filled = rows.filter(rowFilled).map((r) => ({ desc: rowDesc(r), kind: rowKind(r), amount: r.amount }))
     if (!filled.length) { toast('Describe at least one change first.'); return }
+    if (onUseAsRevision) {
+      onUseAsRevision({
+        rows: rows.filter(rowFilled).map((r) => ({ ...r, printDesc: rowDesc(r), printKind: rowKind(r) })),
+        revNo: revNo.trim() || '1', date, original: Number(original) || 0, note: note.trim(),
+        amtMode: (discPct || taxPct) ? amtMode : 'final', listFactor,
+      })
+      return
+    }
     if (applyAfter && onApplyToBuild) {
       // Nothing renders yet — the changes go into the builder first, the rep
       // places them, and Finish Revision generates BOTH documents from the
@@ -198,7 +232,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
   return createPortal(
     <div
       role="dialog" aria-modal="true" aria-label="Revision Order"
-      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(4,9,16,.62)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ position: 'fixed', inset: 0, zIndex: onUseAsRevision ? 1250 : 300, background: 'rgba(4,9,16,.62)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}
     >
       <div style={{
@@ -206,13 +240,15 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
         background: 'var(--card, #0D1929)', border: '1px solid var(--line, #294059)',
         borderRadius: 14, padding: 18, boxShadow: '0 18px 60px rgba(0,0,0,.5)',
       }}>
-        <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>Revision Order</h2>
+        <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>{onUseAsRevision ? 'Use as revision — type the changes' : 'Revision Order'}</h2>
         <p style={{ margin: '0 0 6px', color: 'var(--fg-3, #8598AC)', fontSize: 13 }}>
           {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}
           {quote?.total_amount ? ` · Contract $${Number(quote.total_amount).toLocaleString()}` : ''}
         </p>
         <p style={{ margin: '0 0 2px', color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }}>
-          Type each change below — the finished, filled-in order saves to Documents › Revisions and opens ready to sign.
+          {onUseAsRevision
+            ? <>Revising this signed quote with {revisingWith ? <>quote #{revisingWith}</> : 'the open quote'}’s build (the changes are already made there). Type each change and its price — the Revision Order and the Revised Contract are generated from that build at the signed price + these changes.</>
+            : 'Type each change below — the finished, filled-in order saves to Documents › Revisions and opens ready to sign.'}
         </p>
 
         <div style={{ display: 'flex', gap: 10 }}>
@@ -226,10 +262,10 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
           </div>
           <div style={{ flex: 1 }}>
             <label style={LBL}>Original Contract ($)</label>
-            <input style={FIELD} type="number" step="0.01" value={original} onChange={(e) => setOriginal(e.target.value)} />
+            <input style={FIELD} type="number" step="0.01" value={original} readOnly={!!signed} title={signed ? 'The signed contract price (from the signed quote)' : undefined} onChange={(e) => setOriginal(e.target.value)} />
           </div>
         </div>
-        {honored && (
+        {honored && !signed && (
           <p style={{ margin: '6px 0 0', color: 'var(--warning, #fbbf24)', fontSize: 12 }}>
             This order was signed with Honor Signed Pricing, so the card total is not the signed price. Apply to Building → Finish Revision
             uses the signed contract&apos;s price as the original on both the Revision Order and the Revised Contract. For “Revision Order only”, type the signed contract total here.
@@ -367,10 +403,16 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild }
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
           <button className="btn-secondary" disabled={!!busy} onClick={onClose}>Cancel</button>
-          <button className="btn-secondary" disabled={!!busy} onClick={() => generate(false)}>
-            {busy || 'Revision Order only'}
-          </button>
-          {onApplyToBuild && (
+          {onUseAsRevision ? (
+            <button className="btn-primary" disabled={!!busy} onClick={() => generate(false)} style={{ fontWeight: 800 }} title="Holds the open quote at the signed price + these changes, saves the Revision Order and generates the Revised Contract">
+              Create revised contract →
+            </button>
+          ) : (
+            <button className="btn-secondary" disabled={!!busy} onClick={() => generate(false)}>
+              {busy || 'Revision Order only'}
+            </button>
+          )}
+          {onApplyToBuild && !onUseAsRevision && (
             <button className="btn-primary" disabled={!!busy} onClick={() => generate(true)} style={{ fontWeight: 800 }} title="Opens the builder with these changes applied — place them, then Finish Revision saves the Revision Order + Revised Contract from the final build">
               {busy || 'Apply to Building →'}
             </button>

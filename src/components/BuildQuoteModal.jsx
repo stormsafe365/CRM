@@ -25,9 +25,13 @@ import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { supabase } from '../lib/supabase'
 import {
-  autoDocGate, fmtMoney, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
+  autoDocGate, fmtMoney, isSold, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
   REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
 } from '../lib/priceLockCrm'
+import UseAsRevisionModal from './UseAsRevisionModal'
+import RevisionModal from './RevisionModal'
+import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
+import { r2, revisionMoney } from '../lib/revisionDiff'
 
 const SRC = '/build/build.html'
 
@@ -73,6 +77,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const [blocked, setBlocked] = useState(null)     // {kind, reason}: an automatic document that did not run
   const [ask, setAsk] = useState(null)             // the confirm dialog's writeCheck()
   const askResolveRef = useRef(null)
+  const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
+  const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
+  const uarOpenRef = useRef(() => {})
 
   const revisionRows = revisionChanges ? (revisionChanges.rows || revisionChanges) : null
   const hasRevisionRows = !!(revisionRows && revisionRows.length)
@@ -538,6 +545,173 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     try { pg.printExecutedCopy() } catch (e) { toast('Could not open the executed copy: ' + escHtml(e.message || e)) }
   }
 
+  // ── Use as revision (owner 10/6/26) ──
+  // The program's USE AS REVISION button (it replaced REVISION FORM): THIS quote —
+  // usually a duplicate of a signed quote with the changes already made — becomes
+  // the revised contract for the signed quote. Pricing rule (same as the Revision
+  // Order flow): everything that did not change keeps the SIGNED price; only the
+  // changes are priced (today's prices, by the program — lib/revisionEngine).
+  function openUseAsRevision() {
+    const pg = getProgramWindow()
+    if (!pg) { toast('The builder is still loading — give it a moment and try again.'); return }
+    if (status || savingRef.current) return
+    if (!client?.id) { toast('Use as Revision works on a lead’s quote — open this quote from the lead’s Quotes.'); return }
+    if (!initialQuote?.id) { toast('Save this quote to the lead first (Save to Lead), then Use as Revision.'); return }
+    setUar(true)
+  }
+  uarOpenRef.current = openUseAsRevision
+
+  // Route the program's button to the CRM (capture phase, like Save to Lead /
+  // Generate Contract), and offer window.__ssUseAsRevision, which the program's
+  // own useAsRevision() looks for. Without the CRM the program opens its
+  // Revision Form instead (standalone 3D Builder).
+  useEffect(() => {
+    const hook = () => uarOpenRef.current()
+    window.__ssUseAsRevision = hook
+    const tick = () => {
+      const pg = getProgramWindow()
+      if (!pg || !pg.document) return
+      const btns = [...pg.document.querySelectorAll('button')].filter((b) => /useAsRevision|printRevisionForm/.test(b.getAttribute('onclick') || ''))
+      btns.forEach((b) => {
+        if (b.dataset.ssUarHooked === '1') return
+        b.dataset.ssUarHooked = '1'
+        if (/revision form/i.test(b.textContent || '')) b.textContent = 'USE AS REVISION' // an older program copy
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); uarOpenRef.current() }, true)
+      })
+    }
+    const t = setInterval(tick, 600)
+    return () => { clearInterval(t); if (window.__ssUseAsRevision === hook) delete window.__ssUseAsRevision }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Manual: the rep typed the change lines (RevisionModal). Amounts typed as
+  // list prices are subtotal dollars; "final" amounts are taken back through the
+  // order's discount / tax so the revised total lands on them (the adjustment
+  // line carries any cents of rounding).
+  function finishUseAsRevisionManual(rv) {
+    const m = uarManual
+    if (!m) return
+    const fac = Number(rv.listFactor) || 1
+    const lines = (rv.rows || []).map((row, i) => {
+      const typed = Number(row.amount) || 0
+      return { id: 'm' + i, kind: 'manual', desc: row.printDesc, printKind: row.printKind, amount: rv.amtMode === 'list' ? r2(typed) : r2(typed / fac), printAmount: r2(typed) }
+    })
+    if (rv.original && Math.abs(Number(rv.original) - m.info.signed.total) >= 0.005) {
+      toast(`Original contract: ${fmtMoney(m.info.signed.total)} — the signed contract’s price (the form had ${fmtMoney(Number(rv.original))}).`)
+    }
+    finishUseAsRevision({
+      original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
+      origDims: m.info.origDims, newItems: m.info.newItems, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, revNo: rv.revNo, date: rv.date, note: rv.note,
+    })
+  }
+
+  // Create the revised contract: hold the builder at signed price + changes,
+  // save the Revision Order (Documents › Revisions), save this quote as the
+  // active order (linked to the signed one), mark the signed quote revised, then
+  // generate the Revised Contract from the held build. Nothing is written unless
+  // the builder holds the revised totals to the cent.
+  async function finishUseAsRevision(r) {
+    const pg = getProgramWindow()
+    if (!pg || savingRef.current) return
+    const { original } = r
+    const cur = quoteRef.current || initialQuote || {}
+    const orderStatus = isSold(original.status) ? original.status : (cur.status || 'draft')
+    savingRef.current = true
+    setUar(false); setUarManual(null)
+    let money
+    try {
+      setStatus('Holding the revised price…')
+      money = r.money || revisionMoney({ signed: r.signed, lines: r.lines, forward: r.forward })
+      const held = holdBuilderAt({
+        pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: r.signed,
+        origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday,
+      })
+      refreshBanner()
+      if (!held.ok) { toast(`Revised contract not created — ${escHtml(held.reason)} Nothing was saved.`); return }
+      try {
+        if (pg.PriceLock && typeof pg.PriceLock.contractBlocked === 'function' && pg.PriceLock.contractBlocked()) {
+          try { pg.PriceLock.showGate() } catch { /* ignore */ }
+          toast('Sold order: decide on the rule changes in the builder’s notice (above the Price Breakdown), then Use as Revision again. Nothing was saved.')
+          return
+        }
+      } catch { /* older builder: no gate */ }
+
+      // 1) Revision Order — original contract, every change line, the adjustment
+      //    line (discount / tax) so the rows add up to the net change exactly.
+      setStatus('Saving revision order…')
+      const rows = (r.lines || []).filter((l) => l.include !== false).map((l) => ({ desc: l.printDesc || l.desc, kind: l.printKind || 'Modify', amount: l.printAmount != null ? l.printAmount : l.amount }))
+      const adj = revisionReconcile(rows, money.net)
+      if (adj) rows.push({ desc: REVISION_ADJ_LABEL, kind: 'Modify', amount: adj })
+      const num = makeRevisionOrderNumber(original)
+      const noteTxt = [r.note, `Revised order: quote #${cur.quote_number || '—'} (revises signed quote #${original.quote_number || '—'}).`].filter(Boolean).join(' ')
+      const html = buildRevisionHtml({
+        client, quote: original,
+        revision: {
+          number: num, revNo: r.revNo || '1', date: r.date, rows, original: r.signed.total,
+          additions: money.additions, credits: money.credits, revised: money.total,
+          origDeposit: r.signed.deposit || null, newDeposit: money.deposit, newBalance: money.balance, note: noteTxt,
+        },
+      })
+      try {
+        const blob = await renderQuotePdf(html)
+        await uploadClientDocBlob(client.id, 'revisions', blob, `${num}.pdf`, 'application/pdf')
+        window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } }))
+      } catch (e) {
+        console.warn('revision order upload failed', e)
+        toast('The Revision Order PDF could not be saved to Documents: ' + escHtml(e.message || e))
+      }
+
+      // 2) This quote = the active order at the revised price, linked to the signed quote.
+      setStatus('Updating the quote…')
+      const at = new Date().toISOString()
+      const upd = await harvestRevisionUpdate({ pg, buildWin: iframeRef.current?.contentWindow, initialQuote: cur, setStatus })
+      if (Math.abs(Number(upd.total_amount) - money.total) >= 0.005) console.warn('revised total on the card differs from the revision', upd.total_amount, money.total)
+      upd.status = orderStatus
+      upd.parent_quote_id = original.id
+      upd.payload_json = {
+        ...upd.payload_json,
+        revisionOf: {
+          id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit,
+          revised_total: money.total, revision_order: num, rev_no: r.revNo || '1', mode: r.mode, at,
+        },
+      }
+      await onSave(upd)
+      quoteRef.current = mergeSaved(cur, upd)
+
+      // 3) The signed quote: marked revised and linked to this one.
+      const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at }
+      const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
+      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...prev, link] }
+      let origMark = 'revised'
+      try {
+        const { error } = await supabase.from('quotes').update({ status: 'revised', payload_json: origPayload }).eq('id', original.id)
+        if (error) {
+          console.warn('revised status not saved', error)
+          const { error: e2 } = await supabase.from('quotes').update({ payload_json: origPayload }).eq('id', original.id)
+          origMark = e2 ? 'failed' : 'linked'
+          toast(e2
+            ? `Quote #${escHtml(original.quote_number)} could not be marked revised: ${escHtml(e2.message)}`
+            : `Linked to #${escHtml(original.quote_number)}. The REVISED badge needs the one-time database update (migration 018) — it keeps its current status.`)
+        }
+      } catch (e) { origMark = 'failed'; console.warn('original not marked revised', e) }
+
+      // 4) Revised Contract from the held build (changes highlighted, the signed
+      //    deposit shown as paid, additional deposit due, new balance).
+      try { pg._rvForce = true } catch { /* ignore */ }
+      try { await saveContractThenPrint(pg, { confirmed: true }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
+      toast(`Revised contract created at ${fmtMoney(money.total)} (signed ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'revised' ? `#${escHtml(original.quote_number)} is marked revised; this` : origMark === 'linked' ? `#${escHtml(original.quote_number)} is linked (not marked revised — migration 018 needed); this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
+    } catch (e) {
+      console.warn('use as revision failed', e)
+      toast('Use as Revision failed: ' + escHtml(e.message || e))
+    } finally {
+      setStatus('')
+      savingRef.current = false
+      refreshBanner()
+    }
+  }
+
   // Hook the program's GENERATE CONTRACT button so it also saves to the Doc Hub.
   // Capture-phase + stopImmediatePropagation blocks the inline onclick so it
   // doesn't also fire (which would double-open and race the silent capture).
@@ -616,6 +790,27 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
+      {uar && (
+        <UseAsRevisionModal
+          client={client}
+          currentQuote={quoteRef.current || initialQuote}
+          getProgramWindow={getProgramWindow}
+          onClose={() => setUar(false)}
+          onManual={(original, info) => { setUar(false); setUarManual({ original, info }) }}
+          onFinish={finishUseAsRevision}
+        />
+      )}
+      {uarManual && (
+        <RevisionModal
+          client={client}
+          quote={uarManual.original}
+          revisingWith={(quoteRef.current || initialQuote)?.quote_number || null}
+          onClose={() => setUarManual(null)}
+          onUseAsRevision={finishUseAsRevisionManual}
+          signed={uarManual.info.signed}
+          revisionPreview={(dSub) => { try { const m = uarManual.info.forward(r2(Number(uarManual.info.signed.sub) + dSub)); return { total: r2(m.adjTot), deposit: r2(m.dep), balance: r2(m.bal) } } catch { return null } }}
+        />
+      )}
     </div>
   )
 }

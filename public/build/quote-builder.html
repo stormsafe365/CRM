@@ -952,7 +952,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
     <button class="sbtn" type="button" onclick="printExecutedCopy()" style="background:#15803d;color:#fff" title="Watermarked copy for fully signed orders with deposit collected — acts as the bill of sale">EXECUTED COPY — DEPOSIT PAID</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
-    <button class="sbtn" type="button" onclick="printRevisionForm()" style="background:#fbbf24;color:#080f14">REVISION FORM</button>
+    <button class="sbtn" type="button" onclick="useAsRevision()" style="background:#fbbf24;color:#080f14" title="Turn this quote (changes already made) into the revised contract for a signed order">USE AS REVISION</button>
     <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#fbbf24;color:#080f14">REVISED LAYOUT</button>
     <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
   </div>
@@ -10791,7 +10791,17 @@ function saveQuote(){
   toast('✓ Quote saved: '+filename, 'ok');
 }
 
-function printRevisionForm(){
+// USE AS REVISION (owner 10/6/26): this quote — a duplicate that already has the
+// changes made — becomes the revised contract for a signed order. Inside the CRM
+// the CRM takes over (it hooks this button, and offers window.__ssUseAsRevision);
+// without a CRM (standalone 3D Builder) it opens the Revision Form, as before.
+function useAsRevision(){
+  var h=null;
+  try{ var w=window; for(var i=0;i<4&&w;i++){ if(typeof w.__ssUseAsRevision==='function'){ h=w.__ssUseAsRevision; break; } if(w.parent===w) break; w=w.parent; } }catch(e){ h=null; }
+  if(h){ try{ h(); return; }catch(e){ console.warn('CRM Use as Revision failed - opening the Revision Form', e); } }
+  printRevisionForm(true);
+}
+function printRevisionForm(fromUse){
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
   // Auto mode: an ordered quote was reopened (as-ordered totals stashed) and the
   // build has since changed - use the engine's own repricing for the summary.
@@ -10952,7 +10962,7 @@ function printRevisionForm(){
   html+='<div class="sig"><div class="line"></div><div class="lab">Date</div></div>';
   html+='</div></div>';
   html+='<div class="rv-toolbar"><button onclick="window.print()">PRINT / SAVE PDF</button></div>';
-  html+='<div class="rv-hint">Type into the underlined fields — the totals and deposit fill in automatically — then Print / Save PDF.</div>';
+  html+='<div class="rv-hint">'+(fromUse===true?'<b style="color:#fbbf24">Use as Revision</b> — no CRM connected, so fill in this Revision Order here. ':'')+'Type into the underlined fields — the totals and deposit fill in automatically — then Print / Save PDF.</div>';
   html+='<scr'+'ipt>var RV_AUTO='+JSON.stringify(_rvAuto)+';function rvCalc(){function f(n){return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}if(RV_AUTO){var net=RV_AUTO.curTot-RV_AUTO.origTot;document.getElementById("rv-add").textContent="$ "+f(Math.max(net,0));document.getElementById("rv-cred").textContent="$ "+f(Math.max(-net,0));document.getElementById("rv-total").textContent="$ "+f(RV_AUTO.curTot);document.getElementById("rv-depadd").textContent="$ "+f(Math.max(0,RV_AUTO.curDep-RV_AUTO.origDep));return;}var add=0,cred=0;document.querySelectorAll(".rv-amt").forEach(function(i){var v=parseFloat(i.value);if(isNaN(v))return;if(v>=0)add+=v;else cred+=-v;});document.getElementById("rv-add").textContent="$ "+f(add);document.getElementById("rv-cred").textContent="$ "+f(cred);var o=parseFloat(document.getElementById("rv-orig").value);var rt=document.getElementById("rv-total");if(!isNaN(o)){rt.textContent="$ "+f(o+add-cred);}else{rt.textContent=(add||cred)?((add>=cred?"+ $ ":"− $ ")+f(Math.abs(add-cred))+" vs original"):"$ —";}var d=parseFloat(document.getElementById("rv-dep").value);var da=document.getElementById("rv-depadd");if(!isNaN(d)&&!isNaN(o)&&o>0){da.textContent="$ "+f(Math.max(0,(add-cred)*(d/o)));}else{da.textContent="$ 0.00";}}if(RV_AUTO){document.getElementById("rv-orig").value=RV_AUTO.origTot;document.getElementById("rv-dep").value=RV_AUTO.origDep;document.getElementById("rv-autonote").style.display="block";}rvCalc();</scr'+'ipt>';
   html+='</div></body></html>';
   pwin.document.write(html);
