@@ -13,6 +13,7 @@ import vm from 'node:vm'
 import {
   e8, fmtFtIn, chain, chainRows, frameX, elevationSpecs, leanToSpecs, ltOpeningPlan, ltRect, ltWallH,
   elevLayout, paginate, trussFromFront,
+  offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, parseLtId, setLtOpeningX, getLtOpening, ltWallLen,
 } from '../layout-src/sheetGeom.js'
 import { layoutOffset, fmtFtIn as crmFmt, sheetGeomFromRaw, leanToNotes, ltOpeningText } from '../src/lib/layoutFromQuote.js'
 
@@ -270,4 +271,49 @@ test('sheetGeomFromRaw: only for the quote\'s own size; leanToNotes print the re
   assert.match(note, /1× Window 2′6″×2′6″ \(outer wall, position TBD\)/)
   assert.ok(!/6x6/.test(note), 'never the stale size field')
   assert.equal(ltOpeningText({ qty: 2, label: 'Window', w: 2.5, h: 2.5, loc: 'front', xs: [1, 5] }, 'Front Gable'), '2× Window 2′6″×2′6″ (right-eave end wall)')
+})
+
+// ── Edit view (drag on the plan / elevations, arrow keys) ───────────────────
+test('offsetFromFrameX is the inverse of frameX on every wall (drag on an elevation lands exactly)', () => {
+  const W = 30, L = 80
+  for (const wall of ['front', 'back', 'left', 'right', 'divider']) {
+    for (let k = 0; k < 200; k++) {
+      const w = q(1 + (k * 3.7) % 10), off = q((k * 11.13) % ((wall === 'left' || wall === 'right' ? L : W) - w))
+      const x = frameX({ wall, offset: off, w }, W, L)
+      assert.equal(e8(offsetFromFrameX(wall, x, w, W, L)), e8(off), `${wall} ${off}`)
+    }
+  }
+})
+test('snapAlong: edges / centre snap, frame lines pull the centre only, Alt = free 1″, kept on the wall', () => {
+  const lines = wallSnapLines(50, [{ x: 20, w: 3 }])
+  assert.deepEqual(snapAlong(19.8 - 3, 3, 50, { lines, snap: 0.5 }), { x: 17, guide: 20 }) // right edge to the neighbour's left edge
+  assert.equal(snapAlong(10.9, 2, 50, { lines: [], centerLines: [12], snap: 0.5 }).x, 11) // centre onto a frame line
+  assert.equal(snapAlong(10.4, 2, 50, { lines: [], centerLines: [12], snap: 0.5 }).x, 10 + 5 / 12) // too far for a frame line: 1″
+  assert.equal(snapAlong(7.04, 3, 50, { lines, snap: 0.5, free: true }).x, 7) // free: nearest inch
+  assert.equal(snapAlong(-4, 3, 50, { lines }).x, 0)
+  assert.equal(snapAlong(60, 3, 50, { lines }).x, 47)
+})
+test('lean-to openings: ids, program-frame moves (clamped to the wall, 1/8″ grid), mirrored outer walls', () => {
+  assert.deepEqual(parseLtId('lt1-2-0'), { n: 1, oi: 2, i: 0 })
+  assert.equal(parseLtId('op123'), null)
+  const g2 = setLtOpeningX(GEOM, { n: 1, oi: 0, i: 0 }, 30.004)
+  assert.equal(getLtOpening(g2, { n: 1, oi: 0, i: 0 }).x, 30)
+  assert.equal(GEOM.leanTos[0].openings[0].xs[0], 6, 'pure: the old geom is unchanged')
+  assert.equal(getLtOpening(setLtOpeningX(GEOM, { n: 1, oi: 0, i: 0 }, 99), { n: 1, oi: 0, i: 0 }).x, 42, 'kept on the 50′ wall (8′ door)')
+  assert.equal(getLtOpening(setLtOpeningX(GEOM, { n: 1, oi: 1, i: 0 }, 11), { n: 1, oi: 1, i: 0 }).x, 9, 'partition: 12′ bent, 3′ door')
+  assert.equal(setLtOpeningX(GEOM, { n: 1, oi: 2, i: 0 }, 3), GEOM, 'no program spot (TBD): not movable')
+  assert.equal(ltWallLen(LT, 'outer'), 50); assert.equal(ltWallLen(LT, 'back'), 12)
+  // the left-eave lean-to's outer wall is drawn mirrored: drawing x <-> program x
+  const outer = leanToSpecs(LT, GEOM.truss, 4)[0]
+  const it = outer.items[0]
+  assert.deepEqual(it.lt, { n: 1, oi: 0, i: 0, run: 50, mirror: true })
+  assert.equal(ltDrawToProg(it.lt, it.x, it.w), 6)
+  assert.equal(ltDrawToProg(it.lt, 0, 8), 42)
+})
+test('edit view: every main wall is drawn (to drag / place on), lean-to walls only with openings', () => {
+  const specs = elevationSpecs(B, OPS, GEOM, {}, { all: true })
+  assert.deepEqual(specs.map((s) => s.key), ['front', 'back', 'right', 'left', 'lt1-outer', 'lt1-partition'])
+  assert.ok(specs.slice(0, 4).every((s) => s.wall === s.key))
+  const gch = elevationSpecs({ ...B, config: 'hybrid', openEnd: 'front', openLength: 20 }, [], null, {}, { all: true })
+  assert.deepEqual(gch.map((s) => s.key), ['back', 'divider', 'right', 'left'], 'the open carport front is not a wall')
 })

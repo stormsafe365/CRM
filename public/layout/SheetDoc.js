@@ -102,7 +102,7 @@
     return { z0: L + x, z1: L + x + w, x0: at, x1: at };
   }
   var SIDE_LT_NAME = { left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" };
-  function elevationSpecs(building, openings, geom, tagMap = {}) {
+  function elevationSpecs(building, openings, geom, tagMap = {}, opts = {}) {
     const W = Number(building.width) || 0, L = Number(building.length) || 0, H = Number(building.height) || 0;
     const pitch = parsePitchNum(building.pitch);
     const peak = H + W / 2 * pitch;
@@ -121,7 +121,7 @@
     const oc = g && g.oc || Number(building.trussOC) || 0;
     const out = [];
     const push = (spec) => {
-      if (spec.items.length || spec.notes && spec.notes.length) out.push(spec);
+      if (spec.items.length || spec.notes && spec.notes.length || opts.all && spec.wall && !spec.open) out.push(spec);
     };
     const ltFoot = (l, x0) => ({ x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` });
     const ltSide = (l, onLeft) => ({ onLeft, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` });
@@ -129,6 +129,7 @@
     const backOpen = hybrid ? building.openEnd === "back" : carport || !!open.back;
     push({
       key: "front",
+      wall: "front",
       title: "Front gable",
       sub: "seen from the front",
       faceW: W,
@@ -146,6 +147,7 @@
     });
     push({
       key: "back",
+      wall: "back",
       title: "Back gable",
       sub: "seen from behind",
       faceW: W,
@@ -164,6 +166,7 @@
     if (hybrid) {
       push({
         key: "divider",
+        wall: "divider",
         title: "Partition wall",
         sub: "enclosed bay · seen from the front",
         faceW: W,
@@ -202,6 +205,7 @@
     }
     push({
       key: "right",
+      wall: "right",
       title: "Right eave",
       sub: "seen from outside",
       faceW: L,
@@ -219,6 +223,7 @@
     });
     push({
       key: "left",
+      wall: "left",
       title: "Left eave",
       sub: "seen from outside",
       faceW: L,
@@ -263,7 +268,17 @@
         const x = e8(x0) / 96;
         const run = loc === "outer" ? l.len : part.len;
         const xd = loc === "outer" && mirror ? (e8(run) - e8(x) - e8(w)) / 96 : x;
-        byLoc[loc].push({ x: xd, w, h, sill, type: o.type, role: progRole(o.type), id: `lt${l.n}-${oi}-${i}`, name });
+        byLoc[loc].push({
+          x: xd,
+          w,
+          h,
+          sill,
+          type: o.type,
+          role: progRole(o.type),
+          id: `lt${l.n}-${oi}-${i}`,
+          name,
+          lt: { n: l.n, oi, i, run, mirror: loc === "outer" && mirror }
+        });
       });
     });
     const specs = [];
@@ -396,6 +411,68 @@
     else pages.push(["sign"]);
     return { pages, signOnP1: false };
   }
+  function offsetFromFrameX(wall, x, w, W, L) {
+    const ex = e8(x), ew = e8(w);
+    if (wall === "back") return (e8(W) - ex - ew) / EIGHTHS;
+    if (wall === "right") return (e8(L) - ex - ew) / EIGHTHS;
+    return ex / EIGHTHS;
+  }
+  function ltDrawToProg(ref, x, w) {
+    return ref && ref.mirror ? (e8(ref.run) - e8(x) - e8(w)) / EIGHTHS : x;
+  }
+  function snapAlong(raw, w, len, { lines = [], centerLines = [], snap = 0.4, free = false } = {}) {
+    const clamp = (v) => Math.max(0, Math.min(Math.max(0, len - w), v));
+    if (free) return { x: clamp(Math.round(raw * 12) / 12), guide: null };
+    const anchors = [[raw, 0], [raw + w / 2, w / 2], [raw + w, w]];
+    let best = null;
+    lines.forEach((p) => anchors.forEach(([a, k]) => {
+      const d = Math.abs(a - p);
+      if (d < snap && (!best || d < best.d)) best = { d, x: p - k, guide: p };
+    }));
+    centerLines.forEach((p) => {
+      const d = Math.abs(raw + w / 2 - p);
+      if (d < snap / 2 && (!best || d < best.d * 0.95)) best = { d, x: p - w / 2, guide: p };
+    });
+    if (best) return { x: clamp(best.x), guide: best.guide };
+    return { x: clamp(Math.round(raw * 12) / 12), guide: null };
+  }
+  function wallSnapLines(len, others = []) {
+    const out = [0, len, len / 2];
+    for (let f = 5; f < len; f += 5) out.push(f);
+    others.forEach((o) => {
+      out.push(o.x, o.x + o.w, o.x + o.w / 2);
+    });
+    return out;
+  }
+  function parseLtId(id) {
+    const m = /^lt(\d+)-(\d+)-(\d+)$/.exec(String(id || ""));
+    return m ? { n: +m[1], oi: +m[2], i: +m[3] } : null;
+  }
+  function ltWallLen(l, loc) {
+    return loc === "outer" ? l.len : l.part ? l.part.len : l.w;
+  }
+  function setLtOpeningX(geom, ref, x) {
+    if (!geom || !ref || !Array.isArray(geom.leanTos)) return geom;
+    let hit = false;
+    const leanTos = geom.leanTos.map((l) => {
+      if (l.n !== ref.n) return l;
+      const openings = (l.openings || []).map((o, oi) => {
+        if (oi !== ref.oi || !Array.isArray(o.xs) || ref.i >= o.xs.length) return o;
+        const len = ltWallLen(l, o.loc);
+        const v = e8(Math.max(0, Math.min(Math.max(0, len - o.w), x))) / EIGHTHS;
+        hit = true;
+        return { ...o, xs: o.xs.map((xx, k) => k === ref.i ? v : xx) };
+      });
+      return { ...l, openings };
+    });
+    return hit ? { ...geom, leanTos } : geom;
+  }
+  function getLtOpening(geom, ref) {
+    const l = geom && Array.isArray(geom.leanTos) ? geom.leanTos.find((q) => q.n === ref.n) : null;
+    const o = l && l.openings ? l.openings[ref.oi] : null;
+    if (!o || !Array.isArray(o.xs) || !(ref.i < o.xs.length)) return null;
+    return { l, o, x: o.xs[ref.i] };
+  }
 
   // layout-src/SheetDoc.jsx
   var R = window.React;
@@ -419,7 +496,10 @@
   var PAGE_PAD_B = 16;
   var FOOT_H = 22;
   var CARD_W = 748;
-  function PlanKey({ building, openings, tagMap, geom }) {
+  function PlanKey({ building, openings, tagMap, geom, ed }) {
+    const svgRef = R.useRef(null);
+    const dragRef = R.useRef(null);
+    const [guide, setGuide] = R.useState(null);
     const W = Number(building.width) || 0, L = Number(building.length) || 0;
     const g = geom && geom.W === W && geom.L === L ? geom : null;
     const lts = g && Array.isArray(g.leanTos) ? g.leanTos : [];
@@ -445,7 +525,7 @@
       right: carport || !hybrid && !!open.right
     };
     els.push(/* @__PURE__ */ React.createElement("rect", { key: "bf", x: PZ(0), y: PX(0), width: (L * s).toFixed(1), height: (W * s).toFixed(1), fill: "#F4F7FA", stroke: "none" }));
-    trussFromFront(building, g).forEach((t, i) => els.push(
+    if (!ed || ed.showFrames !== false) trussFromFront(building, g).forEach((t, i) => els.push(
       /* @__PURE__ */ React.createElement("line", { key: "tr" + i, x1: PZ(t), y1: PX(0), x2: PZ(t), y2: PX(W), stroke: SOFT, strokeWidth: "0.8", strokeDasharray: "3 4" })
     ));
     lts.forEach((l) => {
@@ -481,7 +561,24 @@
         if (!Array.isArray(o.xs)) return;
         o.xs.forEach((xx, i) => {
           const p = ltOpeningPlan(l, o.loc, xx, o.w, W, L);
-          els.push(/* @__PURE__ */ React.createElement("line", { key: `lto${l.n}-${oi}-${i}`, x1: PZ(p.z0), y1: PX(p.x0), x2: PZ(p.z1), y2: PX(p.x1), stroke: ROLE_HEX[roleOf(o.type)], strokeWidth: "3.4", strokeLinecap: "butt" }));
+          const id = `lt${l.n}-${oi}-${i}`;
+          if (ed && ed.selectedId === id) els.push(/* @__PURE__ */ React.createElement("line", { key: "lsel" + id, x1: PZ(p.z0), y1: PX(p.x0), x2: PZ(p.z1), y2: PX(p.x1), stroke: TEAL, strokeOpacity: "0.35", strokeWidth: "10" }));
+          els.push(/* @__PURE__ */ React.createElement("line", { key: `lto${l.n}-${oi}-${i}`, x1: PZ(p.z0), y1: PX(p.x0), x2: PZ(p.z1), y2: PX(p.x1), stroke: ROLE_HEX[roleOf(o.type)], strokeWidth: "3.4", strokeLinecap: "butt", "data-op": id }));
+          if (ed) els.push(/* @__PURE__ */ React.createElement(
+            "line",
+            {
+              key: "lhit" + id,
+              x1: PZ(p.z0),
+              y1: PX(p.x0),
+              x2: PZ(p.z1),
+              y2: PX(p.x1),
+              stroke: "transparent",
+              strokeWidth: "14",
+              className: "op-hit",
+              "data-hit": id,
+              onPointerDown: (e) => startLt(e, l, o, { n: l.n, oi, i }, xx)
+            }
+          ));
         });
       });
     });
@@ -523,7 +620,23 @@
         out = [1, 0];
       } else return;
       const col = TYPE_HEX[op.type] || MUTED;
-      els.push(/* @__PURE__ */ React.createElement("line", { key: "op" + op.id, x1: PZ(seg[0]), y1: PX(seg[1]), x2: PZ(seg[2]), y2: PX(seg[3]), stroke: col, strokeWidth: "4" }));
+      if (ed && ed.selectedId === op.id) els.push(/* @__PURE__ */ React.createElement("line", { key: "sel" + op.id, x1: PZ(seg[0]), y1: PX(seg[1]), x2: PZ(seg[2]), y2: PX(seg[3]), stroke: TEAL, strokeOpacity: "0.35", strokeWidth: "11" }));
+      els.push(/* @__PURE__ */ React.createElement("line", { key: "op" + op.id, x1: PZ(seg[0]), y1: PX(seg[1]), x2: PZ(seg[2]), y2: PX(seg[3]), stroke: col, strokeWidth: "4", "data-op": op.id }));
+      if (ed) els.push(/* @__PURE__ */ React.createElement(
+        "line",
+        {
+          key: "hit" + op.id,
+          x1: PZ(seg[0]),
+          y1: PX(seg[1]),
+          x2: PZ(seg[2]),
+          y2: PX(seg[3]),
+          stroke: "transparent",
+          strokeWidth: "16",
+          className: "op-hit",
+          "data-hit": op.id,
+          onPointerDown: (e) => startMain(e, op)
+        }
+      ));
       const tag = tagMap[op.id];
       if (tag) {
         const cz = PZ((seg[0] + seg[2]) / 2) + out[0] * 11, cx = PX((seg[1] + seg[3]) / 2) + out[1] * 11;
@@ -540,12 +653,137 @@
     lbl("nr", (PZ(0) + PZ(L)) / 2, PX(W + ext.right) + nB, `RIGHT EAVE${ext.right ? " SIDE" : ""} · ${fmtFtIn(L)}`);
     lbl("nf", PZ(-ext.front) - nF, (PX(0) + PX(W)) / 2, `FRONT · ${fmtFtIn(W)}`, -90);
     lbl("nb", PZ(L + ext.back) + nK, (PX(0) + PX(W)) / 2, `BACK · ${fmtFtIn(W)}`, 90);
-    return /* @__PURE__ */ React.createElement("svg", { className: "plan-key", viewBox: `0 0 ${VW} ${VH}`, width: VW, height: VH, xmlns: "http://www.w3.org/2000/svg", fontFamily: "Inter, Barlow, Arial, sans-serif" }, els);
+    const allowed = ["front", "back", "left", "right"].filter((w) => !(hybrid && w === building.openEnd));
+    if (divZ != null && window.hasDivider && window.hasDivider(building)) allowed.push("divider");
+    const WALLC = { front: ["v", PZ(0)], back: ["v", PZ(L)], left: ["h", PX(0)], right: ["h", PX(W)], divider: ["v", divZ != null ? PZ(divZ) : -1e9] };
+    const wlen = (wall) => wall === "left" || wall === "right" ? L : W;
+    const toSvg = (e) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const m = svg.getScreenCTM();
+      return m ? pt.matrixTransform(m.inverse()) : null;
+    };
+    const nearest = (p, w) => {
+      let best = null;
+      allowed.forEach((wall) => {
+        const [o, c] = WALLC[wall];
+        const d = Math.abs((o === "v" ? p.x : p.y) - c);
+        if (!best || d < best.d) best = { wall, d, o };
+      });
+      if (!best) return null;
+      const along = best.o === "v" ? (p.y - ox) / s : (p.x - oz) / s;
+      return { wall: best.wall, off: best.o === "v" ? along - w / 2 : L - along - w / 2 };
+    };
+    const snapMain = (wall, raw, w, selfId, free) => {
+      const others = (openings || []).filter((o) => o.wall === wall && o.id !== selfId).map((o) => ({ x: o.offset, w: o.w }));
+      const centers = wall === "left" || wall === "right" ? trussFromFront(building, g).map((t) => L - t) : [];
+      return snapAlong(raw, w, wlen(wall), { lines: wallSnapLines(wlen(wall), others), centerLines: centers, snap: 7 / s, free });
+    };
+    function startMain(e, op) {
+      if (ed.placeType) return;
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        window.focus();
+      } catch (_) {
+      }
+      if (ed.onSelect) ed.onSelect(op.id);
+      dragRef.current = { kind: "main", id: op.id, w: op.w };
+      try {
+        svgRef.current.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+    }
+    function startLt(e, l, o, ref, x0) {
+      if (ed.placeType) return;
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        window.focus();
+      } catch (_) {
+      }
+      if (ed.onSelect) ed.onSelect(`lt${ref.n}-${ref.oi}-${ref.i}`);
+      const p = toSvg(e);
+      if (!p) return;
+      const a = ltOpeningPlan(l, o.loc, 0, o.w, W, L), b = ltOpeningPlan(l, o.loc, 1, o.w, W, L);
+      const axis = a.z0 !== b.z0 ? "z" : "x", sign = axis === "z" ? b.z0 - a.z0 : b.x0 - a.x0;
+      const others = o.xs.filter((_, k) => k !== ref.i).map((x) => ({ x, w: o.w })).concat((l.openings || []).filter((q, qi) => qi !== ref.oi && q.loc === o.loc && Array.isArray(q.xs)).flatMap((q) => q.xs.map((x) => ({ x, w: q.w }))));
+      dragRef.current = { kind: "lt", ref, l, o, axis, sign, p0: p, x0, others };
+      try {
+        svgRef.current.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+    }
+    function onMove(e) {
+      const d = dragRef.current;
+      if (!d) return;
+      const p = toSvg(e);
+      if (!p) return;
+      if (d.kind === "main") {
+        const nw = nearest(p, d.w);
+        if (!nw) return;
+        const r = snapMain(nw.wall, nw.off, d.w, d.id, e.altKey);
+        setGuide(r.guide != null ? { wall: nw.wall, at: r.guide } : null);
+        ed.onMove(d.id, { wall: nw.wall, offset: r.x });
+      } else {
+        const delta = (d.axis === "z" ? p.x - d.p0.x : p.y - d.p0.y) / s * d.sign;
+        const len = ltWallLen(d.l, d.o.loc);
+        const r = snapAlong(d.x0 + delta, d.o.w, len, { lines: wallSnapLines(len, d.others), snap: 7 / s, free: e.altKey });
+        ed.onMoveLt(d.ref, r.x);
+      }
+    }
+    function onUp(e) {
+      if (dragRef.current) {
+        try {
+          svgRef.current.releasePointerCapture(e.pointerId);
+        } catch (_) {
+        }
+      }
+      dragRef.current = null;
+      setGuide(null);
+    }
+    function onDown(e) {
+      if (!ed.placeType) return;
+      const def = window.OPENING_TYPES[ed.placeType];
+      const p = toSvg(e);
+      if (!p || !def) return;
+      const nw = nearest(p, def.w);
+      if (!nw) return;
+      ed.onPlace(nw.wall, snapMain(nw.wall, nw.off, def.w, null, e.altKey).x);
+    }
+    if (ed && guide) {
+      const [o, c] = WALLC[guide.wall];
+      const pos = o === "v" ? PX(guide.at) : PZ(L - guide.at);
+      els.push(o === "v" ? /* @__PURE__ */ React.createElement("line", { key: "guide", x1: c - 16, y1: pos, x2: c + 16, y2: pos, stroke: TEAL, strokeWidth: "1.2", strokeDasharray: "3 2" }) : /* @__PURE__ */ React.createElement("line", { key: "guide", x1: pos, y1: c - 16, x2: pos, y2: c + 16, stroke: TEAL, strokeWidth: "1.2", strokeDasharray: "3 2" }));
+    }
+    return /* @__PURE__ */ React.createElement(
+      "svg",
+      {
+        ref: svgRef,
+        className: "plan-key" + (ed ? " is-edit" : "") + (ed && ed.placeType ? " is-placing" : ""),
+        viewBox: `0 0 ${VW} ${VH}`,
+        width: VW,
+        height: VH,
+        xmlns: "http://www.w3.org/2000/svg",
+        fontFamily: "Inter, Barlow, Arial, sans-serif",
+        onPointerMove: ed ? onMove : void 0,
+        onPointerUp: ed ? onUp : void 0,
+        onPointerCancel: ed ? onUp : void 0,
+        onPointerDown: ed ? onDown : void 0
+      },
+      els
+    );
   }
   function roleOf(t) {
     return t === "rollup" ? "rollup" : t === "wtd" ? "walk" : t === "win" ? "window" : "framed";
   }
-  function ElevationCard({ spec }) {
+  function ElevationCard({ spec, ed, W, L }) {
+    const svgRef = R.useRef(null);
+    const dragRef = R.useRef(null);
+    const [guide, setGuide] = R.useState(null);
     const lay = elevLayout(spec);
     const { X, Y, gy, dy, dy2, VW, VH, s } = lay;
     const els = [];
@@ -614,7 +852,25 @@
       const col = colorOf(it);
       const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s;
       const pid = "h-" + (it.type || it.role);
-      els.push(/* @__PURE__ */ React.createElement("rect", { key: "o" + it.id, x: rx.toFixed(1), y: ry.toFixed(1), width: rw.toFixed(1), height: rh.toFixed(1), fill: `url(#${pid})`, stroke: col, strokeWidth: "1.1", strokeDasharray: "4 2.5" }));
+      const movable = !!ed && (spec.wall ? true : !!it.lt);
+      if (ed && ed.selectedId === it.id) els.push(/* @__PURE__ */ React.createElement("rect", { key: "sel" + it.id, x: (rx - 3).toFixed(1), y: (ry - 3).toFixed(1), width: (rw + 6).toFixed(1), height: (rh + 6).toFixed(1), fill: "none", stroke: TEAL, strokeOpacity: "0.55", strokeWidth: "3" }));
+      els.push(/* @__PURE__ */ React.createElement(
+        "rect",
+        {
+          key: "o" + it.id,
+          x: rx.toFixed(1),
+          y: ry.toFixed(1),
+          width: rw.toFixed(1),
+          height: rh.toFixed(1),
+          fill: `url(#${pid})`,
+          stroke: col,
+          strokeWidth: "1.1",
+          strokeDasharray: "4 2.5",
+          "data-op": it.id,
+          className: movable ? "op-hit" : void 0,
+          onPointerDown: movable ? (e) => startDrag(e, it) : void 0
+        }
+      ));
       const lab = `${fmtFtIn(it.w)}×${fmtFtIn(it.h)}`;
       const fs = rw < 52 ? 8.5 : 9.5;
       const ly = sizeLabelY(it, ry, rw, rh);
@@ -656,11 +912,83 @@
       ));
     }
     els.push(/* @__PURE__ */ React.createElement("g", { key: "ov" }, /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2, x2: X(F), y2: dy2, stroke: LINE, strokeWidth: "1" }), /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2 - 5, x2: X(0), y2: dy2 + 5, stroke: LINE, strokeWidth: "1" }), /* @__PURE__ */ React.createElement("line", { x1: X(F), y1: dy2 - 5, x2: X(F), y2: dy2 + 5, stroke: LINE, strokeWidth: "1" }), /* @__PURE__ */ React.createElement("rect", { x: X(F / 2) - 30, y: dy2 - 8, width: "60", height: "16", fill: "#fff" }), /* @__PURE__ */ React.createElement("text", { x: X(F / 2), y: dy2 + 4.5, textAnchor: "middle", fontSize: "12", fontWeight: "700", fill: INK, className: "ch-total" }, fmtFtIn(F)), /* @__PURE__ */ React.createElement("text", { x: X(0), y: dy2 + 18, fontSize: "8.5", fontWeight: "600", fill: MUTED, letterSpacing: ".14em" }, spec.ends[0]), /* @__PURE__ */ React.createElement("text", { x: X(F), y: dy2 + 18, textAnchor: "end", fontSize: "8.5", fontWeight: "600", fill: MUTED, letterSpacing: ".14em" }, spec.ends[1])));
+    const toSvg = (e) => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const m = svg.getScreenCTM();
+      return m ? pt.matrixTransform(m.inverse()) : null;
+    };
+    function startDrag(e, it) {
+      if (!ed || ed.placeType) return;
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        window.focus();
+      } catch (_) {
+      }
+      if (ed.onSelect) ed.onSelect(it.id);
+      const p = toSvg(e);
+      if (!p) return;
+      dragRef.current = { it, p0: p, x0: it.x, others: items.filter((o) => o.id !== it.id) };
+      try {
+        svgRef.current.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+    }
+    function onMove(e) {
+      const d = dragRef.current;
+      if (!d) return;
+      const p = toSvg(e);
+      if (!p) return;
+      const r = snapAlong(d.x0 + (p.x - d.p0.x) / s, d.it.w, F, { lines: wallSnapLines(F, d.others), centerLines: spec.truss || [], snap: 7 / s, free: e.altKey });
+      setGuide(r.guide);
+      if (d.it.lt) ed.onMoveLt(d.it.lt, ltDrawToProg(d.it.lt, r.x, d.it.w));
+      else ed.onMove(d.it.id, { offset: offsetFromFrameX(spec.wall, r.x, d.it.w, W, L) });
+    }
+    function onUp(e) {
+      if (dragRef.current) {
+        try {
+          svgRef.current.releasePointerCapture(e.pointerId);
+        } catch (_) {
+        }
+      }
+      dragRef.current = null;
+      setGuide(null);
+    }
+    function onDown(e) {
+      if (!ed.placeType || !spec.wall) return;
+      const def = window.OPENING_TYPES[ed.placeType];
+      const p = toSvg(e);
+      if (!p || !def) return;
+      const r = snapAlong((p.x - X(0)) / s - def.w / 2, def.w, F, { lines: wallSnapLines(F, items), centerLines: spec.truss || [], snap: 7 / s, free: e.altKey });
+      ed.onPlace(spec.wall, offsetFromFrameX(spec.wall, r.x, def.w, W, L));
+    }
+    if (ed && guide != null) els.push(/* @__PURE__ */ React.createElement("line", { key: "guide", x1: X(guide), y1: gy + 6, x2: X(guide), y2: Y(spec.h(guide)) - 6, stroke: TEAL, strokeWidth: "1.2", strokeDasharray: "3 2" }));
     const types = Array.from(new Set(items.map((it) => it.type || it.role)));
-    return /* @__PURE__ */ React.createElement("div", { className: "elev-card", "data-elev": spec.key }, /* @__PURE__ */ React.createElement("div", { className: "elev-head" }, /* @__PURE__ */ React.createElement("span", { className: "elev-title" }, spec.title), /* @__PURE__ */ React.createElement("span", { className: "elev-sub" }, spec.sub), /* @__PURE__ */ React.createElement("span", { className: "elev-meta" }, `${items.length} opening${items.length === 1 ? "" : "s"}`)), /* @__PURE__ */ React.createElement("svg", { className: "elev-svg", viewBox: `0 0 ${VW} ${VH}`, width: CARD_W, height: Math.round(VH * CARD_W / VW), xmlns: "http://www.w3.org/2000/svg", fontFamily: "Inter, Barlow, Arial, sans-serif" }, /* @__PURE__ */ React.createElement("defs", null, types.map((t) => {
-      const col = TYPE_HEX[t] || ROLE_HEX[t] || MUTED;
-      return /* @__PURE__ */ React.createElement("pattern", { key: t, id: "h-" + t, width: "5", height: "5", patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: "0", x2: "0", y2: "5", stroke: col, strokeOpacity: "0.35", strokeWidth: "0.8" }));
-    })), els), (spec.notes || []).concat(legend).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "elev-notes" }, (spec.notes || []).concat(legend).map((n, i) => /* @__PURE__ */ React.createElement("div", { key: i }, n))));
+    return /* @__PURE__ */ React.createElement("div", { className: "elev-card" + (ed ? " is-edit" : ""), "data-elev": spec.key }, /* @__PURE__ */ React.createElement("div", { className: "elev-head" }, /* @__PURE__ */ React.createElement("span", { className: "elev-title" }, spec.title), /* @__PURE__ */ React.createElement("span", { className: "elev-sub" }, spec.sub), /* @__PURE__ */ React.createElement("span", { className: "elev-meta" }, `${items.length} opening${items.length === 1 ? "" : "s"}`)), /* @__PURE__ */ React.createElement(
+      "svg",
+      {
+        ref: svgRef,
+        className: "elev-svg" + (ed && ed.placeType && spec.wall ? " is-placing" : ""),
+        viewBox: `0 0 ${VW} ${VH}`,
+        width: CARD_W,
+        height: Math.round(VH * CARD_W / VW),
+        xmlns: "http://www.w3.org/2000/svg",
+        fontFamily: "Inter, Barlow, Arial, sans-serif",
+        onPointerMove: ed ? onMove : void 0,
+        onPointerUp: ed ? onUp : void 0,
+        onPointerCancel: ed ? onUp : void 0,
+        onPointerDown: ed ? onDown : void 0
+      },
+      /* @__PURE__ */ React.createElement("defs", null, types.map((t) => {
+        const col = TYPE_HEX[t] || ROLE_HEX[t] || MUTED;
+        return /* @__PURE__ */ React.createElement("pattern", { key: t, id: "h-" + t, width: "5", height: "5", patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, /* @__PURE__ */ React.createElement("line", { x1: "0", y1: "0", x2: "0", y2: "5", stroke: col, strokeOpacity: "0.35", strokeWidth: "0.8" }));
+      })),
+      els
+    ), (spec.notes || []).concat(legend).length > 0 && /* @__PURE__ */ React.createElement("div", { className: "elev-notes" }, (spec.notes || []).concat(legend).map((n, i) => /* @__PURE__ */ React.createElement("div", { key: i }, n))));
   }
   function MiniHead({ docInfo, revisionMode, page, total }) {
     return /* @__PURE__ */ React.createElement("div", { className: "mini-head" }, /* @__PURE__ */ React.createElement("div", { className: "wordmark" }, /* @__PURE__ */ React.createElement("span", null, "STORM"), /* @__PURE__ */ React.createElement("span", { className: "t" }, "SAFE"), /* @__PURE__ */ React.createElement("span", null, " STEEL")), /* @__PURE__ */ React.createElement("div", { className: "mini-meta" }, /* @__PURE__ */ React.createElement("span", null, revisionMode ? "Revised Layout Approval" : "Building Approval Sheet"), docInfo.customer ? /* @__PURE__ */ React.createElement("span", null, docInfo.customer) : null, docInfo.quoteNo ? /* @__PURE__ */ React.createElement("span", { className: "mono" }, docInfo.quoteNo) : null, /* @__PURE__ */ React.createElement("span", null, "Elevations · page ", page, " of ", total)));
@@ -674,7 +1002,7 @@
     const specs = elevationSpecs(building, openings, geom, tagMap);
     const sizeMismatch = geom && (geom.W !== Number(building.width) || geom.L !== Number(building.length));
     const notesB = { ...building, notes: (building.notes || []).concat(sizeMismatch ? ["The quote’s lean-tos / partitions are not drawn: the building size was changed here from the quote’s " + fmtFtIn(geom.W) + " × " + fmtFtIn(geom.L) + "."] : []) };
-    const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map((l) => `LT${l.n} · ${{ left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" }[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? " · " + fmtFtIn(l.stor.len) + " storage at the " + l.stor.end + " end" : ""} · ${(l.walls && l.walls.mode) === "enclosed" ? "enclosed" : (l.walls && l.walls.mode) === "custom" ? "custom walls" : "open"}`);
+    const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend);
     const stageRef = R.useRef(null);
     const [plan, setPlan] = R.useState(null);
     const H = window.SheetParts;
@@ -714,6 +1042,21 @@
     const docCls = "sheet-doc style-" + style;
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: docCls }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page p1 style-" + style }, p1Core(ready && !plan.notesOnP1 ? schedBare : schedFull), ready && plan.signOnP1 && sign, /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { page: 1, total })), pages.map((blk, pi) => /* @__PURE__ */ React.createElement("div", { key: pi, className: "sheet sheet-page pn style-" + style }, /* @__PURE__ */ React.createElement(MiniHead, { docInfo, revisionMode, page: pi + 2, total }), blk.map((b) => b === "sign" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "sign" }, sign) : b === "notes" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "notes" }, notesBlock) : /* @__PURE__ */ React.createElement(R.Fragment, { key: specs[b].key }, cards[b])), /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { page: pi + 2, total })))), /* @__PURE__ */ React.createElement("div", { className: "sheet-stage", ref: stageRef, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet style-" + style, "data-stage": "p1" }, p1Core(schedBare)), /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet style-" + style }, /* @__PURE__ */ React.createElement("div", { "data-stage": "notes" }, notesBlock), /* @__PURE__ */ React.createElement("div", { "data-stage": "mini" }, /* @__PURE__ */ React.createElement(MiniHead, { docInfo, revisionMode, page: 2, total: 2 })), /* @__PURE__ */ React.createElement("div", { "data-stage": "sign" }, sign), specs.map((sp, i) => /* @__PURE__ */ React.createElement("div", { key: sp.key, "data-stage": "e-" + sp.key }, cards[i])))));
   }
+  function SheetEdit(props) {
+    const { building, docInfo, openings, tagMap, style, revisionMode, ed } = props;
+    const geom = docInfo && docInfo.geom ? docInfo.geom : null;
+    const specs = elevationSpecs(building, openings, geom, tagMap, { all: true });
+    const sizeMismatch = geom && (geom.W !== Number(building.width) || geom.L !== Number(building.length));
+    const H = window.SheetParts;
+    const W = Number(building.width) || 0, L = Number(building.length) || 0;
+    const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend);
+    return /* @__PURE__ */ React.createElement("div", { className: "sheet-edit" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page sheet-edit-page style-" + style }, H.Masthead({ revisionMode }), H.InfoStrip({ docInfo }), revisionMode && H.RevStrip(), H.SpecBand({ building, docInfo }), /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, "Building Plan"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, ed.placeType ? "Click a wall to place · Alt = no snap · Esc to stop" : "Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes")), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom, ed }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t))), sizeMismatch && /* @__PURE__ */ React.createElement("div", { className: "plan-legend warn" }, "The quote’s lean-tos / partitions are hidden: the building size was changed here from the quote’s ", fmtFtIn(geom.W), " × ", fmtFtIn(geom.L), ".")), /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, "Wall Elevations"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, "Drag an opening along its wall · the chain updates live · same drawings as the Approval Sheet")), specs.map((sp) => /* @__PURE__ */ React.createElement(ElevationCard, { key: sp.key, spec: sp, ed, W, L })), /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, "Opening Schedule"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, "Tags match the plan and elevations")), /* @__PURE__ */ React.createElement(window.Schedule, { building, openings, tagMap })));
+  }
+  function ltLegend(l) {
+    return `LT${l.n} · ${{ left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" }[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? " · " + fmtFtIn(l.stor.len) + " storage at the " + l.stor.end + " end" : ""} · ${(l.walls && l.walls.mode) === "enclosed" ? "enclosed" : (l.walls && l.walls.mode) === "custom" ? "custom walls" : "open"}`;
+  }
   window.SheetDoc = SheetDoc;
+  window.SheetEdit = SheetEdit;
+  window.SheetGeom = { parseLtId, getLtOpening, setLtOpeningX };
   window.SheetGeomFmt = fmtFtIn;
 })();

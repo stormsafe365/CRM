@@ -1,70 +1,20 @@
 /* ============================================================
-   Sheet.jsx — the client-facing approval document (print page).
-   Edit view: the interactive plan (drag openings) on one page.
-   Approval Sheet / PDF: SheetDoc.jsx (paginated plan + elevations).
+   Sheet.jsx — the client-facing approval document.
+   Approval Sheet / PDF: SheetDoc (paginated plan + per-wall elevations).
+   Edit view: SheetEdit — the same drawings, draggable (owner 10/6: no
+   old-style drawing anywhere in the builder).
    ============================================================ */
 
-function Sheet({ building, docInfo, openings, tagMap, style, showDims, showFrames = true,
-                 showElevation, elevWall, selectedId, onSelect, onMove,
-                 placeType, onPlace, revisionMode }) {
-  const blueprint = style === 'blueprint';
-  // Approval Sheet mode / PDF: the paginated document (plan + elevations).
-  if (!onMove && window.SheetDoc) {
-    return <SheetDoc building={building} docInfo={docInfo} openings={openings} tagMap={tagMap} style={style} revisionMode={revisionMode} />;
+function Sheet({ building, docInfo, openings, tagMap, style, showFrames = true, selectedId, onSelect, onMove,
+                 onMoveLt, placeType, onPlace, revisionMode }) {
+  if (onMove) {
+    const ed = { selectedId, onSelect, onMove, onMoveLt, placeType, onPlace, showFrames };
+    return <SheetEdit building={building} docInfo={docInfo} openings={openings} tagMap={tagMap} style={style} revisionMode={revisionMode} ed={ed} />;
   }
-
-  return (
-    <div className={'sheet style-' + style + (showElevation ? ' has-elev' : '')}>
-      {SheetParts.Masthead({ revisionMode })}
-
-      {SheetParts.InfoStrip({ docInfo })}
-
-      {revisionMode && SheetParts.RevStrip()}
-
-      {SheetParts.SpecBand({ building, docInfo })}
-
-      {/* ---------- plan ---------- */}
-      <div className="block-title">
-        <h2>Opening Plan</h2>
-        <span className="hint">{onMove ? '↔ Drag any opening · snaps + aligns · arrow keys to nudge' : 'Top view · all dimensions to opening edge'}</span>
-      </div>
-      <div className="plan-wrap">
-        <PlanDiagram building={building} openings={openings} tagMap={tagMap}
-          showDims={showDims} showFrames={showFrames} blueprint={blueprint}
-          selectedId={selectedId} onSelect={onSelect} onMove={onMove}
-          placeType={placeType} onPlace={onPlace} />
-      </div>
-
-      {/* ---------- elevation (optional) ---------- */}
-      {showElevation && (
-        <>
-          <div className="block-title">
-            <h2>{WALLS[elevWall].label} Elevation</h2>
-            <span className="hint">Opening heights · {ftInTight(building.height)} eave</span>
-          </div>
-          <div className="elev-wrap">
-            <Elevation building={building} openings={openings} tagMap={tagMap}
-              wall={elevWall} blueprint={blueprint} compact />
-          </div>
-        </>
-      )}
-
-      {/* ---------- schedule ---------- */}
-      <div className="block-title">
-        <h2>Opening Schedule</h2>
-        <span className="hint">Tags match plan callouts</span>
-      </div>
-      <Schedule building={building} openings={openings} tagMap={tagMap} />
-
-      {revisionMode && SheetParts.RevChanges()}
-
-      {SheetParts.SignOff({ revisionMode })}
-    </div>
-  );
+  return <SheetDoc building={building} docInfo={docInfo} openings={openings} tagMap={tagMap} style={style} revisionMode={revisionMode} />;
 }
 
-
-/* ---- shared sheet parts (the edit view above + the paginated SheetDoc) ---- */
+/* ---- shared sheet parts (SheetDoc + SheetEdit) ---- */
 const SheetParts = {
   Masthead({ revisionMode }) {
     return (

@@ -4,47 +4,20 @@ function Sheet({
   openings,
   tagMap,
   style,
-  showDims,
   showFrames = true,
-  showElevation,
-  elevWall,
   selectedId,
   onSelect,
   onMove,
+  onMoveLt,
   placeType,
   onPlace,
   revisionMode
 }) {
-  const blueprint = style === "blueprint";
-  if (!onMove && window.SheetDoc) {
-    return /* @__PURE__ */ React.createElement(SheetDoc, { building, docInfo, openings, tagMap, style, revisionMode });
+  if (onMove) {
+    const ed = { selectedId, onSelect, onMove, onMoveLt, placeType, onPlace, showFrames };
+    return /* @__PURE__ */ React.createElement(SheetEdit, { building, docInfo, openings, tagMap, style, revisionMode, ed });
   }
-  return /* @__PURE__ */ React.createElement("div", { className: "sheet style-" + style + (showElevation ? " has-elev" : "") }, SheetParts.Masthead({ revisionMode }), SheetParts.InfoStrip({ docInfo }), revisionMode && SheetParts.RevStrip(), SheetParts.SpecBand({ building, docInfo }), /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, "Opening Plan"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, onMove ? "\u2194 Drag any opening \xB7 snaps + aligns \xB7 arrow keys to nudge" : "Top view \xB7 all dimensions to opening edge")), /* @__PURE__ */ React.createElement("div", { className: "plan-wrap" }, /* @__PURE__ */ React.createElement(
-    PlanDiagram,
-    {
-      building,
-      openings,
-      tagMap,
-      showDims,
-      showFrames,
-      blueprint,
-      selectedId,
-      onSelect,
-      onMove,
-      placeType,
-      onPlace
-    }
-  )), showElevation && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, WALLS[elevWall].label, " Elevation"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, "Opening heights \xB7 ", ftInTight(building.height), " eave")), /* @__PURE__ */ React.createElement("div", { className: "elev-wrap" }, /* @__PURE__ */ React.createElement(
-    Elevation,
-    {
-      building,
-      openings,
-      tagMap,
-      wall: elevWall,
-      blueprint,
-      compact: true
-    }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "block-title" }, /* @__PURE__ */ React.createElement("h2", null, "Opening Schedule"), /* @__PURE__ */ React.createElement("span", { className: "hint" }, "Tags match plan callouts")), /* @__PURE__ */ React.createElement(Schedule, { building, openings, tagMap }), revisionMode && SheetParts.RevChanges(), SheetParts.SignOff({ revisionMode }));
+  return /* @__PURE__ */ React.createElement(SheetDoc, { building, docInfo, openings, tagMap, style, revisionMode });
 }
 const SheetParts = {
   Masthead({ revisionMode }) {

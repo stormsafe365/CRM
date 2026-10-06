@@ -175,7 +175,7 @@ const SIDE_LT_NAME = { left: 'Left eave', right: 'Right eave', front: 'Front gab
  * building: the layout's building (width/length/height/pitch/config/trussOC);
  * openings: layout openings; geom: the quote's extra geometry (seed `geom`).
  */
-export function elevationSpecs(building, openings, geom, tagMap = {}) {
+export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {}) {
   const W = Number(building.width) || 0, L = Number(building.length) || 0, H = Number(building.height) || 0
   const pitch = parsePitchNum(building.pitch)
   const peak = H + (W / 2) * pitch
@@ -193,7 +193,9 @@ export function elevationSpecs(building, openings, geom, tagMap = {}) {
   const tFront = trussFromFront(building, g)
   const oc = (g && g.oc) || Number(building.trussOC) || 0
   const out = []
-  const push = (spec) => { if (spec.items.length || (spec.notes && spec.notes.length)) out.push(spec) }
+  // opts.all (the Edit view): every main wall that can carry an opening is drawn, so
+  // openings can be dragged / placed on it; lean-to walls only when they have openings.
+  const push = (spec) => { if (spec.items.length || (spec.notes && spec.notes.length) || (opts.all && spec.wall && !spec.open)) out.push(spec) }
   const ltFoot = (l, x0) => ({ x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` })
   const ltSide = (l, onLeft) => ({ onLeft, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` })
 
@@ -201,18 +203,18 @@ export function elevationSpecs(building, openings, geom, tagMap = {}) {
   const frontOpen = hybrid ? building.openEnd === 'front' : (carport || !!open.front)
   const backOpen = hybrid ? building.openEnd === 'back' : (carport || !!open.back)
   push({
-    key: 'front', title: 'Front gable', sub: 'seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
+    key: 'front', wall: 'front', title: 'Front gable', sub: 'seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
     items: on('front'), ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: frontOpen,
     side: eaveLTs.map((l) => ltSide(l, l.k === 'left')), foot: gableLTs.filter((l) => l.k === 'front').map((l) => ltFoot(l, l.start)),
   })
   push({
-    key: 'back', title: 'Back gable', sub: 'seen from behind', faceW: W, gable: true, eave: H, peak, h: gableH,
+    key: 'back', wall: 'back', title: 'Back gable', sub: 'seen from behind', faceW: W, gable: true, eave: H, peak, h: gableH,
     items: on('back'), ends: ['RIGHT EAVE', 'LEFT EAVE'], truss: [], oc: 0, open: backOpen,
     side: eaveLTs.map((l) => ltSide(l, l.k === 'right')), foot: gableLTs.filter((l) => l.k === 'back').map((l) => ltFoot(l, l.start)),
   })
   if (hybrid) {
     push({
-      key: 'divider', title: 'Partition wall', sub: 'enclosed bay · seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
+      key: 'divider', wall: 'divider', title: 'Partition wall', sub: 'enclosed bay · seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
       items: on('divider'), ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: false, side: [], foot: [],
     })
   }
@@ -227,12 +229,12 @@ export function elevationSpecs(building, openings, geom, tagMap = {}) {
   }
   // eave views: Right Eave x from the FRONT, Left Eave x from the BACK
   push({
-    key: 'right', title: 'Right eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
+    key: 'right', wall: 'right', title: 'Right eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
     items: on('right'), ends: ['FRONT GABLE', 'BACK GABLE'], truss: tFront, oc, open: carport || !!open.right,
     side: gableLTs.map((l) => ltSide(l, l.k === 'front')), foot: eaveLTs.filter((l) => l.k === 'right').map((l) => ltFoot(l, l.start)),
   })
   push({
-    key: 'left', title: 'Left eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
+    key: 'left', wall: 'left', title: 'Left eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
     items: on('left'), ends: ['BACK GABLE', 'FRONT GABLE'], truss: tFront.map((t) => L - t), oc, open: carport || !!open.left,
     side: gableLTs.map((l) => ltSide(l, l.k === 'back')), foot: eaveLTs.filter((l) => l.k === 'left').map((l) => ltFoot(l, L - l.start - l.len)),
   })
@@ -277,7 +279,8 @@ export function leanToSpecs(l, tFront = [], oc = 0) {
       const x = e8(x0) / 96
       const run = loc === 'outer' ? l.len : part.len
       const xd = loc === 'outer' && mirror ? (e8(run) - e8(x) - e8(w)) / 96 : x
-      byLoc[loc].push({ x: xd, w, h, sill, type: o.type, role: progRole(o.type), id: `lt${l.n}-${oi}-${i}`, name })
+      byLoc[loc].push({ x: xd, w, h, sill, type: o.type, role: progRole(o.type), id: `lt${l.n}-${oi}-${i}`, name,
+        lt: { n: l.n, oi, i, run, mirror: loc === 'outer' && mirror } })
     })
   })
   const specs = []
@@ -373,4 +376,75 @@ export function paginate(heights, avail, signH, maxPer = 3, p1Room = 0) {
   else if (last.length >= 2 && heights[last[last.length - 1]] + signH <= avail) pages.push([last.pop(), 'sign']) // never an approval page on its own
   else pages.push(['sign'])
   return { pages, signOnP1: false }
+}
+
+// ── editing (the Edit view: drag on the plan / elevations, arrow keys) ──────
+/** Layout offset (WALLS.ref corner) of an opening whose left edge is `x` in its elevation frame (inverse of frameX). */
+export function offsetFromFrameX(wall, x, w, W, L) {
+  const ex = e8(x), ew = e8(w)
+  if (wall === 'back') return (e8(W) - ex - ew) / EIGHTHS
+  if (wall === 'right') return (e8(L) - ex - ew) / EIGHTHS
+  return ex / EIGHTHS
+}
+/** Elevation-drawing x of a lean-to item -> the program's own x (ltAccXs / ltPartLayout frame), and back (same map). */
+export function ltDrawToProg(ref, x, w) { return ref && ref.mirror ? (e8(ref.run) - e8(x) - e8(w)) / EIGHTHS : x }
+
+/**
+ * Snap a dragged left edge along a wall (the old plan's rules, one place):
+ * the left edge, centre and right edge snap to `lines` (wall ends, wall
+ * centre, the 5′ grid, neighbours' edges + centres) within `snap` ft; the
+ * CENTRE alone snaps to `centerLines` (frame lines) at half that distance.
+ * No snap: the nearest 1″. Always kept on the wall (0 … len − w).
+ */
+export function snapAlong(raw, w, len, { lines = [], centerLines = [], snap = 0.4, free = false } = {}) {
+  const clamp = (v) => Math.max(0, Math.min(Math.max(0, len - w), v))
+  if (free) return { x: clamp(Math.round(raw * 12) / 12), guide: null }
+  const anchors = [[raw, 0], [raw + w / 2, w / 2], [raw + w, w]]
+  let best = null
+  lines.forEach((p) => anchors.forEach(([a, k]) => { const d = Math.abs(a - p); if (d < snap && (!best || d < best.d)) best = { d, x: p - k, guide: p } }))
+  centerLines.forEach((p) => { const d = Math.abs(raw + w / 2 - p); if (d < snap / 2 && (!best || d < best.d * 0.95)) best = { d, x: p - w / 2, guide: p } })
+  if (best) return { x: clamp(best.x), guide: best.guide }
+  return { x: clamp(Math.round(raw * 12) / 12), guide: null }
+}
+/** Snap lines for a wall of length len: ends, centre, 5′ grid, other openings' edges + centres. */
+export function wallSnapLines(len, others = []) {
+  const out = [0, len, len / 2]
+  for (let f = 5; f < len; f += 5) out.push(f)
+  others.forEach((o) => { out.push(o.x, o.x + o.w, o.x + o.w / 2) })
+  return out
+}
+
+/** "lt1-0-2" -> {n:1, oi:0, i:2} (a lean-to opening's id), else null. */
+export function parseLtId(id) {
+  const m = /^lt(\d+)-(\d+)-(\d+)$/.exec(String(id || ''))
+  return m ? { n: +m[1], oi: +m[2], i: +m[3] } : null
+}
+/** The wall length a lean-to opening slides along (outer: the run; ends / partition: the bent). */
+export function ltWallLen(l, loc) { return loc === 'outer' ? l.len : (l.part ? l.part.len : l.w) }
+/**
+ * geom with one lean-to opening moved to program-frame x (1/8″ grid, kept on
+ * its wall). Pure — returns a new geom; unknown ids return geom unchanged.
+ */
+export function setLtOpeningX(geom, ref, x) {
+  if (!geom || !ref || !Array.isArray(geom.leanTos)) return geom
+  let hit = false
+  const leanTos = geom.leanTos.map((l) => {
+    if (l.n !== ref.n) return l
+    const openings = (l.openings || []).map((o, oi) => {
+      if (oi !== ref.oi || !Array.isArray(o.xs) || ref.i >= o.xs.length) return o
+      const len = ltWallLen(l, o.loc)
+      const v = e8(Math.max(0, Math.min(Math.max(0, len - o.w), x))) / EIGHTHS
+      hit = true
+      return { ...o, xs: o.xs.map((xx, k) => (k === ref.i ? v : xx)) }
+    })
+    return { ...l, openings }
+  })
+  return hit ? { ...geom, leanTos } : geom
+}
+/** Current program-frame x of a lean-to opening, or null. */
+export function getLtOpening(geom, ref) {
+  const l = geom && Array.isArray(geom.leanTos) ? geom.leanTos.find((q) => q.n === ref.n) : null
+  const o = l && l.openings ? l.openings[ref.oi] : null
+  if (!o || !Array.isArray(o.xs) || !(ref.i < o.xs.length)) return null
+  return { l, o, x: o.xs[ref.i] }
 }

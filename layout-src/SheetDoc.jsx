@@ -21,7 +21,10 @@
    Bundled by scripts/build-layout.mjs (esbuild, bundle: true) → window.SheetDoc.
    ============================================================ */
 
-import { elevationSpecs, elevLayout, fmtFtIn, ltRect, ltOpeningPlan, trussFromFront, paginate } from './sheetGeom.js'
+import {
+  elevationSpecs, elevLayout, fmtFtIn, ltRect, ltOpeningPlan, trussFromFront, paginate,
+  offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, ltWallLen, parseLtId, getLtOpening, setLtOpeningX,
+} from './sheetGeom.js'
 
 const R = window.React
 
@@ -40,7 +43,12 @@ const PAGE_H = 1056, PAGE_PAD_B = 16, FOOT_H = 22
 const CARD_W = 748
 
 // ── top-down plan ──────────────────────────────────────────────────────────
-function PlanKey({ building, openings, tagMap, geom }) {
+// `ed` (Edit view only): { selectedId, onSelect, onMove(id, patch), onMoveLt(ref, x),
+// placeType, onPlace(wall, offset), showFrames } — drag / snap / place on the plan.
+function PlanKey({ building, openings, tagMap, geom, ed }) {
+  const svgRef = R.useRef(null)
+  const dragRef = R.useRef(null)
+  const [guide, setGuide] = R.useState(null)
   const W = Number(building.width) || 0, L = Number(building.length) || 0
   const g = geom && geom.W === W && geom.L === L ? geom : null
   const lts = g && Array.isArray(g.leanTos) ? g.leanTos : []
@@ -65,7 +73,7 @@ function PlanKey({ building, openings, tagMap, geom }) {
   // building footprint
   els.push(<rect key="bf" x={PZ(0)} y={PX(0)} width={(L * s).toFixed(1)} height={(W * s).toFixed(1)} fill="#F4F7FA" stroke="none" />)
   // frame lines
-  trussFromFront(building, g).forEach((t, i) => els.push(
+  if (!ed || ed.showFrames !== false) trussFromFront(building, g).forEach((t, i) => els.push(
     <line key={'tr' + i} x1={PZ(t)} y1={PX(0)} x2={PZ(t)} y2={PX(W)} stroke={SOFT} strokeWidth="0.8" strokeDasharray="3 4" />))
   // lean-tos
   lts.forEach((l) => {
@@ -92,7 +100,11 @@ function PlanKey({ building, openings, tagMap, geom }) {
       if (!Array.isArray(o.xs)) return
       o.xs.forEach((xx, i) => {
         const p = ltOpeningPlan(l, o.loc, xx, o.w, W, L)
-        els.push(<line key={`lto${l.n}-${oi}-${i}`} x1={PZ(p.z0)} y1={PX(p.x0)} x2={PZ(p.z1)} y2={PX(p.x1)} stroke={ROLE_HEX[roleOf(o.type)]} strokeWidth="3.4" strokeLinecap="butt" />)
+        const id = `lt${l.n}-${oi}-${i}`
+        if (ed && ed.selectedId === id) els.push(<line key={'lsel' + id} x1={PZ(p.z0)} y1={PX(p.x0)} x2={PZ(p.z1)} y2={PX(p.x1)} stroke={TEAL} strokeOpacity="0.35" strokeWidth="10" />)
+        els.push(<line key={`lto${l.n}-${oi}-${i}`} x1={PZ(p.z0)} y1={PX(p.x0)} x2={PZ(p.z1)} y2={PX(p.x1)} stroke={ROLE_HEX[roleOf(o.type)]} strokeWidth="3.4" strokeLinecap="butt" data-op={id} />)
+        if (ed) els.push(<line key={'lhit' + id} x1={PZ(p.z0)} y1={PX(p.x0)} x2={PZ(p.z1)} y2={PX(p.x1)} stroke="transparent" strokeWidth="14" className="op-hit" data-hit={id}
+          onPointerDown={(e) => startLt(e, l, o, { n: l.n, oi, i }, xx)} />)
       })
     })
   })
@@ -127,7 +139,10 @@ function PlanKey({ building, openings, tagMap, geom }) {
     else if (op.wall === 'divider' && divZ != null) { seg = [divZ, o, divZ, o + w]; out = [1, 0] }
     else return
     const col = TYPE_HEX[op.type] || MUTED
-    els.push(<line key={'op' + op.id} x1={PZ(seg[0])} y1={PX(seg[1])} x2={PZ(seg[2])} y2={PX(seg[3])} stroke={col} strokeWidth="4" />)
+    if (ed && ed.selectedId === op.id) els.push(<line key={'sel' + op.id} x1={PZ(seg[0])} y1={PX(seg[1])} x2={PZ(seg[2])} y2={PX(seg[3])} stroke={TEAL} strokeOpacity="0.35" strokeWidth="11" />)
+    els.push(<line key={'op' + op.id} x1={PZ(seg[0])} y1={PX(seg[1])} x2={PZ(seg[2])} y2={PX(seg[3])} stroke={col} strokeWidth="4" data-op={op.id} />)
+    if (ed) els.push(<line key={'hit' + op.id} x1={PZ(seg[0])} y1={PX(seg[1])} x2={PZ(seg[2])} y2={PX(seg[3])} stroke="transparent" strokeWidth="16" className="op-hit" data-hit={op.id}
+      onPointerDown={(e) => startMain(e, op)} />)
     const tag = tagMap[op.id]
     if (tag) {
       const cz = PZ((seg[0] + seg[2]) / 2) + out[0] * 11, cx = PX((seg[1] + seg[3]) / 2) + out[1] * 11
@@ -145,8 +160,85 @@ function PlanKey({ building, openings, tagMap, geom }) {
   lbl('nr', (PZ(0) + PZ(L)) / 2, PX(W + ext.right) + nB, `RIGHT EAVE${ext.right ? ' SIDE' : ''} · ${fmtFtIn(L)}`)
   lbl('nf', PZ(-ext.front) - nF, (PX(0) + PX(W)) / 2, `FRONT · ${fmtFtIn(W)}`, -90)
   lbl('nb', PZ(L + ext.back) + nK, (PX(0) + PX(W)) / 2, `BACK · ${fmtFtIn(W)}`, 90)
+  // ── editing ─────────────────────────────────────────────────────────────
+  const allowed = ['front', 'back', 'left', 'right'].filter((w) => !(hybrid && w === building.openEnd))
+  if (divZ != null && window.hasDivider && window.hasDivider(building)) allowed.push('divider')
+  const WALLC = { front: ['v', PZ(0)], back: ['v', PZ(L)], left: ['h', PX(0)], right: ['h', PX(W)], divider: ['v', divZ != null ? PZ(divZ) : -1e9] }
+  const wlen = (wall) => (wall === 'left' || wall === 'right' ? L : W)
+  const toSvg = (e) => {
+    const svg = svgRef.current; if (!svg) return null
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY
+    const m = svg.getScreenCTM(); return m ? pt.matrixTransform(m.inverse()) : null
+  }
+  // the wall the pointer is nearest + the opening's raw offset there (WALLS.ref frame)
+  const nearest = (p, w) => {
+    let best = null
+    allowed.forEach((wall) => { const [o, c] = WALLC[wall]; const d = Math.abs((o === 'v' ? p.x : p.y) - c); if (!best || d < best.d) best = { wall, d, o } })
+    if (!best) return null
+    const along = best.o === 'v' ? (p.y - ox) / s : (p.x - oz) / s // ft from the left eave / from the front
+    return { wall: best.wall, off: best.o === 'v' ? along - w / 2 : L - along - w / 2 }
+  }
+  const snapMain = (wall, raw, w, selfId, free) => {
+    const others = (openings || []).filter((o) => o.wall === wall && o.id !== selfId).map((o) => ({ x: o.offset, w: o.w }))
+    const centers = wall === 'left' || wall === 'right' ? trussFromFront(building, g).map((t) => L - t) : []
+    return snapAlong(raw, w, wlen(wall), { lines: wallSnapLines(wlen(wall), others), centerLines: centers, snap: 7 / s, free })
+  }
+  function startMain(e, op) {
+    if (ed.placeType) return
+    e.stopPropagation(); e.preventDefault()
+    try { window.focus() } catch (_) { /* arrow keys reach this frame even when the drag is its first click */ }
+    if (ed.onSelect) ed.onSelect(op.id)
+    dragRef.current = { kind: 'main', id: op.id, w: op.w }
+    try { svgRef.current.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
+  }
+  function startLt(e, l, o, ref, x0) {
+    if (ed.placeType) return
+    e.stopPropagation(); e.preventDefault()
+    try { window.focus() } catch (_) { /* arrow keys reach this frame even when the drag is its first click */ }
+    if (ed.onSelect) ed.onSelect(`lt${ref.n}-${ref.oi}-${ref.i}`)
+    const p = toSvg(e); if (!p) return
+    const a = ltOpeningPlan(l, o.loc, 0, o.w, W, L), b = ltOpeningPlan(l, o.loc, 1, o.w, W, L)
+    const axis = a.z0 !== b.z0 ? 'z' : 'x', sign = axis === 'z' ? b.z0 - a.z0 : b.x0 - a.x0
+    const others = o.xs.filter((_, k) => k !== ref.i).map((x) => ({ x, w: o.w }))
+      .concat((l.openings || []).filter((q, qi) => qi !== ref.oi && q.loc === o.loc && Array.isArray(q.xs)).flatMap((q) => q.xs.map((x) => ({ x, w: q.w }))))
+    dragRef.current = { kind: 'lt', ref, l, o, axis, sign, p0: p, x0, others }
+    try { svgRef.current.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
+  }
+  function onMove(e) {
+    const d = dragRef.current; if (!d) return
+    const p = toSvg(e); if (!p) return
+    if (d.kind === 'main') {
+      const nw = nearest(p, d.w); if (!nw) return
+      const r = snapMain(nw.wall, nw.off, d.w, d.id, e.altKey)
+      setGuide(r.guide != null ? { wall: nw.wall, at: r.guide } : null)
+      ed.onMove(d.id, { wall: nw.wall, offset: r.x })
+    } else {
+      const delta = ((d.axis === 'z' ? p.x - d.p0.x : p.y - d.p0.y) / s) * d.sign
+      const len = ltWallLen(d.l, d.o.loc)
+      const r = snapAlong(d.x0 + delta, d.o.w, len, { lines: wallSnapLines(len, d.others), snap: 7 / s, free: e.altKey })
+      ed.onMoveLt(d.ref, r.x)
+    }
+  }
+  function onUp(e) {
+    if (dragRef.current) { try { svgRef.current.releasePointerCapture(e.pointerId) } catch (_) { /* ignore */ } }
+    dragRef.current = null; setGuide(null)
+  }
+  function onDown(e) {
+    if (!ed.placeType) return
+    const def = window.OPENING_TYPES[ed.placeType]; const p = toSvg(e); if (!p || !def) return
+    const nw = nearest(p, def.w); if (!nw) return
+    ed.onPlace(nw.wall, snapMain(nw.wall, nw.off, def.w, null, e.altKey).x)
+  }
+  if (ed && guide) {
+    const [o, c] = WALLC[guide.wall]
+    const pos = o === 'v' ? PX(guide.at) : PZ(L - guide.at)
+    els.push(o === 'v'
+      ? <line key="guide" x1={c - 16} y1={pos} x2={c + 16} y2={pos} stroke={TEAL} strokeWidth="1.2" strokeDasharray="3 2" />
+      : <line key="guide" x1={pos} y1={c - 16} x2={pos} y2={c + 16} stroke={TEAL} strokeWidth="1.2" strokeDasharray="3 2" />)
+  }
   return (
-    <svg className="plan-key" viewBox={`0 0 ${VW} ${VH}`} width={VW} height={VH} xmlns="http://www.w3.org/2000/svg" fontFamily="Inter, Barlow, Arial, sans-serif">
+    <svg ref={svgRef} className={'plan-key' + (ed ? ' is-edit' : '') + (ed && ed.placeType ? ' is-placing' : '')} viewBox={`0 0 ${VW} ${VH}`} width={VW} height={VH} xmlns="http://www.w3.org/2000/svg" fontFamily="Inter, Barlow, Arial, sans-serif"
+      onPointerMove={ed ? onMove : undefined} onPointerUp={ed ? onUp : undefined} onPointerCancel={ed ? onUp : undefined} onPointerDown={ed ? onDown : undefined}>
       {els}
     </svg>
   )
@@ -154,7 +246,13 @@ function PlanKey({ building, openings, tagMap, geom }) {
 function roleOf(t) { return t === 'rollup' ? 'rollup' : t === 'wtd' ? 'walk' : t === 'win' ? 'window' : 'framed' }
 
 // ── one elevation ──────────────────────────────────────────────────────────
-function ElevationCard({ spec }) {
+// `ed` (Edit view only): drag an opening along this wall (snaps to the wall
+// ends / centre / 5′ grid / neighbours, its centre to frame lines; Alt = free),
+// click to select, click the wall to place the armed type. W, L = building size.
+function ElevationCard({ spec, ed, W, L }) {
+  const svgRef = R.useRef(null)
+  const dragRef = R.useRef(null)
+  const [guide, setGuide] = R.useState(null)
   const lay = elevLayout(spec)
   const { X, Y, gy, dy, dy2, VW, VH, s } = lay
   const els = []
@@ -224,7 +322,10 @@ function ElevationCard({ spec }) {
     const col = colorOf(it)
     const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s
     const pid = 'h-' + (it.type || it.role)
-    els.push(<rect key={'o' + it.id} x={rx.toFixed(1)} y={ry.toFixed(1)} width={rw.toFixed(1)} height={rh.toFixed(1)} fill={`url(#${pid})`} stroke={col} strokeWidth="1.1" strokeDasharray="4 2.5" />)
+    const movable = !!ed && (spec.wall ? true : !!it.lt)
+    if (ed && ed.selectedId === it.id) els.push(<rect key={'sel' + it.id} x={(rx - 3).toFixed(1)} y={(ry - 3).toFixed(1)} width={(rw + 6).toFixed(1)} height={(rh + 6).toFixed(1)} fill="none" stroke={TEAL} strokeOpacity="0.55" strokeWidth="3" />)
+    els.push(<rect key={'o' + it.id} x={rx.toFixed(1)} y={ry.toFixed(1)} width={rw.toFixed(1)} height={rh.toFixed(1)} fill={`url(#${pid})`} stroke={col} strokeWidth="1.1" strokeDasharray="4 2.5" data-op={it.id}
+      className={movable ? 'op-hit' : undefined} onPointerDown={movable ? (e) => startDrag(e, it) : undefined} />)
     const lab = `${fmtFtIn(it.w)}×${fmtFtIn(it.h)}`
     const fs = rw < 52 ? 8.5 : 9.5
     const ly = sizeLabelY(it, ry, rw, rh)
@@ -269,15 +370,50 @@ function ElevationCard({ spec }) {
     <text x={X(0)} y={dy2 + 18} fontSize="8.5" fontWeight="600" fill={MUTED} letterSpacing=".14em">{spec.ends[0]}</text>
     <text x={X(F)} y={dy2 + 18} textAnchor="end" fontSize="8.5" fontWeight="600" fill={MUTED} letterSpacing=".14em">{spec.ends[1]}</text>
   </g>)
+  // ── editing ─────────────────────────────────────────────────────────────
+  const toSvg = (e) => {
+    const svg = svgRef.current; if (!svg) return null
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY
+    const m = svg.getScreenCTM(); return m ? pt.matrixTransform(m.inverse()) : null
+  }
+  function startDrag(e, it) {
+    if (!ed || ed.placeType) return
+    e.stopPropagation(); e.preventDefault()
+    try { window.focus() } catch (_) { /* arrow keys reach this frame even when the drag is its first click */ }
+    if (ed.onSelect) ed.onSelect(it.id)
+    const p = toSvg(e); if (!p) return
+    dragRef.current = { it, p0: p, x0: it.x, others: items.filter((o) => o.id !== it.id) }
+    try { svgRef.current.setPointerCapture(e.pointerId) } catch (_) { /* ignore */ }
+  }
+  function onMove(e) {
+    const d = dragRef.current; if (!d) return
+    const p = toSvg(e); if (!p) return
+    const r = snapAlong(d.x0 + (p.x - d.p0.x) / s, d.it.w, F, { lines: wallSnapLines(F, d.others), centerLines: spec.truss || [], snap: 7 / s, free: e.altKey })
+    setGuide(r.guide)
+    if (d.it.lt) ed.onMoveLt(d.it.lt, ltDrawToProg(d.it.lt, r.x, d.it.w))
+    else ed.onMove(d.it.id, { offset: offsetFromFrameX(spec.wall, r.x, d.it.w, W, L) })
+  }
+  function onUp(e) {
+    if (dragRef.current) { try { svgRef.current.releasePointerCapture(e.pointerId) } catch (_) { /* ignore */ } }
+    dragRef.current = null; setGuide(null)
+  }
+  function onDown(e) {
+    if (!ed.placeType || !spec.wall) return
+    const def = window.OPENING_TYPES[ed.placeType]; const p = toSvg(e); if (!p || !def) return
+    const r = snapAlong((p.x - X(0)) / s - def.w / 2, def.w, F, { lines: wallSnapLines(F, items), centerLines: spec.truss || [], snap: 7 / s, free: e.altKey })
+    ed.onPlace(spec.wall, offsetFromFrameX(spec.wall, r.x, def.w, W, L))
+  }
+  if (ed && guide != null) els.push(<line key="guide" x1={X(guide)} y1={gy + 6} x2={X(guide)} y2={Y(spec.h(guide)) - 6} stroke={TEAL} strokeWidth="1.2" strokeDasharray="3 2" />)
   const types = Array.from(new Set(items.map((it) => it.type || it.role)))
   return (
-    <div className="elev-card" data-elev={spec.key}>
+    <div className={'elev-card' + (ed ? ' is-edit' : '')} data-elev={spec.key}>
       <div className="elev-head">
         <span className="elev-title">{spec.title}</span>
         <span className="elev-sub">{spec.sub}</span>
         <span className="elev-meta">{`${items.length} opening${items.length === 1 ? '' : 's'}`}</span>
       </div>
-      <svg className="elev-svg" viewBox={`0 0 ${VW} ${VH}`} width={CARD_W} height={Math.round(VH * CARD_W / VW)} xmlns="http://www.w3.org/2000/svg" fontFamily="Inter, Barlow, Arial, sans-serif">
+      <svg ref={svgRef} className={'elev-svg' + (ed && ed.placeType && spec.wall ? ' is-placing' : '')} viewBox={`0 0 ${VW} ${VH}`} width={CARD_W} height={Math.round(VH * CARD_W / VW)} xmlns="http://www.w3.org/2000/svg" fontFamily="Inter, Barlow, Arial, sans-serif"
+        onPointerMove={ed ? onMove : undefined} onPointerUp={ed ? onUp : undefined} onPointerCancel={ed ? onUp : undefined} onPointerDown={ed ? onDown : undefined}>
         <defs>{types.map((t) => {
           const col = TYPE_HEX[t] || ROLE_HEX[t] || MUTED
           return <pattern key={t} id={'h-' + t} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke={col} strokeOpacity="0.35" strokeWidth="0.8" /></pattern>
@@ -314,8 +450,7 @@ function SheetDoc(props) {
   const sizeMismatch = geom && (geom.W !== Number(building.width) || geom.L !== Number(building.length))
   const notesB = { ...building, notes: (building.notes || []).concat(sizeMismatch ? ['The quote’s lean-tos / partitions are not drawn: the building size was changed here from the quote’s ' + fmtFtIn(geom.W) + ' × ' + fmtFtIn(geom.L) + '.'] : []) }
   // every lean-to spelled out under the plan (the plan label may be just "LTn")
-  const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map((l) =>
-    `LT${l.n} · ${({ left: 'Left eave', right: 'Right eave', front: 'Front gable', back: 'Back gable' })[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? ' · ' + fmtFtIn(l.stor.len) + ' storage at the ' + l.stor.end + ' end' : ''} · ${(l.walls && l.walls.mode) === 'enclosed' ? 'enclosed' : (l.walls && l.walls.mode) === 'custom' ? 'custom walls' : 'open'}`)
+  const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend)
   const stageRef = R.useRef(null)
   const [plan, setPlan] = R.useState(null)
   const H = window.SheetParts
@@ -399,5 +534,44 @@ function SheetDoc(props) {
   )
 }
 
+// ── the Edit view: the same drawings, live and draggable ───────────────────
+// Owner 10/6: the edit view must look like the new design and show the
+// lean-tos. One continuous sheet (no page breaks while you work): header,
+// the plan (drag / place on it), EVERY wall's elevation (drag along the wall,
+// the chain updates live), the schedule. Lean-to openings move where the
+// quote program gave them a spot; arrows nudge the selected one (app.jsx).
+function SheetEdit(props) {
+  const { building, docInfo, openings, tagMap, style, revisionMode, ed } = props
+  const geom = docInfo && docInfo.geom ? docInfo.geom : null
+  const specs = elevationSpecs(building, openings, geom, tagMap, { all: true })
+  const sizeMismatch = geom && (geom.W !== Number(building.width) || geom.L !== Number(building.length))
+  const H = window.SheetParts
+  const W = Number(building.width) || 0, L = Number(building.length) || 0
+  const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend)
+  return (
+    <div className="sheet-edit">
+      <div className={'sheet sheet-page sheet-edit-page style-' + style}>
+        {H.Masthead({ revisionMode })}
+        {H.InfoStrip({ docInfo })}
+        {revisionMode && H.RevStrip()}
+        {H.SpecBand({ building, docInfo })}
+        <div className="block-title"><h2>Building Plan</h2><span className="hint">{ed.placeType ? 'Click a wall to place · Alt = no snap · Esc to stop' : 'Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes'}</span></div>
+        <div className="plan-key-wrap"><PlanKey building={building} openings={openings} tagMap={tagMap} geom={geom} ed={ed} />
+          {planLegend.length > 0 && <div className="plan-legend">{planLegend.map((t, i) => <span key={i}>{t}</span>)}</div>}
+          {sizeMismatch && <div className="plan-legend warn">The quote’s lean-tos / partitions are hidden: the building size was changed here from the quote’s {fmtFtIn(geom.W)} × {fmtFtIn(geom.L)}.</div>}</div>
+        <div className="block-title"><h2>Wall Elevations</h2><span className="hint">Drag an opening along its wall · the chain updates live · same drawings as the Approval Sheet</span></div>
+        {specs.map((sp) => <ElevationCard key={sp.key} spec={sp} ed={ed} W={W} L={L} />)}
+        <div className="block-title"><h2>Opening Schedule</h2><span className="hint">Tags match the plan and elevations</span></div>
+        <window.Schedule building={building} openings={openings} tagMap={tagMap} />
+      </div>
+    </div>
+  )
+}
+function ltLegend(l) {
+  return `LT${l.n} · ${({ left: 'Left eave', right: 'Right eave', front: 'Front gable', back: 'Back gable' })[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? ' · ' + fmtFtIn(l.stor.len) + ' storage at the ' + l.stor.end + ' end' : ''} · ${(l.walls && l.walls.mode) === 'enclosed' ? 'enclosed' : (l.walls && l.walls.mode) === 'custom' ? 'custom walls' : 'open'}`
+}
+
 window.SheetDoc = SheetDoc
+window.SheetEdit = SheetEdit
+window.SheetGeom = { parseLtId, getLtOpening, setLtOpeningX } // app.jsx: arrow-key nudge of a lean-to opening
 window.SheetGeomFmt = fmtFtIn

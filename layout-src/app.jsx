@@ -7,10 +7,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "style": "engineering",
   "accent": "#14A6A0",
   "density": "regular",
-  "showDims": true,
   "showFrames": true,
-  "showElev": false,
-  "elevWall": "front",
   "width": 40,
   "length": 50,
   "height": 16,
@@ -35,13 +32,6 @@ function computeTagMap(openings) {
   sorted.forEach((o, i) => { map[o.id] = i + 1; });
   return map;
 }
-
-const WALL_CHIPS = [
-  { key: 'front', label: 'Front' },
-  { key: 'back', label: 'Back' },
-  { key: 'left', label: 'Left' },
-  { key: 'right', label: 'Right' },
-];
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -85,6 +75,8 @@ function App() {
   // standalone HTML so the CRM can render it to PDF and file it under "Layout".
   const docInfoRef = React.useRef(docInfo);
   docInfoRef.current = docInfo;
+  const stateRef = React.useRef(null);
+  stateRef.current = { mode, openings, geom: docInfo.geom || null, selectedId };
   React.useEffect(() => {
     function seedFromCRM(d) {
       if (!d) return;
@@ -96,6 +88,9 @@ function App() {
         setSelectedId(null); setPlaceType(null);
       }
       setDocInfo(prev => crmDocInfo(prev, d));
+      // Seeded from a quote: open straight on the Approval Sheet (the new
+      // design, owner 10/6); Edit is the secondary button.
+      if (d.building || Array.isArray(d.openings)) { setSelectedId(null); setPlaceType(null); setMode('sheet'); }
     }
     function customerName() {
       return (docInfoRef.current && docInfoRef.current.customer) || '';
@@ -131,7 +126,9 @@ function App() {
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
         '\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>' + el.outerHTML + '</body></html>';
     }
-    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName };
+    // read-only snapshot (headless checks / support): what the sheet is drawing
+    function state() { return JSON.parse(JSON.stringify(stateRef.current)); }
+    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName, state };
     return () => { try { delete window.SS_LAYOUT; } catch (e) { window.SS_LAYOUT = undefined; } };
   }, [setTweak]);
 
@@ -204,6 +201,11 @@ function App() {
   // ---- place-mode handler ----
   // Continuous: keep placing the same type until the user cancels (Esc, clicks
   // the type again, or switches modes). The list pulses the newly-placed row.
+  // move one lean-to opening (program-frame x) — the quote's geometry carried in docInfo.geom
+  function moveLtOpening(ref, x) {
+    setDocInfo(prev => ({ ...prev, geom: window.SheetGeom.setLtOpeningX(prev.geom, ref, x) }));
+  }
+
   function placeOpening(wall, off) {
     if (!placeType) return;
     const op = makeOpening(placeType, wall, off);
@@ -222,6 +224,18 @@ function App() {
       if (e.key === 'Escape') { setPlaceType(null); setSelectedId(null); return; }
       if (typing || mode !== 'edit') return;
       if (selectedId == null) return;
+      const dirs0 = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
+      // a lean-to opening (the quote's spot): arrows nudge it along its wall
+      const ltRef = window.SheetGeom && window.SheetGeom.parseLtId(selectedId);
+      if (ltRef) {
+        if (!(e.key in dirs0)) return;
+        e.preventDefault();
+        const cur = window.SheetGeom.getLtOpening(docInfo.geom, ltRef);
+        if (!cur) return;
+        const step = (e.metaKey || e.ctrlKey) ? 1 : (e.shiftKey ? 0.5 : (1 / 12));
+        moveLtOpening(ltRef, Math.round((cur.x + dirs0[e.key] * step) * 96) / 96);
+        return;
+      }
       const op = openings.find(o => o.id === selectedId);
       if (!op) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -245,7 +259,7 @@ function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, openings, mode, building.width, building.length]);
+  }, [selectedId, openings, mode, building.width, building.length, docInfo.geom]);
 
   // ---- save / load layouts ----
   function saveLayout(name) {
@@ -339,13 +353,13 @@ function App() {
         </div>
 
         <div className="seg" role="tablist">
-          <button className={editing ? 'on' : ''} onClick={() => setMode('edit')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-            Edit
-          </button>
-          <button className={!editing ? 'on' : ''} onClick={() => { setSelectedId(null); setPlaceType(null); setMode('sheet'); }}>
+          <button className={!editing ? 'on' : ''} data-mode="sheet" onClick={() => { setSelectedId(null); setPlaceType(null); setMode('sheet'); }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>
             Approval Sheet
+          </button>
+          <button className={editing ? 'on' : ''} data-mode="edit" onClick={() => setMode('edit')}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+            Edit layout
           </button>
         </div>
 
@@ -384,26 +398,15 @@ function App() {
               <button className={'cb-toggle' + (t.showFrames ? ' on' : '')} onClick={() => setTweak('showFrames', !t.showFrames)}>
                 <i /><span>{t.showFrames ? 'On' : 'Off'}</span>
               </button>
-              <span className="cb-divider" />
-              <span className="cb-lbl">Elevation</span>
-              <button className={'cb-toggle' + (t.showElev ? ' on' : '')} onClick={() => setTweak('showElev', !t.showElev)}>
-                <i /><span>{t.showElev ? 'On' : 'Off'}</span>
-              </button>
-              <div className={'cb-walls' + (t.showElev ? '' : ' dim')}>
-                {WALL_CHIPS.map(w => (
-                  <button key={w.key} className={'cb-wall' + (t.elevWall === w.key ? ' on' : '')}
-                    disabled={!t.showElev} onClick={() => setTweak('elevWall', w.key)}>{w.label}</button>
-                ))}
-              </div>
               <div className="cb-spacer" />
-              <span className="cb-tip">{placeType ? 'Click a wall to place · hold Alt for no snap' : (selectedId ? 'Drag to move (1″ steps) · Alt = no snap · arrows nudge (Shift 6″, ⌘ 1′) · Del removes' : 'Drag openings · pick a type to add')}</span>
+              <span className="cb-tip">{placeType ? 'Click a wall on the plan or an elevation to place · hold Alt for no snap' : (selectedId ? 'Drag on the plan or its elevation (1″ steps) · Alt = no snap · arrows nudge (Shift 6″, ⌘ 1′) · Del removes' : 'Drag openings on the plan or the elevations · pick a type to add')}</span>
             </div>
           )}
           <div className={'canvas-stage view-' + mode} key={mode}>
             <Sheet building={building} docInfo={docInfo} openings={openings} tagMap={tagMap}
-              style={t.style} showDims={t.showDims} showFrames={t.showFrames}
-              showElevation={t.showElev} elevWall={t.elevWall}
+              style={t.style} showFrames={t.showFrames}
               revisionMode={revisionMode}
+              onMoveLt={editing ? moveLtOpening : null}
               selectedId={editing ? selectedId : null}
               onSelect={editing ? setSelectedId : null}
               placeType={editing ? placeType : null}
@@ -425,17 +428,8 @@ function App() {
         <TweakRadio label="Density" value={t.density}
           options={['compact', 'regular', 'comfy']}
           onChange={v => setTweak('density', v)} />
-        <TweakToggle label="Dimension lines" value={t.showDims}
-          onChange={v => setTweak('showDims', v)} />
-
-        <TweakSection label="Elevation" />
-        <TweakToggle label="Frame lines" value={t.showFrames}
+        <TweakToggle label="Frame lines (edit plan)" value={t.showFrames}
           onChange={v => setTweak('showFrames', v)} />
-        <TweakToggle label="Elevation on sheet" value={t.showElev}
-          onChange={v => setTweak('showElev', v)} />
-        <TweakSelect label="Elevation wall" value={t.elevWall}
-          options={[{ value: 'front', label: 'Front' }, { value: 'back', label: 'Back' }, { value: 'left', label: 'Left' }, { value: 'right', label: 'Right' }]}
-          onChange={v => setTweak('elevWall', v)} />
 
         <TweakSection label="Building" />
         <TweakRadio label="Configuration" value={t.config || 'enclosed'}

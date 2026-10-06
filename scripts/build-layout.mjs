@@ -24,7 +24,8 @@ mkdirSync(out, { recursive: true })
 
 // Load order matters — each file attaches its exports to `window`.
 // SheetDoc imports the pure geometry (sheetGeom.js, unit-tested) -> bundled as an IIFE.
-const FILES = ['tweaks-panel', 'PlanDiagram', 'Elevation', 'Schedule', 'Editor', 'SheetDoc', 'Sheet', 'app']
+// (PlanDiagram / Elevation — the old drawings — retired 10/6: the edit view draws with SheetDoc too)
+const FILES = ['tweaks-panel', 'Schedule', 'Editor', 'SheetDoc', 'Sheet', 'app']
 const BUNDLED = new Set(['SheetDoc'])
 for (const f of FILES) {
   await build({

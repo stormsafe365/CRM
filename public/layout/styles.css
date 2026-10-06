@@ -1050,6 +1050,15 @@ body {
   .sheet-stage { display: none !important; }
 }
 
+/* Edit view (SheetEdit): the same drawings as the Approval Sheet, draggable. */
+.sheet-edit { display: flex; flex-direction: column; align-items: center; width: 816px; }
+.sheet.sheet-edit-page { height: auto; min-height: 1056px; overflow: visible; padding-bottom: 24px; }
+.plan-key.is-edit, .elev-card.is-edit .elev-svg { touch-action: none; user-select: none; }
+.plan-key.is-edit text, .elev-card.is-edit .elev-svg text { pointer-events: none; }
+.op-hit { cursor: grab; }
+.op-hit:active { cursor: grabbing; }
+.plan-key.is-placing, .elev-svg.is-placing { cursor: copy; }
+.plan-legend.warn { color: #9a4a12; }
 /* ---- respect reduced-motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .canvas-stage, .op-row, .op-row.removing, .saved-row, .op-sel-ring,
