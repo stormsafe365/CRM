@@ -12,7 +12,8 @@ import { createPortal } from 'react-dom'
 import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
-import { honoredLegacyOrder } from '../lib/priceLockCrm'
+import { honoredLegacyOrder, isSold } from '../lib/priceLockCrm'
+import { paidOf, revisedBalance } from '../lib/contractDocs'
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
 
@@ -73,8 +74,12 @@ const fmt = (n) => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { m
 // signed / revisionPreview (Use as revision): the signed contract ({total, deposit})
 // and the price engine's exact revised totals for a subtotal change, so the
 // summary below is exactly what the documents will print.
-export default function RevisionModal({ client, quote, onClose, onApplyToBuild, onUseAsRevision, revisingWith = null, signed = null, revisionPreview = null }) {
-  const [revNo, setRevNo] = useState('1')
+// defaultRevNo: the next revision # of this order (lib/contractDocs nextRevNo) — the
+// revised contract is numbered "<agreement> Rev <n>" with it.
+export default function RevisionModal({ client, quote, onClose, onApplyToBuild, onUseAsRevision, revisingWith = null, signed = null, revisionPreview = null, defaultRevNo = null }) {
+  const [revNo, setRevNo] = useState(defaultRevNo || '1')
+  // An original that was never signed (Use as revision): its saved total is the starting price.
+  const origSigned = !onUseAsRevision || isSold(quote?.status)
   const [date, setDate] = useState(isoToday())
   const [original, setOriginal] = useState(signed ? String(signed.total) : quote?.total_amount != null ? String(quote.total_amount) : '')
   const [rows, setRows] = useState([emptyRow()])
@@ -89,7 +94,8 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
   const taxPct = Number(qf.tax) || 0
   const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
   const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
-  const origDeposit = signed ? (Number(signed.deposit) || 0) : (Number(quote?.deposit_amount) || 0)
+  // money already paid (a revised order: across the chain); an unsigned quote's card deposit as before
+  const origDeposit = signed ? (Number(signed.deposit) || 0) : isSold(quote?.status) ? paidOf(quote, quote?.deposit_amount) : (Number(quote?.deposit_amount) || 0)
   const honored = honoredLegacyOrder(quote)
 
   // Live engine pricing: load the actual quote-builder in a hidden iframe and
@@ -140,7 +146,9 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
         const net = p.total - orig
         return {
           additions: Math.max(net, 0), credits: Math.max(-net, 0), revised: p.total, net,
-          newDeposit: p.deposit, depDiff: p.deposit - origDeposit, newBalance: p.balance, balDiff: p.balance - (orig - origDeposit),
+          // one balance rule (contractDocs.revisedBalance): money already paid is credited
+          newDeposit: p.deposit, depDiff: p.deposit - origDeposit, newBalance: revisedBalance(p.total, p.deposit, origDeposit).balance, refund: revisedBalance(p.total, p.deposit, origDeposit).refund,
+          balDiff: revisedBalance(p.total, p.deposit, origDeposit).balance - (orig - origDeposit),
         }
       }
     }
@@ -160,9 +168,10 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
     const newDeposit = origDeposit ? origDeposit + net * depRatio : null
     const depDiff = newDeposit != null ? newDeposit - origDeposit : null
     const origBalance = orig - origDeposit
-    const newBalance = newDeposit != null ? revised - newDeposit : null
+    const rb = newDeposit != null ? revisedBalance(revised, newDeposit, origDeposit) : null
+    const newBalance = rb ? rb.balance : null
     const balDiff = newBalance != null ? newBalance - origBalance : null
-    return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff }
+    return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff, refund: rb ? rb.refund : 0 }
   }, [rows, original, amtMode, listFactor, origDeposit, revisionPreview, signed, discPct, taxPct])
 
   async function generate(applyAfter) {
@@ -207,6 +216,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
           origDeposit: origDeposit || null,
           newDeposit: totals.newDeposit,
           newBalance: totals.newBalance,
+          refund: totals.refund || 0,
           note: note.trim(),
         },
       })
@@ -248,7 +258,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
         </p>
         <p style={{ margin: '0 0 2px', color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }}>
           {onUseAsRevision
-            ? <>Revising this signed quote with {revisingWith ? <>quote #{revisingWith}</> : 'the open quote'}’s build (the changes are already made there). Type each change and its price — the Revision Order and the Revised Contract are generated from that build at the signed price + these changes.</>
+            ? <>Revising this {origSigned ? 'signed quote' : <b>original quote (not signed yet) — its saved total is the starting price</b>} with {revisingWith ? <>quote #{revisingWith}</> : 'the open quote'}’s build (the changes are already made there). Type each change and its price — the Revision Order and the Revised Contract are generated from that build at the {origSigned ? 'signed price' : 'original quote’s saved total'} + these changes.</>
             : 'Type each change below — the finished, filled-in order saves to Documents › Revisions and opens ready to sign.'}
         </p>
 
@@ -262,8 +272,8 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
             <input style={FIELD} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div style={{ flex: 1 }}>
-            <label style={LBL}>Original Contract ($)</label>
-            <input style={FIELD} type="number" step="0.01" value={original} readOnly={!!signed} title={signed ? 'The signed contract price (from the signed quote)' : undefined} onChange={(e) => setOriginal(e.target.value)} />
+            <label style={LBL}>{origSigned ? 'Original Contract ($)' : 'Original Quote ($)'}</label>
+            <input style={FIELD} type="number" step="0.01" value={original} readOnly={!!signed} title={signed ? (origSigned ? 'The signed contract price (from the signed quote)' : 'The original quote’s saved total (not signed yet)') : undefined} onChange={(e) => setOriginal(e.target.value)} />
           </div>
         </div>
         {honored && !signed && (
@@ -382,7 +392,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
 
         {/* Live price summary — exactly what prints */}
         <div style={{ marginTop: 12, border: '1px solid var(--line, #294059)', borderRadius: 10, padding: '10px 14px', fontSize: 13 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>Original contract</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(Number(original) || 0)}</b></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>{origSigned ? 'Original contract' : 'Original quote (not signed yet)'}</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(Number(original) || 0)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>Additions (+)</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.additions)}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}><span>Credits (−)</span><b style={{ color: 'var(--fg, #e2e8f0)' }}>{totals.credits ? '−' + fmt(totals.credits) : '$0.00'}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 1px', marginTop: 4, borderTop: '1px solid var(--line, #294059)', fontSize: 14.5 }}>
@@ -398,6 +408,12 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
                 <span>Revised balance at scheduling</span>
                 <b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.newBalance)}<span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--fg-3, #8598AC)' }}>({totals.balDiff >= 0 ? '+' : '−'}{fmt(Math.abs(totals.balDiff))})</span></b>
               </div>
+              {totals.refund > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}>
+                  <span>Refund due to buyer (paid more than the revised total)</span>
+                  <b style={{ color: 'var(--success, #34d399)' }}>{fmt(totals.refund)}</b>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -8389,6 +8389,7 @@ function _rvClear(){
   window._rvOrig=null; window._rvForce=false;
   document.querySelectorAll('[data-rv-orig]').forEach(function(el){ delete el.dataset.rvOrig; });
   document.querySelectorAll('[data-rv-stor]').forEach(function(el){ delete el.dataset.rvStor; }); // lean-to storage signature (as ordered)
+  document.querySelectorAll('[data-rv-new]').forEach(function(el){ delete el.dataset.rvNew; delete el.dataset.rvDelta; }); // Use as revision: added / changed marks
   window._rvAewSig=null; // main-building storage wall (as ordered)
 }
 // Reopened-quote price lock (see window.PriceLock at the end of this file). The
@@ -12868,6 +12869,166 @@ function dimSpacingPageHTML(theme){
 })();
 
 
+// ── Revised contract: what changed (owner 10/6/26: "shouldnt it say whats been revised?") ──
+// The CRM's Use as revision / Finish Revision hands ONE print a description of
+// the revision in window._rvDoc (read once, at the start of printContract):
+//   { agreementNo, revNo, signed, signedDate ('YYYY-MM-DD' or null), originalTotal,
+//     depositPaid, adjustment, adjLabel,
+//     lines:[{ kind:'add'|'remove'|'change'|'field'|'move'|'manual'|'drift'|'residual',
+//              printKind, desc, amount, wall, from:[{val,side}], to:[{val,side}], fromSill, toSill }] }
+// and the contract number in window._ctNo ("SS-2026-00144", "SS-2026-00144 Rev 1").
+// Amounts on the change lines are building-subtotal dollars (before discount / tax),
+// exactly as the Revision Order prints them. Nothing here prices anything.
+var RV_BOX_MAX=6; // more change lines than this: the first 5 + a Change Summary page
+function rvMoney(n){
+  var v=Math.round((Number(n)||0)*100)/100, a=Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return v>0?'+$'+a:(v<0?'−$'+a:'$0.00');
+}
+function rvTotal(n){ var v=Math.round((Number(n)||0)*100)/100; return (v<0?'−':'')+'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function rvDate(iso){
+  var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||'')); if(!m) return '';
+  return new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+}
+function rvKind(l){
+  var k=String(l&&l.kind||'').toLowerCase();
+  if(k==='add'||k==='remove'||k==='move') return k;
+  if(k==='manual'){ var p=String(l.printKind||'').toLowerCase(); return p==='add'?'add':(p==='remove'?'remove':'change'); }
+  return 'change';
+}
+function rvPos(wall,p){
+  if(!p||p.val===''||p.val==null||!isFinite(parseFloat(p.val))) return 'auto-spaced';
+  return _dimFtIn(parseFloat(p.val))+' from the '+posRefName(wall||'',p.side==='right'?'right':'left');
+}
+// "12' from the front gable → 18'6½" from the front gable" (the shared 1/8" formatter)
+function rvMoveText(l){
+  var a=l.from||[], b=l.to||[], n=Math.max(a.length,b.length), out=[];
+  for(var i=0;i<n;i++){ var x=rvPos(l.wall,a[i]), y=rvPos(l.wall,b[i]); if(x!==y) out.push((n>1?'#'+(i+1)+' ':'')+x+' → '+y); }
+  if(l.fromSill!==undefined||l.toSill!==undefined){ // windows / framed openings: a blank sill is the program's default
+    var fs=parseFloat(l.fromSill), ts=parseFloat(l.toSill); if(!(fs>=0)) fs=4.16667; if(!(ts>=0)) ts=4.16667;
+    if(Math.round(fs*96)!==Math.round(ts*96)) out.push('sill '+_dimFtIn(fs)+' → '+_dimFtIn(ts));
+  }
+  return out.join('; ');
+}
+function rvCap(s){ s=String(s||''); return s.charAt(0).toUpperCase()+s.slice(1); }
+// One change line → { sym, verb, text, amt } (plain text; escaped when rendered)
+function rvLine(l){
+  var k=rvKind(l), d=String(l&&l.desc||'').replace(/\s+/g,' ').trim(), amt=(l&&l.amount!=null&&String(l.amount).trim()!==''&&isFinite(Number(l.amount)))?Number(l.amount):null;
+  if(k==='add') return { kind:k, sym:'+', verb:'Added', text:rvCap(d.replace(/^Add(ed)?\s+/i,'')), amt:amt };
+  if(k==='remove') return { kind:k, sym:'−', verb:'Removed', text:rvCap(d.replace(/^Remove(d)?\s+/i,'')), amt:amt };
+  if(k==='move'){
+    var mv=rvMoveText(l||{}), t=d.replace(/\s+—\s+moved \(placement only\)$/,'');
+    return { kind:k, sym:'↔', verb:'Moved', text:rvCap(t)+(mv?' — '+mv:''), amt:(amt==null?0:amt) };
+  }
+  return { kind:'change', sym:'~', verb:'Changed', text:rvCap(d.replace(/\s+—\s+changed:\s+/,' — ').replace(/\s+—\s+changed$/,'')), amt:amt };
+}
+function rvLineHTML(l, small){
+  var r=rvLine(l), col=r.kind==='add'?'#15803d':(r.kind==='remove'?'#b91c1c':'#7c2d12');
+  return '<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0;font-size:'+(small?'8.5pt':'7.8pt')+'">'+
+    '<span style="flex:none;width:10px;font-weight:900;color:'+col+'">'+r.sym+'</span>'+
+    '<span style="flex:1;min-width:0"><strong>'+r.verb+'</strong> '+_esc(r.text)+'</span>'+
+    '<span style="flex:none;font-weight:700;white-space:nowrap">'+(r.amt==null?'—':rvMoney(r.amt))+'</span></div>';
+}
+function rvAgreementTitle(doc){
+  if(!doc||!doc.agreementNo) return '';
+  var n=String(doc.revNo||'1');
+  if(doc.signed) return 'REVISION '+_esc(n)+' to Agreement '+_esc(doc.agreementNo)+(doc.signedDate&&rvDate(doc.signedDate)?', signed '+rvDate(doc.signedDate):'');
+  return 'REVISION '+_esc(n)+' to Quote '+_esc(doc.agreementNo)+' (not signed yet)';
+}
+// The orange REVISED CONTRACT box (page 1) + the customer-initials box beside it.
+// o = { doc, origTot, revTot, sizeText, aewText, legend:{added,changed,removed} }
+function rvBoxHTML(o){
+  var doc=o.doc||null, lines=(doc&&doc.lines)||[], signed=!doc||doc.signed!==false;
+  var head='<strong style="letter-spacing:.5px">REVISED CONTRACT</strong>'+(doc&&doc.agreementNo?' — <strong>'+rvAgreementTitle(doc)+'</strong>':'');
+  var sup=signed?'Supersedes the previously signed agreement.':'Supersedes the original quote (it was not signed).';
+  var body='';
+  if(lines.length){
+    var show=lines.length>RV_BOX_MAX?lines.slice(0,RV_BOX_MAX-1):lines;
+    body+='<div style="margin:5px 0 3px;border-top:1px solid #fcd9a8;padding-top:4px">'+show.map(function(l){ return rvLineHTML(l); }).join('')+
+      (lines.length>show.length?'<div style="font-size:7.8pt;font-style:italic;padding:1px 0 1px 18px">+ '+(lines.length-show.length)+' more change'+(lines.length-show.length===1?'':'s')+' — see the Change Summary on the last page</div>':'')+
+      (doc&&doc.adjustment&&Math.abs(Number(doc.adjustment))>=0.005?'<div style="display:flex;gap:8px;font-size:7.2pt;color:#9a3412;padding:1px 0 0 18px"><span style="flex:1">'+_esc(doc.adjLabel||'Adjustment to final build price (after discount and tax)')+'</span><span style="white-space:nowrap">'+rvMoney(doc.adjustment)+'</span></div>':'')+
+      '</div>';
+  }
+  var extra=(o.sizeText||'')+(o.aewText||'');
+  var lg=o.legend||{}, parts=[];
+  if(lg.added) parts.push('added items are tagged ADDED');
+  if(lg.changed) parts.push('changed items are tagged CHANGED with the previous amount struck through');
+  if(lg.removed) parts.push('removed items are listed struck through with their credit');
+  var legend=parts.length?'In the itemized pricing below, '+(parts.length>1?parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1]:parts[0])+'. ':'';
+  var money=(isFinite(Number(o.origTot))&&Number(o.origTot)>0)?'<div style="margin-top:3px;font-size:8.5pt"><strong>'+(signed?'Original contract':'Original quote')+' '+rvTotal(o.origTot)+' → Revised '+rvTotal(o.revTot)+'</strong> <span style="color:#9a3412">('+rvMoney(Number(o.revTot)-Number(o.origTot))+')</span></div>':'';
+  return '<div class="c-rv-wrap" style="display:flex;gap:8px;align-items:stretch;margin:4px 0 8px">'+
+    '<div class="c-rv-box" style="flex:1;min-width:0;background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;font-size:8pt;color:#7c2d12">'+
+      head+'<div>'+sup+(extra?' '+extra:'')+'</div>'+body+money+
+      '<div style="margin-top:3px">'+legend+'Renderings, floor plan and spacing pages reflect the revised building.</div>'+
+    '</div>'+
+    '<div class="c-rv-init" style="flex:0 0 112px;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 10px;font-size:7.5pt;color:#7c2d12;display:flex;flex-direction:column;justify-content:flex-end">'+
+      '<div style="font-weight:800;letter-spacing:.3px">Customer initials:</div><div style="border-bottom:1.2px solid #7c2d12;height:26px;margin-top:4px"></div>'+
+      '<div style="font-size:6.5pt;margin-top:3px">I accept the changes listed</div>'+
+    '</div>'+
+  '</div>';
+}
+// Payment summary rows for a revised contract (left box, under the existing
+// subtotal / discount / tax rows, which are unchanged).
+// ONE balance rule for a revised order (contract, Revision Order, CRM card / modal —
+// the CRM's contractDocs.revisedBalance is the same formula): money already paid
+// is credited. additional = what is still owed on the revised deposit; balance =
+// revised total − paid − additional (never negative: an overpayment is a refund).
+function rvBalance(total, deposit, paid){
+  var c=function(n){ return Math.round((Number(n)||0)*100)/100; };
+  var t=c(total), d=c(deposit), p=c(paid);
+  var add=Math.max(0, c(d-p)), rest=c(t-p-add);
+  return { paid:p, additional:add, balance:Math.max(0,rest), refund:Math.max(0,c(-rest)) };
+}
+function rvPayRowsHTML(o){
+  var signed=!o.doc||o.doc.signed!==false, rows='', b=rvBalance(o.revTot, o.dep, o.paid);
+  rows+='<div class="c-tot-row" style="border-top:1.5px solid #f59e0b;margin-top:3px"><span class="l">'+(signed?'Original contract total':'Original quote total')+'</span><span class="v">'+rvTotal(o.origTot)+'</span></div>';
+  rows+='<div class="c-tot-row"><span class="l">Changes</span><span class="v">'+rvMoney(Number(o.revTot)-Number(o.origTot))+'</span></div>';
+  rows+='<div class="c-tot-row"><span class="l"><strong>Revised contract total</strong></span><span class="v"><strong>'+rvTotal(o.revTot)+'</strong></span></div>';
+  if(b.paid>0) rows+='<div class="c-tot-row"><span class="l">Deposit already paid</span><span class="v" style="color:#15803d">−'+rvTotal(b.paid)+'</span></div>';
+  if(b.additional>0) rows+='<div class="c-tot-row"><span class="l">Additional deposit due now</span><span class="v">−'+rvTotal(b.additional)+'</span></div>';
+  rows+='<div class="c-tot-row"><span class="l"><strong>New balance due'+(b.additional>0?' (at scheduling)':'')+'</strong></span><span class="v"><strong>'+rvTotal(b.balance)+'</strong></span></div>';
+  if(b.refund>0) rows+='<div class="c-tot-row"><span class="l"><strong>Refund due to buyer</strong></span><span class="v" style="color:#15803d"><strong>'+rvTotal(b.refund)+'</strong></span></div>';
+  return rows;
+}
+// Itemized pricing: the row style / tag for an added or changed item, the struck
+// previous amount, and the removed items (kept, struck through, credit negative).
+var RV_TAGS={ ADDED:['#ecfdf5','#bbf7d0','#14532d'], CHANGED:['#fff4dc','#f59e0b','#7c2d12'], NEW:['#fff4dc','#f59e0b','#7c2d12'], REMOVED:['#fef2f2','#fecaca','#7f1d1d'] };
+function rvRowAttr(it){ if(!it||!it.hl) return ''; var c=RV_TAGS[it.tag||'ADDED']||RV_TAGS.ADDED; return ' style="background:'+c[0]+'"'; }
+function rvRowTag(it){ if(!it||!it.hl) return ''; var t=it.tag||'ADDED', c=RV_TAGS[t]||RV_TAGS.ADDED; return '<span style="display:inline-block;background:'+c[1]+';color:'+c[2]+';font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">'+t+'</span>'; }
+function rvOldAmt(it, fmt){ return (it&&it.old!=null)?'<s style="color:#94a3b8;font-weight:600">'+fmt(it.old)+'</s> → ':''; }
+function rvRemovedRowsHTML(doc){
+  var out='';
+  ((doc&&doc.lines)||[]).forEach(function(l){
+    var r=rvLine(l); if(r.kind!=='remove') return;
+    out+='<tr'+rvRowAttr({hl:true,tag:'REMOVED'})+'><td class="li-desc">'+rvRowTag({hl:true,tag:'REMOVED'})+'<s style="color:#64748b">'+_esc(r.text)+'</s></td>'+
+      '<td class="li-c">—</td><td class="li-c">—</td><td class="li-r" style="color:#b91c1c">'+(r.amt==null?'—':rvMoney(r.amt))+'</td></tr>';
+  });
+  return out;
+}
+// The Change Summary page body (every line), when the box lists only the first 5.
+function rvSummaryHTML(o){
+  var doc=o.doc||{}, signed=doc.signed!==false;
+  return '<div class="c-sec"><div class="c-sec-title">Change Summary'+(doc.agreementNo?' — '+rvAgreementTitle(doc):'')+'</div>'+
+    '<div style="border:1.5px solid #f59e0b;border-radius:6px;background:#fff7ed;padding:8px 12px;color:#7c2d12">'+
+      (doc.lines||[]).map(function(l){ return rvLineHTML(l,true); }).join('')+
+      (doc.adjustment&&Math.abs(Number(doc.adjustment))>=0.005?'<div style="display:flex;gap:8px;font-size:8pt;color:#9a3412;padding:2px 0 0 18px"><span style="flex:1">'+_esc(doc.adjLabel||'Adjustment to final build price (after discount and tax)')+'</span><span>'+rvMoney(doc.adjustment)+'</span></div>':'')+
+      '<div style="margin-top:6px;border-top:1px solid #fcd9a8;padding-top:5px;font-size:9pt"><strong>'+(signed?'Original contract':'Original quote')+' '+rvTotal(o.origTot)+' → Revised '+rvTotal(o.revTot)+'</strong> ('+rvMoney(Number(o.revTot)-Number(o.origTot))+')</div>'+
+      '<div style="margin-top:6px;font-size:7.5pt;color:#9a3412">Change amounts are building prices before the order’s discount and sales tax; the adjustment line carries the discount and tax so the changes add up to the revised total.</div>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:14px;font-size:8pt;color:#7c2d12"><div style="width:180px"><strong>Customer initials:</strong><div style="border-bottom:1.2px solid #7c2d12;height:26px"></div></div></div>'+
+  '</div>';
+}
+// Itemized row on a revised contract: ADDED (a component the signed order did not
+// have) or CHANGED (Use as revision: data-rv-new="change" + data-rv-delta = the
+// change’s price; the element’s first row shows its previous amount struck through).
+function rvTagRow(it, el, done){
+  var ds=(el&&el.dataset)||{};
+  it.tag=(ds.rvNew==='change'||(ds.rvNew!=='add'&&ds.rvOrig==='1'))?'CHANGED':'ADDED';
+  if(it.tag==='CHANGED'&&el&&ds.rvDelta!=null&&ds.rvDelta!==''&&done.indexOf(el)<0){
+    done.push(el);
+    var d=Number(ds.rvDelta), old=Math.round((Number(it.amt)-d)*100)/100;
+    if(isFinite(d)&&Math.abs(d)>=0.005&&old>=0) it.old=old;
+  }
+}
 var EXEC_COPY=false;
 // Executed Copy — Deposit Paid: same contract, stamped on every page. Sent to
 // the client after both parties sign + deposit clears; doubles as the bill of
@@ -12881,6 +13042,7 @@ function _execWatermark(LOGO){
     '</div></div>';
 }
 async function printContract(){
+  var _ssCtNo=window._ctNo?String(window._ctNo):'', _ssRvDoc=window._rvDoc||null, _ssRvForce=(window._rvForce===true); // CRM hand-off for THIS print (read before the 3D capture await)
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
   // Sold order reopened under the price lock: a NEW contract waits until every
   // rule that would change the as-sold build has a decision (Executed Copy is a
@@ -12979,7 +13141,7 @@ async function printContract(){
   var now=new Date();
   var todayShort=(now.getMonth()+1)+'/'+now.getDate()+'/'+String(now.getFullYear()).slice(2);
   var todayLong=now.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  var orderNum='SS-'+now.getFullYear()+'-'+String(Date.now()).slice(-5);
+  var orderNum=_ssCtNo||('SS-'+now.getFullYear()+'-'+String(Date.now()).slice(-5)); // the CRM's quote / agreement number (standalone: a fresh one)
 
   // ── PRICING ── every amount is the one the screen just billed (T = rc()'s
   // published pass) — same lines, 26GA/fastener decisions and totals as the PDF.
@@ -13132,13 +13294,13 @@ async function printContract(){
   var _rvHasNew=!!(window._rvOrig&&document.querySelector('.re:not([data-rv-orig]),.we:not([data-rv-orig]),.ne:not([data-rv-orig]),.ace:not([data-rv-orig]),.lte:not([data-rv-orig])'));
   // window._rvForce: set by the CRM's Finish Revision — marks the contract
   // REVISED even for no-charge changes (e.g. doors moved to another wall).
-  var _rvMode=!!(window._rvForce===true||(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5)));
+  var _rvMode=!!(_ssRvForce||window._rvForce===true||(window._rvOrig&&(_rvHasNew||_rvSizeChanged||Math.abs(_rvNum(G('ptot').textContent)-window._rvOrig.tot)>0.5)));
   // Storage wall added / moved / removed since the order (no-charge moves need
   // Finish Revision like a moved door; on a revised contract its row is highlighted).
   var _rvAewChanged=!!(_rvMode&&window._rvOrig&&window._rvAewSig!=null&&typeof aewSig==='function'&&window._rvAewSig!==aewSig());
-  window._rvHlCur=false;
+  window._rvHlCur=false; window._rvElCur=null;
   if(_rvMode&&G('pdf-dims')) G('pdf-dims').checked=true;
-  function row(desc,qty,unit,amt){ lineItems.push({desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}); } // amounts show cents wherever they have them (lean-to / storage rows included)
+  var _rvOldDone=[]; function row(desc,qty,unit,amt){ var _it={desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}; if(_it.hl) rvTagRow(_it, window._rvElCur, _rvOldDone); lineItems.push(_it); } // amounts show cents wherever they have them (lean-to / storage rows included)
 
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
@@ -13235,7 +13397,7 @@ async function printContract(){
   }
 
   document.querySelectorAll('.re').forEach(function(el){
-    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
     var dtype=el.querySelector('.rdtype')?el.querySelector('.rdtype').value:'standard';
     var sz=el.querySelector('.rsz').value;
     var qty=parseInt(el.querySelector('.rqt').value)||1;
@@ -13272,7 +13434,7 @@ async function printContract(){
     }
   });
   document.querySelectorAll('.we').forEach(function(el){
-    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
     var qty=parseInt(el.querySelector('.wqt').value)||1;
     var wtdTypeP=el.querySelector('.whi').value; var p=MFR().wtdPrices[wtdTypeP]||window._wtd_std||400;
     var _wtypeDef=(MFR().wtdTypes||[]).find(function(t){return t.v===wtdTypeP;});
@@ -13283,7 +13445,7 @@ async function printContract(){
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
   document.querySelectorAll('.ne').forEach(function(el){
-    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
     row(winRowLabel(winTypeP),qty,p,qty*p);
@@ -13293,7 +13455,7 @@ async function printContract(){
   // Lean-tos — ported from printQuote so the contract itemizes EXACTLY what
   // the subtotal charges (base lean-to, its accessories, connection fee).
   document.querySelectorAll('.lte').forEach(function(el){
-    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
     var lw=parseInt(el.querySelector('.ltw').value)||0;
     var ll=parseInt(el.querySelector('.ltl2').value)||0;
     var ltTypeEl=el.querySelector('.lt-type');
@@ -13379,7 +13541,7 @@ async function printContract(){
   });
   // Additional Components (framed openings, custom items, etc.) — mirror of printQuote
   document.querySelectorAll('.ace').forEach(function(el){
-    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1'));
+    window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
     if(!el.querySelector('.act')) return;
     var comp=el.querySelector('.act').value||'';
     var qty=parseInt(el.querySelector('.acq')&&el.querySelector('.acq').value)||1;
@@ -13405,7 +13567,7 @@ async function printContract(){
       if(_sfN2>0){var _sfP2=window._sf_dw||150;row('  Side Frame',_sfN2,_sfP2,_sfN2*_sfP2);}
     }
   });
-  window._rvHlCur=false;
+  window._rvHlCur=false; window._rvElCur=null;
   // 1' Overhang (CCI only) + Side Panels — billed in the Building Subtotal, so
   // itemized here too (same rows as the PDF quote; they were missing).
   if(overhangPQ>0) row(overhangLabel(ohSelP.value),null,null,overhangPQ);
@@ -13421,17 +13583,25 @@ async function printContract(){
   if(honorAdjC!==0){
     lineItems.push({desc:'<strong>Price Adjustment \u2014 Honoring Signed Agreement'+(honorRefC?' '+_esc(honorRefC):'')+'</strong><br><span style="font-size:6.5pt;color:#64748b">Current chart pricing honored at the original signed contract amount</span>', qty:null, unit:null, amt:honorAdjC});
   }
-  window._rvHlCur=false;
+  window._rvHlCur=false; window._rvElCur=null;
   var rowsHTML='';
   lineItems.forEach(function(it){
     var amtStr=it.amt===0?'<span style="color:#15803d;font-weight:800">INCLUDED</span>':(it.amt<0?'\u2212'+(it.amt%1?fD(-it.amt):fC(-it.amt)):(it.amt%1?fD(it.amt):fC(it.amt)));
-    rowsHTML+='<tr'+(it.hl?' style="background:#fff4dc"':'')+'>'+
-      '<td class="li-desc">'+(it.hl?'<span style="display:inline-block;background:#f59e0b;color:#7c2d12;font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">'+(it.tag||'NEW')+'</span>':'')+it.desc+'</td>'+
+    if(it.old!=null) amtStr=rvOldAmt(it, it.old%1?fD:fC)+amtStr;
+    rowsHTML+='<tr'+rvRowAttr(it)+'>'+
+      '<td class="li-desc">'+rvRowTag(it)+it.desc+'</td>'+
       '<td class="li-c">'+(it.qty!==null?it.qty:'—')+'</td>'+
       '<td class="li-c">'+(it.unit?fC(it.unit):'—')+'</td>'+
       '<td class="li-r">'+amtStr+'</td>'+
       '</tr>';
   });
+
+  // Revised contract: removed items (kept, struck through, credit), the legend and the money path.
+  if(_rvMode&&_ssRvDoc) rowsHTML+=rvRemovedRowsHTML(_ssRvDoc);
+  var _rvLg={ added:lineItems.some(function(i){ return i.hl&&i.tag!=='CHANGED'; }), changed:lineItems.some(function(i){ return i.hl&&i.tag==='CHANGED'; }), removed:!!(_rvMode&&_ssRvDoc&&rvRemovedRowsHTML(_ssRvDoc)) };
+  var _rvOrigTot=(_ssRvDoc&&Number(_ssRvDoc.originalTotal)>0)?Number(_ssRvDoc.originalTotal):((window._rvOrig&&window._rvOrig.tot)||0);
+  var _rvPaidAll=_ssRvDoc?(Number(_ssRvDoc.depositPaid)||0):((window._rvOrig&&window._rvOrig.dep>0)?window._rvOrig.dep:0);
+  var _rvBalC=(_rvMode&&!EXEC_COPY&&_rvPaidAll>0)?rvBalance(tot-addDiscAmountPrint,dep,_rvPaidAll):null; // money already paid is credited (rvBalance)
 
   // ── Generate elevation SVGs (color renderings) ──
   var tmp=document.createElement('div');
@@ -13981,7 +14151,7 @@ async function printContract(){
       (validStr?'<div class="c-tot-row disc" style="border-bottom:none;padding-top:0"><span class="l" style="font-size:7pt;font-style:italic">Discount valid through '+validStr+'</span><span class="v"></span></div>':'');
   }
 
-  var TOTAL_PAGES = 4;
+  var _rvSumPage=!!(_rvMode&&_ssRvDoc&&(_ssRvDoc.lines||[]).length>RV_BOX_MAX); var TOTAL_PAGES = 4+(_rvSumPage?1:0);
 
   // ── PAGE 1: Order Summary ──
   var page1 =
@@ -14042,11 +14212,11 @@ async function printContract(){
     '</div>'+
     '</div>'+
 
-    (_rvMode?'<div style="background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;margin:4px 0 8px;font-size:8pt;color:#7c2d12"><strong style="letter-spacing:.5px">REVISED CONTRACT</strong> \u2014 supersedes the previously signed agreement. '+(_rvSizeChanged?('Building size revised: '+window._rvOrig.dims.split("x").join("\u00d7")+' \u2192 '+_rvDimsNow.split("x").join("\u00d7")+'. '):'')+(_rvAewChanged?'Storage wall revised. ':'')+'Added items are highlighted below; renderings, floor plan and spacing pages reflect the revised building.</div>':'')+
+    (_rvMode?rvBoxHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint, sizeText:((!_ssRvDoc&&_rvSizeChanged)?'Building size revised: '+window._rvOrig.dims.split("x").join("\u00d7")+' \u2192 '+_rvDimsNow.split("x").join("\u00d7")+'.':''), aewText:((!_ssRvDoc&&_rvAewChanged)?' Storage wall revised.':''), legend:_rvLg}):'')+
     '<div class="c-sec">'+
     '<div class="c-sec-title">Itemized Pricing</div>'+
     '<table class="c-tbl"><thead><tr><th>Description</th><th class="c">Qty</th><th class="c">Unit</th><th class="r">Amount</th></tr></thead>'+
-    '<tbody>'+rowsHTML+'</tbody></table>'+
+    '<tbody>'+rowsHTML+'</tbody></table>'+(_rvLg.removed?'<div style="font-size:6.8pt;color:#64748b;margin-top:3px">Removed items are listed for reference — the Building Subtotal already reflects their removal.</div>':'')+
     '</div>'+
 
     (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">'+(_pickupOnly()?'Customer Pickup — No Delivery or Installation — Buyer Is Responsible for Transport and Assembly':'Delivered Only — No Installation Included — Buyer Is Responsible for Assembly')+'</div>':'')+
@@ -14058,21 +14228,21 @@ async function printContract(){
         (da?'<div class="c-tot-row disc"><span class="l">'+disc+'% Discount</span><span class="v">\u2212'+fD(da)+'</span></div>':'')+
         (da?'<div class="c-tot-row"><span class="l">After Discount</span><span class="v">'+fD(ad)+'</span></div>':'')+
         '<div class="c-tot-row"><span class="l">'+(agEx?'Sales Tax (EXEMPT)':'Sales Tax ('+tax+'%)')+'</span><span class="v">'+(agEx?'EXEMPT':fD(ta))+'</span></div>'+
-        addLine+
+        addLine+(_rvMode?rvPayRowsHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint, dep:dep, paid:_rvPaidAll}):'')+
       '</div>'+
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
         (function(){
           // Revised contract on a paid order: show the deposit already paid and
           // only the ADDITIONAL amount now due (owner: 9/21/26, Mawn revision).
-          var _rvDepPaid=(!EXEC_COPY && _rvMode && window._rvOrig && window._rvOrig.dep>0)?window._rvOrig.dep:0;
+          var _rvDepPaid=(!EXEC_COPY && _rvMode)?_rvPaidAll:0;
           if(_rvDepPaid){
             return '<div class="c-pay-line"><span class="l">Original Deposit — Paid</span><span class="v" style="color:#15803d">'+fD(_rvDepPaid)+' ✓</span></div>'+
-              '<div class="c-pay-line dep"><span class="l">Additional Deposit Due Now</span><span class="v">'+fD(Math.max(0,dep-_rvDepPaid))+'</span></div>';
+              '<div class="c-pay-line dep"><span class="l">Additional Deposit Due Now</span><span class="v">'+fD(rvBalance(tot-addDiscAmountPrint,dep,_rvDepPaid).additional)+'</span></div>';
           }
           return '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>';
         })()+
-        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?(_pickupOnly()?'Balance at Pickup':'Balance at Delivery'):'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
+        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?(_pickupOnly()?'Balance at Pickup':'Balance at Delivery'):'Balance at Scheduling')+'</span><span class="v">'+fD(_rvBalC?_rvBalC.balance:bal)+'</span></div>'+(_rvBalC&&_rvBalC.refund>0?'<div class="c-pay-line"><span class="l">Refund Due to Buyer</span><span class="v" style="color:#15803d">'+fD(_rvBalC.refund)+'</span></div>':'')+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
     '</div>'+
@@ -14355,6 +14525,7 @@ async function printContract(){
     '<style>'+CSS+'</style></head><body>'+
     page1+pageViews+page2+page3+page4+
     ((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+
+    (_rvSumPage?'<div class="page">'+_header('Change Summary','')+rvSummaryHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint})+_footer(5, TOTAL_PAGES)+'</div>':'')+
     (EXEC_COPY?_execWatermark(LOGO):'')+
     '</body></html>';
 

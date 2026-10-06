@@ -327,7 +327,8 @@ export function appendPriceHistory({ initialQuote, reason = 'update', next = nul
 const AS_SOLD_FIELDS = [...HOLD_FIELDS, 'ct-honor', 'ct-honor-ref']
 export function stripForDuplicate(payload, { fromQuote = null, newNumber = null, now = new Date() } = {}) {
   if (!payload || typeof payload !== 'object') return payload
-  const { priced, overrides, price_history, totals, sessionEdits, freshBasis, ...rest } = payload
+  // (a copy is a new quote: no contract sent / executed stamp / revision links of its own yet)
+  const { priced, overrides, price_history, totals, sessionEdits, freshBasis, contractSent, executed, revisionOf, revisedBy, revisions, ...rest } = payload
   const fields = { ...(rest.fields || {}) }
   AS_SOLD_FIELDS.forEach((k) => { delete fields[k] })
   if (priced && priced.free && priced.free.sheet && fields['sheeting-upgrade'] === 'upgrade') fields['sheeting-upgrade'] = 'standard'

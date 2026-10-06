@@ -49,6 +49,10 @@ export function componentsFromPayload(payload) {
  *   quote:    { quote_number, quote_date, building_size, building_summary,
  *               manufacturer, payload_json },
  *   revision: { number, revNo, date, rows: [{ desc, kind, amount }],
+ *               contractNo (the revised contract's number, e.g. "SS-2026-00144 Rev 1"),
+ *               refund (paid more than the revised total: the refund due; newBalance = 0),
+ *               originalLabel (default "Original Contract Price"; an unsigned original
+ *               reads "Original Quote Price (not signed yet)"),
  *               original, additions, credits, revised, note }
  * }
  */
@@ -136,6 +140,7 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
       <div class="t">Revision Order</div>
       <div class="n">Document <b>${esc(revision.number || '—')}</b></div>
       <div class="n">Revision <b>#${esc(revision.revNo || '1')}</b> · Issued <b>${esc(fmtDate(revision.date))}</b></div>
+      ${revision.contractNo ? `<div class="n">Revised Contract <b>${esc(revision.contractNo)}</b></div>` : ''}
     </div>
   </div>
 
@@ -178,7 +183,7 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
   </table>
 
   <table class="sum">
-    <tr><td>Original Contract Price</td><td>${money(revision.original)}</td></tr>
+    <tr><td>${esc(revision.originalLabel || 'Original Contract Price')}</td><td>${money(revision.original)}</td></tr>
     <tr><td>Total Additions (+)</td><td>${money(revision.additions)}</td></tr>
     <tr><td>Total Credits (−)</td><td>${Number(revision.credits) ? '−' + money(revision.credits).replace('−', '') : '$0.00'}</td></tr>
     <tr class="rev"><td>Revised Contract Price</td><td>${money(revision.revised)}</td></tr>
@@ -186,7 +191,8 @@ export function buildRevisionHtml({ client = {}, quote = {}, revision = {} }) {
     <tr><td style="padding-top:10px">Original Deposit</td><td style="padding-top:10px">${money(revision.origDeposit || 0)}</td></tr>
     <tr><td>Revised Deposit</td><td>${money(revision.newDeposit)}</td></tr>
     <tr><td><b>Additional Deposit Due</b></td><td><b>${money(Math.max(0, revision.newDeposit - (revision.origDeposit || 0)))}</b></td></tr>
-    <tr><td>Revised Balance (due at scheduling)</td><td>${money(revision.newBalance != null ? revision.newBalance : revision.revised - revision.newDeposit)}</td></tr>` : ''}
+    <tr><td>Revised Balance (due at scheduling)</td><td>${money(revision.newBalance != null ? revision.newBalance : revision.revised - revision.newDeposit)}</td></tr>
+    ${Number(revision.refund) > 0 ? `<tr><td><b>Refund Due to Buyer</b></td><td><b>${money(revision.refund)}</b></td></tr>` : ''}` : ''}
   </table>
 
   ${revision.note ? `<div class="note">${esc(revision.note)}</div>` : ''}

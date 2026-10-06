@@ -24,6 +24,7 @@ import { harvestAndSaveQuote, harvestRevisionUpdate, renderQuotePdf } from '../l
 import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { supabase } from '../lib/supabase'
+import { quoteStatusLabel } from '../lib/constants'
 import {
   autoDocGate, fmtMoney, isSold, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
   REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
@@ -32,6 +33,10 @@ import UseAsRevisionModal from './UseAsRevisionModal'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
+import {
+  agreementRootOf, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  paidOf, revisedBalance, revisedContractNumber, revisionDocFor,
+} from '../lib/contractDocs'
 
 const SRC = '/build/build.html'
 
@@ -408,6 +413,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     if (!(await confirmWrite('revision'))) return
     const rv = revisionChanges
     const cur = quoteRef.current || initialQuote || {}
+    // The Revised Contract: "<agreement> Rev <n>" + what changed (the typed rows), handed to the program.
+    const ctNo = revisedContractNumber(cur, rv.revNo || '1')
+    let rvDoc = null
     try {
       setStatus('Saving revision order…')
       const num = makeRevisionOrderNumber(cur)
@@ -418,7 +426,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // baseline: on an honored sold order, the signed contract's price).
       const base = revisionOriginal({ pg, typed: rv.original, card: { total: cur.total_amount, deposit: cur.deposit_amount } })
       const orig = base.total
-      const origDep = base.deposit
+      // money already paid on this order (a revised order: across the chain) — credited (lib/contractDocs)
+      const origDep = paidOf(cur, base.deposit)
       if (base.from === 'builder' && rv.original && Math.abs(Number(rv.original) - orig) >= 0.005) {
         toast(`Revision Order: Original Contract ${fmtMoney(orig)} — the signed contract price the revised contract uses (the form had ${fmtMoney(Number(rv.original))}).`)
       }
@@ -429,6 +438,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // makes the change rows add up to the order's net change.
       const adj = curTot ? revisionReconcile(rows, net) : 0
       if (adj) rows.push({ desc: REVISION_ADJ_LABEL, kind: 'Modify', amount: adj })
+      rvDoc = revisionDocFor({ original: cur, lines: rv.rows || [], revNo: rv.revNo || '1', originalTotal: orig, depositPaid: origDep, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo: agreementRootOf(cur) })
       const html = buildRevisionHtml({
         client,
         quote: cur,
@@ -437,13 +447,16 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           revNo: rv.revNo || '1',
           date: rv.date,
           rows,
+          contractNo: ctNo,
+          originalLabel: isSold(cur.status) ? null : 'Original Quote Price (not signed yet)',
           original: orig,
           additions: Math.max(net, 0),
           credits: Math.max(-net, 0),
           revised: curTot || orig,
           origDeposit: origDep || null,
           newDeposit: curDep || null,
-          newBalance: curTot && curDep ? curTot - curDep : null,
+          newBalance: curTot && curDep ? revisedBalance(curTot, curDep, origDep).balance : null,
+          refund: curTot && curDep ? revisedBalance(curTot, curDep, origDep).refund : 0,
           note: rv.note || '',
         },
       })
@@ -484,7 +497,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     // (a placement-only revision must still print as REVISED).
     try { const pw = getProgramWindow(); if (pw) pw._rvForce = true } catch { /* ignore */ }
     try {
-      await saveContractThenPrint(getProgramWindow(), { confirmed: true })
+      await saveContractThenPrint(getProgramWindow(), { confirmed: true, number: ctNo, rvDoc })
     } finally {
       try { const pw = getProgramWindow(); if (pw) pw._rvForce = false } catch { /* ignore */ }
     }
@@ -494,27 +507,47 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
 
   // Save a PDF copy of the contract to the Document Hub (Contracts), then let the
   // program generate it for the rep as usual.
-  async function saveContractThenPrint(pg, { confirmed = false } = {}) {
+  // Contract number (owner 10/6/26): a first contract carries the quote's own
+  // number; a revised one "<original agreement> Rev <n>" (number = passed in);
+  // a reprint the number it was first sent with (lib/contractDocs). The program
+  // prints window._ctNo / window._rvDoc (read once at the start of each print).
+  // A generated contract tags the quote "contract sent" (payload_json.contractSent
+  // — a marker, never a status change).
+  async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null } = {}) {
     if (!pg) return
     if (!confirmed && client?.id && !(await confirmWrite('contract'))) { setStatus(''); return }
+    const cur = quoteRef.current || initialQuote || null
+    const ctNo = number || contractNumberFor(cur)
+    try { pg._ctNo = ctNo || null; pg._rvDoc = rvDoc || null } catch { /* ignore */ }
     try {
-      if (client?.id) {
-        setStatus('Saving contract…')
-        const html = await captureContractHtml(pg)
-        if (html && html.length > 3000) {
-          const blob = await renderQuotePdf(html)
-          const num = quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
-          await uploadClientDocBlob(client.id, 'contract', blob, `${num}-contract.pdf`, 'application/pdf')
-          try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
-          toast(`Contract saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+      try {
+        if (client?.id) {
+          setStatus('Saving contract…')
+          const html = await captureContractHtml(pg)
+          if (html && html.length > 3000) {
+            const blob = await renderQuotePdf(html)
+            const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
+            await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-contract.pdf`, 'application/pdf')
+            try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
+            toast(`Contract ${escHtml(num)} saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+            if (cur?.id) {
+              try {
+                const merged = await markQuote(supabase, cur.id, { contractSent: { at: new Date().toISOString(), number: num } })
+                if (merged && quoteRef.current && quoteRef.current.id === cur.id) quoteRef.current = { ...quoteRef.current, payload_json: merged }
+              } catch (e) { console.warn('contract-sent tag not saved', e) }
+            }
+          }
         }
+      } catch (e) {
+        console.warn('contract save failed', e)
+      } finally {
+        setStatus('')
       }
-    } catch (e) {
-      console.warn('contract save failed', e)
+      try { pg.printContract() } catch (e) { toast('Could not open the contract: ' + escHtml(e.message || e)) }
     } finally {
-      setStatus('')
+      // printContract reads both before its first await, so they can go now
+      try { pg._ctNo = null; pg._rvDoc = null } catch { /* ignore */ }
     }
-    try { pg.printContract() } catch (e) { toast('Could not open the contract: ' + escHtml(e.message || e)) }
   }
 
   // Executed Copy — Deposit Paid: same flow as saveContractThenPrint, but with the
@@ -523,26 +556,42 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   async function saveExecutedThenPrint(pg, { confirmed = false } = {}) {
     if (!pg) return
     if (!confirmed && client?.id && !(await confirmWrite('exec'))) { setStatus(''); return }
+    // the executed copy carries the contract's own number (lib/contractDocs)
+    const ctNo = contractNumberFor(quoteRef.current || initialQuote || null)
+    try { pg._ctNo = ctNo || null } catch { /* ignore */ }
     try {
-      if (client?.id) {
-        setStatus('Saving executed copy…')
-        pg.EXEC_COPY = true
-        let html
-        try { html = await captureContractHtml(pg) } finally { pg.EXEC_COPY = false }
-        if (html && html.length > 3000) {
-          const blob = await renderQuotePdf(html)
-          const num = quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
-          await uploadClientDocBlob(client.id, 'contract', blob, `${num}-executed-deposit-paid.pdf`, 'application/pdf')
-          try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
-          toast(`Executed copy saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+      try {
+        if (client?.id) {
+          setStatus('Saving executed copy…')
+          pg.EXEC_COPY = true
+          let html
+          try { html = await captureContractHtml(pg) } finally { pg.EXEC_COPY = false }
+          if (html && html.length > 3000) {
+            const blob = await renderQuotePdf(html)
+            const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
+            await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-executed-deposit-paid.pdf`, 'application/pdf')
+            try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
+            toast(`Executed copy saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+            // same effect as the Doc Hub stamp: Deposit Paid (never a step back), executed date, star
+            const curQ = quoteRef.current || initialQuote || null
+            if (curQ?.id) {
+              try {
+                const res = await markExecuted(supabase, curQ.id, { file: `${contractFileBase(num)}-executed-deposit-paid.pdf` })
+                if (quoteRef.current && quoteRef.current.id === curQ.id) quoteRef.current = { ...quoteRef.current, status: res.status, payload_json: { ...(quoteRef.current.payload_json || {}), executed: res.payload_json.executed }, ...(res.starred ? { starred: true } : {}) }
+                toast(executedToast(res, quoteStatusLabel(curQ.status)), 'success')
+              } catch (e) { toast(`Quote #${escHtml(curQ.quote_number || '')} could not be marked Deposit Paid: ${escHtml(e.message || e)}`) }
+            }
+          }
         }
+      } catch (e) {
+        console.warn('executed copy save failed', e)
+      } finally {
+        setStatus('')
       }
-    } catch (e) {
-      console.warn('executed copy save failed', e)
+      try { pg.printExecutedCopy() } catch (e) { toast('Could not open the executed copy: ' + escHtml(e.message || e)) }
     } finally {
-      setStatus('')
+      try { pg._ctNo = null } catch { /* ignore */ }
     }
-    try { pg.printExecutedCopy() } catch (e) { toast('Could not open the executed copy: ' + escHtml(e.message || e)) }
   }
 
   // ── Use as revision (owner 10/6/26) ──
@@ -603,7 +652,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     }
     finishUseAsRevision({
       original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
-      origDims: m.info.origDims, newItems: m.info.newItems, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, revNo: rv.revNo, date: rv.date, note: rv.note,
+      origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, revNo: rv.revNo, date: rv.date, note: rv.note,
     })
   }
 
@@ -624,9 +673,13 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     try {
       setStatus('Holding the revised price…')
       money = r.money || revisionMoney({ signed: r.signed, lines: r.lines, forward: r.forward })
+      // what the buyer has actually paid (the original's deposit; on a revised order everything
+      // paid across the chain) — credited on every document by ONE rule (contractDocs.revisedBalance)
+      const paid = paidOf(original, r.signed.deposit)
+      const bal = revisedBalance(money.total, money.deposit, paid)
       const held = holdBuilderAt({
-        pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: r.signed,
-        origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday,
+        pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: { ...r.signed, deposit: paid },
+        origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), newDetail: r.newDetail || newDetailOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday,
       })
       refreshBanner()
       if (!held.ok) { toast(`Revised contract not created — ${escHtml(held.reason)} Nothing was saved.`); return }
@@ -645,13 +698,19 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       const adj = revisionReconcile(rows, money.net)
       if (adj) rows.push({ desc: REVISION_ADJ_LABEL, kind: 'Modify', amount: adj })
       const num = makeRevisionOrderNumber(original)
-      const noteTxt = [r.note, `Revised order: quote #${cur.quote_number || '—'} (revises signed quote #${original.quote_number || '—'}).`].filter(Boolean).join(' ')
+      // The Revised Contract's number: the ORIGINAL agreement's + " Rev <n>" (lib/contractDocs).
+      const revNo = r.revNo || '1'
+      const agreementNo = agreementRootOf(original)
+      const ctNo = revisedContractNumber(original, revNo)
+      const signedOrig = isSold(original.status)
+      const noteTxt = [r.note, `Revised order: quote #${cur.quote_number || '—'} (revises ${signedOrig ? 'signed quote' : 'quote (not signed yet)'} #${original.quote_number || '—'}).`].filter(Boolean).join(' ')
       const html = buildRevisionHtml({
         client, quote: original,
         revision: {
-          number: num, revNo: r.revNo || '1', date: r.date, rows, original: r.signed.total,
+          number: num, revNo, date: r.date, rows, original: r.signed.total, contractNo: ctNo,
+          originalLabel: signedOrig ? null : 'Original Quote Price (not signed yet)',
           additions: money.additions, credits: money.credits, revised: money.total,
-          origDeposit: r.signed.deposit || null, newDeposit: money.deposit, newBalance: money.balance, note: noteTxt,
+          origDeposit: paid || null, newDeposit: money.deposit, newBalance: bal.balance, refund: bal.refund, note: noteTxt,
         },
       })
       try {
@@ -673,8 +732,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       upd.payload_json = {
         ...upd.payload_json,
         revisionOf: {
-          id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit,
-          revised_total: money.total, revision_order: num, rev_no: r.revNo || '1', mode: r.mode, at,
+          id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit, paid_before: paid, paid_total: r2(Math.max(paid, money.deposit)),
+          revised_total: money.total, revision_order: num, rev_no: revNo, mode: r.mode, at,
+          agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig,
         },
       }
       await onSave(upd)
@@ -683,7 +743,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // 3) The signed quote: 'superseded' (base enum — no migration needed), linked
       //    to this one; its card shows "Replaced by #<this quote>". It is no longer
       //    an active order (not sold, not open), so nothing counts it twice.
-      const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at }
+      const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at, contract_number: ctNo, rev_no: revNo }
       const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
       const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...prev, link] }
       let origMark = 'superseded'
@@ -707,8 +767,10 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // 4) Revised Contract from the held build (changes highlighted, the signed
       //    deposit shown as paid, additional deposit due, new balance).
       try { pg._rvForce = true } catch { /* ignore */ }
-      try { await saveContractThenPrint(pg, { confirmed: true }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
-      toast(`Revised contract created at ${fmtMoney(money.total)} (signed ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
+      // what changed, line by line, for the REVISED CONTRACT box / row tags / payment path
+      const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo })
+      try { await saveContractThenPrint(pg, { confirmed: true, number: ctNo, rvDoc }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
+      toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
     } catch (e) {
       console.warn('use as revision failed', e)
       toast('Use as Revision failed: ' + escHtml(e.message || e))
@@ -735,6 +797,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         b.removeAttribute('onclick')
         b.onclick = null
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveContractThenPrint(getProgramWindow()) }, true)
+      })
+      // the program's own "Executed Copy — Deposit Paid" button: saved to Documents + the quote marked
+      // Deposit Paid, exactly like the Doc Hub stamp (saveExecutedThenPrint)
+      ;[...pg.document.querySelectorAll('button')].filter((b) => /printExecutedCopy/.test(b.getAttribute('onclick') || '')).forEach((b) => {
+        if (b.dataset.ssExecHooked === '1') return
+        b.dataset.ssExecHooked = '1'
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveExecutedThenPrint(getProgramWindow()) }, true)
       })
     }
     const t = setInterval(tick, 600)
@@ -812,9 +883,10 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           client={client}
           quote={uarManual.original}
           revisingWith={(quoteRef.current || initialQuote)?.quote_number || null}
+          defaultRevNo={nextRevNo(uarManual.original)}
           onClose={() => setUarManual(null)}
           onUseAsRevision={finishUseAsRevisionManual}
-          signed={uarManual.info.signed}
+          signed={{ ...uarManual.info.signed, deposit: paidOf(uarManual.original, uarManual.info.signed.deposit) }}
           revisionPreview={(dSub) => { try { const m = uarManual.info.forward(r2(Number(uarManual.info.signed.sub) + dSub)); return { total: r2(m.adjTot), deposit: r2(m.dep), balance: r2(m.bal) } } catch { return null } }}
         />
       )}

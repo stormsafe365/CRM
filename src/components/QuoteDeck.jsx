@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
-import ReplacedBadge from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
 import { usd } from '../lib/money'
 
@@ -78,6 +78,7 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
           <div className="qcard-body">
             <div className="qcard-num" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
               <ReplacedBadge quote={q} revisedLabel="REVISED ORDER" style={{ marginLeft: 10 }} />
+              <ContractSentTag quote={q} />
               <StarBadge quote={q} />
               {onToggleStar && <span style={{ marginLeft: 'auto' }}><StarButton quote={q} onToggle={onToggleStar} busy={starBusy} /></span>}
             </div>
@@ -100,7 +101,8 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
                 <div className="qcard-divider" />
                 <div className="qcard-specs">
                   {money(q.deposit_amount) && <Spec k="Deposit" v={money(q.deposit_amount)} mono />}
-                  {money(q.balance_amount) && <Spec k="Balance Due" v={money(q.balance_amount)} mono />}
+                  {money(q.balance_amount) && <Spec k="Balance Due" v={money(cardBalanceOf(q) ? cardBalanceOf(q).balance : q.balance_amount)} mono />}
+                  {cardBalanceOf(q)?.refund > 0 && <Spec k="Refund Due" v={money(cardBalanceOf(q).refund)} mono />}
                 </div>
               </>
             )}

@@ -12,6 +12,7 @@
 
 import { checkSigned, diffBuilds, priceChanges, r2, reopenDrift } from './revisionDiff'
 import { isSold, savedTotalsOf, stripForDuplicate } from './priceLockCrm'
+import { newDetailOf } from './contractDocs'
 
 const sameCents = (a, b) => Math.abs(r2(a) - r2(b)) < 0.005
 const HOLD_FIELDS = ['hold-amt', 'hold-ref', 'hold-src', 'hold-dec']
@@ -209,15 +210,16 @@ export async function analyzeSignedOnly({ original, livePg, onProgress = () => {
     return { blockers: ['The discount / tax / deposit terms differ from the signed quote’s — a revision keeps the signed terms. Set them back first.'], signed }
   }
   // What this quote adds / changes (for the Revised Contract's highlights only — no prices).
-  let newItems = {}, aewChanged = false
+  let newItems = {}, newDetail = {}, aewChanged = false
   try {
     const d = diffBuilds(B.data, livePg.collectQuoteData())
     newItems = newItemsOf(d.units)
+    newDetail = newDetailOf(d.units)
     aewChanged = d.units.some((u) => u.field && /^aew-|add-end-wall/.test(u.field))
   } catch { /* highlights are cosmetic */ }
   return {
     blockers: [], signed, terms: signed.terms, forward: (s) => eng.PriceLock.forward(s, signed.terms),
-    origDims: [B.data.fields.bw, B.data.fields.bl, B.data.fields.bh].join('x'), newItems, aewChanged, baseToday: B.sub,
+    origDims: [B.data.fields.bw, B.data.fields.bl, B.data.fields.bh].join('x'), newItems, newDetail, aewChanged, baseToday: B.sub,
   }
 }
 
@@ -239,7 +241,9 @@ export function newItemsOf(lines) {
 // highlights only the changes and shows the signed deposit as paid.
 // Returns { ok, reason, screen }.
 const ENTRY_SEL = { doors: '.re.entry', wtds: '.we.entry', windows: '.ne.entry', addcomps: '.ace.entry', leantos: '.lte.entry' }
-export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, origDims, newItems = {}, aewChanged = false, baseToday = null }) {
+// newDetail (optional, contractDocs.newDetailOf): { doors: { 2: { kind:'add'|'change', delta } } } — the
+// Revised Contract tags those rows ADDED / CHANGED (a CHANGED row shows its previous amount).
+export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, origDims, newItems = {}, newDetail = null, aewChanged = false, baseToday = null }) {
   const data = pg.collectQuoteData()
   let snap = null
   try { snap = pg.PriceLock.snapshot() } catch { snap = null }
@@ -290,9 +294,15 @@ export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, ori
   try {
     pg._rvOrig = { tot: r2(signed.total), dep: r2(signed.deposit), dims: origDims }
     for (const kind of Object.keys(ENTRY_SEL)) {
-      const isNew = new Set(newItems[kind] || [])
+      const det = (newDetail && newDetail[kind]) || null
+      const isNew = new Set(det ? Object.keys(det).map(Number) : (newItems[kind] || []))
       pg.document.querySelectorAll(ENTRY_SEL[kind]).forEach((el, i) => {
-        if (isNew.has(i)) { delete el.dataset.rvOrig; if (kind === 'leantos') el.dataset.rvStor = '(as signed)' }
+        delete el.dataset.rvNew; delete el.dataset.rvDelta
+        if (isNew.has(i)) {
+          delete el.dataset.rvOrig; if (kind === 'leantos') el.dataset.rvStor = '(as signed)'
+          const d = det && det[i]
+          if (d) { el.dataset.rvNew = d.kind === 'change' ? 'change' : 'add'; if (d.delta != null && Number.isFinite(Number(d.delta))) el.dataset.rvDelta = String(d.delta) }
+        }
         else {
           el.dataset.rvOrig = '1'
           if (kind === 'leantos') { try { el.dataset.rvStor = pg.ltStorSig(el) } catch { /* ignore */ } }

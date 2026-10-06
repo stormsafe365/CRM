@@ -10,7 +10,8 @@ import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
-import ReplacedBadge from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
+import { nextRevNo } from '../lib/contractDocs'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -412,6 +413,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
                     {q.quote_number && <span className="quote-number">#{q.quote_number}</span>}
                     <QuoteStatusPill status={q.status} />
                     <ReplacedBadge quote={q} />
+                    <ContractSentTag quote={q} />
                     <StarBadge quote={q} />
                   </div>
                   <div className="quote-row-meta">
@@ -475,6 +477,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
         <RevisionModal
           client={client ?? { id: clientId }}
           quote={revisionQuote}
+          defaultRevNo={nextRevNo(revisionQuote)}
           onClose={() => setRevisionQuote(null)}
           onApplyToBuild={(changes) => {
             // "Generate + Apply to Building": reopen the quote in the builder
@@ -548,6 +551,7 @@ function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, on
         <div>
           <div className="q-id">{q.quote_number ? '#' + q.quote_number : 'QUOTE'}
             <ReplacedBadge quote={q} />
+            <ContractSentTag quote={q} />
             <StarBadge quote={q} />
           </div>
           <div className="q-size" style={{ fontSize: 24 }}>{q.building_size || '—'}</div>
@@ -560,7 +564,7 @@ function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, on
       {q.building_summary && <div className="q-sub">{q.building_summary}</div>}
       <div className="q-figures">
         <div className="q-fig"><div className="l">Deposit</div><div className="n num">{money(q.deposit_amount) || '—'}</div></div>
-        <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(q.balance_amount) || '—'}</div></div>
+        <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(cardBalanceOf(q) ? cardBalanceOf(q).balance : q.balance_amount) || '—'}</div></div>
       </div>
       <div className="q-divider" />
       <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
