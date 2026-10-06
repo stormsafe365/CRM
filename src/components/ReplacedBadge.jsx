@@ -5,6 +5,8 @@
 // no amber / yellow — warnings use #f0883e).
 
 import { contractSentOf, fmtShortDate } from '../lib/contractDocs'
+// the card's balance on a revised order (money already paid credited — contractDocs.revisedBalance)
+export { cardBalanceOf } from '../lib/contractDocs'
 
 const GREY = { background: '#232b34', color: '#8b95a3', border: '1px solid #33404f' }
 const ORANGE = { background: 'rgba(240,136,62,.12)', color: '#f0883e', border: '1px solid rgba(240,136,62,.45)' }

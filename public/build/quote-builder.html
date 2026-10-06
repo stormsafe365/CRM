@@ -12968,13 +12968,25 @@ function rvBoxHTML(o){
 }
 // Payment summary rows for a revised contract (left box, under the existing
 // subtotal / discount / tax rows, which are unchanged).
+// ONE balance rule for a revised order (contract, Revision Order, CRM card / modal —
+// the CRM's contractDocs.revisedBalance is the same formula): money already paid
+// is credited. additional = what is still owed on the revised deposit; balance =
+// revised total − paid − additional (never negative: an overpayment is a refund).
+function rvBalance(total, deposit, paid){
+  var c=function(n){ return Math.round((Number(n)||0)*100)/100; };
+  var t=c(total), d=c(deposit), p=c(paid);
+  var add=Math.max(0, c(d-p)), rest=c(t-p-add);
+  return { paid:p, additional:add, balance:Math.max(0,rest), refund:Math.max(0,c(-rest)) };
+}
 function rvPayRowsHTML(o){
-  var signed=!o.doc||o.doc.signed!==false, rows='';
+  var signed=!o.doc||o.doc.signed!==false, rows='', b=rvBalance(o.revTot, o.dep, o.paid);
   rows+='<div class="c-tot-row" style="border-top:1.5px solid #f59e0b;margin-top:3px"><span class="l">'+(signed?'Original contract total':'Original quote total')+'</span><span class="v">'+rvTotal(o.origTot)+'</span></div>';
   rows+='<div class="c-tot-row"><span class="l">Changes</span><span class="v">'+rvMoney(Number(o.revTot)-Number(o.origTot))+'</span></div>';
   rows+='<div class="c-tot-row"><span class="l"><strong>Revised contract total</strong></span><span class="v"><strong>'+rvTotal(o.revTot)+'</strong></span></div>';
-  if(Number(o.paid)>0) rows+='<div class="c-tot-row"><span class="l">Deposit already paid</span><span class="v" style="color:#15803d">−'+rvTotal(o.paid)+'</span></div>';
-  rows+='<div class="c-tot-row"><span class="l"><strong>New balance due</strong></span><span class="v"><strong>'+rvTotal(Number(o.revTot)-(Number(o.paid)||0))+'</strong></span></div>';
+  if(b.paid>0) rows+='<div class="c-tot-row"><span class="l">Deposit already paid</span><span class="v" style="color:#15803d">−'+rvTotal(b.paid)+'</span></div>';
+  if(b.additional>0) rows+='<div class="c-tot-row"><span class="l">Additional deposit due now</span><span class="v">−'+rvTotal(b.additional)+'</span></div>';
+  rows+='<div class="c-tot-row"><span class="l"><strong>New balance due'+(b.additional>0?' (at scheduling)':'')+'</strong></span><span class="v"><strong>'+rvTotal(b.balance)+'</strong></span></div>';
+  if(b.refund>0) rows+='<div class="c-tot-row"><span class="l"><strong>Refund due to buyer</strong></span><span class="v" style="color:#15803d"><strong>'+rvTotal(b.refund)+'</strong></span></div>';
   return rows;
 }
 // Itemized pricing: the row style / tag for an added or changed item, the struck
@@ -13589,6 +13601,7 @@ async function printContract(){
   var _rvLg={ added:lineItems.some(function(i){ return i.hl&&i.tag!=='CHANGED'; }), changed:lineItems.some(function(i){ return i.hl&&i.tag==='CHANGED'; }), removed:!!(_rvMode&&_ssRvDoc&&rvRemovedRowsHTML(_ssRvDoc)) };
   var _rvOrigTot=(_ssRvDoc&&Number(_ssRvDoc.originalTotal)>0)?Number(_ssRvDoc.originalTotal):((window._rvOrig&&window._rvOrig.tot)||0);
   var _rvPaidAll=_ssRvDoc?(Number(_ssRvDoc.depositPaid)||0):((window._rvOrig&&window._rvOrig.dep>0)?window._rvOrig.dep:0);
+  var _rvBalC=(_rvMode&&!EXEC_COPY&&_rvPaidAll>0)?rvBalance(tot-addDiscAmountPrint,dep,_rvPaidAll):null; // money already paid is credited (rvBalance)
 
   // ── Generate elevation SVGs (color renderings) ──
   var tmp=document.createElement('div');
@@ -14215,7 +14228,7 @@ async function printContract(){
         (da?'<div class="c-tot-row disc"><span class="l">'+disc+'% Discount</span><span class="v">\u2212'+fD(da)+'</span></div>':'')+
         (da?'<div class="c-tot-row"><span class="l">After Discount</span><span class="v">'+fD(ad)+'</span></div>':'')+
         '<div class="c-tot-row"><span class="l">'+(agEx?'Sales Tax (EXEMPT)':'Sales Tax ('+tax+'%)')+'</span><span class="v">'+(agEx?'EXEMPT':fD(ta))+'</span></div>'+
-        addLine+(_rvMode?rvPayRowsHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint, paid:_rvPaidAll}):'')+
+        addLine+(_rvMode?rvPayRowsHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint, dep:dep, paid:_rvPaidAll}):'')+
       '</div>'+
       '<div class="c-tot-box">'+
         '<div class="c-pay-line"><span class="l">Payment Method (Deposit)</span><span class="v">'+_esc(payMethod||'TBD')+'</span></div>'+
@@ -14225,11 +14238,11 @@ async function printContract(){
           var _rvDepPaid=(!EXEC_COPY && _rvMode)?_rvPaidAll:0;
           if(_rvDepPaid){
             return '<div class="c-pay-line"><span class="l">Original Deposit — Paid</span><span class="v" style="color:#15803d">'+fD(_rvDepPaid)+' ✓</span></div>'+
-              '<div class="c-pay-line dep"><span class="l">Additional Deposit Due Now</span><span class="v">'+fD(Math.max(0,dep-_rvDepPaid))+'</span></div>';
+              '<div class="c-pay-line dep"><span class="l">Additional Deposit Due Now</span><span class="v">'+fD(rvBalance(tot-addDiscAmountPrint,dep,_rvDepPaid).additional)+'</span></div>';
           }
           return '<div class="c-pay-line dep"><span class="l">'+(EXEC_COPY?'Deposit PAID':'Deposit Due Now')+'</span><span class="v"'+(EXEC_COPY?' style="color:#15803d"':'')+'>'+fD(dep)+(EXEC_COPY?' ✓':'')+'</span></div>';
         })()+
-        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?(_pickupOnly()?'Balance at Pickup':'Balance at Delivery'):'Balance at Scheduling')+'</span><span class="v">'+fD(bal)+'</span></div>'+
+        '<div class="c-pay-line bal"><span class="l">'+(_delivOnly()?(_pickupOnly()?'Balance at Pickup':'Balance at Delivery'):'Balance at Scheduling')+'</span><span class="v">'+fD(_rvBalC?_rvBalC.balance:bal)+'</span></div>'+(_rvBalC&&_rvBalC.refund>0?'<div class="c-pay-line"><span class="l">Refund Due to Buyer</span><span class="v" style="color:#15803d">'+fD(_rvBalC.refund)+'</span></div>':'')+
         '<div class="c-pay-line grand"><span class="l">Grand Total</span><span class="v">'+fD(tot-addDiscAmountPrint)+'</span></div>'+
       '</div>'+
     '</div>'+

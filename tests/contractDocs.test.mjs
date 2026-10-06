@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   agreementRootOf, carryCrmMarkers, contractFileBase, contractNumberFor, contractNumberFromHtml, executedStatus, matchContractQuote,
-  newDetailOf, nextRevNo, parseContractLabel, pickerRank, revisedContractNumber, revisionDocFor, revisionLabel, revOf, signedInfoOf, stripRev,
+  cardBalanceOf, executedToast, markExecuted, newDetailOf, nextRevNo, paidOf, revisedBalance, parseContractLabel, pickerRank, revisedContractNumber, revisionDocFor, revisionLabel, revOf, signedInfoOf, stripRev,
 } from '../src/lib/contractDocs.js'
 import { diffBuilds, revisionCandidates } from '../src/lib/revisionDiff.js'
 import { stripForDuplicate } from '../src/lib/priceLockCrm.js'
@@ -139,4 +139,65 @@ test('revision picker: signed / ordered first, then contract sent, then the rest
   const list = revisionCandidates([q('plain-new', 'sent', 0, '2026-10-05'), q('sent-old', 'sent', 1, '2026-09-01'), q('sold', 'deposit_paid', 0, '2026-08-01'), q('gone', 'superseded', 0, '2026-10-06'), q('sent-new', 'draft', 2, '2026-09-20')], 'me')
   assert.deepEqual(list.map((c) => c.q.id), ['sold', 'sent-new', 'sent-old', 'plain-new', 'gone'])
   assert.deepEqual(list.map(pickerRank), [0, 1, 1, 2, 3])
+})
+
+test('one balance rule: money already paid is credited; overpaid → refund, never negative', () => {
+  assert.deepEqual(revisedBalance(17622.63, 2813, 3506), { paid: 3506, additional: 0, balance: 14116.63, refund: 0 })
+  assert.deepEqual(revisedBalance(25000, 4000, 3506), { paid: 3506, additional: 494, balance: 21000, refund: 0 })
+  assert.deepEqual(revisedBalance(3000, 500, 3506), { paid: 3506, additional: 0, balance: 0, refund: 506 })
+  // nothing paid (unsigned original): exactly the order's own balance (total − deposit)
+  assert.deepEqual(revisedBalance(23075.63, 3683, 0), { paid: 0, additional: 3683, balance: 19392.63, refund: 0 })
+})
+
+test('paid across the chain: original deposit + additional deposits, never the revised card deposit', () => {
+  const orig = { status: 'deposit_paid', deposit_amount: 3562, payload_json: {} }
+  assert.equal(paidOf(orig, 3562), 3562)
+  assert.equal(paidOf({ ...orig, status: 'sent' }, 3562), 0) // unsigned: nothing paid
+  // Rev 1 lowered the deposit to 2,873: the buyer still paid 3,562
+  const rev1 = { status: 'deposit_paid', deposit_amount: 2873, payload_json: { revisionOf: { signed_deposit: 3562, paid_before: 3562, paid_total: 3562 } } }
+  assert.equal(paidOf(rev1, 2873), 3562)
+  // Rev 1 raised it to 4,100: the additional 538 was paid with Rev 1
+  const rev1up = { status: 'deposit_paid', deposit_amount: 4100, payload_json: { revisionOf: { signed_deposit: 3562, paid_before: 3562, paid_total: 4100 } } }
+  assert.equal(paidOf(rev1up, 4100), 4100)
+  // a Rev 1 saved before paid_total existed: max(signed deposit, its deposit)
+  assert.equal(paidOf({ status: 'deposit_paid', deposit_amount: 2873, payload_json: { revisionOf: { signed_deposit: 3562 } } }, 2873), 3562)
+  // the card of a revised order: balance with the paid money credited
+  assert.deepEqual(cardBalanceOf({ status: 'deposit_paid', total_amount: 18001.63, deposit_amount: 2873, payload_json: { revisionOf: { paid_before: 3562 } } }), { paid: 3562, additional: 0, balance: 14439.63, refund: 0 })
+  assert.equal(cardBalanceOf({ status: 'deposit_paid', total_amount: 1, deposit_amount: 1, payload_json: {} }), null)
+  assert.equal(cardBalanceOf({ status: 'superseded', total_amount: 1, deposit_amount: 1, payload_json: { revisionOf: { paid_before: 1 } } }), null)
+})
+
+function fakeSb(rows, { noStar = false } = {}) {
+  const writes = []
+  const from = () => {
+    const st = { f: [], op: 'select', p: null }
+    const api = {
+      select() { return api }, single() { return api },
+      eq(k, v) { st.f.push((r) => r[k] === v); return api }, neq(k, v) { st.f.push((r) => r[k] !== v); return api },
+      update(p) { st.op = 'update'; st.p = p; return api },
+      then(res) {
+        const m = rows.filter((r) => st.f.every((fn) => fn(r)))
+        if (st.op === 'update') { m.forEach((r) => Object.assign(r, st.p)); writes.push({ p: st.p, ids: m.map((r) => r.id) }); return Promise.resolve({ error: null }).then(res) }
+        const v = m.map((r) => { const o = { ...r }; if (noStar) delete o.starred; return o })
+        return Promise.resolve({ data: v[0] || null, error: null }).then(res)
+      },
+    }
+    return api
+  }
+  return { from, writes }
+}
+test('markExecuted: deposit paid (never a step back), executed date, star; no star column → skipped', async () => {
+  const rows = [{ id: 'a', client_id: 'c', quote_number: 'SS-1', status: 'sent', starred: false, payload_json: { contractSent: { at: 'x' } } }, { id: 'b', client_id: 'c', status: 'draft', starred: true, payload_json: {} }]
+  const sb = fakeSb(rows)
+  const r = await markExecuted(sb, 'a', { file: 'SS-1-contract.pdf', at: '2026-10-06T12:00:00Z' })
+  assert.equal(r.status, 'deposit_paid'); assert.equal(r.changed, true); assert.equal(r.starred, true)
+  assert.equal(rows[0].status, 'deposit_paid'); assert.equal(rows[0].starred, true); assert.equal(rows[1].starred, false)
+  assert.deepEqual(rows[0].payload_json, { contractSent: { at: 'x' }, executed: { at: '2026-10-06T12:00:00Z', file: 'SS-1-contract.pdf' } })
+  assert.equal(executedToast(r, 'Sent'), 'Quote #SS-1 marked Deposit Paid · executed 10/06/2026 · ★ starred')
+  const rows2 = [{ id: 'a', client_id: 'c', quote_number: 'SS-2', status: 'revised', payload_json: {} }]
+  const sb2 = fakeSb(rows2, { noStar: true })
+  const r2 = await markExecuted(sb2, 'a', { at: '2026-10-06T12:00:00Z' })
+  assert.equal(r2.status, 'revised'); assert.equal(r2.changed, false); assert.equal(r2.starred, false)
+  assert.equal(sb2.writes.length, 1) // no star writes without the column
+  assert.equal(executedToast(r2, 'Revised Order'), 'Quote #SS-2 kept as Revised Order (already further along) · executed 10/06/2026')
 })

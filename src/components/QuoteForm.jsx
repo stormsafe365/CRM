@@ -39,7 +39,7 @@ export default function QuoteForm({ clientId, initial, onSubmit, onCancel, submi
       const next = { ...f, [field]: value }
       const total = parseFloat(field === 'total_amount' ? value : f.total_amount)
       const dep = parseFloat(field === 'deposit_amount' ? value : f.deposit_amount)
-      if (!isNaN(total) && !isNaN(dep)) next.balance_amount = String(Math.max(0, total - dep))
+      if (!isNaN(total) && !isNaN(dep)) next.balance_amount = String(Math.max(0, Math.round((total - dep) * 100) / 100)) // cents, no float noise (step 0.01)
       return next
     })
   }
@@ -96,15 +96,15 @@ export default function QuoteForm({ clientId, initial, onSubmit, onCancel, submi
         </label>
         <label className="form-field">
           <span className="form-label">Total Amount</span>
-          <input type="number" min="0" step="1" value={form.total_amount ?? ''} onChange={e => onMoney('total_amount', e.target.value)} placeholder="$" />
+          <input type="number" min="0" step="0.01" value={form.total_amount ?? ''} onChange={e => onMoney('total_amount', e.target.value)} placeholder="$" />
         </label>
         <label className="form-field">
           <span className="form-label">Deposit</span>
-          <input type="number" min="0" step="1" value={form.deposit_amount ?? ''} onChange={e => onMoney('deposit_amount', e.target.value)} placeholder="$" />
+          <input type="number" min="0" step="0.01" value={form.deposit_amount ?? ''} onChange={e => onMoney('deposit_amount', e.target.value)} placeholder="$" />
         </label>
         <label className="form-field">
           <span className="form-label">Balance</span>
-          <input type="number" min="0" step="1" value={form.balance_amount ?? ''} onChange={e => update('balance_amount', e.target.value)} placeholder="$" />
+          <input type="number" min="0" step="0.01" value={form.balance_amount ?? ''} onChange={e => update('balance_amount', e.target.value)} placeholder="$" />
         </label>
         <label className="form-field form-field-wide">
           <span className="form-label">Notes (e.g. revision note)</span>

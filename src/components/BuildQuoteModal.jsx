@@ -24,6 +24,7 @@ import { harvestAndSaveQuote, harvestRevisionUpdate, renderQuotePdf } from '../l
 import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { supabase } from '../lib/supabase'
+import { quoteStatusLabel } from '../lib/constants'
 import {
   autoDocGate, fmtMoney, isSold, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
   REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
@@ -33,8 +34,8 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, contractFileBase, contractNumberFor, contractNumberFromHtml, markQuote, newDetailOf, nextRevNo,
-  revisedContractNumber, revisionDocFor,
+  agreementRootOf, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  paidOf, revisedBalance, revisedContractNumber, revisionDocFor,
 } from '../lib/contractDocs'
 
 const SRC = '/build/build.html'
@@ -425,7 +426,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // baseline: on an honored sold order, the signed contract's price).
       const base = revisionOriginal({ pg, typed: rv.original, card: { total: cur.total_amount, deposit: cur.deposit_amount } })
       const orig = base.total
-      const origDep = base.deposit
+      // money already paid on this order (a revised order: across the chain) — credited (lib/contractDocs)
+      const origDep = paidOf(cur, base.deposit)
       if (base.from === 'builder' && rv.original && Math.abs(Number(rv.original) - orig) >= 0.005) {
         toast(`Revision Order: Original Contract ${fmtMoney(orig)} — the signed contract price the revised contract uses (the form had ${fmtMoney(Number(rv.original))}).`)
       }
@@ -453,7 +455,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           revised: curTot || orig,
           origDeposit: origDep || null,
           newDeposit: curDep || null,
-          newBalance: curTot && curDep ? curTot - curDep : null,
+          newBalance: curTot && curDep ? revisedBalance(curTot, curDep, origDep).balance : null,
+          refund: curTot && curDep ? revisedBalance(curTot, curDep, origDep).refund : 0,
           note: rv.note || '',
         },
       })
@@ -569,6 +572,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
             await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-executed-deposit-paid.pdf`, 'application/pdf')
             try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
             toast(`Executed copy saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+            // same effect as the Doc Hub stamp: Deposit Paid (never a step back), executed date, star
+            const curQ = quoteRef.current || initialQuote || null
+            if (curQ?.id) {
+              try {
+                const res = await markExecuted(supabase, curQ.id, { file: `${contractFileBase(num)}-executed-deposit-paid.pdf` })
+                if (quoteRef.current && quoteRef.current.id === curQ.id) quoteRef.current = { ...quoteRef.current, status: res.status, payload_json: { ...(quoteRef.current.payload_json || {}), executed: res.payload_json.executed }, ...(res.starred ? { starred: true } : {}) }
+                toast(executedToast(res, quoteStatusLabel(curQ.status)), 'success')
+              } catch (e) { toast(`Quote #${escHtml(curQ.quote_number || '')} could not be marked Deposit Paid: ${escHtml(e.message || e)}`) }
+            }
           }
         }
       } catch (e) {
@@ -661,8 +673,12 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     try {
       setStatus('Holding the revised price…')
       money = r.money || revisionMoney({ signed: r.signed, lines: r.lines, forward: r.forward })
+      // what the buyer has actually paid (the original's deposit; on a revised order everything
+      // paid across the chain) — credited on every document by ONE rule (contractDocs.revisedBalance)
+      const paid = paidOf(original, r.signed.deposit)
+      const bal = revisedBalance(money.total, money.deposit, paid)
       const held = holdBuilderAt({
-        pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: r.signed,
+        pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: { ...r.signed, deposit: paid },
         origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), newDetail: r.newDetail || newDetailOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday,
       })
       refreshBanner()
@@ -694,7 +710,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           number: num, revNo, date: r.date, rows, original: r.signed.total, contractNo: ctNo,
           originalLabel: signedOrig ? null : 'Original Quote Price (not signed yet)',
           additions: money.additions, credits: money.credits, revised: money.total,
-          origDeposit: r.signed.deposit || null, newDeposit: money.deposit, newBalance: money.balance, note: noteTxt,
+          origDeposit: paid || null, newDeposit: money.deposit, newBalance: bal.balance, refund: bal.refund, note: noteTxt,
         },
       })
       try {
@@ -716,7 +732,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       upd.payload_json = {
         ...upd.payload_json,
         revisionOf: {
-          id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit,
+          id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit, paid_before: paid, paid_total: r2(Math.max(paid, money.deposit)),
           revised_total: money.total, revision_order: num, rev_no: revNo, mode: r.mode, at,
           agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig,
         },
@@ -752,7 +768,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       //    deposit shown as paid, additional deposit due, new balance).
       try { pg._rvForce = true } catch { /* ignore */ }
       // what changed, line by line, for the REVISED CONTRACT box / row tags / payment path
-      const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: r.signed.deposit, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo })
+      const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo })
       try { await saveContractThenPrint(pg, { confirmed: true, number: ctNo, rvDoc }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
       toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
     } catch (e) {
@@ -781,6 +797,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         b.removeAttribute('onclick')
         b.onclick = null
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveContractThenPrint(getProgramWindow()) }, true)
+      })
+      // the program's own "Executed Copy — Deposit Paid" button: saved to Documents + the quote marked
+      // Deposit Paid, exactly like the Doc Hub stamp (saveExecutedThenPrint)
+      ;[...pg.document.querySelectorAll('button')].filter((b) => /printExecutedCopy/.test(b.getAttribute('onclick') || '')).forEach((b) => {
+        if (b.dataset.ssExecHooked === '1') return
+        b.dataset.ssExecHooked = '1'
+        b.removeAttribute('onclick')
+        b.onclick = null
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveExecutedThenPrint(getProgramWindow()) }, true)
       })
     }
     const t = setInterval(tick, 600)
@@ -861,7 +886,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           defaultRevNo={nextRevNo(uarManual.original)}
           onClose={() => setUarManual(null)}
           onUseAsRevision={finishUseAsRevisionManual}
-          signed={uarManual.info.signed}
+          signed={{ ...uarManual.info.signed, deposit: paidOf(uarManual.original, uarManual.info.signed.deposit) }}
           revisionPreview={(dSub) => { try { const m = uarManual.info.forward(r2(Number(uarManual.info.signed.sub) + dSub)); return { total: r2(m.adjTot), deposit: r2(m.dep), balance: r2(m.bal) } } catch { return null } }}
         />
       )}

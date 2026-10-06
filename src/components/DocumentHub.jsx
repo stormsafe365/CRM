@@ -12,8 +12,7 @@ import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
-import { executedStatus, fmtShortDate, matchContractQuote } from '../lib/contractDocs'
-import { starSupported } from '../lib/layoutFromQuote'
+import { executedToast, markExecuted, matchContractQuote } from '../lib/contractDocs'
 import { quoteStatusLabel } from '../lib/constants'
 
 const SECTIONS = [
@@ -178,21 +177,11 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       setPickFor(null)
       if (!q) { toast('No quote was marked — set the status by hand if needed.'); return }
     }
-    const at = new Date().toISOString()
-    const next = executedStatus(q.status)
-    const upd = { payload_json: { ...(q.payload_json || {}), executed: { at, file: f.label } } }
-    if (next !== q.status) upd.status = next
-    const { error } = await supabase.from('quotes').update(upd).eq('id', q.id)
-    if (error) { toast(`Quote #${q.quote_number || ''} could not be marked Deposit Paid: ${error.message}`); return }
-    let starred = q.starred === true
-    if (!starred && q.status !== 'superseded' && starSupported(quotes)) {
-      try {
-        const { error: e1 } = await supabase.from('quotes').update({ starred: false }).eq('client_id', clientId).eq('starred', true).neq('id', q.id)
-        if (!e1) { const { error: e2 } = await supabase.from('quotes').update({ starred: true }).eq('id', q.id); starred = !e2 }
-      } catch { /* the star is best effort */ }
-    }
-    const what = next !== q.status ? 'marked Deposit Paid' : `kept as ${quoteStatusLabel(q.status)} (already further along)`
-    toast(`Quote #${q.quote_number || ''} ${what} · executed ${fmtShortDate(at)}${starred ? ' · ★ starred' : ''}`, 'success')
+    // shared with the builder's Executed Copy (lib/contractDocs markExecuted)
+    try {
+      const res = await markExecuted(supabase, q.id, { file: f.label })
+      toast(executedToast(res, quoteStatusLabel(q.status)), 'success')
+    } catch (e) { toast(`Quote #${q.quote_number || ''} could not be marked Deposit Paid: ${e.message || e}`) }
   }
 
   async function onDelete(path) {

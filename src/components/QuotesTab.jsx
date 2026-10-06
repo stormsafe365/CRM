@@ -10,7 +10,7 @@ import { getQuotePdfSignedUrl, deleteQuotePdf, deleteDoc } from '../lib/storage'
 import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
-import ReplacedBadge, { ContractSentTag } from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { nextRevNo } from '../lib/contractDocs'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
@@ -563,7 +563,7 @@ function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, on
       {q.building_summary && <div className="q-sub">{q.building_summary}</div>}
       <div className="q-figures">
         <div className="q-fig"><div className="l">Deposit</div><div className="n num">{money(q.deposit_amount) || '—'}</div></div>
-        <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(q.balance_amount) || '—'}</div></div>
+        <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(cardBalanceOf(q) ? cardBalanceOf(q).balance : q.balance_amount) || '—'}</div></div>
       </div>
       <div className="q-divider" />
       <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>

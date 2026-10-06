@@ -13,6 +13,7 @@ import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { honoredLegacyOrder, isSold } from '../lib/priceLockCrm'
+import { paidOf, revisedBalance } from '../lib/contractDocs'
 import { toast } from '../lib/uiFx'
 
 // Structured change rows (owner request 9/21/26): a change is either a
@@ -92,7 +93,8 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
   const taxPct = Number(qf.tax) || 0
   const listFactor = (1 - discPct / 100) * (1 + taxPct / 100)
   const [amtMode, setAmtMode] = useState(discPct || taxPct ? 'list' : 'final')
-  const origDeposit = signed ? (Number(signed.deposit) || 0) : (Number(quote?.deposit_amount) || 0)
+  // money already paid (a revised order: across the chain); an unsigned quote's card deposit as before
+  const origDeposit = signed ? (Number(signed.deposit) || 0) : isSold(quote?.status) ? paidOf(quote, quote?.deposit_amount) : (Number(quote?.deposit_amount) || 0)
   const honored = honoredLegacyOrder(quote)
 
   // Live engine pricing: load the actual quote-builder in a hidden iframe and
@@ -143,7 +145,9 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
         const net = p.total - orig
         return {
           additions: Math.max(net, 0), credits: Math.max(-net, 0), revised: p.total, net,
-          newDeposit: p.deposit, depDiff: p.deposit - origDeposit, newBalance: p.balance, balDiff: p.balance - (orig - origDeposit),
+          // one balance rule (contractDocs.revisedBalance): money already paid is credited
+          newDeposit: p.deposit, depDiff: p.deposit - origDeposit, newBalance: revisedBalance(p.total, p.deposit, origDeposit).balance, refund: revisedBalance(p.total, p.deposit, origDeposit).refund,
+          balDiff: revisedBalance(p.total, p.deposit, origDeposit).balance - (orig - origDeposit),
         }
       }
     }
@@ -163,9 +167,10 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
     const newDeposit = origDeposit ? origDeposit + net * depRatio : null
     const depDiff = newDeposit != null ? newDeposit - origDeposit : null
     const origBalance = orig - origDeposit
-    const newBalance = newDeposit != null ? revised - newDeposit : null
+    const rb = newDeposit != null ? revisedBalance(revised, newDeposit, origDeposit) : null
+    const newBalance = rb ? rb.balance : null
     const balDiff = newBalance != null ? newBalance - origBalance : null
-    return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff }
+    return { additions, credits, revised, net, newDeposit, depDiff, newBalance, balDiff, refund: rb ? rb.refund : 0 }
   }, [rows, original, amtMode, listFactor, origDeposit, revisionPreview, signed, discPct, taxPct])
 
   async function generate(applyAfter) {
@@ -210,6 +215,7 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
           origDeposit: origDeposit || null,
           newDeposit: totals.newDeposit,
           newBalance: totals.newBalance,
+          refund: totals.refund || 0,
           note: note.trim(),
         },
       })
@@ -401,6 +407,12 @@ export default function RevisionModal({ client, quote, onClose, onApplyToBuild, 
                 <span>Revised balance at scheduling</span>
                 <b style={{ color: 'var(--fg, #e2e8f0)' }}>{fmt(totals.newBalance)}<span style={{ fontSize: 11.5, marginLeft: 6, color: 'var(--fg-3, #8598AC)' }}>({totals.balDiff >= 0 ? '+' : '−'}{fmt(Math.abs(totals.balDiff))})</span></b>
               </div>
+              {totals.refund > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: 'var(--fg-3, #8598AC)' }}>
+                  <span>Refund due to buyer (paid more than the revised total)</span>
+                  <b style={{ color: 'var(--success, #34d399)' }}>{fmt(totals.refund)}</b>
+                </div>
+              )}
             </>
           )}
         </div>

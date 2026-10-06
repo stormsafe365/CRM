@@ -17,9 +17,9 @@ import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { quoteStatusColor, quoteStatusLabel } from '../lib/constants'
 import { analyzeRevision, analyzeSignedOnly } from '../lib/revisionEngine'
-import { r2, revisionCandidates, revisionMoney } from '../lib/revisionDiff'
+import { revisionCandidates, revisionMoney } from '../lib/revisionDiff'
 import { REVISION_ADJ_LABEL, fmtMoney, isSold } from '../lib/priceLockCrm'
-import { nextRevNo } from '../lib/contractDocs'
+import { nextRevNo, paidOf, revisedBalance } from '../lib/contractDocs'
 import { ContractSentTag } from './ReplacedBadge'
 
 const FIELD = {
@@ -104,6 +104,8 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     try { money = revisionMoney({ signed: result.signed, lines, forward: result.forward }) } catch (e) { moneyErr = e.message }
   }
   const setRow = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  // money already paid (a revised order: across the chain), credited by ONE rule (contractDocs.revisedBalance)
+  const bal = money && result?.signed ? revisedBalance(money.total, money.deposit, paidOf(original, result.signed.deposit)) : null
   // An original that was never signed: its saved total is the starting price, and no deposit was paid on it.
   const origSigned = isSold(original?.status)
 
@@ -246,10 +248,11 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
                   </div>
                   <div style={{ borderTop: '1px dashed var(--line, #294059)', marginTop: 6, paddingTop: 4 }}>
                     {origSigned
-                      ? <><Row l="Deposit already paid" v={fmtMoney(result.signed.deposit)} />
-                        <Row l="Additional deposit due" v={fmtMoney(Math.max(0, r2(money.deposit - result.signed.deposit)))} /></>
+                      ? <><Row l="Deposit already paid" v={fmtMoney(bal.paid)} />
+                        <Row l="Additional deposit due" v={fmtMoney(bal.additional)} /></>
                       : <Row l="Deposit due (nothing paid yet)" v={fmtMoney(money.deposit)} />}
-                    <Row l="New balance (due at scheduling)" v={fmtMoney(money.balance)} />
+                    <Row l="New balance (due at scheduling)" v={fmtMoney(bal.balance)} />
+                    {bal.refund > 0 && <Row l="Refund due to buyer" v={fmtMoney(bal.refund)} />}
                   </div>
                 </>
               )}

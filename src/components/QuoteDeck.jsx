@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { userLabel } from '../lib/useUsers'
 import { openMenu } from '../lib/uiFx'
-import ReplacedBadge, { ContractSentTag } from './ReplacedBadge'
+import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
 
 const money = (n) => (n == null || n === '' ? null : '$' + Number(n).toLocaleString())
@@ -100,7 +100,8 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
                 <div className="qcard-divider" />
                 <div className="qcard-specs">
                   {money(q.deposit_amount) && <Spec k="Deposit" v={money(q.deposit_amount)} mono />}
-                  {money(q.balance_amount) && <Spec k="Balance Due" v={money(q.balance_amount)} mono />}
+                  {money(q.balance_amount) && <Spec k="Balance Due" v={money(cardBalanceOf(q) ? cardBalanceOf(q).balance : q.balance_amount)} mono />}
+                  {cardBalanceOf(q)?.refund > 0 && <Spec k="Refund Due" v={money(cardBalanceOf(q).refund)} mono />}
                 </div>
               </>
             )}

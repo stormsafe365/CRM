@@ -182,3 +182,73 @@ export function pickerRank(c) {
   if (contractSentOf(c.q)) return 1
   return 2
 }
+
+// ── Money already paid (owner rule 10/6/26) ───────────────────────────────
+// ONE balance rule for a revised order — contract (the program's rvBalance is the
+// same formula), Revision Order, Use-as-revision modal, quote card: money already
+// paid is credited. additional = what is still owed on the revised deposit;
+// balance = revised total − paid − additional, never negative (an overpayment
+// is a refund due to the buyer).
+const c2 = (n) => Math.round((Number(n) || 0) * 100) / 100
+export function revisedBalance(total, deposit, paid) {
+  const t = c2(total), d = c2(deposit), p = c2(paid)
+  const additional = Math.max(0, c2(d - p))
+  const rest = c2(t - p - additional)
+  return { paid: p, additional, balance: Math.max(0, rest), refund: Math.max(0, c2(-rest)) }
+}
+const numOr = (v, d) => (v == null || v === '' || !Number.isFinite(Number(v)) ? d : Number(v))
+// What the buyer has actually paid on the order this quote is (before a new
+// revision): an unsigned quote nothing; a signed original its deposit; a revised
+// order everything paid across the chain — the paid deposit before that
+// revision + the additional deposit it asked for (= max of the two), never the
+// revised quote's card deposit alone.
+export function paidOf(q, signedDeposit = null) {
+  if (!q || !isSold(q.status)) return 0
+  const rv = q.payload_json?.revisionOf
+  if (rv) {
+    const total = numOr(rv.paid_total, null)
+    if (total != null) return c2(total)
+    const before = numOr(rv.paid_before, numOr(rv.signed_deposit, 0))
+    return c2(Math.max(before, numOr(q.deposit_amount, 0)))
+  }
+  return c2(numOr(signedDeposit, numOr(q.deposit_amount, 0)))
+}
+/** The quote card's balance on a revised order (null = show the stored balance as before). */
+export function cardBalanceOf(q) {
+  const rv = q?.payload_json?.revisionOf
+  if (!rv || q.status === 'superseded' || q.total_amount == null || q.deposit_amount == null) return null
+  const before = numOr(rv.paid_before, numOr(rv.signed_deposit, null))
+  if (before == null) return null
+  return revisedBalance(q.total_amount, q.deposit_amount, before)
+}
+
+// ── "Executed — Deposit Paid" (Doc Hub stamp AND the builder's Executed Copy) ──
+// The signed order's quote → deposit_paid unless already further along, the
+// executed date on payload_json.executed, and the star (Open Layout's quote;
+// skipped silently without the starred column). The row is re-read first so
+// nothing saved since is lost. A status the rep sets by hand afterwards wins.
+// Returns { status, changed, starred, at } (throws on a failed write).
+export async function markExecuted(sb, quoteId, { file = null, at = new Date().toISOString() } = {}) {
+  const { data, error: e0 } = await sb.from('quotes').select('*').eq('id', quoteId).single()
+  if (e0) throw e0
+  const q = Array.isArray(data) ? data[0] : data
+  if (!q) throw new Error('the quote was not found')
+  const next = executedStatus(q.status)
+  const upd = { payload_json: { ...(q.payload_json || {}), executed: { at, file } } }
+  if (next !== q.status) upd.status = next
+  const { error } = await sb.from('quotes').update(upd).eq('id', q.id)
+  if (error) throw error
+  let starred = q.starred === true
+  const canStar = Object.prototype.hasOwnProperty.call(q, 'starred')
+  if (!starred && q.status !== 'superseded' && canStar) {
+    try {
+      const { error: e1 } = await sb.from('quotes').update({ starred: false }).eq('client_id', q.client_id).eq('starred', true).neq('id', q.id)
+      if (!e1) { const { error: e2 } = await sb.from('quotes').update({ starred: true }).eq('id', q.id); starred = !e2 }
+    } catch { /* the star is best effort */ }
+  }
+  return { status: next, changed: next !== q.status, starred, at, quote_number: q.quote_number, payload_json: upd.payload_json }
+}
+/** The toast for markExecuted's result. */
+export function executedToast(res, label) {
+  return `Quote #${res.quote_number || ''} ${res.changed ? 'marked Deposit Paid' : `kept as ${label} (already further along)`} · executed ${fmtShortDate(res.at)}${res.starred ? ' · ★ starred' : ''}`
+}
