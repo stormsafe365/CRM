@@ -86,7 +86,7 @@ function PlanKey({ building, openings, tagMap, geom, ed }) {
   lts.forEach((l) => { ext[l.k] = Math.max(ext[l.k], l.w) })
   const zSpan = L + ext.front + ext.back, xSpan = W + ext.left + ext.right
   const VW = CARD_W, mL = 70, mR = 70, mT = 48, mB = 54
-  const s = Math.min((VW - mL - mR) / (zSpan || 1), 290 / (xSpan || 1))
+  const s = Math.min((VW - mL - mR) / (zSpan || 1), 250 / (xSpan || 1))
   const oz = mL + ((VW - mL - mR) - zSpan * s) / 2 + ext.front * s
   const ox = mT + ext.left * s
   const VH = Math.round(mT + xSpan * s + mB)
@@ -322,6 +322,23 @@ function ElevationCard({ spec, ed, W, L }) {
     const lw = labOf(it).length * FS.size * 0.56
     return rh >= FS.size + 16 && rw >= lw + 8 ? ry + FS.size + 4 : ry - 7
   }
+  // every W×H label gets a spot that touches no other label: inside the opening when it
+  // fits, else above it, stepping further up when a neighbour's label is already there
+  const labelY = {}
+  {
+    const placed = []
+    const hit = (b) => placed.some((q) => b.x0 < q.x1 + 4 && b.x1 > q.x0 - 4 && b.y0 < q.y1 && b.y1 > q.y0)
+    spec.items.slice().sort((a, b) => a.x - b.x).forEach((it) => {
+      const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s
+      const lw = labOf(it).length * FS.size * 0.56, cx = rx + rw / 2
+      const first = sizeLabelY(it, ry, rw, rh)
+      const tries = [first].concat(first > ry ? [ry - 7] : []).concat([1, 2, 3, 4].map((k) => ry - 7 - k * (FS.size + 3)))
+      let y = tries.find((t) => !hit({ x0: cx - lw / 2, x1: cx + lw / 2, y0: t - FS.size, y1: t + 3 }))
+      if (y == null) y = tries[tries.length - 1]
+      placed.push({ x0: cx - lw / 2, x1: cx + lw / 2, y0: y - FS.size, y1: y + 3 })
+      labelY[it.id] = y
+    })
+  }
   // a lean-to hanging off this wall: its label never sits on an opening or an
   // opening's labels — above the footprint, else inside it at the bottom / top,
   // else just "LTn" there and the full text in the card's legend line
@@ -329,7 +346,7 @@ function ElevationCard({ spec, ed, W, L }) {
   const busy = spec.items.flatMap((it) => {
     const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s
     const lw = labOf(it).length * FS.size * 0.6
-    const ly = sizeLabelY(it, ry, rw, rh)
+    const ly = labelY[it.id]
     return [{ x0: rx - 26, x1: rx + rw, y0: ry, y1: ry + rh }, { x0: rx + rw / 2 - lw / 2, x1: rx + rw / 2 + lw / 2, y0: ly - FS.size, y1: ly + 3 }]
   })
   if ((spec.truss || []).length && spec.oc) busy.push({ x0: X(F) - 170, x1: X(F), y0: Y(spec.h(F)) - 26, y1: Y(spec.h(F)) - 4 })
@@ -366,7 +383,7 @@ function ElevationCard({ spec, ed, W, L }) {
       if (k === 'double') els.push(<line key={'dd' + it.id} x1={(rx + rw / 2).toFixed(1)} y1={ry.toFixed(1)} x2={(rx + rw / 2).toFixed(1)} y2={(ry + rh).toFixed(1)} stroke={col} strokeWidth="1.2" />)
       els.push(<circle key={'kn' + it.id} cx={(rx + rw * (k === 'double' ? 0.42 : 0.8)).toFixed(1)} cy={(ry + rh * 0.55).toFixed(1)} r={Math.max(2.4, s * 0.13).toFixed(1)} fill={col} />)
     }
-    const ly = sizeLabelY(it, ry, rw, rh)
+    const ly = labelY[it.id]
     els.push(<text key={'ol' + it.id} x={(rx + rw / 2).toFixed(1)} y={ly.toFixed(1)} textAnchor="middle" fontSize={FS.size} fontWeight="700" fill={INK} className="op-size">{labOf(it)}</text>)
     if (it.sill > 0.1) els.push(<text key={'os' + it.id} x={(rx + rw / 2).toFixed(1)} y={((Y(0) + Y(it.sill)) / 2 + 5).toFixed(1)} textAnchor="middle" fontSize={FS.sill} fontWeight="600" fill={TXT} className="op-sill">{`sill ${fmtFtIn(it.sill)}`}</text>)
     if (it.tag) els.push(<Tag key={'otg' + it.id} x={rx - 14} y={ry + Math.min(rh / 2, Math.max(rh - 11, 11))} col={col} n={it.tag} />)
@@ -544,7 +561,7 @@ function PageFoot({ docInfo, page, total }) {
   return (
     <div className="page-foot">
       <span><b>StormSafe Steel</b>{docInfo.quoteNo ? ' · ' + docInfo.quoteNo : ''}{docInfo.customer ? ' · ' + docInfo.customer : ''}</span>
-      <span className="pf-mid">All dimensions to the opening edge, along grade from the wall corners, in feet-inches to the nearest 1/8 inch</span>
+      <span className="pf-mid">Dimensions to the opening edge, from the wall corners · feet-inches to the nearest 1/8 inch</span>
       <span>Page {page} of {total}</span>
     </div>
   )
@@ -573,10 +590,11 @@ function SheetDoc(props) {
       <SecTitle hint="Top view · lean-tos, frame lines and openings to scale · tags match the schedule">Building Plan</SecTitle>
       <div className="plan-key-wrap"><PlanKey building={building} openings={openings} tagMap={tagMap} geom={geom} />
         {planLegend.length > 0 && <div className="plan-legend">{planLegend.map((t, i) => <span key={i}>{t}</span>)}</div>}</div>
-      <SecTitle hint={specs.length ? 'Wall elevations follow · tags match the plan' : 'Tags match the plan'}>Opening Schedule</SecTitle>
+      {sched != null && <SecTitle hint={specs.length ? 'Wall elevations follow · tags match the plan' : 'Tags match the plan'}>Opening Schedule</SecTitle>}
       {sched}
     </>
   )
+
   const schedFull = <window.Schedule building={notesB} openings={openings} tagMap={tagMap} />
   const schedBare = <window.Schedule building={{ ...notesB, notes: [] }} openings={openings} tagMap={tagMap} />
   const notesBlock = notesB.notes && notesB.notes.length ? (
@@ -591,19 +609,25 @@ function SheetDoc(props) {
     if (!st) return
     const hOf = (sel) => { const el = st.querySelector(sel); return el ? el.getBoundingClientRect().height : 0 }
     const avail1 = PAGE_H - PAGE_PAD_B - FOOT_H
-    const core = hOf('[data-stage="p1"]')
+    const top = hOf('[data-stage="p1top"]')
+    const schedH = hOf('[data-stage="sched"]')
     const notesH = hOf('[data-stage="notes"]'), notesRowsH = notesH - hOf('[data-stage="notes"] .doc-sec')
     const signH = hOf('[data-stage="sign"]') + 12
     const hasNotes = !!(notesB.notes && notesB.notes.length)
-    const notesOnP1 = !hasNotes || core + notesRowsH <= avail1
-    const p1Room = avail1 - core - (hasNotes && notesOnP1 ? notesRowsH : 0)
-    const headH = hOf('[data-stage="mini"]') + hOf('[data-stage="ehead"]')
+    // page 1 = header, specs, plan, then the schedule if it fits (else the schedule opens page 2)
+    const schedOnP1 = top + schedH <= avail1
+    const core = schedOnP1 ? top + schedH : top
+    const notesOnP1 = !hasNotes || !schedOnP1 || core + notesRowsH <= avail1
+    const p1Room = avail1 - core - (hasNotes && schedOnP1 && notesOnP1 ? notesRowsH : 0)
+    const headH = hOf('[data-stage="mini"]')
+    const eheadH = hOf('[data-stage="ehead"]')
     const availN = PAGE_H - PAGE_PAD_B - FOOT_H - headH - 8
-    // blocks for the elevation pages: the quote notes first when page 1 can't hold them
-    const ids = [...(notesOnP1 ? [] : ['notes']), ...specs.map((_, i) => i)]
-    const heights = ids.map((b) => (b === 'notes' ? notesH + 12 : hOf(`[data-stage="e-${specs[b].key}"]`) + 14))
-    const pg = paginate(heights, availN, signH, 2, p1Room)
-    const next = { notesOnP1, signOnP1: pg.signOnP1, pages: pg.pages.map((p) => p.map((i) => (i === 'sign' ? 'sign' : ids[i]))) }
+    // blocks for the elevation pages: the quote notes first when page 1 can't hold them, then the
+    // "Wall Elevations" title + key once, then the cards (height decides how many share a page)
+    const ids = [...(schedOnP1 ? [] : ['sched']), ...(notesOnP1 ? [] : ['notes']), ...(specs.length ? ['ehead'] : []), ...specs.map((_, i) => i)]
+    const heights = ids.map((b) => (b === 'sched' ? hOf('[data-stage="schedfull"]') + 12 : b === 'notes' ? notesH + 12 : b === 'ehead' ? eheadH : hOf(`[data-stage="e-${specs[b].key}"]`) + 14))
+    const pg = paginate(heights, availN, signH, 4, p1Room)
+    const next = { schedOnP1, notesOnP1, signOnP1: pg.signOnP1, pages: pg.pages.map((p) => p.map((i) => (i === 'sign' ? 'sign' : ids[i]))) }
     const k = JSON.stringify(next)
     if (!plan || plan.k !== k || plan.sig !== sig) setPlan({ ...next, k, sig })
   })
@@ -614,25 +638,26 @@ function SheetDoc(props) {
   return (
     <>
       <div className="sheet-doc doc-print">
-        <div className="sheet sheet-page p1">
-          {p1Core(ready && !plan.notesOnP1 ? schedBare : schedFull)}
+        <div className="sheet sheet-page p1 doc-print">
+          {p1Core(ready && !plan.schedOnP1 ? null : (ready && !plan.notesOnP1 ? schedBare : schedFull))}
           {ready && plan.signOnP1 && sign}
           <div className="page-fill" />
           <PageFoot docInfo={docInfo} page={1} total={total} />
         </div>
         {pages.map((blk, pi) => (
-          <div key={pi} className="sheet sheet-page pn">
+          <div key={pi} className="sheet sheet-page pn doc-print">
             <DocHeader docInfo={docInfo} building={building} revisionMode={revisionMode} compact page={pi + 2} total={total} />
-            {blk.some((b) => typeof b === 'number') && elevHead}
-            {blk.map((b) => b === 'sign' ? <R.Fragment key="sign">{sign}</R.Fragment> : b === 'notes' ? <R.Fragment key="notes">{notesBlock}</R.Fragment> : <R.Fragment key={specs[b].key}>{cards[b]}</R.Fragment>)}
+            {blk.map((b) => b === 'sign' ? <R.Fragment key="sign">{sign}</R.Fragment> : b === 'notes' ? <R.Fragment key="notes">{notesBlock}</R.Fragment> : b === 'sched' ? <div key="sched" className="sched-block"><SecTitle hint="Tags match the plan">Opening Schedule</SecTitle>{schedFull}</div> : b === 'ehead' ? <R.Fragment key="ehead">{elevHead}</R.Fragment> : <R.Fragment key={specs[b].key}>{cards[b]}</R.Fragment>)}
             <div className="page-fill" />
             <PageFoot docInfo={docInfo} page={pi + 2} total={total} />
           </div>
         ))}
       </div>
       <div className="sheet-stage doc-print" ref={stageRef} aria-hidden="true">
-        <div className="sheet stage-sheet" data-stage="p1">{p1Core(schedBare)}</div>
-        <div className="sheet stage-sheet">
+        <div className="sheet stage-sheet doc-print" data-stage="p1top">{p1Core(null)}</div>
+        <div className="sheet stage-sheet doc-print"><div data-stage="sched"><SecTitle hint="Tags match the plan">Opening Schedule</SecTitle>{schedBare}</div>
+          <div data-stage="schedfull"><SecTitle hint="Tags match the plan">Opening Schedule</SecTitle>{schedFull}</div></div>
+        <div className="sheet stage-sheet doc-print">
           <div data-stage="notes">{notesBlock}</div>
           <div data-stage="mini"><DocHeader docInfo={docInfo} building={building} revisionMode={revisionMode} compact page={2} total={2} /></div>
           <div data-stage="ehead">{elevHead}</div>
@@ -658,7 +683,7 @@ function SheetEdit(props) {
   const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend)
   return (
     <div className="sheet-edit doc-print">
-      <div className="sheet sheet-page sheet-edit-page">
+      <div className="sheet sheet-page sheet-edit-page doc-print">
         <DocHeader docInfo={docInfo} building={building} revisionMode={revisionMode} />
         <SecTitle hint={ed.placeType ? 'Click a wall to place · Alt = no snap · Esc to stop' : 'Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes'}>Building Plan</SecTitle>
         <div className="plan-key-wrap"><PlanKey building={building} openings={openings} tagMap={tagMap} geom={geom} ed={ed} />

@@ -333,7 +333,7 @@ export function leanToSpecs(l, tFront = [], oc = 0) {
  * line, chain + overall rows, total height. maxH caps the drawn wall height so
  * two or three elevations fit a letter page.
  */
-export function elevLayout(spec, { VW = 740, maxH = 230, mL = 34, mR = 104, mT = 42 } = {}) {
+export function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT = 42 } = {}) {
   let extL = 0, extR = 0
   ;(spec.side || []).forEach((q) => { if (q.onLeft) extL = Math.max(extL, q.w); else extR = Math.max(extR, q.w) })
   ;(spec.items || []).forEach((it) => { extL = Math.max(extL, -it.x); extR = Math.max(extR, it.x + it.w - spec.faceW) })

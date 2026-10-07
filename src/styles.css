@@ -1770,6 +1770,10 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
   color: var(--cyan);
   font-size: 13px;
   flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .qb-bar-actions { margin-left: auto; display: flex; gap: 8px; }
 .qb-iframe {
@@ -4512,6 +4516,13 @@ a.brand { text-decoration: none; color: inherit; }
   border-radius: 6px; padding: 5px 8px; font-size: 12.5px; font-family: inherit;
 }
 .qb-quote-pick select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+/* Open Layout: the one top bar drives the builder (view switch, revision, print) */
+.qb-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--inset, #0A1320); }
+.qb-seg button { border: 0; background: transparent; color: var(--txt-2); font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 5px; cursor: pointer; }
+.qb-seg button.on { background: var(--cyan); color: #081b24; }
+.qb-seg button:focus-visible, .qb-rev:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.qb-rev { border: 1px solid #f0883e; color: #f0883e; background: transparent; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 7px; cursor: pointer; }
+.qb-rev.on { background: rgba(240, 136, 62, .16); }
 
 /* Starred quote (one per lead) — orange star, never yellow */
 .q-star-btn {

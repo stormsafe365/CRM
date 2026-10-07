@@ -49,7 +49,7 @@ function Schedule({ building, openings, tagMap }) {
           return (
             <tr key={op.id}>
               <td className="tagcell">
-                <span className="tag" style={{ background: t.color }}>{tagMap[op.id]}</span>
+                <svg className="tag-svg" width="26" height="26" viewBox="0 0 26 26" aria-label={'tag ' + tagMap[op.id]}><circle cx="13" cy="13" r="10.5" fill="#ffffff" stroke={(window.SheetPrintHex || {})[op.type] || t.color} strokeWidth="2.4" /><text x="13" y="17.3" textAnchor="middle" fontSize="12" fontWeight="700" fontFamily="Arial, Helvetica, sans-serif" fill="#111827">{tagMap[op.id]}</text></svg>
               </td>
               <td className="typecell">{label}</td>
               <td>{WALLS[op.wall].label}</td>

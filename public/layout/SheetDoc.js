@@ -364,7 +364,7 @@
     }
     return specs;
   }
-  function elevLayout(spec, { VW = 740, maxH = 230, mL = 34, mR = 104, mT = 42 } = {}) {
+  function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT = 42 } = {}) {
     let extL = 0, extR = 0;
     (spec.side || []).forEach((q) => {
       if (q.onLeft) extL = Math.max(extL, q.w);
@@ -525,7 +525,7 @@
     });
     const zSpan = L + ext.front + ext.back, xSpan = W + ext.left + ext.right;
     const VW = CARD_W, mL = 70, mR = 70, mT = 48, mB = 54;
-    const s = Math.min((VW - mL - mR) / (zSpan || 1), 290 / (xSpan || 1));
+    const s = Math.min((VW - mL - mR) / (zSpan || 1), 250 / (xSpan || 1));
     const oz = mL + (VW - mL - mR - zSpan * s) / 2 + ext.front * s;
     const ox = mT + ext.left * s;
     const VH = Math.round(mT + xSpan * s + mB);
@@ -832,11 +832,26 @@
       const lw = labOf(it).length * FS.size * 0.56;
       return rh >= FS.size + 16 && rw >= lw + 8 ? ry + FS.size + 4 : ry - 7;
     };
+    const labelY = {};
+    {
+      const placed = [];
+      const hit = (b) => placed.some((q) => b.x0 < q.x1 + 4 && b.x1 > q.x0 - 4 && b.y0 < q.y1 && b.y1 > q.y0);
+      spec.items.slice().sort((a, b) => a.x - b.x).forEach((it) => {
+        const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s;
+        const lw = labOf(it).length * FS.size * 0.56, cx = rx + rw / 2;
+        const first = sizeLabelY(it, ry, rw, rh);
+        const tries = [first].concat(first > ry ? [ry - 7] : []).concat([1, 2, 3, 4].map((k) => ry - 7 - k * (FS.size + 3)));
+        let y = tries.find((t) => !hit({ x0: cx - lw / 2, x1: cx + lw / 2, y0: t - FS.size, y1: t + 3 }));
+        if (y == null) y = tries[tries.length - 1];
+        placed.push({ x0: cx - lw / 2, x1: cx + lw / 2, y0: y - FS.size, y1: y + 3 });
+        labelY[it.id] = y;
+      });
+    }
     const legend = [];
     const busy = spec.items.flatMap((it) => {
       const rx = X(it.x), ry = Y(it.sill + it.h), rw = it.w * s, rh = it.h * s;
       const lw = labOf(it).length * FS.size * 0.6;
-      const ly = sizeLabelY(it, ry, rw, rh);
+      const ly = labelY[it.id];
       return [{ x0: rx - 26, x1: rx + rw, y0: ry, y1: ry + rh }, { x0: rx + rw / 2 - lw / 2, x1: rx + rw / 2 + lw / 2, y0: ly - FS.size, y1: ly + 3 }];
     });
     if ((spec.truss || []).length && spec.oc) busy.push({ x0: X(F) - 170, x1: X(F), y0: Y(spec.h(F)) - 26, y1: Y(spec.h(F)) - 4 });
@@ -896,7 +911,7 @@
         if (k === "double") els.push(/* @__PURE__ */ React.createElement("line", { key: "dd" + it.id, x1: (rx + rw / 2).toFixed(1), y1: ry.toFixed(1), x2: (rx + rw / 2).toFixed(1), y2: (ry + rh).toFixed(1), stroke: col, strokeWidth: "1.2" }));
         els.push(/* @__PURE__ */ React.createElement("circle", { key: "kn" + it.id, cx: (rx + rw * (k === "double" ? 0.42 : 0.8)).toFixed(1), cy: (ry + rh * 0.55).toFixed(1), r: Math.max(2.4, s * 0.13).toFixed(1), fill: col }));
       }
-      const ly = sizeLabelY(it, ry, rw, rh);
+      const ly = labelY[it.id];
       els.push(/* @__PURE__ */ React.createElement("text", { key: "ol" + it.id, x: (rx + rw / 2).toFixed(1), y: ly.toFixed(1), textAnchor: "middle", fontSize: FS.size, fontWeight: "700", fill: INK, className: "op-size" }, labOf(it)));
       if (it.sill > 0.1) els.push(/* @__PURE__ */ React.createElement("text", { key: "os" + it.id, x: (rx + rw / 2).toFixed(1), y: ((Y(0) + Y(it.sill)) / 2 + 5).toFixed(1), textAnchor: "middle", fontSize: FS.sill, fontWeight: "600", fill: TXT, className: "op-sill" }, `sill ${fmtFtIn(it.sill)}`));
       if (it.tag) els.push(/* @__PURE__ */ React.createElement(Tag, { key: "otg" + it.id, x: rx - 14, y: ry + Math.min(rh / 2, Math.max(rh - 11, 11)), col, n: it.tag }));
@@ -1061,7 +1076,7 @@
     return /* @__PURE__ */ React.createElement("div", { className: "doc-key" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "RU"), " roll-up door (slats)"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "WD"), " walk door (knob)"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "DD"), " double door"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "WN"), " window (mullions)"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "FO"), " framed opening (cross-hatch)"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { className: "k-lt" }), " lean-to (teal dashed)"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("i", { className: "k-fl" }), " frame line"));
   }
   function PageFoot({ docInfo, page, total }) {
-    return /* @__PURE__ */ React.createElement("div", { className: "page-foot" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "StormSafe Steel"), docInfo.quoteNo ? " · " + docInfo.quoteNo : "", docInfo.customer ? " · " + docInfo.customer : ""), /* @__PURE__ */ React.createElement("span", { className: "pf-mid" }, "All dimensions to the opening edge, along grade from the wall corners, in feet-inches to the nearest 1/8 inch"), /* @__PURE__ */ React.createElement("span", null, "Page ", page, " of ", total));
+    return /* @__PURE__ */ React.createElement("div", { className: "page-foot" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, "StormSafe Steel"), docInfo.quoteNo ? " · " + docInfo.quoteNo : "", docInfo.customer ? " · " + docInfo.customer : ""), /* @__PURE__ */ React.createElement("span", { className: "pf-mid" }, "Dimensions to the opening edge, from the wall corners · feet-inches to the nearest 1/8 inch"), /* @__PURE__ */ React.createElement("span", null, "Page ", page, " of ", total));
   }
   function SheetDoc(props) {
     const { building, docInfo, openings, tagMap, revisionMode } = props;
@@ -1075,7 +1090,7 @@
     const H = window.SheetParts;
     const cards = specs.map((sp) => /* @__PURE__ */ React.createElement(ElevationCard, { key: sp.key, spec: sp }));
     const sign = /* @__PURE__ */ React.createElement("div", { className: "sign-block" }, /* @__PURE__ */ React.createElement(SecTitle, null, "Customer Approval"), revisionMode && H.RevChanges(), H.SignOff({ revisionMode }));
-    const p1Core = (sched) => /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode }), /* @__PURE__ */ React.createElement(DocJob, { docInfo }), revisionMode && H.RevStrip(), /* @__PURE__ */ React.createElement(SecTitle, null, "Building Specifications"), /* @__PURE__ */ React.createElement(DocSpecs, { building, docInfo }), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Top view · lean-tos, frame lines and openings to scale · tags match the schedule" }, "Building Plan"), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t)))), /* @__PURE__ */ React.createElement(SecTitle, { hint: specs.length ? "Wall elevations follow · tags match the plan" : "Tags match the plan" }, "Opening Schedule"), sched);
+    const p1Core = (sched) => /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode }), /* @__PURE__ */ React.createElement(DocJob, { docInfo }), revisionMode && H.RevStrip(), /* @__PURE__ */ React.createElement(SecTitle, null, "Building Specifications"), /* @__PURE__ */ React.createElement(DocSpecs, { building, docInfo }), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Top view · lean-tos, frame lines and openings to scale · tags match the schedule" }, "Building Plan"), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t)))), sched != null && /* @__PURE__ */ React.createElement(SecTitle, { hint: specs.length ? "Wall elevations follow · tags match the plan" : "Tags match the plan" }, "Opening Schedule"), sched);
     const schedFull = /* @__PURE__ */ React.createElement(window.Schedule, { building: notesB, openings, tagMap });
     const schedBare = /* @__PURE__ */ React.createElement(window.Schedule, { building: { ...notesB, notes: [] }, openings, tagMap });
     const notesBlock = notesB.notes && notesB.notes.length ? /* @__PURE__ */ React.createElement("div", { className: "notes-block" }, /* @__PURE__ */ React.createElement(SecTitle, { hint: "Continued from page 1" }, "Quote Notes"), /* @__PURE__ */ React.createElement("table", { className: "sched" }, /* @__PURE__ */ React.createElement("tbody", { className: "sched-notes" }, notesB.notes.map((n, i) => /* @__PURE__ */ React.createElement("tr", { key: i }, /* @__PURE__ */ React.createElement("td", null, n)))))) : null;
@@ -1089,25 +1104,29 @@
         return el ? el.getBoundingClientRect().height : 0;
       };
       const avail1 = PAGE_H - PAGE_PAD_B - FOOT_H;
-      const core = hOf('[data-stage="p1"]');
+      const top = hOf('[data-stage="p1top"]');
+      const schedH = hOf('[data-stage="sched"]');
       const notesH = hOf('[data-stage="notes"]'), notesRowsH = notesH - hOf('[data-stage="notes"] .doc-sec');
       const signH = hOf('[data-stage="sign"]') + 12;
       const hasNotes = !!(notesB.notes && notesB.notes.length);
-      const notesOnP1 = !hasNotes || core + notesRowsH <= avail1;
-      const p1Room = avail1 - core - (hasNotes && notesOnP1 ? notesRowsH : 0);
-      const headH = hOf('[data-stage="mini"]') + hOf('[data-stage="ehead"]');
+      const schedOnP1 = top + schedH <= avail1;
+      const core = schedOnP1 ? top + schedH : top;
+      const notesOnP1 = !hasNotes || !schedOnP1 || core + notesRowsH <= avail1;
+      const p1Room = avail1 - core - (hasNotes && schedOnP1 && notesOnP1 ? notesRowsH : 0);
+      const headH = hOf('[data-stage="mini"]');
+      const eheadH = hOf('[data-stage="ehead"]');
       const availN = PAGE_H - PAGE_PAD_B - FOOT_H - headH - 8;
-      const ids = [...notesOnP1 ? [] : ["notes"], ...specs.map((_, i) => i)];
-      const heights = ids.map((b) => b === "notes" ? notesH + 12 : hOf(`[data-stage="e-${specs[b].key}"]`) + 14);
-      const pg = paginate(heights, availN, signH, 2, p1Room);
-      const next = { notesOnP1, signOnP1: pg.signOnP1, pages: pg.pages.map((p) => p.map((i) => i === "sign" ? "sign" : ids[i])) };
+      const ids = [...schedOnP1 ? [] : ["sched"], ...notesOnP1 ? [] : ["notes"], ...specs.length ? ["ehead"] : [], ...specs.map((_, i) => i)];
+      const heights = ids.map((b) => b === "sched" ? hOf('[data-stage="schedfull"]') + 12 : b === "notes" ? notesH + 12 : b === "ehead" ? eheadH : hOf(`[data-stage="e-${specs[b].key}"]`) + 14);
+      const pg = paginate(heights, availN, signH, 4, p1Room);
+      const next = { schedOnP1, notesOnP1, signOnP1: pg.signOnP1, pages: pg.pages.map((p) => p.map((i) => i === "sign" ? "sign" : ids[i])) };
       const k = JSON.stringify(next);
       if (!plan || plan.k !== k || plan.sig !== sig) setPlan({ ...next, k, sig });
     });
     const ready = plan && plan.sig === sig;
     const pages = ready ? plan.pages : [];
     const total = 1 + pages.length;
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "sheet-doc doc-print" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page p1" }, p1Core(ready && !plan.notesOnP1 ? schedBare : schedFull), ready && plan.signOnP1 && sign, /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { docInfo, page: 1, total })), pages.map((blk, pi) => /* @__PURE__ */ React.createElement("div", { key: pi, className: "sheet sheet-page pn" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode, compact: true, page: pi + 2, total }), blk.some((b) => typeof b === "number") && elevHead, blk.map((b) => b === "sign" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "sign" }, sign) : b === "notes" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "notes" }, notesBlock) : /* @__PURE__ */ React.createElement(R.Fragment, { key: specs[b].key }, cards[b])), /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { docInfo, page: pi + 2, total })))), /* @__PURE__ */ React.createElement("div", { className: "sheet-stage doc-print", ref: stageRef, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet", "data-stage": "p1" }, p1Core(schedBare)), /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet" }, /* @__PURE__ */ React.createElement("div", { "data-stage": "notes" }, notesBlock), /* @__PURE__ */ React.createElement("div", { "data-stage": "mini" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode, compact: true, page: 2, total: 2 })), /* @__PURE__ */ React.createElement("div", { "data-stage": "ehead" }, elevHead), /* @__PURE__ */ React.createElement("div", { "data-stage": "sign" }, sign), specs.map((sp, i) => /* @__PURE__ */ React.createElement("div", { key: sp.key, "data-stage": "e-" + sp.key }, cards[i])))));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "sheet-doc doc-print" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page p1 doc-print" }, p1Core(ready && !plan.schedOnP1 ? null : ready && !plan.notesOnP1 ? schedBare : schedFull), ready && plan.signOnP1 && sign, /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { docInfo, page: 1, total })), pages.map((blk, pi) => /* @__PURE__ */ React.createElement("div", { key: pi, className: "sheet sheet-page pn doc-print" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode, compact: true, page: pi + 2, total }), blk.map((b) => b === "sign" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "sign" }, sign) : b === "notes" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "notes" }, notesBlock) : b === "sched" ? /* @__PURE__ */ React.createElement("div", { key: "sched", className: "sched-block" }, /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan" }, "Opening Schedule"), schedFull) : b === "ehead" ? /* @__PURE__ */ React.createElement(R.Fragment, { key: "ehead" }, elevHead) : /* @__PURE__ */ React.createElement(R.Fragment, { key: specs[b].key }, cards[b])), /* @__PURE__ */ React.createElement("div", { className: "page-fill" }), /* @__PURE__ */ React.createElement(PageFoot, { docInfo, page: pi + 2, total })))), /* @__PURE__ */ React.createElement("div", { className: "sheet-stage doc-print", ref: stageRef, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet doc-print", "data-stage": "p1top" }, p1Core(null)), /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet doc-print" }, /* @__PURE__ */ React.createElement("div", { "data-stage": "sched" }, /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan" }, "Opening Schedule"), schedBare), /* @__PURE__ */ React.createElement("div", { "data-stage": "schedfull" }, /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan" }, "Opening Schedule"), schedFull)), /* @__PURE__ */ React.createElement("div", { className: "sheet stage-sheet doc-print" }, /* @__PURE__ */ React.createElement("div", { "data-stage": "notes" }, notesBlock), /* @__PURE__ */ React.createElement("div", { "data-stage": "mini" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode, compact: true, page: 2, total: 2 })), /* @__PURE__ */ React.createElement("div", { "data-stage": "ehead" }, elevHead), /* @__PURE__ */ React.createElement("div", { "data-stage": "sign" }, sign), specs.map((sp, i) => /* @__PURE__ */ React.createElement("div", { key: sp.key, "data-stage": "e-" + sp.key }, cards[i])))));
   }
   function SheetEdit(props) {
     const { building, docInfo, openings, tagMap, revisionMode, ed } = props;
@@ -1116,7 +1135,7 @@
     const sizeMismatch = geom && (geom.W !== Number(building.width) || geom.L !== Number(building.length));
     const W = Number(building.width) || 0, L = Number(building.length) || 0;
     const planLegend = (geom && !sizeMismatch && Array.isArray(geom.leanTos) ? geom.leanTos : []).map(ltLegend);
-    return /* @__PURE__ */ React.createElement("div", { className: "sheet-edit doc-print" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page sheet-edit-page" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode }), /* @__PURE__ */ React.createElement(SecTitle, { hint: ed.placeType ? "Click a wall to place · Alt = no snap · Esc to stop" : "Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes" }, "Building Plan"), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom, ed }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t))), sizeMismatch && /* @__PURE__ */ React.createElement("div", { className: "plan-legend warn" }, "The quote’s lean-tos / partitions are hidden: the building size was changed here from the quote’s ", fmtFtIn(geom.W), " × ", fmtFtIn(geom.L), ".")), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Drag an opening along its wall · the chain updates live · same drawings as the Approval Sheet" }, "Wall Elevations"), /* @__PURE__ */ React.createElement(KeyLine, null), specs.map((sp) => /* @__PURE__ */ React.createElement(ElevationCard, { key: sp.key, spec: sp, ed, W, L })), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan and elevations" }, "Opening Schedule"), /* @__PURE__ */ React.createElement(window.Schedule, { building, openings, tagMap })));
+    return /* @__PURE__ */ React.createElement("div", { className: "sheet-edit doc-print" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page sheet-edit-page doc-print" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode }), /* @__PURE__ */ React.createElement(SecTitle, { hint: ed.placeType ? "Click a wall to place · Alt = no snap · Esc to stop" : "Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes" }, "Building Plan"), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom, ed }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t))), sizeMismatch && /* @__PURE__ */ React.createElement("div", { className: "plan-legend warn" }, "The quote’s lean-tos / partitions are hidden: the building size was changed here from the quote’s ", fmtFtIn(geom.W), " × ", fmtFtIn(geom.L), ".")), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Drag an opening along its wall · the chain updates live · same drawings as the Approval Sheet" }, "Wall Elevations"), /* @__PURE__ */ React.createElement(KeyLine, null), specs.map((sp) => /* @__PURE__ */ React.createElement(ElevationCard, { key: sp.key, spec: sp, ed, W, L })), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan and elevations" }, "Opening Schedule"), /* @__PURE__ */ React.createElement(window.Schedule, { building, openings, tagMap })));
   }
   function ltLegend(l) {
     return `LT${l.n} · ${{ left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" }[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? " · " + fmtFtIn(l.stor.len) + " storage at the " + l.stor.end + " end" : ""} · ${(l.walls && l.walls.mode) === "enclosed" ? "enclosed" : (l.walls && l.walls.mode) === "custom" ? "custom walls" : "open"}`;

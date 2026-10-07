@@ -1,4 +1,5 @@
 @import url('assets/colors_and_type.css');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@700;800&display=swap');
 
 /* ============================================================
    StormSafe — Building Openings Approval Sheet
@@ -236,11 +237,13 @@ body {
 }
 .field .helper { font-size: 12px; color: var(--fg-3); }
 .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.app .rail .dim-input input { padding-left: 9px; }
 
 /* dim input with unit suffix */
 .dim-input { position: relative; }
-.dim-input input { width: 100%; min-width: 0; font-family: var(--font-mono); padding-right: 40px; } /* room for "mph" (the Wind field showed "1!", 10/7) */
+.dim-input input { width: 100%; min-width: 0; font-family: var(--font-mono); padding-right: 26px; }
+.dim-input.u-long input { padding-right: 40px; } /* room for "mph" (the Wind field showed "1!", 10/7) */
 .dim-input .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--fg-3); font-family: var(--font-mono); font-size: 13px; pointer-events: none; }
 .dim-input.dim-text input { padding-right: 10px; }
 .dim-input.dim-text.bad input { border-color: var(--storm-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--storm-500) 16%, transparent); }
@@ -463,16 +466,10 @@ body {
 /* ===========================================================
    STYLE VARIANT: STAMP  (teal-accented block titles)
    =========================================================== */
-.sheet.style-stamp .block-title h2 { padding-left: 11px; border-left: 4px solid var(--brand-teal); }
-.sheet.style-stamp .info-cell { border-top: 2px solid transparent; }
 
 /* ===========================================================
    STYLE VARIANT: BLUEPRINT (dark plan, light lines)
    =========================================================== */
-.sheet.style-blueprint .plan-wrap { background: var(--navy-900); border-color: var(--navy-800); }
-.sheet.style-blueprint .legend { background: var(--navy-900); border-color: var(--navy-800); }
-.sheet.style-blueprint .legend .item { color: var(--steel-300); }
-.sheet.style-blueprint .legend .item .sw { border-color: rgba(255,255,255,.25); }
 
 /* density */
 .density-compact .sheet { padding: 34px 40px 32px; }
@@ -850,12 +847,6 @@ body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fsc-v .fsc-code { font-weight: 400; color: var(--fg-3); font-size: 10.5px; }
-.sheet.style-blueprint .fsc-v .fsc-code { color: var(--steel-400); }
-.sheet.style-blueprint .finish-strip { background: var(--navy-800); border-color: var(--navy-700); }
-.sheet.style-blueprint .finish-strip-k { background: var(--navy-900); color: var(--teal-300); border-color: var(--navy-700); }
-.sheet.style-blueprint .finish-strip-cell { border-color: var(--navy-700); }
-.sheet.style-blueprint .fsc-v { color: var(--steel-100); }
-.sheet.style-blueprint .fsc-k { color: var(--steel-400); }
 
 /* ---- tightened finish strip ---- */
 .finish-strip-cell { padding: 4px 10px; gap: 7px; }
@@ -882,9 +873,6 @@ body {
 }
 .fs-v { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--navy-900); }
 .fs-v .fs-sub { font-weight: 400; color: var(--fg-3); }
-.sheet.style-blueprint .frame-strip { background: var(--navy-800); border-color: var(--navy-700); }
-.sheet.style-blueprint .fs-v { color: var(--steel-100); }
-.sheet.style-blueprint .fs-v .fs-sub { color: var(--steel-400); }
 
 /* ---- place-mode hint + arming card ---- */
 .place-hint {
@@ -974,7 +962,6 @@ body {
   display: flex; align-items: center; justify-content: center; overflow: hidden;
   flex: 0 0 auto; max-height: 124px;
 }
-.sheet.style-blueprint .elev-wrap { background: var(--navy-900); border-color: var(--navy-800); }
 .elev-wrap svg { max-height: 112px; width: auto; max-width: 100%; }
 .sheet.has-elev .plan-wrap { min-height: 0; }
 
@@ -1055,6 +1042,8 @@ body {
 .sheet.sheet-edit-page { height: auto; min-height: 1056px; overflow: visible; padding-bottom: 24px; }
 .plan-key.is-edit, .elev-card.is-edit .elev-svg { touch-action: none; user-select: none; }
 .plan-key.is-edit text, .elev-card.is-edit .elev-svg text { pointer-events: none; }
+/* window mullions, door knobs, tags sit on top of the opening: clicks go to the opening */
+.elev-card.is-edit .elev-svg line, .elev-card.is-edit .elev-svg circle, .elev-card.is-edit .elev-svg .op-tag-mark { pointer-events: none; }
 .op-hit { cursor: grab; }
 .op-hit:active { cursor: grabbing; }
 .plan-key.is-placing, .elev-svg.is-placing { cursor: copy; }
@@ -1062,6 +1051,157 @@ body {
 /* CRM copy: until the quote is seeded nothing else is shown (never a stale building) */
 .seed-wait { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 60vh; font-family: var(--font-body); font-size: 15px; font-weight: 600; color: var(--steel-600); }
 .seed-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-teal); animation: armPulse 1.1s ease-in-out infinite; }
+/* ===========================================================
+   10-6e REDESIGN (owner 10/6 evening: "doesnt look very stormsafe ... and
+   then also the pdfs"; "white background is best"; Steel Stamp header).
+   1) THE DOCUMENT (.doc-print: Approval Sheet pages, the PDF, the Edit view):
+      white, print-first, the Purchase Agreement family (round logo + contact,
+      heavy-caps title, quote no. / date / building, black rule) with the
+      Steel Stamp traits (condensed stamped wordmark, teal rule, teal-barred
+      section titles). Near-black text, light borders, no grey fills.
+   2) THE BUILDER CHROME: dark azul #081b24, panel #0d1820, inputs #080f14,
+      teal the single accent, orange #f0883e for warnings, NO yellow,
+      Inter in the UI, Orbitron only on the wordmark.
+   =========================================================== */
+.doc-print { --doc-ink: #111827; --doc-txt: #1f2937; --doc-mut: #4b5563; --doc-line: #d1d5db; --doc-teal: #0E7A76; }
+.doc-print, .sheet.doc-print { font-family: Arial, Helvetica, sans-serif; color: var(--doc-txt); }
+.sheet.sheet-page.doc-print { background: #ffffff; padding: 30px 34px 18px; }
+.sheet.sheet-page.sheet-edit-page.doc-print { padding-bottom: 28px; }
+
+/* header: logo + stamped wordmark + contact | title + quote / date / building; black rule + teal rule */
+.doc-hdr { display: grid; grid-template-columns: 66px 1fr auto; gap: 14px; align-items: center; padding-bottom: 9px; border-bottom: 2.5px solid #111827; position: relative; margin-bottom: 14px; }
+.doc-hdr::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: #14A6A0; }
+.doc-logo { width: 66px; height: 66px; object-fit: contain; display: block; }
+.doc-brand-name { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 25px; line-height: 0.95; letter-spacing: 0.02em; color: #111827; text-transform: uppercase; white-space: nowrap; }
+.doc-brand-name span { color: #0E7A76; }
+.doc-brand-name::after { content: "Hurricane-Rated Steel Buildings"; display: block; margin-top: 4px; font-size: 10px; letter-spacing: 0.24em; font-weight: 700; color: #0E7A76; }
+.doc-brand-contact { font-size: 10.5px; color: #374151; margin-top: 4px; font-weight: 600; }
+.doc-meta { text-align: right; }
+.doc-title { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 22px; letter-spacing: 0.06em; text-transform: uppercase; color: #111827; line-height: 1.05; }
+.doc-sub { font-size: 11px; color: #374151; margin-top: 3px; }
+.doc-sub strong { color: #111827; font-weight: 700; }
+.doc-sub .mono { font-family: Arial, Helvetica, sans-serif; letter-spacing: 0.02em; }
+.doc-hdr.compact { grid-template-columns: 46px 1fr auto; margin-bottom: 12px; padding-bottom: 7px; }
+.doc-hdr.compact .doc-logo { width: 46px; height: 46px; }
+.doc-hdr.compact .doc-brand-name { font-size: 20px; }
+.doc-hdr.compact .doc-brand-name::after { font-size: 9px; }
+.doc-hdr.compact .doc-title { font-size: 18px; }
+
+/* section titles: Steel Stamp — teal bar, condensed bold tracked caps */
+.doc-sec { display: flex; align-items: baseline; gap: 12px; margin: 14px 0 7px; padding: 1px 0 4px 11px; border-left: 4px solid #14A6A0; border-bottom: 1px solid var(--doc-line); }
+.doc-sec-t { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; color: #111827; white-space: nowrap; }
+.doc-sec-hint { margin-left: auto; font-size: 10.5px; color: var(--doc-mut); text-align: right; }
+
+/* boxed info */
+.doc-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.doc-card { border: 1px solid var(--doc-line); border-radius: 5px; padding: 8px 11px; background: #ffffff; }
+.doc-card-t { font-weight: 700; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #111827; margin-bottom: 4px; }
+.doc-field { display: grid; grid-template-columns: 84px 1fr; gap: 8px; padding: 2px 0; align-items: baseline; }
+.doc-field .l { font-size: 9.5px; font-weight: 700; color: var(--doc-mut); letter-spacing: 0.06em; text-transform: uppercase; }
+.doc-field .v { font-size: 13px; font-weight: 700; color: #111827; }
+.doc-specs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.doc-spec { border: 1px solid var(--doc-line); border-radius: 4px; padding: 5px 8px; min-width: 0; background: #ffffff; }
+.doc-spec .l { font-size: 9px; font-weight: 700; color: var(--doc-mut); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-spec .v { font-size: 13px; font-weight: 700; color: #111827; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+.doc-spec .s { font-size: 10px; color: var(--doc-mut); margin-top: 1px; }
+.doc-sw { width: 13px; height: 13px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.35); flex: none; }
+
+/* drawings */
+.doc-print .plan-key-wrap { border: 1px solid var(--doc-line); background: #ffffff; padding: 4px 0 2px; }
+.doc-print .plan-legend { border-top: 1px solid var(--doc-line); color: #0E7A76; font-size: 12px; font-weight: 700; padding: 4px 12px 6px; }
+.doc-print .plan-legend.warn { color: #9a3412; }
+.doc-key { display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 11px; color: var(--doc-txt); margin: 0 0 8px; }
+.doc-key b { color: #111827; }
+.doc-key i { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 4px; }
+.doc-key i.k-lt { border-top: 2px dashed #0E7A76; }
+.doc-key i.k-fl { border-top: 1.5px dashed #9ca3af; }
+.doc-print .elev-card { border: 1px solid var(--doc-line); border-radius: 4px; background: #ffffff; margin-bottom: 14px; }
+.doc-print .elev-head { background: #ffffff; border-bottom: 1px solid var(--doc-line); padding: 6px 12px 5px; }
+.doc-print .elev-title { font-family: Arial, Helvetica, sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #111827; }
+.doc-print .elev-sub { font-size: 12.5px; color: var(--doc-mut); }
+.doc-print .elev-meta { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: var(--doc-mut); font-weight: 600; }
+.doc-print .elev-notes { font-size: 12px; color: #9a3412; border-top: 1px solid var(--doc-line); padding: 4px 12px 6px; }
+.doc-print .elev-notes div::before { color: var(--doc-mut); }
+
+/* schedule */
+.doc-print .sched { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; }
+.doc-print .sched th { background: #111827; color: #ffffff; font-family: Arial, Helvetica, sans-serif; font-size: 10px; letter-spacing: 0.08em; border-bottom: 0; padding: 5px 10px; }
+.doc-print .sched td { color: #111827; border-bottom: 1px solid var(--doc-line); padding: 4px 10px; }
+.doc-print .sched td.mono { font-family: Arial, Helvetica, sans-serif; font-weight: 700; }
+.doc-print .sched td.mono span { color: var(--doc-mut) !important; font-weight: 400; }
+.doc-print .sched .tag { display: inline-block; box-sizing: border-box; width: 24px; height: 24px; line-height: 19px; text-align: center; border-radius: 50%; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; }
+.doc-print .sched tfoot td { background: #ffffff; border-top: 2px solid #111827; font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; letter-spacing: 0.06em; }
+.doc-print .sched-notes td { color: var(--doc-txt) !important; font-size: 12px !important; }
+.doc-print .sched-notes td span { color: var(--doc-mut) !important; }
+
+/* approval + footer */
+.doc-print .ack { background: #ffffff; border: 1px solid var(--doc-line); border-left: 4px solid #111827; color: var(--doc-txt); font-size: 12.5px; }
+.doc-print .ack strong { color: #111827; }
+.doc-print .sign-line .ln { border-bottom: 1.5px solid #111827; height: 34px; }
+.doc-print .sign-line .cap { font-family: Arial, Helvetica, sans-serif; font-size: 11px; letter-spacing: 0.1em; color: #374151; }
+.doc-print .rev-strip { margin: 10px 0 0; border-color: var(--doc-line); }
+.doc-print .rev-k { color: var(--doc-mut); }
+.doc-print .rev-changes { margin: 10px 0 0; }
+.doc-print .rev-changes-title { color: #111827; }
+.doc-print .page-foot { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; height: 30px; border-top: 1px solid #111827; padding-top: 6px; font-family: Arial, Helvetica, sans-serif; font-size: 9.5px; color: #374151; }
+.doc-print .page-foot b { color: #111827; }
+.doc-print .page-foot .pf-mid { text-align: center; color: var(--doc-mut); }
+@media print {
+  .sheet.sheet-page.doc-print { box-shadow: none !important; }
+}
+
+/* ---------- BUILDER CHROME (dark azul, on brand) ---------- */
+.app { background: #081b24; font-family: 'Inter', 'Barlow', system-ui, sans-serif; }
+.app .toolbar { background: #081b24; border-bottom: 1px solid #16303c; }
+.app .toolbar .tb-brand .tb-word { font-family: 'Orbitron', 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 17px; letter-spacing: 0.04em; }
+.app .toolbar .tb-brand .tb-word .t { color: #22d3c8; }
+.app .toolbar .tb-brand .sub { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: 0.14em; color: #7f97a6; }
+.app .seg { background: #0d1820; border-color: #1d3340; }
+.app .seg button { font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0; font-size: 13px; color: #a9bac6; }
+.app .seg button.on { background: #22d3c8; color: #081b24; }
+.app .tbtn { font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.app .tbtn-primary { background: #22d3c8; color: #081b24; }
+.app .tbtn-rev { background: transparent; }
+.app .canvas { background: #081b24; background-image: none; }
+.app .canvas-bar { background: rgba(8, 27, 36, 0.92); border-bottom: 1px solid #16303c; }
+.app .canvas-bar .cb-lbl, .app .cb-tip { color: #8da2b0; font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.app .cb-toggle { background: #0d1820; border-color: #2a4656; color: #c9d6df; font-family: 'Inter', sans-serif; }
+.app .cb-toggle.on { border-color: #22d3c8; color: #e6edf3; }
+.app .canvas-stage .sheet { box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45); }
+.app .seed-wait { color: #a9bac6; }
+.app.is-embed .rail { top: 0; height: 100vh; }
+.app.is-embed .canvas { min-height: 100vh; }
+/* the left panel: same azul family; the light rules below read these tokens */
+.app .rail {
+  --white: #080f14; --navy-900: #e6edf3; --navy-700: #c9d6df; --border: #1d3340; --border-strong: #2a4656;
+  --fg: #e6edf3; --fg-2: #b6c3cf; --fg-3: #8da0b0; --bg-subtle: #0d1820;
+  --steel-50: #12232d; --steel-100: #0a141b; --steel-200: #1d3340; --steel-300: #2a4656; --steel-400: #4b6677;
+  --shadow-1: none; --ss-accent: #22d3c8; --ss-accent-hover: #1ab5ab;
+  --storm-100: rgba(240, 136, 62, 0.14); --storm-400: #f0883e; --storm-500: #f0883e; --storm-600: #f0883e;
+  --font-display: 'Inter', sans-serif; --font-head: 'Inter', sans-serif; --font-body: 'Inter', sans-serif; --font-mono: 'Inter', sans-serif;
+  background: #0d1820; border-right: 1px solid #16303c; color: #e6edf3; padding: 16px 16px 24px;
+}
+.app .rail h3.rail-title { font-family: 'Inter', sans-serif; text-transform: none; font-size: 16px; font-weight: 700; letter-spacing: 0; color: #e6edf3; }
+.app .rail .section-label, .app .rail .finish-key, .app .rail .mfr-k, .app .rail .qa-field label, .app .rail .struct-opt .so-main,
+.app .rail .op-row-head .op-meta-wall, .app .rail .mini-btn, .app .rail .op-del, .app .rail .save-btn, .app .rail .quick-add-toggle,
+.app .rail .wainscot-toggle, .app .rail .mfr-opt, .app .rail .finish-custom-add, .app .rail .qa-add { text-transform: none; letter-spacing: 0; }
+.app .rail .qa-add, .app .rail .mini-btn.primary, .app .rail .finish-custom-add { color: #081b24; }
+/* collapsible sections */
+.rsec { border: 1px solid #1d3340; border-radius: 8px; margin-bottom: 10px; background: #0d1820; }
+.rsec-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; background: transparent; border: 0; cursor: pointer; color: #e6edf3; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; text-align: left; }
+.rsec-h .rsec-n { margin-left: auto; font-size: 11.5px; font-weight: 600; color: #8da0b0; }
+.rsec-h svg { color: #8da0b0; transition: transform 120ms ease-out; flex: none; }
+.rsec.open .rsec-h svg { transform: rotate(90deg); }
+.rsec.open .rsec-h { border-bottom: 1px solid #16303c; }
+.rsec-b { padding: 10px 12px 4px; }
+.rsec-b .section-label { margin-top: 10px; }
+.rsec-b .section-label:first-child { margin-top: 0; }
+/* opening cards outlined in their wall's colour (Section 5, option E) */
+.app .rail .op-row { background: #0d1820; border: 1px solid color-mix(in srgb, var(--wall-c, #2a4656) 75%, transparent); }
+.app .rail .op-row.open { border-color: var(--wall-c, #22d3c8); box-shadow: none; }
+.app .rail .op-row-head .op-meta-wall { background: transparent; color: var(--wall-c, #8da0b0); border: 1px solid color-mix(in srgb, var(--wall-c, #8da0b0) 60%, transparent); }
+.app .rail .op-row-head .op-tag { color: #081b24; }
+
 /* ---- respect reduced-motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .canvas-stage, .op-row, .op-row.removing, .saved-row, .op-sel-ring,

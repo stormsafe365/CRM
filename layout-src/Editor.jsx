@@ -7,7 +7,7 @@ function DimField({ label, value, onChange, unit = 'ft', step = 1, min = 0 }) {
   return (
     <div className="field">
       <label>{label}</label>
-      <div className="dim-input">
+      <div className={'dim-input' + (String(unit).length > 2 ? ' u-long' : '')}>
         <input type="number" value={value} step={step} min={min}
           onChange={e => onChange(e.target.value === '' ? '' : parseFloat(e.target.value))} />
         <span className="unit">{unit}</span>
@@ -132,6 +132,22 @@ function StructSeg({ options, value, onChange }) {
   );
 }
 
+// Section 5 wall colours (owner-approved, 10/5): every opening card is outlined in its wall's colour
+const WALL_HEX = { front: '#22d3c8', back: '#c3cdd8', left: '#7fa6f0', right: '#f0883e', divider: '#e58bb0' };
+
+// A collapsible panel section (Building · Finishes · Framing · Document · Openings · Saved layouts)
+function Sec({ title, count, open, onToggle, children, id }) {
+  return (
+    <section className={'rsec' + (open ? ' open' : '')} data-sec={id}>
+      <button type="button" className="rsec-h" aria-expanded={open} onClick={onToggle}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>
+        <span>{title}</span>{count != null && <span className="rsec-n">{count}</span>}
+      </button>
+      {open && <div className="rsec-b">{children}</div>}
+    </section>
+  );
+}
+
 function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, openings, setOpenings,
                   selectedId, setSelectedId, placeType, setPlaceType,
                   savedLayouts, onSaveLayout, onLoadLayout, onDeleteLayout }) {
@@ -187,14 +203,17 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
   }
 
   const tagMap = window.__tagMap || {};
+  // which panel sections are open (Building + Openings by default)
+  const [secs, setSecs] = React.useState({ building: true, finishes: false, framing: false, doc: false, openings: true, saved: false });
+  const sec = (k) => ({ id: k, open: !!secs[k], onToggle: () => setSecs(m => ({ ...m, [k]: !m[k] })) });
 
   return (
     <aside className="rail">
       <h3 className="rail-title">Layout Builder</h3>
-      <div className="rail-sub">Place openings, then switch to Approval Sheet to review &amp; export.</div>
+      <div className="rail-sub">Place and drag openings on the plan or the wall elevations; the Approval Sheet follows.</div>
 
       {/* ---------- Building ---------- */}
-      <div className="section-label">Building</div>
+      <Sec title="Building" {...sec('building')}>
       <div className="grid-3">
         <DimField label="Width" value={t.width} onChange={v => setTweak('width', v)} />
         <DimField label="Length" value={t.length} onChange={v => setTweak('length', v)} />
@@ -208,8 +227,10 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
         </div>
       </div>
 
+      </Sec>
+
       {/* ---------- Finishes & Color ---------- */}
-      <div className="section-label">Finishes &amp; Color</div>
+      <Sec title="Finishes" {...sec('finishes')}>
       {(() => {
         const fin = docInfo.finishes || DEFAULT_FINISHES;
         const mfr = docInfo.mfr || DEFAULT_MFR;
@@ -256,6 +277,9 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
           </>
         );
       })()}
+      </Sec>
+
+      <Sec title="Configuration & framing" {...sec('framing')}>
       <div className="section-label">Configuration</div>
       <StructSeg value={building.config}
         onChange={v => changeConfig({ config: v })}
@@ -342,8 +366,10 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
         );
       })()}
 
+      </Sec>
+
       {/* ---------- Document ---------- */}
-      <div className="section-label">Document Info</div>
+      <Sec title="Document" {...sec('doc')}>
       <div className="field">
         <label>Customer</label>
         <input value={docInfo.customer} onChange={e => setDocInfo({ ...docInfo, customer: e.target.value })} />
@@ -363,12 +389,15 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
         </div>
       </div>
 
+      </Sec>
+
       {/* ---------- Add opening (click-to-place + Quick Add) ---------- */}
+      <Sec title="Openings" count={openings.length} {...sec('openings')}>
       <div className="section-label">Add Opening</div>
       <div className={'place-hint' + (placeType ? ' on' : '')}>
         {placeType
           ? <><b>Placing {OPENING_TYPES[placeType].label}.</b> Click any wall on the plan to drop one. Keep clicking to add more. <b>Esc</b> to stop.</>
-          : <>Pick a type, then click any wall on the plan. Or use <b>Quick Add</b> below for an exact position.</>}
+          : <>Pick a type, then click any wall on the plan or an elevation. Or use <b>Quick Add</b> below for an exact position.</>}
       </div>
       <div className="type-grid">
         {TYPE_ORDER.map(k => {
@@ -455,7 +484,7 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
           const isOpen = selectedId === op.id;
           const wl = wallLength(op.wall, building);
           return (
-            <div key={op.id} className={'op-row' + (isOpen ? ' open sel' : '') + (removing[op.id] ? ' removing' : '') + (flashIds[op.id] ? ' just-added' : '')}>
+            <div key={op.id} style={{ '--wall-c': WALL_HEX[op.wall] || '#8da0b0' }} className={'op-row' + (isOpen ? ' open sel' : '') + (removing[op.id] ? ' removing' : '') + (flashIds[op.id] ? ' just-added' : '')}>
               <div className="op-row-head" onClick={() => setSelectedId(isOpen ? null : op.id)}>
                 <span className="op-tag" style={{ background: ot.color }}>{tagMap[op.id] || '•'}</span>
                 <span className="op-name">{op.name && op.name.trim() ? op.name.trim() : ot.label}</span>
@@ -559,8 +588,10 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
         })}
       </div>
 
+      </Sec>
+
       {/* ---------- Saved layouts ---------- */}
-      <div className="section-label">Saved Layouts</div>
+      <Sec title="Saved layouts" count={savedLayouts.length} {...sec('saved')}>
       {savingName ? (
         <div className="save-row">
           <input autoFocus value={nameDraft} placeholder="Name this layout…"
@@ -588,6 +619,7 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
           </div>
         ))}
       </div>
+      </Sec>
       <div style={{ height: '40px' }} />
     </aside>
   );

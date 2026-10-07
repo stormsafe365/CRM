@@ -36,6 +36,20 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
   const [selId, setSelId] = useState(null)
   const [seedNote, setSeedNote] = useState('')
   const runRef = useRef(0)
+  // ONE top bar (10-6e): the builder's own toolbar is hidden inside the CRM; this bar
+  // drives it (SS_LAYOUT.setMode / toggleRevision / print) and hears its state back.
+  const [lay, setLay] = useState({ mode: 'sheet', revisionMode: false, seeded: false })
+  useEffect(() => {
+    function onMsg(e) {
+      const d = e && e.data
+      if (!d || d.type !== 'ss-layout-state') return
+      try { if (e.source !== iframeRef.current?.contentWindow) return } catch { return }
+      setLay({ mode: d.mode === 'edit' ? 'edit' : 'sheet', revisionMode: !!d.revisionMode, seeded: !!d.seeded })
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+  const callLayout = (fn, ...args) => { try { const a = api(); if (a && typeof a[fn] === 'function') a[fn](...args) } catch { /* ignore */ } }
 
   // The lead's quotes (newest first, the starred one on top).
   useEffect(() => {
@@ -179,6 +193,16 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
                   : 'Build & sign here, then use the builder’s Export/Save to download the PDF and upload it under Layout in this lead’s Document Hub.')}
               </div>}
           <div className="qb-bar-actions">
+            {hasApi && (
+              <>
+                <div className="qb-seg" role="tablist" aria-label="Layout view">
+                  <button type="button" role="tab" data-mode="sheet" aria-selected={lay.mode === 'sheet'} className={lay.mode === 'sheet' ? 'on' : ''} onClick={() => callLayout('setMode', 'sheet')} disabled={saving}>Approval Sheet</button>
+                  <button type="button" role="tab" data-mode="edit" aria-selected={lay.mode === 'edit'} className={lay.mode === 'edit' ? 'on' : ''} onClick={() => callLayout('setMode', 'edit')} disabled={saving}>Edit layout</button>
+                </div>
+                <button type="button" className={'qb-rev' + (lay.revisionMode ? ' on' : '')} onClick={() => callLayout('toggleRevision')} disabled={saving} title="Show the revised-layout version of the sheet">{lay.revisionMode ? 'Revision: on' : 'Revision'}</button>
+                <button type="button" className="btn-secondary qb-print" onClick={() => callLayout('print')} disabled={saving || busyReading}>Save PDF</button>
+              </>
+            )}
             <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Close</button>
             {hasApi && (
               <button type="button" className="btn-primary" onClick={handleSave} disabled={saving || busyReading}>

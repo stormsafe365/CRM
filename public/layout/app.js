@@ -129,7 +129,25 @@ function App() {
     function state() {
       return JSON.parse(JSON.stringify(stateRef.current));
     }
-    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName, state };
+    function showMode(m) {
+      setSelectedId(null);
+      setPlaceType(null);
+      setMode(m === "edit" ? "edit" : "sheet");
+    }
+    function toggleRevision() {
+      setRevisionMode((r) => !r);
+    }
+    function print() {
+      showMode("sheet");
+      setTimeout(() => {
+        try {
+          window.focus();
+          window.print();
+        } catch (e) {
+        }
+      }, 400);
+    }
+    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName, state, setMode: showMode, toggleRevision, print };
     return () => {
       try {
         delete window.SS_LAYOUT;
@@ -182,6 +200,13 @@ function App() {
   }
   const tagMap = computeTagMap(openings);
   window.__tagMap = tagMap;
+  React.useEffect(() => {
+    if (!EMBED) return;
+    try {
+      window.parent.postMessage({ type: "ss-layout-state", mode, revisionMode, seeded }, "*");
+    } catch (e) {
+    }
+  }, [mode, revisionMode, seeded]);
   React.useEffect(() => {
     if (EMBED) return;
     const b = {};
@@ -305,11 +330,6 @@ function App() {
     "--ss-accent-press": "color-mix(in srgb, " + t.accent + " 72%, black)",
     "--teal-500": t.accent
   };
-  const STYLES = [
-    { key: "engineering", label: "Engineering" },
-    { key: "stamp", label: "Steel Stamp" },
-    { key: "blueprint", label: "Blueprint" }
-  ];
   function fitForPrint() {
     if (document.querySelector(".sheet-doc")) return;
     const sheet = document.querySelector(".sheet");
@@ -346,19 +366,11 @@ function App() {
     }, wasEdit ? 340 : 80);
   }
   const editing = mode === "edit";
-  return /* @__PURE__ */ React.createElement("div", { className: "app density-" + t.density, style: appStyle }, /* @__PURE__ */ React.createElement("div", { className: "toolbar" }, /* @__PURE__ */ React.createElement("div", { className: "tb-brand" }, /* @__PURE__ */ React.createElement("span", { className: "tb-word" }, "STORM", /* @__PURE__ */ React.createElement("span", { className: "t" }, "SAFE"), "\xA0STEEL"), /* @__PURE__ */ React.createElement("span", { className: "sub" }, "Building Approval Sheet")), /* @__PURE__ */ React.createElement("div", { className: "spacer" }), /* @__PURE__ */ React.createElement("div", { className: "style-chips" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "STYLE"), STYLES.map((s) => /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      key: s.key,
-      className: "chip" + (t.style === s.key ? " on" : ""),
-      onClick: () => setTweak("style", s.key)
-    },
-    s.label
-  ))), /* @__PURE__ */ React.createElement("div", { className: "seg", role: "tablist" }, /* @__PURE__ */ React.createElement("button", { className: !editing ? "on" : "", "data-mode": "sheet", onClick: () => {
+  return /* @__PURE__ */ React.createElement("div", { className: "app density-" + t.density + (EMBED ? " is-embed" : ""), style: appStyle }, /* @__PURE__ */ React.createElement("div", { className: "toolbar", style: EMBED ? { display: "none" } : null }, /* @__PURE__ */ React.createElement("div", { className: "tb-brand" }, /* @__PURE__ */ React.createElement("span", { className: "tb-word" }, "STORM", /* @__PURE__ */ React.createElement("span", { className: "t" }, "SAFE"), "\xA0STEEL"), /* @__PURE__ */ React.createElement("span", { className: "sub" }, "Building Approval Sheet")), /* @__PURE__ */ React.createElement("div", { className: "spacer" }), /* @__PURE__ */ React.createElement("div", { className: "seg", role: "tablist" }, /* @__PURE__ */ React.createElement("button", { className: !editing ? "on" : "", "data-mode": "sheet", onClick: () => {
     setSelectedId(null);
     setPlaceType(null);
     setMode("sheet");
-  } }, /* @__PURE__ */ React.createElement("svg", { width: "15", height: "15", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" }), /* @__PURE__ */ React.createElement("path", { d: "M14 2v6h6" })), "Approval Sheet"), /* @__PURE__ */ React.createElement("button", { className: editing ? "on" : "", "data-mode": "edit", onClick: () => setMode("edit") }, /* @__PURE__ */ React.createElement("svg", { width: "15", height: "15", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M12 20h9" }), /* @__PURE__ */ React.createElement("path", { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" })), "Edit layout")), /* @__PURE__ */ React.createElement("button", { className: "tbtn" + (revisionMode ? " tbtn-rev-on" : " tbtn-rev"), onClick: () => setRevisionMode((r) => !r) }, /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M12 20h9" }), /* @__PURE__ */ React.createElement("path", { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" }), /* @__PURE__ */ React.createElement("path", { d: "M15 5l3 3" })), revisionMode ? "Original" : "Revision"), /* @__PURE__ */ React.createElement("button", { className: "tbtn tbtn-primary", onClick: doPrint }, /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M6 9V2h12v7" }), /* @__PURE__ */ React.createElement("path", { d: "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" }), /* @__PURE__ */ React.createElement("rect", { x: "6", y: "14", width: "12", height: "8" })), "Save PDF"), /* @__PURE__ */ React.createElement("button", { className: "tbtn" + (tweaksOpen ? " on" : ""), onClick: toggleTweaks, title: "Style & building tweaks" }, /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("line", { x1: "4", y1: "21", x2: "4", y2: "14" }), /* @__PURE__ */ React.createElement("line", { x1: "4", y1: "10", x2: "4", y2: "3" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "21", x2: "12", y2: "12" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "8", x2: "12", y2: "3" }), /* @__PURE__ */ React.createElement("line", { x1: "20", y1: "21", x2: "20", y2: "16" }), /* @__PURE__ */ React.createElement("line", { x1: "20", y1: "12", x2: "20", y2: "3" }), /* @__PURE__ */ React.createElement("line", { x1: "1", y1: "14", x2: "7", y2: "14" }), /* @__PURE__ */ React.createElement("line", { x1: "9", y1: "8", x2: "15", y2: "8" }), /* @__PURE__ */ React.createElement("line", { x1: "17", y1: "16", x2: "23", y2: "16" })), "Tweaks")), !seeded && /* @__PURE__ */ React.createElement("div", { className: "seed-wait", role: "status" }, /* @__PURE__ */ React.createElement("span", { className: "seed-dot" }), "Loading the quote\u2026"), seeded && /* @__PURE__ */ React.createElement("div", { className: "work" + (editing ? "" : " preview-only") }, editing && /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("svg", { width: "15", height: "15", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" }), /* @__PURE__ */ React.createElement("path", { d: "M14 2v6h6" })), "Approval Sheet"), /* @__PURE__ */ React.createElement("button", { className: editing ? "on" : "", "data-mode": "edit", onClick: () => setMode("edit") }, /* @__PURE__ */ React.createElement("svg", { width: "15", height: "15", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M12 20h9" }), /* @__PURE__ */ React.createElement("path", { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" })), "Edit layout")), /* @__PURE__ */ React.createElement("button", { className: "tbtn" + (revisionMode ? " tbtn-rev-on" : " tbtn-rev"), onClick: () => setRevisionMode((r) => !r) }, /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M12 20h9" }), /* @__PURE__ */ React.createElement("path", { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" }), /* @__PURE__ */ React.createElement("path", { d: "M15 5l3 3" })), revisionMode ? "Original" : "Revision"), /* @__PURE__ */ React.createElement("button", { className: "tbtn tbtn-primary", onClick: doPrint }, /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ React.createElement("path", { d: "M6 9V2h12v7" }), /* @__PURE__ */ React.createElement("path", { d: "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" }), /* @__PURE__ */ React.createElement("rect", { x: "6", y: "14", width: "12", height: "8" })), "Save PDF")), !seeded && /* @__PURE__ */ React.createElement("div", { className: "seed-wait", role: "status" }, /* @__PURE__ */ React.createElement("span", { className: "seed-dot" }), "Loading the quote\u2026"), seeded && /* @__PURE__ */ React.createElement("div", { className: "work" + (editing ? "" : " preview-only") }, editing && /* @__PURE__ */ React.createElement(
     Editor,
     {
       building,
@@ -385,7 +397,6 @@ function App() {
       docInfo,
       openings,
       tagMap,
-      style: t.style,
       showFrames: t.showFrames,
       revisionMode,
       onMoveLt: editing ? moveLtOpening : null,
@@ -395,108 +406,6 @@ function App() {
       onPlace: editing ? placeOpening : null,
       onMove: editing ? (id, patch) => setOpenings((prev) => prev.map((o) => o.id === id ? { ...o, ...patch } : o)) : null
     }
-  )))), /* @__PURE__ */ React.createElement(TweaksPanel, null, /* @__PURE__ */ React.createElement(TweakSection, { label: "Sheet style" }), /* @__PURE__ */ React.createElement(
-    TweakRadio,
-    {
-      label: "Direction",
-      value: t.style,
-      options: ["engineering", "stamp", "blueprint"],
-      onChange: (v) => setTweak("style", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakColor,
-    {
-      label: "Accent",
-      value: t.accent,
-      options: ["#14A6A0", "#0B1F3A", "#E84A1F", "#14A269"],
-      onChange: (v) => setTweak("accent", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakRadio,
-    {
-      label: "Density",
-      value: t.density,
-      options: ["compact", "regular", "comfy"],
-      onChange: (v) => setTweak("density", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakToggle,
-    {
-      label: "Frame lines (edit plan)",
-      value: t.showFrames,
-      onChange: (v) => setTweak("showFrames", v)
-    }
-  ), /* @__PURE__ */ React.createElement(TweakSection, { label: "Building" }), /* @__PURE__ */ React.createElement(
-    TweakRadio,
-    {
-      label: "Configuration",
-      value: t.config || "enclosed",
-      options: ["enclosed", "hybrid", "carport"],
-      onChange: (v) => changeConfig({ config: v })
-    }
-  ), building.config === "hybrid" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
-    TweakRadio,
-    {
-      label: "Open end",
-      value: t.openEnd || "front",
-      options: ["front", "back"],
-      onChange: (v) => changeConfig({ openEnd: v })
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakSlider,
-    {
-      label: "Carport length",
-      value: t.openLength || 0,
-      min: 4,
-      max: Math.max(4, building.length - 4),
-      step: 1,
-      unit: "ft",
-      onChange: (v) => setTweak("openLength", v)
-    }
-  )), /* @__PURE__ */ React.createElement(
-    TweakSlider,
-    {
-      label: "Width",
-      value: t.width,
-      min: 12,
-      max: 100,
-      step: 1,
-      unit: "ft",
-      onChange: (v) => setTweak("width", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakSlider,
-    {
-      label: "Length",
-      value: t.length,
-      min: 12,
-      max: 200,
-      step: 1,
-      unit: "ft",
-      onChange: (v) => setTweak("length", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakSlider,
-    {
-      label: "Eave height",
-      value: t.height,
-      min: 8,
-      max: 30,
-      step: 1,
-      unit: "ft",
-      onChange: (v) => setTweak("height", v)
-    }
-  ), /* @__PURE__ */ React.createElement(
-    TweakSlider,
-    {
-      label: "Wind rating",
-      value: t.wind,
-      min: 120,
-      max: 200,
-      step: 5,
-      unit: "mph",
-      onChange: (v) => setTweak("wind", v)
-    }
-  )));
+  )))));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/* @__PURE__ */ React.createElement(App, null));

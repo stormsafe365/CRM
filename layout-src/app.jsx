@@ -147,7 +147,11 @@ function App() {
     }
     // read-only snapshot (headless checks / support): what the sheet is drawing
     function state() { return JSON.parse(JSON.stringify(stateRef.current)); }
-    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName, state };
+    // the CRM's top bar drives these (one bar, 10-6e) and hears the state back (postMessage below)
+    function showMode(m) { setSelectedId(null); setPlaceType(null); setMode(m === 'edit' ? 'edit' : 'sheet'); }
+    function toggleRevision() { setRevisionMode(r => !r); }
+    function print() { showMode('sheet'); setTimeout(() => { try { window.focus(); window.print(); } catch (e) { /* ignore */ } }, 400); }
+    window.SS_LAYOUT = { seedFromCRM, getSheetHtml, customerName, state, setMode: showMode, toggleRevision, print };
     return () => { try { delete window.SS_LAYOUT; } catch (e) { window.SS_LAYOUT = undefined; } };
   }, [setTweak]);
 
@@ -195,6 +199,12 @@ function App() {
 
   const tagMap = computeTagMap(openings);
   window.__tagMap = tagMap;
+
+  // ---- tell the CRM's top bar what is showing (embedded only) ----
+  React.useEffect(() => {
+    if (!EMBED) return;
+    try { window.parent.postMessage({ type: 'ss-layout-state', mode, revisionMode, seeded }, '*'); } catch (e) { /* ignore */ }
+  }, [mode, revisionMode, seeded]);
 
   // ---- autosave working state ----
   React.useEffect(() => {
@@ -320,12 +330,6 @@ function App() {
     '--teal-500': t.accent,
   };
 
-  const STYLES = [
-    { key: 'engineering', label: 'Engineering' },
-    { key: 'stamp', label: 'Steel Stamp' },
-    { key: 'blueprint', label: 'Blueprint' },
-  ];
-
   function fitForPrint() {
     // The paginated Approval Sheet prints page-for-page (each page is a letter
     // sheet, styles.css @media print) — nothing to squeeze.
@@ -356,22 +360,14 @@ function App() {
   const editing = mode === 'edit';
 
   return (
-    <div className={'app density-' + t.density} style={appStyle}>
-      {/* ---------- toolbar ---------- */}
-      <div className="toolbar">
+    <div className={'app density-' + t.density + (EMBED ? ' is-embed' : '')} style={appStyle}>
+      {/* ---------- toolbar (standalone only: inside the CRM the ONE top bar is the CRM's, 10-6e) ---------- */}
+      <div className="toolbar" style={EMBED ? { display: 'none' } : null}>
         <div className="tb-brand">
           <span className="tb-word">STORM<span className="t">SAFE</span>&nbsp;STEEL</span>
           <span className="sub">Building Approval Sheet</span>
         </div>
         <div className="spacer" />
-
-        <div className="style-chips">
-          <span className="lbl">STYLE</span>
-          {STYLES.map(s => (
-            <button key={s.key} className={'chip' + (t.style === s.key ? ' on' : '')}
-              onClick={() => setTweak('style', s.key)}>{s.label}</button>
-          ))}
-        </div>
 
         <div className="seg" role="tablist">
           <button className={!editing ? 'on' : ''} data-mode="sheet" onClick={() => { setSelectedId(null); setPlaceType(null); setMode('sheet'); }}>
@@ -394,10 +390,6 @@ function App() {
           Save PDF
         </button>
 
-        <button className={'tbtn' + (tweaksOpen ? ' on' : '')} onClick={toggleTweaks} title="Style & building tweaks">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>
-          Tweaks
-        </button>
       </div>
 
       {/* ---------- work area ---------- */}
@@ -429,7 +421,7 @@ function App() {
           )}
           <div className={'canvas-stage view-' + mode} key={mode}>
             <Sheet building={building} docInfo={docInfo} openings={openings} tagMap={tagMap}
-              style={t.style} showFrames={t.showFrames}
+              showFrames={t.showFrames}
               revisionMode={revisionMode}
               onMoveLt={editing ? moveLtOpening : null}
               selectedId={editing ? selectedId : null}
@@ -442,43 +434,6 @@ function App() {
       </div>
       )}
 
-      {/* ---------- tweaks ---------- */}
-      <TweaksPanel>
-        <TweakSection label="Sheet style" />
-        <TweakRadio label="Direction" value={t.style}
-          options={['engineering', 'stamp', 'blueprint']}
-          onChange={v => setTweak('style', v)} />
-        <TweakColor label="Accent" value={t.accent}
-          options={['#14A6A0', '#0B1F3A', '#E84A1F', '#14A269']}
-          onChange={v => setTweak('accent', v)} />
-        <TweakRadio label="Density" value={t.density}
-          options={['compact', 'regular', 'comfy']}
-          onChange={v => setTweak('density', v)} />
-        <TweakToggle label="Frame lines (edit plan)" value={t.showFrames}
-          onChange={v => setTweak('showFrames', v)} />
-
-        <TweakSection label="Building" />
-        <TweakRadio label="Configuration" value={t.config || 'enclosed'}
-          options={['enclosed', 'hybrid', 'carport']}
-          onChange={v => changeConfig({ config: v })} />
-        {building.config === 'hybrid' && (
-          <>
-            <TweakRadio label="Open end" value={t.openEnd || 'front'}
-              options={['front', 'back']}
-              onChange={v => changeConfig({ openEnd: v })} />
-            <TweakSlider label="Carport length" value={t.openLength || 0} min={4} max={Math.max(4, building.length - 4)} step={1} unit="ft"
-              onChange={v => setTweak('openLength', v)} />
-          </>
-        )}
-        <TweakSlider label="Width" value={t.width} min={12} max={100} step={1} unit="ft"
-          onChange={v => setTweak('width', v)} />
-        <TweakSlider label="Length" value={t.length} min={12} max={200} step={1} unit="ft"
-          onChange={v => setTweak('length', v)} />
-        <TweakSlider label="Eave height" value={t.height} min={8} max={30} step={1} unit="ft"
-          onChange={v => setTweak('height', v)} />
-        <TweakSlider label="Wind rating" value={t.wind} min={120} max={200} step={5} unit="mph"
-          onChange={v => setTweak('wind', v)} />
-      </TweaksPanel>
     </div>
   );
 }

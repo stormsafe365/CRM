@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import vm from 'node:vm'
 import {
-  e8, fmtFtIn, chain, chainRows, frameX, elevationSpecs, leanToSpecs, ltOpeningPlan, ltRect, ltWallH,
+  FS, e8, fmtFtIn, chain, chainRows, frameX, elevationSpecs, leanToSpecs, ltOpeningPlan, ltRect, ltWallH,
   elevLayout, paginate, trussFromFront,
   offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, parseLtId, setLtOpeningX, getLtOpening, ltWallLen,
 } from '../layout-src/sheetGeom.js'
@@ -107,17 +107,19 @@ test('chain equals the program chain (screenshot-106-like 80′ eave + random wa
   }
   assert.deepEqual(chain([], 40), [])
 })
-test('chainRows: gaps on row 0, widths on row 1, bumped rows never overlap', () => {
-  const items = [{ x: 1, w: 3 }, { x: 4.25, w: 3 }, { x: 7.5, w: 0.5 }, { x: 8.125, w: 0.5 }]
+test('chainRows: gaps above the line, widths below, extra rows when tight — no two labels ever overlap', () => {
+  const items = [{ x: 1, w: 3 }, { x: 4.25, w: 3 }, { x: 7.5, w: 0.5 }, { x: 8.125, w: 0.5 }, { x: 9, w: 0.25 }]
   const segs = chain(items, 30)
+  const charW = FS.chain * 0.56
   const rows = chainRows(segs, (n) => 40 + (n / 96) * 20)
-  rows.forEach((r) => assert.ok(r.kind === 'gap' ? [0, 2].includes(r.row) : [1, 3].includes(r.row)))
-  for (const row of [0, 1, 2, 3]) {
+  rows.forEach((r) => assert.ok(r.kind === 'gap' ? r.row !== 1 : r.row !== 0, `${r.kind} ${r.text} on row ${r.row}`))
+  const rowsUsed = [...new Set(rows.map((r) => r.row))]
+  for (const row of rowsUsed) {
     const on = rows.filter((r) => r.row === row).sort((a, b) => a.cx - b.cx)
     for (let i = 1; i < on.length; i++) {
       const pa = on[i - 1], pb = on[i]
-      const ha = (pa.text.length * 5.4) / 2 + 2, hb = (pb.text.length * 5.4) / 2 + 2
-      assert.ok(pb.cx - hb >= pa.cx + ha + 3 - 1e-9 || row < 2, `row ${row} overlap ${pa.text} / ${pb.text}`)
+      const ha = (pa.text.length * charW) / 2 + 3, hb = (pb.text.length * charW) / 2 + 3
+      assert.ok(pb.cx - hb >= pa.cx + ha + 4 - 1e-9, `row ${row} overlap ${pa.text} / ${pb.text}`)
     }
   }
   assert.ok(rows.some((r) => r.row >= 2), 'tight labels drop to an extra row')
@@ -240,7 +242,7 @@ test('elevLayout: the wall, its side lean-tos and every label stay inside the dr
     const L = elevLayout(spec)
     assert.ok(L.X(-L.extL) >= 0 && L.X(spec.faceW + L.extR) <= L.VW - 60, spec.key)
     assert.ok(L.Y(spec.peak) >= 10, spec.key)
-    assert.ok(L.VH > L.dy2 && L.VH < 330, `${spec.key} VH ${L.VH}`)
+    assert.ok(L.VH > L.dy2 && L.VH < 460, `${spec.key} VH ${L.VH}`) // print-first: bigger drawings, 2 per letter page
     L.rows.forEach((r) => assert.ok(r.cx > 0 && r.cx < L.VW))
   }
   // 80′ × 16′ wall like the owner's screenshot
