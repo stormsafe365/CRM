@@ -18,13 +18,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { uploadClientDoc } from '../lib/storage'
-import { htmlToPdfBlob } from '../lib/quoteCapture'
+import { sheetPagesToPdfBlob } from '../lib/quoteCapture'
 import { toast } from '../lib/uiFx'
 import { clientAddress, hasBuild, pickLayoutQuote, quoteOptionLabel, rawFromPayload, seedFromQuote, sortStarredFirst } from '../lib/layoutFromQuote'
 import { readQuoteForLayout } from '../lib/quoteLayoutEngine'
 import { revLabelOf } from '../lib/contractDocs'
 
-const SRC = '/layout/index.html'
+// ?embed=crm: the builder restores nothing and waits for the seed (no stale building, 10/7/26)
+const SRC = '/layout/index.html?embed=crm'
 
 export default function LayoutSheetModal({ client, onClose, onSaved }) {
   const iframeRef = useRef(null)
@@ -136,7 +137,8 @@ export default function LayoutSheetModal({ client, onClose, onSaved }) {
       const html = await a.getSheetHtml()
       if (!html) throw new Error('Could not read the layout sheet.')
       setStatus('Generating PDF…')
-      const blob = await htmlToPdfBlob(html)
+      // one PDF page per Approval Sheet page (the multi-page document, 10/7/26)
+      const { blob } = await sheetPagesToPdfBlob(html)
       const stamp = new Date().toISOString().slice(0, 10)
       const cust = (a.customerName && a.customerName()) || client?.name || 'lead'
       const slug = cust.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lead'

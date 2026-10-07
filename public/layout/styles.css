@@ -235,12 +235,12 @@ body {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ss-accent) 20%, transparent);
 }
 .field .helper { font-size: 12px; color: var(--fg-3); }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2); }
 
 /* dim input with unit suffix */
 .dim-input { position: relative; }
-.dim-input input { width: 100%; font-family: var(--font-mono); padding-right: 26px; }
+.dim-input input { width: 100%; min-width: 0; font-family: var(--font-mono); padding-right: 40px; } /* room for "mph" (the Wind field showed "1!", 10/7) */
 .dim-input .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--fg-3); font-family: var(--font-mono); font-size: 13px; pointer-events: none; }
 .dim-input.dim-text input { padding-right: 10px; }
 .dim-input.dim-text.bad input { border-color: var(--storm-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--storm-500) 16%, transparent); }
@@ -1059,6 +1059,9 @@ body {
 .op-hit:active { cursor: grabbing; }
 .plan-key.is-placing, .elev-svg.is-placing { cursor: copy; }
 .plan-legend.warn { color: #9a4a12; }
+/* CRM copy: until the quote is seeded nothing else is shown (never a stale building) */
+.seed-wait { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 60vh; font-family: var(--font-body); font-size: 15px; font-weight: 600; color: var(--steel-600); }
+.seed-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-teal); animation: armPulse 1.1s ease-in-out infinite; }
 /* ---- respect reduced-motion ---- */
 @media (prefers-reduced-motion: reduce) {
   .canvas-stage, .op-row, .op-row.removing, .saved-row, .op-sel-ring,

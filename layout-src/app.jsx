@@ -33,11 +33,29 @@ function computeTagMap(openings) {
   return map;
 }
 
+// Opened from the CRM (LayoutSheetModal adds ?embed=crm): the builder shows ONLY
+// the quote it is seeded with. Owner 10/7: a quote's 30x50x12 sheet showed
+// 40x50x16 + "size was changed here" while the quote was still being read —
+// the last session's openings / lean-tos came back from localStorage but the
+// building size did not (it was never saved), so the builder's DEFAULT size
+// (TWEAK_DEFAULTS 40x50x16) met the previous quote's lean-tos. Embedded: nothing
+// is restored or saved, and a "Loading the quote" panel shows until the seed.
+const EMBED = /[?&]embed=crm\b/.test(location.search);
+const BUILDING_KEYS = ['width', 'length', 'height', 'wind', 'pitch', 'trussOC', 'gauge', 'legType', 'config', 'openEnd', 'openLength', 'gableSheet'];
+
 function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [mode, setMode] = React.useState('edit');
-  const restored = React.useRef(loadCurrent());
+  const restored = React.useRef(EMBED ? null : loadCurrent());
+  // standalone: the saved building comes back WITH its openings / lean-tos (never one without the other)
+  const [t, setTweak] = useTweaks((() => {
+    const b = restored.current && restored.current.building;
+    const keep = {};
+    if (b && typeof b === 'object') BUILDING_KEYS.forEach(k => { if (b[k] != null) keep[k] = b[k]; });
+    return { ...TWEAK_DEFAULTS, ...keep };
+  })());
+  const [mode, setMode] = React.useState(EMBED ? 'sheet' : 'edit');
+  const [seeded, setSeeded] = React.useState(!EMBED);
   const [openings, setOpenings] = React.useState(() => {
+    if (EMBED) return [];
     const ops = (restored.current && Array.isArray(restored.current.openings) && restored.current.openings.length)
       ? restored.current.openings : defaultOpenings();
     bumpIdsPast(ops);
@@ -91,6 +109,7 @@ function App() {
       // Seeded from a quote: open straight on the Approval Sheet (the new
       // design, owner 10/6); Edit is the secondary button.
       if (d.building || Array.isArray(d.openings)) { setSelectedId(null); setPlaceType(null); setMode('sheet'); }
+      setSeeded(true);
     }
     function customerName() {
       return (docInfoRef.current && docInfoRef.current.customer) || '';
@@ -179,8 +198,10 @@ function App() {
 
   // ---- autosave working state ----
   React.useEffect(() => {
-    persistCurrent({ openings, docInfo });
-  }, [openings, docInfo]);
+    if (EMBED) return; // the CRM copy never writes the standalone builder's working state
+    const b = {}; BUILDING_KEYS.forEach(k => { b[k] = t[k]; });
+    persistCurrent({ openings, docInfo, building: b });
+  }, [openings, docInfo, ...BUILDING_KEYS.map(k => t[k])]);
 
   // ---- tweaks panel: drive it directly so it works standalone (no host) ----
   React.useEffect(() => {
@@ -380,6 +401,10 @@ function App() {
       </div>
 
       {/* ---------- work area ---------- */}
+      {!seeded && (
+        <div className="seed-wait" role="status"><span className="seed-dot" />Loading the quote&hellip;</div>
+      )}
+      {seeded && (
       <div className={'work' + (editing ? '' : ' preview-only')}>
         {editing && (
           <Editor building={building} t={t} setTweak={setTweak}
@@ -415,6 +440,7 @@ function App() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ---------- tweaks ---------- */}
       <TweaksPanel>

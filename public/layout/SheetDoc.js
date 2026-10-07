@@ -994,7 +994,7 @@
     return /* @__PURE__ */ React.createElement("div", { className: "mini-head" }, /* @__PURE__ */ React.createElement("div", { className: "wordmark" }, /* @__PURE__ */ React.createElement("span", null, "STORM"), /* @__PURE__ */ React.createElement("span", { className: "t" }, "SAFE"), /* @__PURE__ */ React.createElement("span", null, " STEEL")), /* @__PURE__ */ React.createElement("div", { className: "mini-meta" }, /* @__PURE__ */ React.createElement("span", null, revisionMode ? "Revised Layout Approval" : "Building Approval Sheet"), docInfo.customer ? /* @__PURE__ */ React.createElement("span", null, docInfo.customer) : null, docInfo.quoteNo ? /* @__PURE__ */ React.createElement("span", { className: "mono" }, docInfo.quoteNo) : null, /* @__PURE__ */ React.createElement("span", null, "Elevations · page ", page, " of ", total)));
   }
   function PageFoot({ page, total }) {
-    return /* @__PURE__ */ React.createElement("div", { className: "page-foot" }, /* @__PURE__ */ React.createElement("span", null, "All dimensions to the opening edge, measured along grade from the wall corners · feet-inches to the nearest ⅛″"), /* @__PURE__ */ React.createElement("span", null, "Page ", page, " of ", total));
+    return /* @__PURE__ */ React.createElement("div", { className: "page-foot" }, /* @__PURE__ */ React.createElement("span", null, "All dimensions to the opening edge, measured along grade from the wall corners · feet-inches to the nearest 1/8 inch"), /* @__PURE__ */ React.createElement("span", null, "Page ", page, " of ", total));
   }
   function SheetDoc(props) {
     const { building, docInfo, openings, tagMap, style, revisionMode } = props;

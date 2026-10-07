@@ -201,8 +201,56 @@ export async function htmlToPdfBlob(fullHtml) {
         jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
       })
-      .from(container)
+      // The CONTENT, not the absolutely-positioned container: html2pdf 0.14 clones
+      // what it is given into its own auto-height box, and an absolute clone gives
+      // that box 0 height -> a 0-px canvas -> one blank page (10/7/26).
+      .from(body)
       .outputPdf('blob')
+  } finally {
+    document.body.removeChild(container)
+  }
+}
+
+// A document that is already cut into letter pages (the 2D layout's Approval
+// Sheet: each `.sheet-page` is 816 x 1056 px = 8.5 x 11 in at 96 dpi) -> one
+// PDF page per sheet page, edge to edge, no re-slicing (owner 10/7/26: "Save to
+// lead" filed a blank one-page PDF). Falls back to htmlToPdfBlob when the HTML
+// has no such pages. Resolves { blob, pages }.
+export async function sheetPagesToPdfBlob(fullHtml, { pageSelector = '.sheet-page', pageW = 816, pageH = 1056 } = {}) {
+  if (!fullHtml) throw new Error('No layout document to render.')
+  const doc = new DOMParser().parseFromString(fullHtml, 'text/html')
+  const container = document.createElement('div')
+  // in normal flow at the page's own top-left (see htmlToPdfBlob), behind everything
+  container.style.cssText = `position:absolute;left:0;top:0;width:${pageW}px;z-index:-2147483647;pointer-events:none;background:#fff`
+  doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => container.appendChild(el.cloneNode(true)))
+  const body = document.createElement('div')
+  body.innerHTML = doc.body ? doc.body.innerHTML : fullHtml
+  container.appendChild(body)
+  document.body.appendChild(container)
+  try {
+    const pages = Array.from(body.querySelectorAll(pageSelector))
+    if (!pages.length) return { blob: await htmlToPdfBlob(fullHtml), pages: 0 }
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 450))
+    const html2pdf = (await import('html2pdf.js')).default
+    // margin 0 + letter: the PDF page is exactly one sheet page (612 x 792 pt)
+    let worker = html2pdf().set({
+      margin: 0,
+      image: { type: 'jpeg', quality: 0.95 },
+      // height - 1 px: html2pdf slices at floor(width x 11/8.5), which can land 1 px short of the full page
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: pageW, height: pageH - 1, windowWidth: pageW, scrollX: 0, scrollY: 0, x: 0, y: 0 },
+      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
+      pagebreak: { mode: [] },
+    })
+    pages.forEach((pg, i) => {
+      // a clean copy of the page: static, exact size, no shadow / zoom
+      pg.style.cssText += `;position:static;width:${pageW}px;height:${pageH}px;margin:0;box-shadow:none;zoom:1;transform:none`
+      worker = i === 0
+        ? worker.from(pg).toContainer().toCanvas().toPdf()
+        : worker.get('pdf').then((pdf) => { pdf.addPage() }).from(pg).toContainer().toCanvas().toPdf()
+    })
+    const blob = await worker.outputPdf('blob')
+    return { blob, pages: pages.length }
   } finally {
     document.body.removeChild(container)
   }

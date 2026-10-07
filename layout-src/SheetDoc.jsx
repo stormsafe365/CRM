@@ -440,7 +440,7 @@ function MiniHead({ docInfo, revisionMode, page, total }) {
   )
 }
 function PageFoot({ page, total }) {
-  return <div className="page-foot"><span>All dimensions to the opening edge, measured along grade from the wall corners · feet-inches to the nearest ⅛″</span><span>Page {page} of {total}</span></div>
+  return <div className="page-foot"><span>All dimensions to the opening edge, measured along grade from the wall corners · feet-inches to the nearest 1/8 inch</span><span>Page {page} of {total}</span></div>
 }
 
 function SheetDoc(props) {
