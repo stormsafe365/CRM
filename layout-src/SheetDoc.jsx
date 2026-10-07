@@ -608,7 +608,7 @@ function SheetDoc(props) {
     const st = stageRef.current
     if (!st) return
     const hOf = (sel) => { const el = st.querySelector(sel); return el ? el.getBoundingClientRect().height : 0 }
-    const avail1 = PAGE_H - PAGE_PAD_B - FOOT_H
+    const avail1 = PAGE_H - PAGE_PAD_B - FOOT_H - 14
     const top = hOf('[data-stage="p1top"]')
     const schedH = hOf('[data-stage="sched"]')
     const notesH = hOf('[data-stage="notes"]'), notesRowsH = notesH - hOf('[data-stage="notes"] .doc-sec')
@@ -621,11 +621,14 @@ function SheetDoc(props) {
     const p1Room = avail1 - core - (hasNotes && schedOnP1 && notesOnP1 ? notesRowsH : 0)
     const headH = hOf('[data-stage="mini"]')
     const eheadH = hOf('[data-stage="ehead"]')
-    const availN = PAGE_H - PAGE_PAD_B - FOOT_H - headH - 8
+    const availN = PAGE_H - 30 - PAGE_PAD_B - FOOT_H - headH // page top padding 30; staged heights include each block's margins (no page may overflow)
     // blocks for the elevation pages: the quote notes first when page 1 can't hold them, then the
     // "Wall Elevations" title + key once, then the cards (height decides how many share a page)
     const ids = [...(schedOnP1 ? [] : ['sched']), ...(notesOnP1 ? [] : ['notes']), ...(specs.length ? ['ehead'] : []), ...specs.map((_, i) => i)]
-    const heights = ids.map((b) => (b === 'sched' ? hOf('[data-stage="schedfull"]') + 12 : b === 'notes' ? notesH + 12 : b === 'ehead' ? eheadH : hOf(`[data-stage="e-${specs[b].key}"]`) + 14))
+    const heights = ids.map((b) => (b === 'sched' ? hOf('[data-stage="schedfull"]') + 12 : b === 'notes' ? notesH : b === 'ehead' ? eheadH : hOf(`[data-stage="e-${specs[b].key}"]`)))
+    // the 'Wall Elevations' title + key never sit alone at a page bottom: they travel with the first card
+    const eI = ids.indexOf('ehead')
+    if (eI >= 0 && eI + 1 < heights.length) { heights[eI] += heights[eI + 1]; heights[eI + 1] = 0 }
     const pg = paginate(heights, availN, signH, 4, p1Room)
     const next = { schedOnP1, notesOnP1, signOnP1: pg.signOnP1, pages: pg.pages.map((p) => p.map((i) => (i === 'sign' ? 'sign' : ids[i]))) }
     const k = JSON.stringify(next)

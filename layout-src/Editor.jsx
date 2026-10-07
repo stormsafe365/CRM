@@ -135,7 +135,7 @@ function StructSeg({ options, value, onChange }) {
 // Section 5 wall colours (owner-approved, 10/5): every opening card is outlined in its wall's colour
 const WALL_HEX = { front: '#22d3c8', back: '#c3cdd8', left: '#7fa6f0', right: '#f0883e', divider: '#e58bb0' };
 
-// A collapsible panel section (Building · Finishes · Framing · Document · Openings · Saved layouts)
+// A collapsible panel section (Building (+ the document fields) · Finishes · Framing · Openings · Saved layouts)
 function Sec({ title, count, open, onToggle, children, id }) {
   return (
     <section className={'rsec' + (open ? ' open' : '')} data-sec={id}>
@@ -204,7 +204,7 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
 
   const tagMap = window.__tagMap || {};
   // which panel sections are open (Building + Openings by default)
-  const [secs, setSecs] = React.useState({ building: true, finishes: false, framing: false, doc: false, openings: true, saved: false });
+  const [secs, setSecs] = React.useState({ building: true, finishes: false, framing: false, openings: true, saved: false });
   const sec = (k) => ({ id: k, open: !!secs[k], onToggle: () => setSecs(m => ({ ...m, [k]: !m[k] })) });
 
   return (
@@ -224,6 +224,25 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
         <div className="field">
           <label>Roof pitch</label>
           <input value={t.pitch} onChange={e => setTweak('pitch', e.target.value)} />
+        </div>
+      </div>
+      <div className="section-label">Document</div>
+      <div className="field">
+        <label>Customer</label>
+        <input value={docInfo.customer} onChange={e => setDocInfo({ ...docInfo, customer: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Building site address</label>
+        <textarea value={docInfo.address} onChange={e => setDocInfo({ ...docInfo, address: e.target.value })} />
+      </div>
+      <div className="grid-2">
+        <div className="field">
+          <label>Quote no.</label>
+          <input value={docInfo.quoteNo} onChange={e => setDocInfo({ ...docInfo, quoteNo: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Rep</label>
+          <input value={docInfo.rep} onChange={e => setDocInfo({ ...docInfo, rep: e.target.value })} />
         </div>
       </div>
 
@@ -279,7 +298,7 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
       })()}
       </Sec>
 
-      <Sec title="Configuration & framing" {...sec('framing')}>
+      <Sec title="Framing" {...sec('framing')}>
       <div className="section-label">Configuration</div>
       <StructSeg value={building.config}
         onChange={v => changeConfig({ config: v })}
@@ -365,29 +384,6 @@ function Editor({ building, t, setTweak, changeConfig, docInfo, setDocInfo, open
           </>
         );
       })()}
-
-      </Sec>
-
-      {/* ---------- Document ---------- */}
-      <Sec title="Document" {...sec('doc')}>
-      <div className="field">
-        <label>Customer</label>
-        <input value={docInfo.customer} onChange={e => setDocInfo({ ...docInfo, customer: e.target.value })} />
-      </div>
-      <div className="field">
-        <label>Building site address</label>
-        <textarea value={docInfo.address} onChange={e => setDocInfo({ ...docInfo, address: e.target.value })} />
-      </div>
-      <div className="grid-2">
-        <div className="field">
-          <label>Quote no.</label>
-          <input value={docInfo.quoteNo} onChange={e => setDocInfo({ ...docInfo, quoteNo: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>Rep</label>
-          <input value={docInfo.rep} onChange={e => setDocInfo({ ...docInfo, rep: e.target.value })} />
-        </div>
-      </div>
 
       </Sec>
 

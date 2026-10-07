@@ -1,10 +1,9 @@
 /* ============================================================
-   app.jsx — state, mode + style switching, tweaks, keyboard,
+   app.jsx — state, mode switching (one look: Steel Stamp), keyboard,
    save/load, place-mode, elevation controls.
    ============================================================ */
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "style": "engineering",
   "accent": "#14A6A0",
   "density": "regular",
   "showFrames": true,
@@ -63,7 +62,6 @@ function App() {
   });
   const [selectedId, setSelectedId] = React.useState(null);
   const [placeType, setPlaceType] = React.useState(null);
-  const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [revisionMode, setRevisionMode] = React.useState(false);
   const [savedLayouts, setSavedLayouts] = React.useState(() => {
     const layouts = loadLayouts();
@@ -141,7 +139,9 @@ function App() {
       const remote = Array.from(new Set(Array.from(css.matchAll(IMP)).map(m => m[2]).filter(u => /^https?:/.test(u))));
       css = remote.map(u => "@import url('" + u + "');").join('\n') + '\n' + css.replace(IMP, '');
       // Relative url(...) refs must become absolute to resolve in the PDF renderer.
-      css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => 'url(' + q + base);
+      // (?!['"]) too: with an empty quote group the lookahead saw the quote, not the scheme, so the
+      // quoted https:// font @import got the layout folder glued in front (a 404 in the filed sheet).
+      css = css.replace(/url\((['"]?)(?!['"]|data:|https?:|\/|#)/g, (mm, q) => 'url(' + q + base);
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
         '\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>' + el.outerHTML + '</body></html>';
     }
@@ -212,22 +212,6 @@ function App() {
     const b = {}; BUILDING_KEYS.forEach(k => { b[k] = t[k]; });
     persistCurrent({ openings, docInfo, building: b });
   }, [openings, docInfo, ...BUILDING_KEYS.map(k => t[k])]);
-
-  // ---- tweaks panel: drive it directly so it works standalone (no host) ----
-  React.useEffect(() => {
-    const onMsg = (e) => {
-      const ty = e && e.data && e.data.type;
-      if (ty === '__activate_edit_mode') setTweaksOpen(true);
-      else if (ty === '__deactivate_edit_mode' || ty === '__edit_mode_dismissed') setTweaksOpen(false);
-    };
-    window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
-  }, []);
-  function toggleTweaks() {
-    const next = !tweaksOpen;
-    setTweaksOpen(next);
-    window.postMessage({ type: next ? '__activate_edit_mode' : '__deactivate_edit_mode' }, '*');
-  }
 
   // ---- place-mode handler ----
   // Continuous: keep placing the same type until the user cancels (Esc, clicks

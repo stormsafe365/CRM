@@ -55,7 +55,7 @@ function Schedule({ building, openings, tagMap }) {
               <td>{WALLS[op.wall].label}</td>
               <td className="mono">{sizeLabel(op)}</td>
               <td className="mono">{o.near} <span style={{ color: 'var(--fg-3)' }}>from {o.ref}</span></td>
-              <td style={{ color: notes.length ? 'var(--navy-900)' : 'var(--fg-3)' }}>{notes.length ? notes.join(' · ') : '—'}</td>
+              <td style={{ color: notes.length ? 'var(--navy-900)' : 'var(--doc-mut, var(--fg-3))' }}>{notes.length ? notes.join(' · ') : '—'}</td>
             </tr>
           );
         })}

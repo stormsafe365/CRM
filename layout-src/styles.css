@@ -463,14 +463,6 @@ body {
 .sheet-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 9px; border-top: 1px solid var(--border); }
 .sheet-foot .f { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); }
 
-/* ===========================================================
-   STYLE VARIANT: STAMP  (teal-accented block titles)
-   =========================================================== */
-
-/* ===========================================================
-   STYLE VARIANT: BLUEPRINT (dark plan, light lines)
-   =========================================================== */
-
 /* density */
 .density-compact .sheet { padding: 34px 40px 32px; }
 .density-compact .info-cell { padding: 8px 12px; }
@@ -1030,6 +1022,10 @@ body {
 .notes-block { margin-bottom: 12px; }
 .sheet-stage { position: fixed; left: -30000px; top: 0; width: 816px; visibility: hidden; pointer-events: none; }
 .sheet-stage .stage-sheet { height: auto !important; overflow: visible !important; display: block; }
+/* measure blocks with their inner margins (titles / key / header) so the staged heights equal the printed ones */
+.sheet-stage [data-stage] { display: flow-root; }
+.sheet-page .sched-block, .sheet-page .notes-block { display: flow-root; }
+.sheet-page .sched-block { margin-bottom: 12px; }
 @media print {
   .sheet-doc { gap: 0; width: 816px; margin: 0 auto; }
   .sheet.sheet-page { page-break-after: always; break-after: page; }

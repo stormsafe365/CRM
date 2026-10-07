@@ -1,7 +1,6 @@
 const TWEAK_DEFAULTS = (
   /*EDITMODE-BEGIN*/
   {
-    "style": "engineering",
     "accent": "#14A6A0",
     "density": "regular",
     "showFrames": true,
@@ -53,7 +52,6 @@ function App() {
   });
   const [selectedId, setSelectedId] = React.useState(null);
   const [placeType, setPlaceType] = React.useState(null);
-  const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [revisionMode, setRevisionMode] = React.useState(false);
   const [savedLayouts, setSavedLayouts] = React.useState(() => {
     const layouts = loadLayouts();
@@ -123,7 +121,7 @@ function App() {
       const IMP = /@import\s+url\((['"]?)([^'")]*)\1\)[^;]*;/g;
       const remote = Array.from(new Set(Array.from(css.matchAll(IMP)).map((m) => m[2]).filter((u) => /^https?:/.test(u))));
       css = remote.map((u) => "@import url('" + u + "');").join("\n") + "\n" + css.replace(IMP, "");
-      css = css.replace(/url\((['"]?)(?!data:|https?:|\/|#)/g, (mm, q) => "url(" + q + base);
+      css = css.replace(/url\((['"]?)(?!['"]|data:|https?:|\/|#)/g, (mm, q) => "url(" + q + base);
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + css + "\nbody{margin:0;background:#fff}.sheet-doc{margin:0 auto;gap:0}</style></head><body>" + el.outerHTML + "</body></html>";
     }
     function state() {
@@ -215,20 +213,6 @@ function App() {
     });
     persistCurrent({ openings, docInfo, building: b });
   }, [openings, docInfo, ...BUILDING_KEYS.map((k) => t[k])]);
-  React.useEffect(() => {
-    const onMsg = (e) => {
-      const ty = e && e.data && e.data.type;
-      if (ty === "__activate_edit_mode") setTweaksOpen(true);
-      else if (ty === "__deactivate_edit_mode" || ty === "__edit_mode_dismissed") setTweaksOpen(false);
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
-  function toggleTweaks() {
-    const next = !tweaksOpen;
-    setTweaksOpen(next);
-    window.postMessage({ type: next ? "__activate_edit_mode" : "__deactivate_edit_mode" }, "*");
-  }
   function moveLtOpening(ref, x) {
     setDocInfo((prev) => ({ ...prev, geom: window.SheetGeom.setLtOpeningX(prev.geom, ref, x) }));
   }
