@@ -28,6 +28,10 @@
 
 export const EIGHTHS = 96 // 1/8″ steps per foot
 
+// Print-first type sizes (drawing px ~ 1 CSS px on an 816 px letter page; the CRM PDF prints
+// ~0.61 pt per px, window.print 0.75 pt per px): dimension numbers >= ~9 pt, W×H / sill 10–11 pt.
+export const FS = { chain: 14.5, size: 16, sill: 14.5, end: 12.5, total: 19, tag: 13.5, peak: 14, leg: 15.5, frame: 13, lt: 14 }
+
 /** decimal feet -> integer eighths of an inch (the program's dimQ grid). */
 export function e8(ft) {
   const v = Math.round(Number(ft) * EIGHTHS)
@@ -80,18 +84,19 @@ export function chain(items, faceW) {
  * printed, nothing overlaps. px(ftEighths) maps to drawing x; charW = px per
  * character at the label size.
  */
-export function chainRows(segs, px, charW = 5.4) {
-  const last = [-1e9, -1e9, -1e9, -1e9]
+export function chainRows(segs, px, charW = FS.chain * 0.56) {
+  // rows: 0 = above the line (gaps), 1 = right below it (widths), 2.. = further down.
+  // Every label takes the first row where it touches nothing (no overlaps, ever).
+  const last = []
+  const order = (kind) => (kind === 'gap' ? [0, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5, 6, 7])
   return segs.map((sg) => {
     const text = fmt8(sg.d)
     const cx = (px(sg.a) + px(sg.b)) / 2
-    const half = (text.length * charW) / 2 + 2
-    const base = sg.kind === 'gap' ? 0 : 1
-    let row = base
-    if (cx - half < last[row] + 3) row = base + 2
-    if (cx - half < last[row] + 3) row = base // both busy: keep the primary row (rare; still legible)
-    last[row] = cx + half
-    return { ...sg, text, cx, row }
+    const half = (text.length * charW) / 2 + 3
+    const row = order(sg.kind).find((r) => !(cx - half < (last[r] == null ? -1e9 : last[r]) + 4))
+    const use = row == null ? 8 : row
+    last[use] = cx + half
+    return { ...sg, text, cx, row: use }
   })
 }
 
@@ -328,7 +333,7 @@ export function leanToSpecs(l, tFront = [], oc = 0) {
  * line, chain + overall rows, total height. maxH caps the drawn wall height so
  * two or three elevations fit a letter page.
  */
-export function elevLayout(spec, { VW = 740, maxH = 150, mL = 30, mR = 86, mT = 30 } = {}) {
+export function elevLayout(spec, { VW = 740, maxH = 230, mL = 34, mR = 104, mT = 42 } = {}) {
   let extL = 0, extR = 0
   ;(spec.side || []).forEach((q) => { if (q.onLeft) extL = Math.max(extL, q.w); else extR = Math.max(extR, q.w) })
   ;(spec.items || []).forEach((it) => { extL = Math.max(extL, -it.x); extR = Math.max(extR, it.x + it.w - spec.faceW) })
@@ -341,11 +346,11 @@ export function elevLayout(spec, { VW = 740, maxH = 150, mL = 30, mR = 86, mT = 
   const X = (ft) => ox + ft * s
   const rows = chainRows(segs, (n) => X(n / EIGHTHS))
   const usedRows = rows.reduce((m, r) => Math.max(m, r.row), -1)
-  const dy = gy + 20 // the chain's dimension line
-  const rowY = (row) => (row === 0 ? dy - 5 : row === 1 ? dy + 13 : row === 2 ? dy + 25 : dy + 37)
-  const below = segs.length ? (usedRows >= 2 ? 40 : 26) : 0
-  const dy2 = segs.length ? dy + below + 14 : gy + 22 // overall dimension line
-  const VH = Math.round(dy2 + 28)
+  const dy = gy + 28 // the chain's dimension line
+  const step = FS.chain + 3.5
+  const rowY = (row) => (row === 0 ? dy - 7 : dy + 4 + step * row - 3.5)
+  const dy2 = segs.length ? rowY(Math.max(1, usedRows)) + 24 : gy + 30 // overall dimension line
+  const VH = Math.round(dy2 + FS.end + 20)
   return { s, ox, gy, dy, dy2, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR }
 }
 

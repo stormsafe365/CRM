@@ -32,7 +32,7 @@ for (const f of FILES) {
     entryPoints: [join(src, `${f}.jsx`)],
     outfile: join(out, `${f}.js`),
     logLevel: 'error',
-    ...(BUNDLED.has(f) ? { bundle: true, format: 'iife', charset: 'utf8' } : {}),
+    ...(BUNDLED.has(f) ? { bundle: true, format: 'iife', charset: 'utf8', loader: { '.png': 'dataurl' } } : {}),
   })
 }
 
