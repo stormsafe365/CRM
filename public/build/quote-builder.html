@@ -3274,7 +3274,14 @@ var MANUFACTURERS = {
       if(!t || !t.rows[w]) return null; // width outside table — fall through to legacy
       // 62'-100' wide (CCI sheet 4/30/26): connected units of at most 52' (cciWideUnits)
       // — same as combLen up to 104'; fixes 105'+ (70x110 used to return null → $0 base).
-      if(w >= 62) return cciWideUnitSum(l, t.rows[w]);
+      // 32'-60' wide PAST 104' LONG: the same connected units (10/9/26) — CCI Dealer
+      // Handbook p6 "32W-60W Combinations": 108 = 36+36+36, 112 = 36+36+40,
+      // 116 = 36+40+40, 120 = 40+40+40. The old [52+52] + remainder split found no
+      // price for 105'-123' (the base fell back to an extrapolation $1,600-$18,300
+      // UNDER the handbook — 60x110 was $46,445 vs 36+36+40 = $64,385) and priced
+      // 124'+ as 52+52 + the rest. ⚠ Past 120' the handbook lists no combinations:
+      // the same rule extended. Up to 104' nothing changes (combLen = the handbook pairs).
+      if(w >= 62 || l > 104) return cciWideUnitSum(l, t.rows[w]);
       // Direct length match (table columns)
       var idx = t.cols.indexOf(l);
       if(idx >= 0) return t.rows[w][idx];
@@ -3303,14 +3310,8 @@ var MANUFACTURERS = {
           }
         }
       }
-      // For l > 104: recursively split as [104, l-104] sections — matches Sensei
-      // exactly. CCI builds long buildings as multi-section combinations from cols.
-      // Example: L=200 → [104 + 96] → [52+52] + [48+48] = $190,180 for w=100.
-      if(l > 104){
-        var p104 = t.rows[w][t.cols.indexOf(52)] * 2; // [52,52]
-        var pRem = this.commercialBaseFn(w, l - 104);
-        if(pRem != null) return p104 + pRem;
-      }
+      // (Past 104' long: connected units — cciWideUnitSum at the top. The old
+      // [104 + rest] recursion lived here; it returned null for 105'-123'.)
       return null;
     },
     // ── UTILITY CARPORT (GCH) PRICING ────────────────────────────────────────
@@ -4966,6 +4967,19 @@ function gLeg(){
   // priced $4,896 off the grid; their correct charge $7,190 = SH[20][40']
   // exactly (verified 8/14/26). Heights ≤16 keep the Sensei-verified grids.
   if(w>=32 || (ACTIVE_MFR==='CCI' && h>=17)){
+    // Commercial brochure SIDE HEIGHT chart (32'-60' wide, 20'-52' long by 4').
+    var SHC=[20,24,28,32,36,40,44,48,52];
+    var SHT={10:[430,520,605,690,780,865,950,1035,1125],
+             12:[865,1035,1210,1380,1555,1730,1900,2075,2245],
+             14:[1535,1845,2150,2460,2765,3070,3380,3685,3995],
+             16:[2450,2895,3340,3785,4235,4680,5125,5575,6020],
+             18:[3360,3840,4320,4800,5280,5760,6240,6720,7200],
+             20:[3790,4470,5115,5830,6510,7190,7865,8545,9225]};
+    // CCI 32'-60' wide PAST 104' LONG: connected units (CCI Dealer Handbook p6 —
+    // 108 = 36+36+36 … 120 = 40+40+40; cciWideUnits), each unit on the SIDE HEIGHT
+    // chart above (10/9/26). Replaces the straight-line extension of the 100' column
+    // of EXT_SH. Up to 104' nothing changes.
+    if(ACTIVE_MFR==='CCI' && w>=32 && w<=60 && l>104) return cciWideUnitSum(l, SHT[hk]||SHT[16]);
     // Index axis and ext threshold from manufacturer config
     if(l>MFR().shExtThresh){
       var extRow=EXT_SH[hk]||EXT_SH[16]||[];
@@ -4979,14 +4993,7 @@ function gLeg(){
       }
       return extVal;
     }
-    // For l<=shExtThresh: use SH table indexed by WIDTH or LENGTH per MFR config
-    var SHC=[20,24,28,32,36,40,44,48,52];
-    var SHT={10:[430,520,605,690,780,865,950,1035,1125],
-             12:[865,1035,1210,1380,1555,1730,1900,2075,2245],
-             14:[1535,1845,2150,2460,2765,3070,3380,3685,3995],
-             16:[2450,2895,3340,3785,4235,4680,5125,5575,6020],
-             18:[3360,3840,4320,4800,5280,5760,6240,6720,7200],
-             20:[3790,4470,5115,5830,6510,7190,7865,8545,9225]};
+    // For l<=shExtThresh: use the SH table (SHC / SHT above) indexed by WIDTH or LENGTH per MFR config
     var _shIdx=MFR().shIndexByLength?l:w;
     var ci;
     if(MFR().shIndexByLength){
@@ -5147,7 +5154,7 @@ function ecLookup(w,h){
   while(hk<20 && ecRow[hk]===undefined) hk++; // missing odd heights round UP
   return ecRow[hk]||0;
 }
-function scLookup(h,l,w){
+function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' past 104' only — scPairLookup)
   var w2=w||parseInt(G('bw').value)||0;
   if(w2 % 2 === 1) w2++; // Round odd widths UP (45→46) for pricing lookups
   // ── CCI 62'-100' wide commercial pricing (Apr 30, 2026 release) ──
@@ -5174,6 +5181,14 @@ function scLookup(h,l,w){
              16:[2040,2450,2855,3265,3670,4080,4490,4895,5305],
              18:[2470,2970,3460,3955,4450,4945,5440,5935,6425],
              20:[2905,3485,4065,4645,5225,5810,6390,6970,7550]};
+    // CCI 32'-60' wide PAST 104' LONG: connected units (CCI Dealer Handbook p6;
+    // cciWideUnits), each unit on the BOTH SIDES CLOSED chart above (10/9/26) — the
+    // pair straight from the chart, one side = half. Replaces the straight-line
+    // extension of the 100' column of the extended chart. Up to 104' nothing changes.
+    if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60 && l>104){
+      var _bscU=cciWideUnitSum(l, BSC[hk]||BSC[16]);
+      return pair ? _bscU : Math.round(_bscU/2);
+    }
     // Index axis and ext threshold from manufacturer config
     if(l>MFR().shExtThresh){
       var ebRow=EXT_BSC[hk]||EXT_BSC[16]||[];
@@ -5239,6 +5254,7 @@ function scPairLookup(h,l,w){
   var w2=w||parseInt(G('bw').value)||0;
   if(w2 % 2 === 1) w2++;
   if(ACTIVE_MFR==='CCI' && w2>=62 && w2<=100) return cciWideSCBothSides(h, l);
+  if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60 && l>104) return scLookup(h,l,w,true); // units: the pair, no $1 rounding drift
   return scLookup(h,l,w)*2;
 }
 // Vertical wall upgrade — CA "VERTICAL OR LAP SIDING" tables
