@@ -14,6 +14,7 @@ import {
   FS, e8, fmtFtIn, chain, chainRows, frameX, elevationSpecs, leanToSpecs, ltOpeningPlan, ltRect, ltWallH,
   elevLayout, paginate, trussFromFront,
   offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, parseLtId, setLtOpeningX, getLtOpening, ltWallLen,
+  peakTxt, ltHighTxt, ltLowTxt, heightLabels,
 } from '../layout-src/sheetGeom.js'
 import { layoutOffset, fmtFtIn as crmFmt, sheetGeomFromRaw, leanToNotes, ltOpeningText } from '../src/lib/layoutFromQuote.js'
 
@@ -318,4 +319,67 @@ test('edit view: every main wall is drawn (to drag / place on), lean-to walls on
   assert.ok(specs.slice(0, 4).every((s) => s.wall === s.key))
   const gch = elevationSpecs({ ...B, config: 'hybrid', openEnd: 'front', openLength: 20 }, [], null, {}, { all: true })
   assert.deepEqual(gch.map((s) => s.key), ['back', 'divider', 'right', 'left'], 'the open carport front is not a wall')
+})
+
+// ── lean-to heights + ONE peak definition (10/9/26) ────────────────────────
+// The program's own clearance + peak text, lifted from the embedded build.
+function loadProgramPeak() {
+  const src = readFileSync(resolve(here, '../public/build/quote-builder.html'), 'utf8')
+  const grab = (re) => { const m = src.match(re); assert.ok(m, 'program snippet ' + re); return m[0] }
+  const code = [
+    grab(/var CCI_CLEAR=\{[\s\S]*?\n\};/), grab(/function cciClearance\([\s\S]*?\n\}/),
+    grab(/function _dim8\(r\)\{[^\n]*\}/), grab(/function _dimFtIn\(ft\)\{[^\n]*\}/), grab(/function _dimPeakTxt\([^\n]*\}/),
+  ].join('\n')
+  const ctx = { ACTIVE_MFR: 'CCI' }
+  vm.createContext(ctx)
+  vm.runInContext(code + '\nthis.cciClearance=cciClearance; this._dimPeakTxt=_dimPeakTxt;', ctx)
+  return ctx
+}
+const glyphs = (t) => t.replace(/′/g, "'").replace(/″/g, '"')
+
+test('peak + center clearance: the sheet prints the program\'s own figure and text', () => {
+  const P = loadProgramPeak()
+  for (const [W, rs, H] of [[30, 'Vertical', 16], [30, 'Boxed Eave', 16], [24, 'Regular', 12], [12, 'Vertical', 10]]) {
+    const c = P.cciClearance(W, rs, H)
+    const b = { width: W, length: 40, height: H, pitch: '3:12', trussOC: 4, config: 'enclosed' }
+    const geom = { W, L: 40, H, truss: [], oc: 4, leanTos: [], partition: null, open: {}, clr: { peak: c.peak, center: c.center, to: c.to } }
+    const ops = [{ id: 'o1', wall: 'front', offset: 2, w: 3, h: 6.667, type: 'wtd' }, { id: 'o2', wall: 'back', offset: 2, w: 3, h: 6.667, type: 'wtd' }]
+    const specs = elevationSpecs(b, ops, geom).filter((s) => s.gable)
+    assert.ok(specs.length >= 2)
+    for (const s of specs) {
+      assert.equal(s.clr.peak, c.peak); assert.equal(s.clr.center, c.center)
+      assert.equal(glyphs(peakTxt(s)), P._dimPeakTxt(c, 0, 3), `${W} ${rs}: ${peakTxt(s)}`)
+    }
+  }
+  // the owner's 30′ building, 16′ leg, vertical roof: CCI figure 20′3″ to the top of the roof (not the 19′9″ roof line)
+  assert.equal(P._dimPeakTxt(P.cciClearance(30, 'Vertical', 16), 0, 3), 'Peak ≈ 20\'3" (top of roof) · 3:12')
+  // no CCI figure (CA / leg height edited in the sheet): the geometric ridge, both sides
+  const b = { width: 30, length: 40, height: 16, pitch: '3:12' }
+  const [front] = elevationSpecs(b, [{ id: 'o1', wall: 'front', offset: 2, w: 3, h: 6.667, type: 'wtd' }], null)
+  assert.equal(front.clr, null)
+  assert.equal(glyphs(peakTxt(front)), P._dimPeakTxt(null, 16 + 15 * 3 / 12, 3))
+  const [edited] = elevationSpecs({ ...b, height: 14 }, [{ id: 'o1', wall: 'front', offset: 2, w: 3, h: 6.667, type: 'wtd' }], { W: 30, L: 40, H: 16, leanTos: [], clr: { peak: 20.25, center: 17.17, to: 'roof' } })
+  assert.equal(edited.clr, null, 'the CCI figure only while the leg height is the quote\'s')
+})
+
+test('lean-to heights: main leg named, HIGH = conn, LOW = low eave (the program\'s values)', () => {
+  const geom = { W: 30, L: 40, H: 16, truss: [], oc: 4, open: {}, partition: null,
+    leanTos: [{ n: 1, k: 'left', side: 'Left Eave', w: 12, low: 10, pitch: 2, conn: 12, len: 40, ll: 40, start: 0, openings: [] },
+              { n: 2, k: 'right', side: 'Right Eave', w: 12, low: 10, pitch: 3, conn: 13, len: 40, ll: 40, start: 0, openings: [] }] }
+  const b = { width: 30, length: 40, height: 16, pitch: '3:12' }
+  const ops = [{ id: 'o1', wall: 'back', offset: 10, w: 10, h: 10, type: 'rollup' }]
+  const back = elevationSpecs(b, ops, geom).find((s) => s.key === 'back')
+  assert.equal(heightLabels(back).leg, 'Main 16′ leg')
+  const lt2 = back.side.find((q) => q.n === 2)
+  assert.equal(ltHighTxt(lt2), 'LT2 high 13′'); assert.equal(ltLowTxt(lt2), 'LT2 low 10′')
+  const L = elevLayout(back)
+  assert.equal(L.wL + L.wR, 24); assert.ok(L.dy3 > L.dy2 && L.VH > L.dy3)
+  assert.ok(L.X(-L.extL) - 100 >= 0, 'room for "LTn low" on the left')
+  // a lean-to end wall (sloped): LOW at the outer post, HIGH at the main wall
+  const [, endF] = leanToSpecs({ ...geom.leanTos[1], openings: [{ type: 'win', loc: 'front', qty: 1, w: 2.5, h: 2.5, sill: 4, xs: [4] }] })
+  const hl = heightLabels(endF)
+  assert.deepEqual([hl.h0, hl.leg], endF.ends[0] === 'OUTER POST' ? ['LT2 low 10′', 'LT2 high 13′'] : ['LT2 high 13′', 'LT2 low 10′'])
+  // no lean-to end-on: the leg label is unchanged
+  const plain = elevationSpecs(b, ops, { ...geom, leanTos: [] }).find((s) => s.key === 'back')
+  assert.equal(heightLabels(plain).leg, '16′ leg')
 })

@@ -214,5 +214,12 @@ export function readGeom(pg, W, L, H, elev) {
   } catch { partition = null }
   const gch = (G('btype') || {}).value === 'gch'
   const open = { front: (G('wfg') || {}).value === 'Open', back: (G('wbg') || {}).value === 'Open', left: !gch && (G('wle') || {}).value === 'Open', right: !gch && (G('wre') || {}).value === 'Open' }
-  return { W, L, H, truss, oc, leanTos, partition, open }
+  // the program's peak / center clearance (CCI handbook figures, the spacing page's
+  // "Peak ≈" + "Center clearance ≈"): ONE definition on both drawings (10/9/26)
+  let clr = null
+  try {
+    const c = typeof pg.cciClearance === 'function' ? pg.cciClearance(W, (G('rs') || {}).value, H) : null
+    if (c && isFinite(c.peak) && isFinite(c.center)) clr = { peak: c.peak, center: c.center, to: c.to === 'roof' ? 'roof' : 'truss' }
+  } catch { clr = null }
+  return { W, L, H, truss, oc, leanTos, partition, open, clr }
 }

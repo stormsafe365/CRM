@@ -24,7 +24,7 @@
 import LOGO from './assets/logo-round.png'
 import {
   FS, elevationSpecs, elevLayout, fmtFtIn, ltRect, ltOpeningPlan, trussFromFront, paginate,
-  offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, ltWallLen, parseLtId, getLtOpening, setLtOpeningX,
+  offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, ltWallLen, parseLtId, getLtOpening, setLtOpeningX, ltHighTxt, ltLowTxt, textW, peakTxt,
 } from './sheetGeom.js'
 
 const R = window.React
@@ -41,6 +41,7 @@ const TYPE_HEX = {
 const ROLE_HEX = { rollup: '#f0883e', walk: '#1A3556', window: '#1A3556', framed: '#374151' }
 const KIND_ABBR = { rollup: 'RU', walk: 'WD', double: 'DD', window: 'WN', sliding: 'SD', framed: 'FO', custom: 'CF' }
 const INK = '#111827', TXT = '#1f2937', LINE = '#374151', MUTED = '#4b5563', FRAME = '#9ca3af', TEAL = '#14A6A0', TEAL_D = '#0E7A76'
+const CLR_C = '#B4531A' // CCI center clearance (the program's orange, darkened for print)
 const FONT = 'Arial, Helvetica, sans-serif'
 const kindOf = (it) => (TYPE_HEX[it.type] ? it.type : ({ wtd: 'walk', win: 'window', fo: 'framed' })[it.type] || it.role || 'framed')
 const colorOf = (it) => TYPE_HEX[kindOf(it)] || LINE
@@ -295,7 +296,8 @@ function ElevationCard({ spec, ed, W, L }) {
   ;(spec.side || []).forEach((q, i) => {
     const pts = q.onLeft ? [[-q.w, 0], [-q.w, q.low], [0, q.conn], [0, 0]] : [[F, 0], [F, q.conn], [F + q.w, q.low], [F + q.w, 0]]
     els.push(<polygon key={'sl' + i} points={P(pts)} fill="url(#h-lt)" stroke={TEAL_D} strokeWidth="1.4" strokeDasharray="6 4" />)
-    els.push(<text key={'slt' + i} x={X(q.onLeft ? -q.w / 2 : F + q.w / 2)} y={Y(q.low / 2) + 5} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D}>{q.label}</text>)
+    const nY = Math.min(Y(0) - 4, Math.max(Y(q.low * 0.3) + 5, Y(q.low * 0.72) + FS.lt + 11)) // under its "LTn high" label
+    els.push(<text key={'slt' + i} x={X(q.onLeft ? -q.w / 2 : F + q.w / 2)} y={nY} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D}>{q.label}</text>)
   })
   // the wall: white, dark outline
   const pts = [[0, 0], [0, spec.h(0)]]
@@ -350,7 +352,61 @@ function ElevationCard({ spec, ed, W, L }) {
     return [{ x0: rx - 26, x1: rx + rw, y0: ry, y1: ry + rh }, { x0: rx + rw / 2 - lw / 2, x1: rx + rw / 2 + lw / 2, y0: ly - FS.size, y1: ly + 3 }]
   })
   if ((spec.truss || []).length && spec.oc) busy.push({ x0: X(F) - 170, x1: X(F), y0: Y(spec.h(F)) - 26, y1: Y(spec.h(F)) - 4 })
+  // CCI center clearance (the program's figure, same as the spacing page): dashed line across the interior
+  const ccTxt = spec.gable && spec.clr ? `Center clearance ≈ ${fmtFtIn(spec.clr.center)}` : null
+  const ccY = ccTxt ? Y(Math.min(spec.clr.center, spec.peak)) : null
+  if (ccTxt) { const w = textW(ccTxt, FS.frame) / 2 + 4; busy.push({ x0: X(F / 2) - w, x1: X(F / 2) + w, y0: ccY, y1: ccY + FS.frame + 6 }) }
   const clear = (b) => busy.every((q) => b.x1 <= q.x0 || b.x0 >= q.x1 || b.y1 <= q.y0 || b.y0 >= q.y1)
+  // lean-tos end-on (owner 10/9/26): the main leg is dimensioned ON the main wall
+  // corner ("Main 16′ leg" — never out past a lean-to); each lean-to gets its own
+  // HIGH height at the attachment and LOW height at its outer post (the program's
+  // own values: conn / low eave), lean-to teal like the lean-to itself
+  const hR = spec.h(F), legTxt = lay.hl.leg
+  const ltDims = []
+  const vdim = (key, xx, h, col) => (<g key={key}>
+    <line x1={xx} y1={Y(0)} x2={xx} y2={Y(h)} stroke={col} strokeWidth="1.3" />
+    <line x1={xx - 6} y1={Y(0)} x2={xx + 6} y2={Y(0)} stroke={col} strokeWidth="1.3" />
+    <line x1={xx - 6} y1={Y(h)} x2={xx + 6} y2={Y(h)} stroke={col} strokeWidth="1.3" />
+  </g>)
+  ;[lay.sideL, lay.sideR].forEach((arr) => arr.slice().sort((a, b) => a.w - b.w).forEach((q, k) => {
+    const lf = q.onLeft, sg = lf ? -1 : 1, xh = lf ? X(0) - 9 : X(F) + 9, xl = lf ? X(-q.w) - 12 : X(F + q.w) + 12
+    const ht = ltHighTxt(q), htw = textW(ht, FS.lt), inner = lf ? X(-q.w) + 3 : X(F + q.w) - 3
+    let hx = xh + sg * 6, hy = Y(q.low * 0.72) + 5 + k * (FS.lt + 3)
+    if (lf ? hx - htw < inner : hx + htw > inner) { hx = lf ? X(0) - 5 : X(F) + 5; hy = Y(q.conn) - 8 - k * (FS.lt + 3) } // too narrow: over its roof at the junction
+    const lt = ltLowTxt(q), ltw = textW(lt, FS.lt), lx = xl + sg * 7, ly = (Y(0) + Y(q.low)) / 2 + 5 + k * (FS.lt + 3)
+    const anchor = lf ? 'end' : 'start'
+    ltDims.push(vdim('lth' + q.n, xh, q.conn, TEAL_D), vdim('ltl' + q.n, xl, q.low, TEAL_D))
+    ltDims.push(<text key={'lthT' + q.n} x={hx.toFixed(1)} y={hy.toFixed(1)} textAnchor={anchor} fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-high">{ht}</text>)
+    ltDims.push(<text key={'ltlT' + q.n} x={lx.toFixed(1)} y={ly.toFixed(1)} textAnchor={anchor} fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-low">{lt}</text>)
+    busy.push(lf ? { x0: hx - htw * 1.15, x1: hx, y0: hy - FS.lt - 2, y1: hy + 5 } : { x0: hx, x1: hx + htw * 1.15, y0: hy - FS.lt - 2, y1: hy + 5 },
+      lf ? { x0: lx - ltw, x1: lx, y0: ly - FS.lt, y1: ly + 3 } : { x0: lx, x1: lx + ltw, y0: ly - FS.lt, y1: ly + 3 })
+  }))
+  // the main leg: right of the wall, or — with a lean-to on the right — ON the
+  // main wall corner (the junction), label inside the main wall at the first
+  // height clear of every opening / sill / lean-to label; a crowded wall puts it
+  // just above that lean-to's roof, beside the junction line
+  let dx = X(F + lay.extR) + 18, legLab = null
+  if (lay.sideR.length) {
+    dx = X(F) - 9
+    const lw = textW(legTxt, FS.leg) * 1.05
+    const sills = spec.items.filter((it) => it.sill > 0.1).map((it) => { const cx = X(it.x + it.w / 2), w = textW(`sill ${fmtFtIn(it.sill)}`, FS.sill) / 2 + 3, y = (Y(0) + Y(it.sill)) / 2 + 5; return { x0: cx - w, x1: cx + w, y0: y - FS.sill, y1: y + 4 } }) // the sill labels too
+    // the opening W×H labels with real bold-glyph widths (busy's estimate runs narrow for ′ ″ ×)
+    const hard = sills.concat(spec.items.map((it) => { const cx = X(it.x + it.w / 2), w = labOf(it).length * FS.size * 0.42 + 4, y = labelY[it.id]; return { x0: cx - w, x1: cx + w, y0: y - FS.size - 2, y1: y + 5 } }))
+    const free = (b) => clear(b) && hard.every((q) => b.x1 <= q.x0 || b.x0 >= q.x1 || b.y1 <= q.y0 || b.y0 >= q.y1)
+    for (const fr of [0.5, 0.62, 0.38, 0.75, 0.25].concat(Array.from({ length: 37 }, (_, i) => 0.95 - i * 0.025))) {
+      const y = Y(hR * fr) + 5, b = { x0: dx - 7 - lw, x1: dx + 2, y0: y - FS.leg - 2, y1: y + 5 }
+      if (b.x0 >= X(0) + 2 && free(b)) { legLab = { x: dx - 7, y, a: 'end', b }; break }
+    }
+    const top = lay.sideR.reduce((m, q) => Math.max(m, q.conn), 0)
+    if (!legLab) { // between the main eave and the lean-to roof, top down, else just over the eave height
+      const ys = []
+      for (let y = Y(hR) + FS.leg; y <= Y(top) - 4; y += 3) ys.push(y)
+      ys.push(Y(hR) - 6)
+      for (const y of ys) { const b = { x0: X(F) + 4, x1: X(F) + 6 + lw, y0: y - FS.leg - 2, y1: y + 5 }; if (b.x1 <= VW - 2 && free(b)) { legLab = { x: X(F) + 5, y, a: 'start', b }; break } }
+    }
+    if (!legLab) { const y = Y(hR * 0.5) + 5; legLab = { x: dx - 7, y, a: 'end', b: { x0: dx - 7 - lw, x1: dx + 2, y0: y - FS.leg, y1: y + 4 } } }
+    busy.push(legLab.b, { x0: dx - 6, x1: dx + 6, y0: Y(hR), y1: Y(0) })
+  }
   ;(spec.foot || []).forEach((f, i) => {
     els.push(<rect key={'ft' + i} x={X(f.x0)} y={Y(f.h)} width={(f.len * s).toFixed(1)} height={(f.h * s).toFixed(1)} fill="url(#h-lt)" stroke={TEAL_D} strokeWidth="1.4" strokeDasharray="7 5" />)
     const spots = [Y(f.h) - 7, Y(0) - 8, Y(f.h) + FS.lt + 5]
@@ -388,18 +444,24 @@ function ElevationCard({ spec, ed, W, L }) {
     if (it.sill > 0.1) els.push(<text key={'os' + it.id} x={(rx + rw / 2).toFixed(1)} y={((Y(0) + Y(it.sill)) / 2 + 5).toFixed(1)} textAnchor="middle" fontSize={FS.sill} fontWeight="600" fill={TXT} className="op-sill">{`sill ${fmtFtIn(it.sill)}`}</text>)
     if (it.tag) els.push(<Tag key={'otg' + it.id} x={rx - 14} y={ry + Math.min(rh / 2, Math.max(rh - 11, 11))} col={col} n={it.tag} />)
   })
-  // leg / eave height on the right
-  const hR = spec.h(F), dx = X(F + lay.extR) + 18
+  // leg / eave height: right of the wall, or ON the main wall corner when a lean-to is there (hR / dx / legLab above)
   els.push(<g key="leg">
     <line x1={dx} y1={Y(0)} x2={dx} y2={Y(hR)} stroke={LINE} strokeWidth="1.3" />
     <line x1={dx - 6} y1={Y(0)} x2={dx + 6} y2={Y(0)} stroke={LINE} strokeWidth="1.3" />
     <line x1={dx - 6} y1={Y(hR)} x2={dx + 6} y2={Y(hR)} stroke={LINE} strokeWidth="1.3" />
-    <text x={dx + 9} y={(Y(0) + Y(hR)) / 2 + 5} fontSize={FS.leg} fontWeight="700" fill={INK}>{`${fmtFtIn(hR)} ${spec.sloped ? '' : 'leg'}`.trim()}</text>
+    {legLab
+      ? <text x={legLab.x} y={legLab.y} textAnchor={legLab.a} fontSize={FS.leg} fontWeight="700" fill={INK} className="leg-main">{legTxt}</text>
+      : <text x={dx + 9} y={(Y(0) + Y(hR)) / 2 + 5} fontSize={FS.leg} fontWeight="700" fill={INK}>{legTxt}</text>}
   </g>)
-  if (spec.sloped) els.push(<text key="h0" x={X(0) - 8} y={Y(spec.h(0)) + 5} textAnchor="end" fontSize={FS.leg} fontWeight="700" fill={INK}>{fmtFtIn(spec.h(0))}</text>)
+  if (spec.sloped) els.push(<text key="h0" x={X(0) - 8} y={Y(spec.h(0)) + 5} textAnchor="end" fontSize={FS.leg} fontWeight="700" fill={INK}>{lay.hl.h0}</text>)
+  els.push(...ltDims)
   if (spec.gable) {
     const pk = typeof spec.peak === 'number' ? spec.peak : 0
-    els.push(<text key="pk" x={X(F / 2)} y={Y(pk) - 10} textAnchor="middle" fontSize={FS.peak} fontWeight="600" fill={TXT}>{`peak ${fmtFtIn(pk)}`}</text>)
+    els.push(<text key="pk" x={X(F / 2)} y={Y(pk) - 10} textAnchor="middle" fontSize={FS.peak} fontWeight="600" fill={TXT} className="peak">{peakTxt(spec)}</text>)
+  }
+  if (ccTxt) {
+    els.push(<line key="cc" x1={X(0)} y1={ccY} x2={X(F)} y2={ccY} stroke={CLR_C} strokeWidth="1.2" strokeDasharray="6 4" />)
+    els.push(<text key="cct" x={X(F / 2)} y={ccY + FS.frame + 3} textAnchor="middle" fontSize={FS.frame} fontWeight="600" fill={CLR_C} className="center-clr">{ccTxt}</text>)
   }
   // the chain: corner -> opening edges -> corner; gaps above the line, widths below
   if (lay.segs.length) {
@@ -412,13 +474,36 @@ function ElevationCard({ spec, ed, W, L }) {
         fontWeight={r.kind === 'width' ? 700 : 500} fill={r.kind === 'width' ? INK : TXT}
         className={'ch-' + r.kind} data-e8={r.d}>{r.text}</text>))
   }
-  // overall + end names
+  // overall + end names; lean-tos end-on: "LT2 12′ | 30′ main | LT1 12′" on that line, the overall width under it
+  const { wL, wR, dy3 } = lay
+  const ltName = (arr, w) => arr.filter((q) => q.w === w).map((q) => q.label).join('/')
+  const mainTxt = dy3 != null ? `${fmtFtIn(F)} main` : fmtFtIn(F), mainBox = Math.max(84, textW(mainTxt, FS.total) + 14)
+  if (dy3 != null) {
+    const ovTxt = `${fmtFtIn(wL + F + wR)} overall`, ovBox = textW(ovTxt, FS.total) + 14, cx = X((F + wR - wL) / 2)
+    els.push(<g key="ovlt">
+      {wL > 0 && <line x1={X(-wL)} y1={dy2} x2={X(0)} y2={dy2} stroke={LINE} strokeWidth="1.3" />}
+      {wL > 0 && <line x1={X(-wL)} y1={dy2 - 7} x2={X(-wL)} y2={dy2 + 7} stroke={LINE} strokeWidth="1.3" />}
+      {wR > 0 && <line x1={X(F)} y1={dy2} x2={X(F + wR)} y2={dy2} stroke={LINE} strokeWidth="1.3" />}
+      {wR > 0 && <line x1={X(F + wR)} y1={dy2 - 7} x2={X(F + wR)} y2={dy2 + 7} stroke={LINE} strokeWidth="1.3" />}
+      {[[wL, -wL / 2, ltName(lay.sideL, wL)], [wR, F + wR / 2, ltName(lay.sideR, wR)]].filter((v) => v[0] > 0).map(([w, c, nm]) => {
+        const t = `${nm} ${fmtFtIn(w)}`, bw = textW(t, FS.lt) + 12
+        if (bw > w * s - 8) return <text key={'ltw' + nm} x={c < 0 ? X(0) - 4 : X(F) + 4} y={dy2 + FS.lt + 9} textAnchor={c < 0 ? 'end' : 'start'} fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-width">{t}</text> // narrow: under its line
+        return <g key={'ltw' + nm}><rect x={X(c) - bw / 2} y={dy2 - 11} width={bw} height="22" fill="#ffffff" />
+          <text x={X(c)} y={dy2 + FS.lt * 0.36} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-width">{t}</text></g>
+      })}
+      <line x1={X(-wL)} y1={dy3} x2={X(F + wR)} y2={dy3} stroke={LINE} strokeWidth="1.3" />
+      <line x1={X(-wL)} y1={dy3 - 7} x2={X(-wL)} y2={dy3 + 7} stroke={LINE} strokeWidth="1.3" />
+      <line x1={X(F + wR)} y1={dy3 - 7} x2={X(F + wR)} y2={dy3 + 7} stroke={LINE} strokeWidth="1.3" />
+      <rect x={cx - ovBox / 2} y={dy3 - 12} width={ovBox} height="24" fill="#ffffff" />
+      <text x={cx} y={dy3 + FS.total * 0.36} textAnchor="middle" fontSize={FS.total} fontWeight="700" fill={INK} className="ch-overall">{ovTxt}</text>
+    </g>)
+  }
   els.push(<g key="ov">
     <line x1={X(0)} y1={dy2} x2={X(F)} y2={dy2} stroke={LINE} strokeWidth="1.3" />
     <line x1={X(0)} y1={dy2 - 7} x2={X(0)} y2={dy2 + 7} stroke={LINE} strokeWidth="1.3" />
     <line x1={X(F)} y1={dy2 - 7} x2={X(F)} y2={dy2 + 7} stroke={LINE} strokeWidth="1.3" />
-    <rect x={X(F / 2) - 42} y={dy2 - 12} width="84" height="24" fill="#ffffff" />
-    <text x={X(F / 2)} y={dy2 + FS.total * 0.36} textAnchor="middle" fontSize={FS.total} fontWeight="700" fill={INK} className="ch-total">{fmtFtIn(F)}</text>
+    <rect x={X(F / 2) - mainBox / 2} y={dy2 - 12} width={mainBox} height="24" fill="#ffffff" />
+    <text x={X(F / 2)} y={dy2 + FS.total * 0.36} textAnchor="middle" fontSize={FS.total} fontWeight="700" fill={INK} className="ch-total">{mainTxt}</text>
     <text x={X(0)} y={dy2 + FS.end + 10} fontSize={FS.end} fontWeight="700" fill={LINE} letterSpacing=".1em">{spec.ends[0]}</text>
     <text x={X(F)} y={dy2 + FS.end + 10} textAnchor="end" fontSize={FS.end} fontWeight="700" fill={LINE} letterSpacing=".1em">{spec.ends[1]}</text>
   </g>)

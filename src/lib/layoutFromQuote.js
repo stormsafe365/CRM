@@ -319,6 +319,7 @@ export function sheetGeomFromRaw(raw, building) {
     leanTos: Array.isArray(g.leanTos) ? g.leanTos : [],
     partition: g.partition || null,
     open: g.open || {},
+    clr: g.clr && isFinite(g.clr.peak) && isFinite(g.clr.center) ? { peak: Number(g.clr.peak), center: Number(g.clr.center), to: g.clr.to === 'roof' ? 'roof' : 'truss' } : null,
   }
 }
 

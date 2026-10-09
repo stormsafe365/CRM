@@ -12500,8 +12500,12 @@ function cciClearance(W, rs, legH){
   var c=t.center[W], p=t.peak[W];
   if(c==null||p==null) return null;
   if(rs==='Vertical') p+=3;
-  return {center:legH+c/12, peak:legH+p/12};
+  return {center:legH+c/12, peak:legH+p/12, to:(rs==='Vertical'?'roof':'truss')};
 }
+// The peak label on the gable elevations (spacing page; the CRM sheet prints the same text):
+// the CCI handbook figure when there is one (top of the truss, +3" on a vertical roof = top of
+// the roof), else the geometric ridge (H + W/2 · pitch/12).
+function _dimPeakTxt(clr, peak, pitch){ return (clr?('Peak ≈ '+_dimFtIn(clr.peak)+' (top of '+(clr.to||'truss')+')'):('Peak '+_dimFtIn(peak)))+(pitch?' · '+pitch+':12':''); }
 // ── Section 4 demo look (owner 10/3/26, screenshot of Demos/stormsafe-section4-
 //    prototype.html): each wall gets a small TOP-DOWN plan beside a large thin-
 //    line ELEVATION on a dark azul panel — gable / eave outline with peak + leg
@@ -12612,6 +12616,28 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
 function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, clr, x){
   x=x||{}; var E=1e-6, VW=700, mL=36, mR=74, mT=38, mB=74, id='dsp'+(++_dimSvgN);
   var sideLeans=x.sideLeans||[], foot=x.foot||[], truss=x.truss||[], ends=x.ends||['LEFT','RIGHT'];
+  // Lean-tos seen end-on (owner 10/9/26): the main leg is dimensioned ON the
+  // main wall corner ("Main 16′ leg" — never out past a lean-to), each lean-to
+  // gets its own HIGH height at the attachment and LOW height at its outer
+  // post (the program's own values: low eave = the lean-to's leg field,
+  // high = conn, _dimLeanTos), and the bottom reads "LT · main · LT" plus the
+  // overall width. Wider side margins + one more row under for those labels.
+  var sideR=sideLeans.filter(function(q){ return !q.onLeft; }), sideL=sideLeans.filter(function(q){ return q.onLeft; });
+  function _tw(t,sz){ return t.length*sz*0.6; }
+  function _ltLowTxt(l){ return 'LT'+l.n+' low '+_dimFtIn(l.low); }
+  function _ltHighTxt(l){ return 'LT'+l.n+' high '+_dimFtIn(l.conn); }
+  var legTxt=(sideLeans.length?'Main ':'')+_dimFtIn(x.prof?x.prof(faceW):wallH)+' leg', prof0Txt=x.prof?_dimFtIn(x.prof(0)):'';
+  if(x.prof&&x.lt){ // a lean-to partition / end wall: which end is the LOW (outer post) one
+    legTxt='LT'+x.lt.n+(x.lt.lowAtZero?' high ':' low ')+_dimFtIn(x.prof(faceW));
+    prof0Txt='LT'+x.lt.n+(x.lt.lowAtZero?' low ':' high ')+_dimFtIn(x.prof(0));
+    mL=Math.max(mL,Math.ceil(_tw(prof0Txt,10))+14); mR=Math.max(mR,Math.ceil(_tw(legTxt,10.5))+34);
+  }
+  if(sideLeans.length){
+    var _mw=function(arr){ return arr.reduce(function(m,q){ return Math.max(m,_tw(_ltLowTxt(q.l),10)); },0); };
+    if(sideL.length) mL=Math.max(mL,Math.ceil(_mw(sideL))+30);
+    mR=Math.max(mR,Math.ceil(sideR.length?_mw(sideR):_tw(legTxt,10.5))+34);
+    mB+=30;
+  }
   var sorted=items.slice().sort(function(a,b){return a.x-b.x;});
   var extL=0, extR=0;
   sideLeans.forEach(function(q){ if(q.onLeft) extL=Math.max(extL,q.l.w); else extR=Math.max(extR,q.l.w); });
@@ -12632,7 +12658,8 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   sideLeans.forEach(function(q){
     var l=q.l, c=l.conn, q2=q.onLeft?[[-l.w,0],[-l.w,l.low],[0,c],[0,0]]:[[faceW,0],[faceW,c],[faceW+l.w,l.low],[faceW+l.w,0]];
     o+='<polygon points="'+poly(q2)+'" fill="rgba(167,139,250,.05)" stroke="'+DIM_K.lt+'" stroke-opacity=".7" stroke-width="1"'+(q.closed?'':' stroke-dasharray="4 3"')+'/>';
-    o+=_dimT(X(q.onLeft?-l.w/2:faceW+l.w/2), Y(l.low/2)+3, 'LT'+l.n, {anchor:'middle',size:10,fill:DIM_K.ltText});
+    var nY=Math.min(Y(0)-3, Math.max(Y(l.low*0.3)+3, Y(l.low*0.72)+20)); // under the "LTn high" label (drawn with the leg)
+    o+=_dimT(X(q.onLeft?-l.w/2:faceW+l.w/2), nY, 'LT'+l.n, {anchor:'middle',size:10,fill:DIM_K.ltText});
   });
   // the wall: one thin light outline (dashed = open side / GCH open carport front)
   var openWall=!!x.open||!!gchFront;
@@ -12684,9 +12711,41 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   if(truss.length&&x.oc) blocks.push({x0:X(0),x1:X(0)+96,y0:Y(wallH)-20,y1:Y(wallH)-7}); // "frame lines N′ OC"
   if(x.open&&!gchFront) blocks.push({x0:X(faceW/2)-32,x1:X(faceW/2)+32,y0:Y(wallH)+6,y1:Y(wallH)+19}); // "open wall"
   if(gchFront) blocks.push({x0:X(faceW/2)-150,x1:X(faceW/2)+150,y0:Y(wallH)+4,y1:Y(wallH)+20}); // GCH partition caption
-  if(isGable&&!x.prof) blocks.push({x0:X(faceW/2)-70,x1:X(faceW/2)+70,y0:Y(peak)-19,y1:Y(peak)-7}); // "Peak …"
+  if(isGable&&!x.prof){ var pkw=_dimPeakTxt(clr,peak,x.pitch).length*3+4; blocks.push({x0:X(faceW/2)-pkw,x1:X(faceW/2)+pkw,y0:Y(peak)-19,y1:Y(peak)-7}); } // "Peak …"
   var hR=hAt(faceW), dx=X(faceW+extR)+20; // leg dimension line + label, right of the wall (drawn below)
-  blocks.push({x0:dx-6,x1:VW,y0:Y(hR)-8,y1:Y(0)+8});
+  // each end-on lean-to: HIGH at the attachment (inside the lean-to, else just
+  // above its roof at the junction) and LOW at the outer post (outside it)
+  function vdim(xx,h,col){ var a=Y(0), b=Y(h); return '<line x1="'+xx.toFixed(1)+'" y1="'+a+'" x2="'+xx.toFixed(1)+'" y2="'+b+'" stroke="'+col+'" stroke-width="1"/>'+
+    '<line x1="'+(xx-4).toFixed(1)+'" y1="'+a+'" x2="'+(xx+4).toFixed(1)+'" y2="'+a+'" stroke="'+col+'" stroke-width="1"/><line x1="'+(xx-4).toFixed(1)+'" y1="'+b+'" x2="'+(xx+4).toFixed(1)+'" y2="'+b+'" stroke="'+col+'" stroke-width="1"/>'; }
+  var ltDims='', LTC='rgba(167,139,250,.75)';
+  [sideL,sideR].forEach(function(arr){
+    arr.slice().sort(function(a,b){ return a.l.w-b.l.w; }).forEach(function(q,k){
+      var l=q.l, lf=q.onLeft, sg=lf?-1:1, xh=lf?X(0)-7:X(faceW)+7, xl=lf?X(-l.w)-10:X(faceW+l.w)+10;
+      var ht=_ltHighTxt(l), htw=_tw(ht,10), hx=xh+sg*5, hy=Y(l.low*0.72)+4+k*13, inner=lf?X(-l.w)+3:X(faceW+l.w)-3;
+      if(lf?(hx-htw<inner):(hx+htw>inner)){ hx=lf?X(0)-4:X(faceW)+4; hy=Y(l.conn)-6-k*13; } // too narrow: over the roof at the junction
+      var lt=_ltLowTxt(l), ltw=_tw(lt,10), lx=xl+sg*6, ly=(Y(0)+Y(l.low))/2+4+k*13;
+      ltDims+=vdim(xh,l.conn,LTC)+_dimT(hx,hy,ht,{anchor:lf?'end':'start',size:10,weight:600,fill:DIM_K.ltText,cls:'dim-lth'});
+      ltDims+=vdim(xl,l.low,LTC)+_dimT(lx,ly,lt,{anchor:lf?'end':'start',size:10,weight:600,fill:DIM_K.ltText,cls:'dim-ltl'});
+      blocks.push(lf?{x0:hx-htw*1.15,x1:hx,y0:hy-11,y1:hy+4}:{x0:hx,x1:hx+htw*1.15,y0:hy-11,y1:hy+4}, lf?{x0:lx-ltw,x1:lx,y0:ly-10,y1:ly+3}:{x0:lx,x1:lx+ltw,y0:ly-10,y1:ly+3},
+        {x0:xh-4,x1:xh+4,y0:Y(l.conn),y1:Y(0)}, {x0:xl-4,x1:xl+4,y0:Y(l.low),y1:Y(0)});
+    });
+  });
+  // the main leg: right of the wall, or — with a lean-to on the right — ON the
+  // main wall corner (the junction), its label inside the main wall at the first
+  // height clear of every opening / label (opening labels padded: their width
+  // estimate runs narrow), else just over that lean-to's roof beside the junction
+  function hits0(b){ for(var i=0;i<blocks.length;i++){ var q=blocks[i], p=(i<opN)?(q.x1-q.x0)*0.15+2:2; if(b.x0<q.x1+p&&b.x1>q.x0-p&&b.y0<q.y1+1&&b.y1>q.y0-1) return true; } return false; }
+  var legLab=null;
+  if(sideR.length){
+    dx=X(faceW)-7;
+    var lgw=_tw(legTxt,10.5)*1.05, ltop=sideR.reduce(function(m,q){ return Math.max(m,q.l.conn); },0);
+    var frs=[0.5,0.62,0.38,0.75,0.25]; for(var fi=0;fi<37;fi++) frs.push(0.95-fi*0.025);
+    frs.some(function(fr){ var y=Y(hR*fr)+4, b={x0:dx-6-lgw,x1:dx+2,y0:y-11,y1:y+4}; if(b.x0>=X(0)+2&&!hits0(b)){ legLab={x:dx-5,y:y,a:'end',b:b}; return true; } return false; });
+    if(!legLab){ var ys=[]; for(var yy=Y(hR)+11; yy<=Y(ltop)-4; yy+=3) ys.push(yy); ys.push(Y(hR)-5);
+      ys.some(function(y){ var b={x0:X(faceW)+3,x1:X(faceW)+5+lgw,y0:y-11,y1:y+4}; if(b.x1<=VW-2&&b.y0>=2&&!hits0(b)){ legLab={x:X(faceW)+4,y:y,a:'start',b:b}; return true; } return false; }); }
+    if(!legLab){ var lgy=Y(hR*0.5)+4; legLab={x:dx-5,y:lgy,a:'end',b:{x0:dx-6-lgw,x1:dx+2,y0:lgy-10,y1:lgy+3}}; }
+    blocks.push(legLab.b, {x0:dx-5,x1:dx+5,y0:Y(hR),y1:Y(0)});
+  } else blocks.push({x0:dx-6,x1:VW,y0:Y(hR)-8,y1:Y(0)+8});
   sideLeans.forEach(function(q){ var l=q.l; blocks.push(q.onLeft?{x0:X(-l.w),x1:X(0),y0:Y(l.conn),y1:Y(0)}:{x0:X(faceW),x1:X(faceW+l.w),y0:Y(l.conn),y1:Y(0)}); }); // end-on lean-tos + their LTn
   function hits(b,from,to){ for(var i=from;i<to;i++){ var q=blocks[i]; if(b.x0<q.x1&&b.x1>q.x0&&b.y0<q.y1&&b.y1>q.y0) return true; } return false; }
   function clearOf(b){ return !hits(b,0,blocks.length); }
@@ -12759,11 +12818,13 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   o+='<line x1="'+dx+'" y1="'+Y(0)+'" x2="'+dx+'" y2="'+Y(hR)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+(dx-4)+'" y1="'+Y(0)+'" x2="'+(dx+4)+'" y2="'+Y(0)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+(dx-4)+'" y1="'+Y(hR)+'" x2="'+(dx+4)+'" y2="'+Y(hR)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
-  o+=_dimT(dx+8, (Y(0)+Y(hR))/2+4, _dimFtIn(hR)+' leg', {size:10.5,fill:DIM_C.text});
-  if(x.prof) o+=_dimT(X(0)-6, Y(hAt(0))+4, _dimFtIn(hAt(0)), {anchor:'end',size:10,fill:DIM_C.text});
+  if(legLab) o+=_dimT(legLab.x, legLab.y, legTxt, {anchor:legLab.a,size:10.5,fill:DIM_C.text});
+  else o+=_dimT(dx+8, (Y(0)+Y(hR))/2+4, legTxt, {size:10.5,fill:DIM_C.text});
+  if(x.prof) o+=_dimT(X(0)-6, Y(hAt(0))+4, prof0Txt, {anchor:'end',size:10,fill:DIM_C.text});
+  o+=ltDims;
   // peak above a gable: the CCI handbook figure where there is one, else the
   // geometric ridge (H + W/2 · pitch/12)
-  if(isGable&&!x.prof) o+=_dimT(X(faceW/2), Y(peak)-10, (clr?('Peak ≈ '+_dimFtIn(clr.peak)):('Peak '+_dimFtIn(peak)))+(x.pitch?' · '+x.pitch+':12':''), {anchor:'middle',size:10});
+  if(isGable&&!x.prof) o+=_dimT(X(faceW/2), Y(peak)-10, _dimPeakTxt(clr,peak,x.pitch), {anchor:'middle',size:10});
   // CCI centre clearance: dashed line across the interior, labelled approx.
   if(clr&&isGable&&!x.prof){
     var cy=Y(Math.min(clr.center,peak));
@@ -12802,7 +12863,26 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   o+='<line x1="'+X(0)+'" y1="'+dy2.toFixed(1)+'" x2="'+X(faceW)+'" y2="'+dy2.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+X(0)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(0)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+X(faceW)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(faceW)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
-  o+='<rect x="'+(X(faceW/2)-26).toFixed(1)+'" y="'+(dy2-9).toFixed(1)+'" width="52" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X(faceW/2), dy2+4, _dimFtIn(faceW), {anchor:'middle',size:11.5,weight:500,fill:DIM_C.text});
+  if(!sideLeans.length) o+='<rect x="'+(X(faceW/2)-26).toFixed(1)+'" y="'+(dy2-9).toFixed(1)+'" width="52" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X(faceW/2), dy2+4, _dimFtIn(faceW), {anchor:'middle',size:11.5,weight:500,fill:DIM_C.text});
+  else {
+    // widths along the bottom, left to right as drawn: "LT2 12′ | 30′ main | LT1 12′", then the overall
+    var wL=sideL.reduce(function(m,q){ return Math.max(m,q.l.w); },0), wR=sideR.reduce(function(m,q){ return Math.max(m,q.l.w); },0);
+    var nm=function(arr,w){ return 'LT'+arr.filter(function(q){ return q.l.w===w; }).map(function(q){ return q.l.n; }).join('/LT'); };
+    var segs=[];
+    if(wL>0) segs.push({a:-wL,b:0,t:nm(sideL,wL)+' '+_dimFtIn(wL),lt:1});
+    segs.push({a:0,b:faceW,t:_dimFtIn(faceW)+' main'});
+    if(wR>0) segs.push({a:faceW,b:faceW+wR,t:nm(sideR,wR)+' '+_dimFtIn(wR),lt:1});
+    var bar=function(yy,a,b,ticks){ var r='<line x1="'+X(a)+'" y1="'+yy.toFixed(1)+'" x2="'+X(b)+'" y2="'+yy.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+      ticks.forEach(function(t){ r+='<line x1="'+X(t)+'" y1="'+(yy-5).toFixed(1)+'" x2="'+X(t)+'" y2="'+(yy+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'; }); return r; };
+    var lab=function(cx,yy,t,sz,wt,col){ var w=_tw(t,sz)+8; return '<rect x="'+(cx-w/2).toFixed(1)+'" y="'+(yy-9).toFixed(1)+'" width="'+w.toFixed(1)+'" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(cx, yy+4, t, {anchor:'middle',size:sz,weight:wt,fill:col}); };
+    if(wL>0) o+=bar(dy2,-wL,0,[-wL]);
+    if(wR>0) o+=bar(dy2,faceW,faceW+wR,[faceW+wR]);
+    segs.forEach(function(sg){
+      if(sg.lt&&_tw(sg.t,10)+8>(sg.b-sg.a)*s){ o+=_dimT(sg.a<0?X(0)-4:X(faceW)+4, dy2+15, sg.t, {anchor:sg.a<0?'end':'start',size:10,weight:600,fill:DIM_K.ltText}); return; } // narrow: under its line, outward
+      o+=sg.lt?lab(X((sg.a+sg.b)/2),dy2,sg.t,10,600,DIM_K.ltText):lab(X(faceW/2),dy2,sg.t,11.5,500,DIM_C.text); });
+    var dy3=dy2+34;
+    o+=bar(dy3,-wL,faceW+wR,[-wL,faceW+wR])+lab(X((faceW+wR-wL)/2),dy3,_dimFtIn(wL+faceW+wR)+' overall',11.5,600,DIM_C.text);
+  }
   o+=_dimT(X(0), dy2+17, ends[0], {size:8.5,ls:1.2})+_dimT(X(faceW), dy2+17, ends[1], {anchor:'end',size:8.5,ls:1.2});
   o+='</svg>';
   return o;
@@ -12886,7 +12966,7 @@ function dimSpacingPageHTML(theme){
     });
     if(!pItems.length) return;
     html+=card('Lean-to '+l.n+' · Storage Partition — '+l.stor.len+'′ storage at the '+l.stor.end+' end','ltpart:'+l.n,
-      dimElevSVG(g.len,g.low,0,false,pItems,false,null,null,{ends:g.lowAtZero?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],prof:function(xx){return ltPartWallH(g,xx);}}));
+      dimElevSVG(g.len,g.low,0,false,pItems,false,null,null,{ends:g.lowAtZero?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],lt:{n:l.n,lowAtZero:!!g.lowAtZero},prof:function(xx){return ltPartWallH(g,xx);}}));
   });
   return '<div data-dim-page="1" style="page-break-before:always;background:'+(dark?DIM_C.page:'#ffffff')+';min-height:100vh;padding:24px;box-sizing:border-box;font-family:'+DIM_C.font+';color:'+(dark?DIM_C.text:'#0f1b2d')+'">'+
     '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">'+

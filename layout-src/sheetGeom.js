@@ -187,6 +187,9 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
   const gableH = (x) => H + Math.min(Math.max(x, 0), Math.max(W - x, 0)) * pitch
   const flatH = () => H
   const g = geom && geom.W === W && geom.L === L ? geom : null // geometry only while the size matches the quote
+  // the program's CCI peak / center clearance — only while the leg height is still the quote's too
+  const clr = g && g.clr && Number(g.H) === H && isFinite(g.clr.peak) && isFinite(g.clr.center) ? g.clr : null
+  const pm = String(building.pitch || '').match(/(\d+(?:\.\d+)?)\s*:\s*12/), pitchTxt = pm ? `${pm[1]}:12` : ''
   const lts = g && Array.isArray(g.leanTos) ? g.leanTos : []
   const eaveLTs = lts.filter((l) => l.k === 'left' || l.k === 'right')
   const gableLTs = lts.filter((l) => l.k === 'front' || l.k === 'back')
@@ -202,24 +205,24 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
   // openings can be dragged / placed on it; lean-to walls only when they have openings.
   const push = (spec) => { if (spec.items.length || (spec.notes && spec.notes.length) || (opts.all && spec.wall && !spec.open)) out.push(spec) }
   const ltFoot = (l, x0) => ({ x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` })
-  const ltSide = (l, onLeft) => ({ onLeft, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` })
+  const ltSide = (l, onLeft) => ({ onLeft, n: l.n, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` })
 
   // gable views (as you stand outside facing the wall)
   const frontOpen = hybrid ? building.openEnd === 'front' : (carport || !!open.front)
   const backOpen = hybrid ? building.openEnd === 'back' : (carport || !!open.back)
   push({
-    key: 'front', wall: 'front', title: 'Front gable', sub: 'seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
+    key: 'front', wall: 'front', title: 'Front gable', sub: 'seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
     items: on('front'), ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: frontOpen,
     side: eaveLTs.map((l) => ltSide(l, l.k === 'left')), foot: gableLTs.filter((l) => l.k === 'front').map((l) => ltFoot(l, l.start)),
   })
   push({
-    key: 'back', wall: 'back', title: 'Back gable', sub: 'seen from behind', faceW: W, gable: true, eave: H, peak, h: gableH,
+    key: 'back', wall: 'back', title: 'Back gable', sub: 'seen from behind', faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
     items: on('back'), ends: ['RIGHT EAVE', 'LEFT EAVE'], truss: [], oc: 0, open: backOpen,
     side: eaveLTs.map((l) => ltSide(l, l.k === 'right')), foot: gableLTs.filter((l) => l.k === 'back').map((l) => ltFoot(l, l.start)),
   })
   if (hybrid) {
     push({
-      key: 'divider', wall: 'divider', title: 'Partition wall', sub: 'enclosed bay · seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH,
+      key: 'divider', wall: 'divider', title: 'Partition wall', sub: 'enclosed bay · seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
       items: on('divider'), ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: false, side: [], foot: [],
     })
   }
@@ -227,7 +230,7 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
     const p = g.partition
     push({
       key: 'partition', title: 'Storage partition (interior)', sub: `${fmtFtIn(p.depth)} from the ${p.end} end · seen from the front`,
-      faceW: W, gable: true, eave: H, peak, h: gableH,
+      faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
       items: p.items.map((it, i) => ({ x: e8(it.x) / 96, w: e8(it.w) / 96, h: e8(it.h || it.w) / 96, sill: e8(it.yo || 0) / 96, type: it.type, role: progRole(it.type), id: 'p' + i })),
       ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: false, side: [], foot: [],
     })
@@ -333,8 +336,42 @@ export function leanToSpecs(l, tFront = [], oc = 0) {
  * line, chain + overall rows, total height. maxH caps the drawn wall height so
  * two or three elevations fit a letter page.
  */
+/**
+ * The gable peak label — the program's own text (spacing page _dimPeakTxt): the
+ * CCI handbook figure when the quote has one (top of the truss; top of the roof
+ * on a vertical roof), else the geometric ridge H + W/2 · pitch.
+ */
+export function peakTxt(spec) {
+  const pt = spec.pitchTxt ? ` · ${spec.pitchTxt}` : ''
+  return spec.clr ? `Peak ≈ ${fmtFtIn(spec.clr.peak)} (top of ${spec.clr.to || 'truss'})${pt}` : `Peak ${fmtFtIn(spec.peak)}${pt}`
+}
+/** A lean-to's own heights (owner 10/9/26), the program's values: HIGH at the attachment = conn, LOW at the outer post = low eave. */
+export const ltHighTxt = (q) => `${q.label} high ${fmtFtIn(q.conn)}`
+export const ltLowTxt = (q) => `${q.label} low ${fmtFtIn(q.low)}`
+/** Approximate text width (px) at a font size — for keeping labels inside the margins / clear of each other. */
+export const textW = (t, sz) => String(t).length * sz * 0.6
+/**
+ * The height labels of one elevation: the main leg ("Main 16′ leg" when lean-tos
+ * show end-on — it is then dimensioned ON the main wall corner), and on a lean-to
+ * end wall / partition (sloped) its LOW (outer post) and HIGH (main wall) ends.
+ */
+export function heightLabels(spec) {
+  const F = spec.faceW, side = spec.side || []
+  if (spec.sloped && spec.lt != null) {
+    const low0 = (spec.ends || [])[0] === 'OUTER POST', n = `LT${spec.lt}`
+    return { leg: `${n} ${low0 ? 'high' : 'low'} ${fmtFtIn(spec.h(F))}`, h0: `${n} ${low0 ? 'low' : 'high'} ${fmtFtIn(spec.h(0))}` }
+  }
+  return { leg: `${side.length ? 'Main ' : ''}${fmtFtIn(spec.h(F))}${spec.sloped ? '' : ' leg'}`, h0: spec.sloped ? fmtFtIn(spec.h(0)) : '' }
+}
+
 export function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT = 42 } = {}) {
   let extL = 0, extR = 0
+  const sideL = (spec.side || []).filter((q) => q.onLeft), sideR = (spec.side || []).filter((q) => !q.onLeft)
+  const hl = heightLabels(spec)
+  const lowW = (arr) => arr.reduce((m, q) => Math.max(m, textW(ltLowTxt(q), FS.lt)), 0)
+  if (sideL.length) mL = Math.max(mL, Math.ceil(lowW(sideL)) + 34)
+  if (sideL.length || sideR.length) mR = Math.max(mR, Math.ceil(sideR.length ? lowW(sideR) : textW(hl.leg, FS.leg)) + 40)
+  if (spec.sloped && spec.lt != null) { mL = Math.max(mL, Math.ceil(textW(hl.h0, FS.leg)) + 16); mR = Math.max(mR, Math.ceil(textW(hl.leg, FS.leg)) + 34) }
   ;(spec.side || []).forEach((q) => { if (q.onLeft) extL = Math.max(extL, q.w); else extR = Math.max(extR, q.w) })
   ;(spec.items || []).forEach((it) => { extL = Math.max(extL, -it.x); extR = Math.max(extR, it.x + it.w - spec.faceW) })
   const span = spec.faceW + extL + extR
@@ -350,8 +387,11 @@ export function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT =
   const step = FS.chain + 3.5
   const rowY = (row) => (row === 0 ? dy - 7 : dy + 4 + step * row - 3.5)
   const dy2 = segs.length ? rowY(Math.max(1, usedRows)) + 24 : gy + 30 // overall dimension line
-  const VH = Math.round(dy2 + FS.end + 20)
-  return { s, ox, gy, dy, dy2, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR }
+  // lean-tos end-on: that line reads "LT · main · LT", the overall width one row further down
+  const wL = sideL.reduce((m, q) => Math.max(m, q.w), 0), wR = sideR.reduce((m, q) => Math.max(m, q.w), 0)
+  const dy3 = sideL.length || sideR.length ? dy2 + FS.end + 30 : null
+  const VH = Math.round(dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20)
+  return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl }
 }
 
 // ── pagination ─────────────────────────────────────────────────────────────
