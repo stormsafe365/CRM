@@ -4548,6 +4548,30 @@ function populateLength(){
 
 var _prevOcWidth = -1; // last width doBld saw — resets the 4' OC upgrade on width change
 var _wsAutoVert = false; // true only while ws=Vertical came from the >30ft auto rule (not manual/restored)
+// ── Palm Beach County (owner rule 10/9/26): CCI requires 4' OC AND 12-gauge framing on EVERY
+// building size. 12 GA locks through the hi-wind 12GA rule in rc() (cciPBRule() joins _req12);
+// _cciPBLock also locks the 4' OC truss spacing on the buildings that offer the choice (24' wide
+// and narrower, not wide span — wider is 4' OC as standard). Same rep override as the hi-wind rule
+// (_fu14Override / _fu12Reapply). Priced by the existing CCI rules: <=24' wide 12GA + 4' OC = the
+// book's combined row (cciCombo12x4); >24' as before. Other counties: unchanged.
+function cciPBRule(){ return ACTIVE_MFR==='CCI' && ((G('county')||{}).textContent||'')==='Palm Beach'; }
+function _cciPBLock(w, bt){
+  var oc=G('oc-spacing');
+  var lock=cciPBRule() && w>0 && w<=24 && bt!=='widespan' && !window._fu14Ovr;
+  if(oc){
+    if(lock){ oc.value='4oc'; oc.disabled=true; oc.title="4' OC required: Palm Beach County (CCI), every building size"; oc.dataset.pbLock='1'; }
+    else if(oc.dataset.pbLock==='1'){ oc.disabled=false; oc.title=''; delete oc.dataset.pbLock; }
+  }
+  if(cciPBRule() && !window._fu14Ovr){ var fu=G('framing-upgrade'); if(fu){ fu.value='12'; fu.disabled=true; } }
+}
+function _pbNote(kind){
+  var w=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||'', oc=(w>0 && w<=24 && bt!=='widespan');
+  var what=oc?'4&#39; OC + 12-gauge framing':'12-gauge framing';
+  var A=function(fn,txt){ return ' <a href="#" onclick="'+fn+';return false;" style="color:#b45309;text-decoration:underline;font-weight:800">'+txt+'</a>'; };
+  if(kind==='lock') return (oc?'4&#39; OC + 12-Gauge framing':'12-Gauge framing')+' REQUIRED &amp; auto-applied — Palm Beach County: CCI requires 4&#39; OC and 12-gauge framing on every building size (owner rule 10/9/26; charged upgrade).'+A('_fu14Override()','Override → use 14 GA'+(oc?' / 5&#39; OC':'')+' anyway');
+  if(kind==='grand') return 'GRANDFATHERED — sold before the Palm Beach County framing rule (4&#39; OC + 12-gauge on every CCI building, 10/9/26).'+A('_fu12Reapply()','Apply '+what);
+  return '⚠ OVERRIDE ACTIVE — Palm Beach County framing rule lifted on this build ('+what+' is normally required here).'+A('_fu12Reapply()','Re-apply '+what);
+}
 function doBld(){
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, f=[];
   var bt=G('btype').value;
@@ -4616,12 +4640,13 @@ function doBld(){
   if(framingUpgSel){
     if(bt==='widespan'){
       framingUpgSel.options[0].text='Standard — 14 Gauge';
-      framingUpgSel.options[1].text='Upgrade — 12 Gauge (fixed CA price)';
+      framingUpgSel.options[1].text=(ACTIVE_MFR==='CCI')?'Upgrade — 12 Gauge':'Upgrade — 12 Gauge (fixed CA price)'; // CCI 32'-60': CCI's brochure row (10/9/26)
     } else {
       framingUpgSel.options[0].text='Standard — 14 Gauge';
       framingUpgSel.options[1].text='Upgrade — 12 Gauge';
     }
   }
+  _cciPBLock(w, bt); // Palm Beach County: 12 GA + 4' OC locked before the badge reads them
   var framingGauge = (framingUpgSel&&framingUpgSel.value==='12') ? '12 Gauge' : '14 Gauge';
   // OC spacing row — only for ≤24' wide standard/carport buildings
   var ocRow = G('oc-spacing-row');
@@ -4634,6 +4659,7 @@ function doBld(){
   // sticking to a different, newly-sized ≤24' building.
   if(showOC && ocSel && w!==_prevOcWidth) ocSel.value='5oc';
   _prevOcWidth = w;
+  _cciPBLock(w, bt); // Palm Beach County: 4' OC stays locked after the width-change reset above
   if(bt==='fslean' && ocSel && fsCertMph()>=160) ocSel.value='4oc'; // hi-wind county / 170 override already includes 4' OC
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? (fsCertMph()>=160?" — 4' OC":" — 5' OC") : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
@@ -8590,27 +8616,29 @@ function rc(){
   // than 24' REQUIRES 12-gauge framing (owner rule 9/23/26, Palm Beach etc.).
   // Auto-selected and locked — it's a CHARGED upgrade, priced as normal.
   var _fuF=G('framing-upgrade');
-  var _req12=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0);
+  var _req12=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0) || cciPBRule(); // Palm Beach: every width (owner rule 10/9/26)
+  var _pbN=cciPBRule() && w<=24; // Palm Beach 24' and narrower: the new rule's own notes (wider keeps the 9/23 hi-wind notes)
   // Override memory resets whenever the width class / county / mfr changes, so
   // a NEW hi-wind wide build always starts locked at 12 GA again.
   var _reqKey=ACTIVE_MFR+'|'+(w>24?'wide':'narrow')+'|'+G('county').textContent;
   if(window._req12Key!==_reqKey){ window._req12Key=_reqKey; window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; }
   if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12'){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; } // rep re-picked 12 → re-lock
   if(_fuF){
-    if(_req12 && !window._fu14Ovr){ _fuF.value='12'; _fuF.disabled=true; _fuF.title="12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
+    if(_req12 && !window._fu14Ovr){ _fuF.value='12'; _fuF.disabled=true; _fuF.title=cciPBRule()?"12-gauge + 4' OC required: Palm Beach County (CCI), every building size":"12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
     else { _fuF.disabled=false; _fuF.title=''; }
   }
+  _cciPBLock(w, G('btype').value); // Palm Beach County: 4' OC locked on 24' and narrower (before pricing)
   var _fr12=G('framing-req-note');
   if(_fr12){
     if(_req12 && !window._fu14Ovr){
-      _fr12.innerHTML='12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
+      _fr12.innerHTML=_pbN?_pbNote('lock'):'12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
       _fr12.classList.remove('hidden');
     } else if(_req12 && window._fu14Ovr && window._plGrand && window._plGrand.fu14){
       // Reopened quote sold before the 9/23/26 rule: kept as sold (not a rep override).
-      _fr12.innerHTML='GRANDFATHERED — sold as 14-gauge before the 9/23/26 rule (12 GA is now required on a hi-wind-county build wider than 24&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>';
+      _fr12.innerHTML=_pbN?_pbNote('grand'):'GRANDFATHERED — sold as 14-gauge before the 9/23/26 rule (12 GA is now required on a hi-wind-county build wider than 24&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>';
       _fr12.classList.remove('hidden');
     } else if(_req12 && window._fu14Ovr){
-      _fr12.innerHTML='⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
+      _fr12.innerHTML=_pbN?_pbNote('ovr'):'⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
       _fr12.classList.remove('hidden');
     } else { _fr12.classList.add('hidden'); }
   }
@@ -8674,6 +8702,9 @@ function rc(){
     if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.'+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
     else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the 9/28/26 Lee County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
     else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in Lee County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
+    // Palm Beach County: why the framing is locked (owner rule 10/9/26) — the lock + override live in the framing note.
+    if(_pCci && _pCo==='Palm Beach'){ var _pbOc=((parseInt(G('bw').value)||0)<=24 && G('btype').value!=='widespan');
+      _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Palm Beach County: CCI requires 4\u2019 OC + 12-gauge framing on every building size (owner rule 10/9/26)'+(window._fu14Ovr?' \u2014 <b>override active</b> on this build.':' \u2014 framing locked to 12 GA'+(_pbOc?' / 4\u2019 OC':' (4\u2019 OC is standard at this width)')+'.')+'</div>'; }
     _pBox.innerHTML=_pH; _pBox.style.display=_pH?'block':'none';
   }
   window._materialOnly=!!(_pNoSvc && window._nsOvr);
@@ -10717,7 +10748,9 @@ function _permOvr(k,on){
   else if(k==='ns'){ window._nsOvr=on; var dt=G('delivery-type'); if(dt){ if(on){ window._dtPre=dt.value; dt.value='pickup'; } else { dt.value=window._dtPre&&window._dtPre!=='pickup'?window._dtPre:'installed'; } } }
   rc();
 }
-function _fu14Override(){ window._fu14Ovr=true; if(window._plGrand) window._plGrand.fu14=false; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; } rc(); }
+function _fu14Override(){ window._fu14Ovr=true; if(window._plGrand) window._plGrand.fu14=false; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; }
+  var o=G('oc-spacing'); if(o && o.dataset.pbLock==='1'){ o.disabled=false; o.title=''; o.value='5oc'; delete o.dataset.pbLock; doBld(); return; } // Palm Beach: 14 GA / 5' OC
+  rc(); }
 function _fu12Reapply(){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; rc(); }
 function _delivOnly(){var e=G('delivery-type');return !!(e&&(e.value==='delivered'||e.value==='pickup'));}
 function _pickupOnly(){var e=G('delivery-type');return !!(e&&e.value==='pickup');}
@@ -17298,6 +17331,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   var T_UNITS        = tms('2026-09-28T09:40:00-04:00'); // 348a766
   var T_COMBO        = tms('2026-09-28T09:45:00-04:00'); // 6ab9572
   var T_PERMIT       = tms('2026-09-28T10:42:00-04:00'); // 4930a13
+  var T_PB           = tms('2026-10-09T18:00:00-04:00'); // 10-9b: Palm Beach 4' OC + 12GA at every size
   var T_ANCHORS      = tms('2026-07-01T17:18:58-04:00'); // f86f4ce (ground anchors at $68)
   var T_LT_HANDBOOK  = tms('2026-07-24T15:32:09-04:00'); // 23f6db4 (CCI lean-to half-of-2W method)
   PL.RULES = {
@@ -17305,6 +17339,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'crm-12ga':    { commit:'a420769 / 9030ba9', date:'9/14/26', text:"CRM-only CCI 12-gauge table (9/8–9/14) replaced by the builder's table" },
     'side-frames': { commit:'d4c8695', date:'9/18/26', text:"CCI over 30' wide: the framed-opening price now includes the side frame (no separate $150)" },
     'hw-12ga':     { commit:'8d0e77f', date:'9/23/26', text:"CCI hi-wind county, wider than 24': 12-gauge framing required", flag:'fu14' },
+    'pb-framing':  { commit:'10-9b', date:'10/9/26', text:"CCI Palm Beach County: 4' OC + 12-gauge framing required on every building size", flag:'fu14' },
     'cci-units':   { commit:'348a766', date:'9/28/26', text:"CCI past 40' long: 4' OC and 12-gauge priced per connected unit" },
     'combo-12x4':  { commit:'6ab9572', date:'9/28/26', text:"CCI 24' wide or less with 12-gauge + 4' OC: one combined book row" },
     'impact':      { commit:'4930a13', date:'9/28/26', text:'CCI impact county: Hi-Impact windows and Hi-Wind walk doors required', flag:'imp' },
@@ -17526,7 +17561,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var cci=(root.ACTIVE_MFR==='CCI');
     return {
       co:co, w:w, cci:cci,
-      req12: cci && w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0,
+      req12: cci && ((w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0) || co==='Palm Beach'),
+      req4oc: cci && co==='Palm Beach' && w>0 && w<=24 && ((($('btype')||{}).value)||'')!=='widespan',
+      pbN: cci && co==='Palm Beach' && w<=24,
       imp: cci && (IMPACT_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
       lap: cci && co==='Lee',
       ns: cci && NOSVC_CO.indexOf(co)>=0
@@ -17554,16 +17591,19 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(ov){
       root._fu14Ovr=!!ov.fu14; root._impOvr=!!ov.imp; root._lapOvr=!!ov.lap; root._nsOvr=!!ov.ns;
       if(ov.grand){ gf.fu14=!!ov.grand.fu14; gf.imp=!!ov.grand.imp; gf.lap=!!ov.grand.lap; gf.ns=!!ov.grand.ns; }
+      // Palm Beach 4' OC + 12GA at every size (10/9/26): a reopened quote saved before the rule that does
+      // not comply is kept as sold (GRANDFATHERED), never silently re-priced.
+      if(opts.lock && !ov.fu14 && c.pbN && ((f['framing-upgrade']||'14')!=='12' || (c.req4oc && (f['oc-spacing']||'5oc')!=='4oc')) && (tms(data.savedAt)||0)<T_PB){ root._fu14Ovr=true; gf.fu14=true; }
     } else if(opts.lock){
       // Older quotes: infer the flag wherever the saved build differs from what the
       // rule would force. Saved before the rule -> "Grandfathered", else a rep override.
       var sT=tms(data.savedAt)||0;
       var fu=f['framing-upgrade']||'14';
-      root._fu14Ovr=!!(c.req12 && fu!=='12');
+      root._fu14Ovr=!!(c.req12 && fu!=='12') || !!(c.req4oc && (f['oc-spacing']||'5oc')!=='4oc');
       root._impOvr=!!(c.imp && savedNonImpact(data));
       root._lapOvr=!!(c.lap && f.lap!=='yes');
       root._nsOvr=!!(c.ns && f['delivery-type']==='pickup');
-      var t12=(c.co==='St. Lucie')?T_PERMIT:T_HW12;
+      var t12=(c.co==='St. Lucie')?T_PERMIT:(c.pbN?T_PB:T_HW12);
       gf.fu14=root._fu14Ovr && sT<t12;
       gf.imp=root._impOvr && sT<T_PERMIT;
       gf.lap=root._lapOvr && sT<T_PERMIT;
@@ -17577,6 +17617,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   PL.reapplySaved = function(data){
     var f=data.fields||{}, el;
     if(root._fu14Ovr && f['framing-upgrade']!==undefined && (el=$('framing-upgrade'))){ el.disabled=false; el.value=f['framing-upgrade']; }
+    if(root._fu14Ovr && f['oc-spacing']!==undefined && (el=$('oc-spacing'))){ el.disabled=false; el.value=f['oc-spacing']; delete el.dataset.pbLock; }
     if(root._lapOvr && f.lap!==undefined && (el=$('lap'))){ el.disabled=false; el.value=f.lap; root._lapPre=null; }
     if(root._nsOvr && f['delivery-type']!==undefined && (el=$('delivery-type'))) el.value=f['delivery-type'];
     if(root._impOvr){
@@ -17921,7 +17962,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         eff={ sub:r2(r.sub-base.sub), total:r2(r.adjTot-base.adjTot) };
         setFlags(fl0); PL.reapplySaved(data); setThrState(th0); pass();
       }
-      var id=FLAG_RULE[k], R=PL.RULES[id];
+      var id=(k==='fu14' && ruleCtx().pbN)?'pb-framing':FLAG_RULE[k], R=PL.RULES[id];
       var d=decisionFor(id);
       st.rules.push({ id:id, flag:k, commit:R.commit, date:R.date, text:R.text, kind:'input', grandfathered:(k==='ns')?((tms(data.savedAt)||0)<T_PERMIT):!!(root._plGrand&&root._plGrand[k]),
         effectSub:eff.sub, effectTotal:eff.total, decision:d?d.choice:null, reason:d?d.reason:null });
@@ -17947,6 +17988,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   PL.decide = function(ruleId, choice, reason){
     var st=PL.st; if(!st || !PL.on) return false;
     var k=null; for(var fk in FLAG_RULE) if(FLAG_RULE[fk]===ruleId) k=fk;
+    if(ruleId==='pb-framing') k='fu14';
     if(!k) return false;
     if(choice==='keep'){
       reason=String(reason||'').replace(/^\s+|\s+$/g,'');
