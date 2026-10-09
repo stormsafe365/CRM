@@ -3204,7 +3204,9 @@ var MANUFACTURERS = {
       106:[36, 36, 36]
     },
     // ── COMMERCIAL BASE PRICE (32'–60' wide) ─────────────────────────────────
-    // Source: CCI FL Commercial Certified 170 MPH price brochure
+    // Source: CCI FL Commercial Certified 170 MPH price brochure (Price Book 2 p5).
+    // 42x48, 46x28 and 58x48 set to the book 10/9/26 (they were $100 under it;
+    // the book is the authority over the old "46x60 matches Sensei" note).
     // For lengths > 52', CCI requires combination pricing (per dealer handbook)
     // — see combLen below. Lengths within the table (20-52, in 4' steps) are
     // direct lookups; intermediate values interpolate linearly.
@@ -3218,15 +3220,15 @@ var MANUFACTURERS = {
         36: [8195, 9495,10795, 12095, 13395, 14795, 16095, 17395, 18695],
         38: [8595, 9995,11295, 12595, 13895, 15195, 16595, 17895, 19195],
         40: [9195,10595,11895, 13195, 14495, 15795, 17195, 18495, 19795],
-        42: [9595,10895,12195, 13595, 14895, 16195, 17495, 18695, 20195],
+        42: [9595,10895,12195, 13595, 14895, 16195, 17495, 18795, 20195],
         44: [10095,11395,12695,13995, 15395, 16695, 17995, 19295, 20595],
-        46: [10695,11995,13195,14595, 15995, 17295, 18595, 19895, 21195],
+        46: [10695,11995,13295,14595, 15995, 17295, 18595, 19895, 21195],
         48: [11295,12695,13995,15395, 16795, 18195, 19595, 20895, 22295],
         50: [11995,13395,14795,16095, 17495, 18895, 20295, 21695, 22995],
         52: [12495,13895,15195,16595, 17995, 19395, 20795, 22095, 23495],
         54: [13295,14695,16095,17495, 18795, 20195, 21595, 22995, 24395],
         56: [13995,15395,16795,18195, 19595, 20895, 22295, 23695, 25095],
-        58: [14795,16095,17495,18895, 20295, 21695, 22995, 24295, 25795],
+        58: [14795,16095,17495,18895, 20295, 21695, 22995, 24395, 25795],
         60: [15495,16895,18195,19595, 20995, 22395, 23795, 25095, 26495],
         // ── 62'-100' wide (CCI commercial pricing, released April 30, 2026) ──
         62: [19795,21395,22995,24795, 26195, 27795, 29395, 30995, 32795],
@@ -4110,6 +4112,13 @@ function cciWideHeight(h, l){
   var hk=Math.min(24, Math.max(10, Math.ceil(h/2)*2));
   return cciWideUnitSum(l, CCI_WIDE_H.rows[hk]);
 }
+// CCI 32'-60' wide 12-GAUGE framing — CCI's own brochure row (Price Book 2 p6, FL Commercial
+// Certified 170 MPH 32'-60' wide, "OPTIONS": 12 Gauge 20' $840 · 24' $960 · 28' $1,080 ·
+// 32' $1,200 · 36' $1,320 · 40' $1,440 · 44' $1,560 · 48' $1,680 · 52' $1,800), per connected
+// unit past 52' (handbook p6, cciWideUnits; 60' = 28' + 32' = $2,280). 10/9/26 — it was the
+// CA Master Price Book series (360 … 840 to 40', then 1,560 / 1,680 / 1,800, flat past 52').
+var CCI_COM_12GA=[840,960,1080,1200,1320,1440,1560,1680,1800];
+function cciCom12GA(l){ return l ? cciWideUnitSum(l, CCI_COM_12GA) : 0; }
 // Helper: compute CCI 62-100 wide side close (returns BOTH sides combined; caller halves for per-side)
 // Lengths over 52' = connected units (cciWideUnits) — identical to the old
 // combLen pairs up to 104'; past 104' the old [104 + rest] split under-priced
@@ -4975,11 +4984,15 @@ function gLeg(){
              16:[2450,2895,3340,3785,4235,4680,5125,5575,6020],
              18:[3360,3840,4320,4800,5280,5760,6240,6720,7200],
              20:[3790,4470,5115,5830,6510,7190,7865,8545,9225]};
-    // CCI 32'-60' wide PAST 104' LONG: connected units (CCI Dealer Handbook p6 —
-    // 108 = 36+36+36 … 120 = 40+40+40; cciWideUnits), each unit on the SIDE HEIGHT
-    // chart above (10/9/26). Replaces the straight-line extension of the 100' column
-    // of EXT_SH. Up to 104' nothing changes.
-    if(ACTIVE_MFR==='CCI' && w>=32 && w<=60 && l>104) return cciWideUnitSum(l, SHT[hk]||SHT[16]);
+    // CCI 32'-60' wide, EVERY length: connected units (CCI Dealer Handbook p6 "32W-60W
+    // Combinations" — 56 = 28+28 … 104 = 52+52, 108 = 36+36+36 … 120 = 40+40+40;
+    // cciWideUnits), each unit on the SIDE HEIGHT chart above (Price Book 2 p6; 10/9/26).
+    // This replaces, for CCI 32'-60' only: the EXT_SH extended chart past 52' (5' columns;
+    // its 85'-100' 18'/20' rows were re-sampled on a 30' wide = the 12W-30W combinations;
+    // 7'-10' tall fell back to its 16' row), the straight line past 100', and the CA
+    // width stretch at 54'-60' wide x 49'-52' long. 7'-10' tall read the 10' row (the
+    // lowest the brochure lists). EXT_SH stays for CA and for CCI 17'+ standard widths.
+    if(ACTIVE_MFR==='CCI' && w>=32 && w<=60) return cciWideUnitSum(l, SHT[hk]||SHT[16]);
     // Index axis and ext threshold from manufacturer config
     if(l>MFR().shExtThresh){
       var extRow=EXT_SH[hk]||EXT_SH[16]||[];
@@ -5154,7 +5167,7 @@ function ecLookup(w,h){
   while(hk<20 && ecRow[hk]===undefined) hk++; // missing odd heights round UP
   return ecRow[hk]||0;
 }
-function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' past 104' only — scPairLookup)
+function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' only — scPairLookup)
   var w2=w||parseInt(G('bw').value)||0;
   if(w2 % 2 === 1) w2++; // Round odd widths UP (45→46) for pricing lookups
   // ── CCI 62'-100' wide commercial pricing (Apr 30, 2026 release) ──
@@ -5181,11 +5194,13 @@ function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' past 104'
              16:[2040,2450,2855,3265,3670,4080,4490,4895,5305],
              18:[2470,2970,3460,3955,4450,4945,5440,5935,6425],
              20:[2905,3485,4065,4645,5225,5810,6390,6970,7550]};
-    // CCI 32'-60' wide PAST 104' LONG: connected units (CCI Dealer Handbook p6;
-    // cciWideUnits), each unit on the BOTH SIDES CLOSED chart above (10/9/26) — the
-    // pair straight from the chart, one side = half. Replaces the straight-line
-    // extension of the 100' column of the extended chart. Up to 104' nothing changes.
-    if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60 && l>104){
+    // CCI 32'-60' wide, EVERY length: connected units (CCI Dealer Handbook p6;
+    // cciWideUnits), each unit on the BOTH SIDES CLOSED chart above (Price Book 2 p6;
+    // 10/9/26) — the pair straight from the chart, one side = half. This replaces, for
+    // CCI 32'-60' only: the extended chart past 52' (5' columns, a straight line from the
+    // 52' endpoint), the straight line past 100', and the CA width stretch at 54'-60' wide
+    // x 49'-52' long. EXT_BSC stays for CA.
+    if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60){
       var _bscU=cciWideUnitSum(l, BSC[hk]||BSC[16]);
       return pair ? _bscU : Math.round(_bscU/2);
     }
@@ -5254,7 +5269,7 @@ function scPairLookup(h,l,w){
   var w2=w||parseInt(G('bw').value)||0;
   if(w2 % 2 === 1) w2++;
   if(ACTIVE_MFR==='CCI' && w2>=62 && w2<=100) return cciWideSCBothSides(h, l);
-  if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60 && l>104) return scLookup(h,l,w,true); // units: the pair, no $1 rounding drift
+  if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60) return scLookup(h,l,w,true); // units: the pair from the chart, no $1 rounding drift
   return scLookup(h,l,w)*2;
 }
 // Vertical wall upgrade — CA "VERTICAL OR LAP SIDING" tables
@@ -8686,6 +8701,8 @@ function rc(){
       framingUpgrade=fsG12();
     } else if(bt3==='widespan' && cciWideOn(w)){
       framingUpgrade=0; // CCI 62'-100': 12GA is IN the base price (sheet 4/30/26)
+    } else if(bt3==='widespan' && ACTIVE_MFR==='CCI' && w>=32 && w<=60){
+      framingUpgrade=cciCom12GA(l); // CCI's 32'-60' brochure row, per connected unit past 52' (see cciCom12GA)
     } else if(bt3==='widespan'){
       // Wide span: fixed CA price by length column
       var GA12C=[20,25,30,35,40,44,48,52],GA12V=[360,480,600,720,840,1560,1680,1800];
