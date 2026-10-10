@@ -305,7 +305,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="9">9</option><option value="10">10</option><option value="11">11</option>
       <option value="12">12</option><option value="13">13</option><option value="14">14</option>
       <option value="15">15</option><option value="16">16</option><option value="17">17</option>
-      <option value="18">18</option><option value="20">20</option>
+      <option value="18">18</option><option value="20">20</option><option value="22">22</option><option value="24">24</option>
     </select></div>
   <!-- Free-standing lean-to (single slope): pitch + FSB walls. Handbook p.24: the
        order must SAY it's a free-standing lean-to or the customer receives a carport. -->
@@ -4610,8 +4610,14 @@ function _cciMinH(){
   var bh=G('bh'); if(!bh) return;
   var w=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||'';
   var on=ACTIVE_MFR==='CCI' && bt!=='fslean' && w>=32 && w<=60;
-  for(var i=0;i<bh.options.length;i++){ var o=bh.options[i]; if(o.value==='6'||o.value==='7') o.disabled=on; }
+  // 22' and 24': CCI 62'-100' only — the sheet's 22'/24' HEIGHT / SIDES / EACH END rows ("Options for taller legs are
+  // available with upgrades", letter 4/30/26; Sensei offers 8'-24' on 62'-100' and prices them from those rows). W62-4.
+  var tall=bt==='widespan' && cciWideOn(w);
+  for(var i=0;i<bh.options.length;i++){ var o=bh.options[i];
+    if(o.value==='6'||o.value==='7') o.disabled=on;
+    if(o.value==='22'||o.value==='24'){ o.disabled=!tall; o.hidden=!tall; } }
   if(on && bh.value!=='' && (parseInt(bh.value)||0)<8) bh.value='8';
+  if(!tall && (parseInt(bh.value)||0)>20) bh.value='20';
 }
 function doBld(){
   _cciMinH();
@@ -5232,17 +5238,14 @@ function gableOnlyCost(){
   // 72-80 $1,200 · 82-90 $1,350 · 92-100 $1,500.
   var _gwC=parseInt(G('bw')?G('bw').value:0)||0; if(_gwC % 2 === 1) _gwC++;
   if(cciWideOn(_gwC)) return _gwC<=70?1050:(_gwC<=80?1200:(_gwC<=90?1350:1500));
-  // CCI 32'-60' wide (Price Book 2 p6 "Gable End", per end): 32'-40' $600 · 42'-50' $750 · 52'-60' $900 (audit M3/M7).
-  if(_gwC>=32 && _gwC<=60) return _gwC<=40?600:(_gwC<=50?750:900);
+  // 32'-60' gable-only / Half Closed / extended gable frame: OWNER QUESTION (10/9/26) - CCI's flat Gable End table
+  // (Price Book 2 p6 $600 / $750 / $900, per end or per pair not stated) and Sensei (half of the Each End Closed cell per
+  // end) disagree, so these stay as they were until the owner / CCI answers.
   return MFR().gableOnlyPrice||300;
 }
-// Half Closed end (the gable sheeted PLUS a 6' panel). CCI: never less than the Gable End price for the width — the
-// 62'-100' gable is $1,050-$1,500 while the flat Sensei $900 was charged (audit M8, 10/9/26). CCI's books have no
-// Half Closed price of their own (README owner question).
+// Half Closed end (gable + a 6' panel): the flat CCI halfGablePrice, unchanged (owner question, see gableOnlyCost).
 function halfClosedCost(){
-  var p=(typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
-  if(typeof ACTIVE_MFR!=='undefined' && ACTIVE_MFR==='CCI') p=Math.max(p, gableOnlyCost());
-  return p;
+  return (typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
 }
 function sBkt(l){ return l<=22?20:l<=27?25:l<=32?30:l<=37?35:40; }
 function eBkt(w){ return w<=12?12:w<=18?18:w<=20?20:w<=22?22:w<=24?24:w<=26?26:w<=28?28:30; }
@@ -8188,9 +8191,7 @@ function acUnitPrice(comp, el){
   var u=AC_PRICES[comp]!==undefined?AC_PRICES[comp]:0;
   var bw=parseInt(G('bw')?G('bw').value:0)||0; if(bw % 2 === 1) bw++;
   if(ACTIVE_MFR==='CCI' && bw>=32 && bw<=60){
-    // Extended Gable frame charge on 32W-60W = "Double Price of Gable Cost" (Dealer Handbook p14) = 2 x the Gable End
-    // for the width (Price Book 2 p6): $1,200 / $1,500 / $1,800 per end — it was $0 (audit M9, 10/9/26).
-    if(comp.indexOf('Extended Gable Frame Charge')===0 && comp.indexOf('32W-60W')>=0) return 2*gableOnlyCost();
+    // (The Extended Gable frame charge 32W-60W stays at the catalog $0: owner question with the gable ends, see gableOnlyCost.)
     // EAVE-side framed openings up to 16' (Price Book 2 p6 "Side Openings Up To 16'": with garage door $325, without
     // $425; Dealer Handbook p17/p22 "$425 for each frame-out") — the 12'-30' catalog was charged (audit M5/M10).
     // 18'/20' wide: no CCI price — the catalog stays (README).
@@ -8760,14 +8761,14 @@ function rc(){
   // p5 "Any Unit over 36' must be a Vertical Roof Unit", p6 "Units that are connected end-to-end must be vertical").
   // Locked with a note; when the rule lifts (shorter / narrower / CA) the rep's own pick comes back.
   var _rsF=G('rs'), _rsL=parseInt(G('bl').value)||0, _rsW=(w%2)?w+1:w;
-  var _rsWide=(_rsW>=32 && _rsW<=60), _rsReq=ACTIVE_MFR==='CCI' && w>0 && (_rsWide || _rsL>=36);
+  var _rsWide=(_rsW>=32), _rsReq=ACTIVE_MFR==='CCI' && w>0 && (_rsWide || _rsL>=36); // 62'-100' too: vertical only (Sensei, 10/9/26)
   if(_rsF){
     if(_rsReq){ if(_rsF.dataset.rsLock!=='1'){ _rsF.dataset.rsLock='1'; _rsF.dataset.rsPre=_rsF.value; } _rsF.value='Vertical'; _rsF.disabled=true; _rsF.title='Vertical roof required (CCI)'; }
     else if(_rsF.dataset.rsLock==='1'){ _rsF.disabled=false; _rsF.title=''; _rsF.value=_rsF.dataset.rsPre||'Vertical'; delete _rsF.dataset.rsLock; delete _rsF.dataset.rsPre; }
   }
   var _rsN=G('rs-lock-note');
   if(_rsN){ _rsN.classList.toggle('hidden', !_rsReq);
-    if(_rsReq) _rsN.innerHTML='Roof style locked to <b>Vertical</b> — CCI: '+(_rsWide?'32&#39;&ndash;60&#39; wide units are priced as all vertical (Dealer Handbook p18; Price Book 2 p5).':'buildings over 35&#39; long must be vertical roof style (Price Book 2 p1/p3; Dealer Handbook p5/p6).'); }
+    if(_rsReq) _rsN.innerHTML='Roof style locked to <b>Vertical</b> — CCI: '+(_rsWide?(_rsW<=60?'32&#39;&ndash;60&#39; wide units are priced as all vertical (Dealer Handbook p18; Price Book 2 p5).':'62&#39;&ndash;100&#39; wide is sold as vertical only (one price on CCI&#39;s 4/30/26 sheet; Sensei).'):'buildings over 35&#39; long must be vertical roof style (Price Book 2 p1/p3; Dealer Handbook p5/p6).'); }
   // CCI in a hi-wind county (the HW list — certified above 150 MPH) and WIDER
   // than 24' REQUIRES 12-gauge framing (owner rule 9/23/26, Palm Beach etc.).
   // Auto-selected and locked — it's a CHARGED upgrade, priced as normal.
