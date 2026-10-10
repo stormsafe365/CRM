@@ -411,6 +411,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="Boxed Eve">Boxed Eve</option>
       <option value="Regular">Regular</option>
     </select></div>
+  <div id="rs-lock-note" class="hidden" style="margin-bottom:6px;font-size:11px;color:#b45309;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;padding:5px 9px;font-weight:600"></div>
   <!-- Wall Style moved to Section 4 (Wall Options) -->
   <div class="row" id="sheeting-row"><label>Sheeting Gauge</label>
     <select id="sheeting-upgrade" onchange="rc()">
@@ -4176,7 +4177,7 @@ function doZip(z){
       hiEl.style.display='none';
     }
   }
-  doPerm(); sy(); rc();
+  doPerm(); doBld(); // doBld ends with sy(); rc() — badge / GCH / storage lists follow the county rule locks (audit PB-11)
 }
 
 // When a ZIP isn't in the map the user types the county by hand — make that
@@ -4189,21 +4190,24 @@ function onCountyEdit(){
   if(!raw || raw==='—') return;
   var norm=raw.toLowerCase().replace(/\s+/g,' ').replace(/\s+county$/,'').replace(/^(saint|st|st\.)\s+/,'st. ');
   var match=null;
-  for(var k in COUNTY_TAX){ if(k.toLowerCase()===norm){ match=k; break; } }
+  for(var k in COUNTY_TAX){ if(k.toLowerCase()===norm || k.toLowerCase().replace(/-/g,' ')===norm.replace(/-/g,' ')){ match=k; break; } }
   if(!match) return; // unknown county — leave tax as-is (likely out of state)
+  // The county rules (Palm Beach framing, hi-wind 12 GA, impact, Lee lap, no-service) match the canonical name
+  // exactly: "palm beach county" typed by hand now becomes "Palm Beach" (10/9/26 audit PB-12).
+  if(G('county').textContent!==match) G('county').textContent=match;
   var taxRate=COUNTY_TAX[match];
   var taxInput=G('tax'); if(taxInput) taxInput.value=taxRate;
   window._salesTax=taxRate/100;
   if(match==='Lee' && ACTIVE_MFR!=='CCI'){ var lap=G('lap'); if(lap) lap.value='yes'; } // CCI: locked rule in rc()
   var hiEl=G('hi-impact-note'); if(hiEl) hiEl.style.display=(HI_IMPACT_COUNTIES.indexOf(match)>=0)?'block':'none';
-  rc();
+  doBld(); // ends with sy(); rc() — the framing badge, GCH and storage lists follow a county rule lock (audit PB-11)
 }
 
 function doPT(){
   var pt=G('pt').value, f=[];
   G('ag-row').classList.toggle('hidden', pt!=='ag'); // Only show Tax Exempt for Agricultural
   if(pt==='rc2r'||pt==='com'){
-    f.push(bdg('Auto: 170 MPH Wind Cert Required','bo'));
+    f.push(bdg('Auto: Up to 170 MPH Wind Cert Required','bo'));
     f.push(bdg(MFR().autoHighBadge,'bv'));
   }
   if(pt==='rc2r'){
@@ -4231,6 +4235,9 @@ function doPT(){
   doPerm(); rc();
 }
 
+// Owner 10/9/26: a 170 MPH certification always reads "Up to 170 MPH" (screen, quote, contract, revision, spacing
+// page, summary). Display only — the rules work on the plain value before it is written to the page.
+function certLabel(c){ c=String(c==null?'':c); return /^170 MPH/.test(c) ? 'Up to '+c : c; }
 function doPerm(){
   var pm=G('perm').value, co=G('county').textContent, pt=G('pt').value;
   G('perm-yes').classList.toggle('hidden', pm!=='yes');
@@ -4257,7 +4264,7 @@ function doPerm(){
     var _pwNote = G('plans-wide-note'); if(_pwNote) _pwNote.classList.toggle('hidden', !_cciWideP);
     var _paSel = G('plans-sel'); if(_paSel) _paSel.disabled = (_cciTall || _cciWideP);
     G('plans-sel').value = planType;
-    G('cert-req').textContent = cert;
+    G('cert-req').textContent = certLabel(cert); // "Up to 170 MPH" (owner 10/9/26)
     // CA: update As Built/Master Files label to show correct price for property type
     if(MFR().dynamicPlanLabels){
       var pSel=G('plans-sel');
@@ -4555,24 +4562,59 @@ var _wsAutoVert = false; // true only while ws=Vertical came from the >30ft auto
 // (_fu14Override / _fu12Reapply). Priced by the existing CCI rules: <=24' wide 12GA + 4' OC = the
 // book's combined row (cciCombo12x4); >24' as before. Other counties: unchanged.
 function cciPBRule(){ return ACTIVE_MFR==='CCI' && ((G('county')||{}).textContent||'')==='Palm Beach'; }
+// While a rule holds a field it remembers the rep's OWN pick and puts it back when the rule lifts (county / manufacturer
+// / width change; audit PB-5/PB-6, 10/9/26) — leaving Palm Beach or switching to CA no longer keeps a paid 12 GA /
+// 4' OC. A rep override keeps what the override set (restore=false). Truss spacing: pbLock (Palm Beach) and fsAuto
+// (free-standing lean-to, 170 MPH county cert) share one memory (ocPre). A restored quote clears it (PL.restoreFlags).
+function _ocHold(oc, key, on, restore){
+  if(!oc) return;
+  if(on){ if(oc.dataset.pbLock!=='1' && oc.dataset.fsAuto!=='1') oc.dataset.ocPre=oc.value; oc.dataset[key]='1'; oc.value='4oc'; return; }
+  if(oc.dataset[key]!=='1') return;
+  delete oc.dataset[key];
+  if(oc.dataset.pbLock!=='1' && oc.dataset.fsAuto!=='1'){ if(restore!==false) oc.value=oc.dataset.ocPre||'5oc'; delete oc.dataset.ocPre; }
+}
+function _fuHold(fu, on, restore){
+  if(!fu) return;
+  if(on){ if(fu.dataset.reqLock!=='1'){ fu.dataset.reqLock='1'; fu.dataset.reqPre=fu.value; } fu.value='12'; fu.disabled=true; return; }
+  if(fu.dataset.reqLock==='1'){ var p=fu.dataset.reqPre; delete fu.dataset.reqLock; delete fu.dataset.reqPre; if(restore) fu.value=(p==='12')?'12':'14'; }
+}
 function _cciPBLock(w, bt){
   var oc=G('oc-spacing');
   var lock=cciPBRule() && w>0 && w<=24 && bt!=='widespan' && !window._fu14Ovr;
   if(oc){
-    if(lock){ oc.value='4oc'; oc.disabled=true; oc.title="4' OC required: Palm Beach County (CCI), every building size"; oc.dataset.pbLock='1'; }
-    else if(oc.dataset.pbLock==='1'){ oc.disabled=false; oc.title=''; delete oc.dataset.pbLock; }
+    if(lock){ _ocHold(oc,'pbLock',true); oc.disabled=true; oc.title="4' OC required: Palm Beach County (CCI), every building size"; }
+    else if(oc.dataset.pbLock==='1'){ oc.disabled=false; oc.title=''; _ocHold(oc,'pbLock',false,!window._fu14Ovr); }
   }
-  if(cciPBRule() && !window._fu14Ovr){ var fu=G('framing-upgrade'); if(fu){ fu.value='12'; fu.disabled=true; } }
+  if(cciPBRule() && !window._fu14Ovr) _fuHold(G('framing-upgrade'),true);
+}
+// The "12/14 Gauge Framing — 4'/5' OC" badge text for the CURRENT fields (doBld draws it; rc() keeps it in step
+// with a rule lock or release made after the badge was drawn — audit PB-11, 10/9/26).
+function _framingBadgeText(){
+  var w=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||'', fu=G('framing-upgrade'), oc=G('oc-spacing');
+  var showOC=(w>0 && w<=24 && bt!=='widespan');
+  var oct=showOC ? ((oc&&oc.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? (fsCertMph()>=160?" — 4' OC":" — 5' OC") : " — 4' OC");
+  return ((fu&&fu.value==='12')?'12 Gauge':'14 Gauge')+' Framing'+oct;
 }
 function _pbNote(kind){
   var w=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||'', oc=(w>0 && w<=24 && bt!=='widespan');
   var what=oc?'4&#39; OC + 12-gauge framing':'12-gauge framing';
+  var ocOvr=oc && !(bt==='fslean' && fsCertMphCo()>=160); // fslean: the county's 170 MPH cert keeps 4' OC after an override
   var A=function(fn,txt){ return ' <a href="#" onclick="'+fn+';return false;" style="color:#b45309;text-decoration:underline;font-weight:800">'+txt+'</a>'; };
-  if(kind==='lock') return (oc?'4&#39; OC + 12-Gauge framing':'12-Gauge framing')+' REQUIRED &amp; auto-applied — Palm Beach County: CCI requires 4&#39; OC and 12-gauge framing on every building size (owner rule 10/9/26; charged upgrade).'+A('_fu14Override()','Override → use 14 GA'+(oc?' / 5&#39; OC':'')+' anyway');
+  if(kind==='lock') return (oc?'4&#39; OC + 12-Gauge framing':'12-Gauge framing')+' REQUIRED &amp; auto-applied — Palm Beach County: CCI requires 4&#39; OC and 12-gauge framing on every building size (owner rule 10/9/26; charged upgrade).'+A('_fu14Override()','Override → use 14 GA'+(ocOvr?' / 5&#39; OC':'')+' anyway');
   if(kind==='grand') return 'GRANDFATHERED — sold before the Palm Beach County framing rule (4&#39; OC + 12-gauge on every CCI building, 10/9/26).'+A('_fu12Reapply()','Apply '+what);
   return '⚠ OVERRIDE ACTIVE — Palm Beach County framing rule lifted on this build ('+what+' is normally required here).'+A('_fu12Reapply()','Re-apply '+what);
 }
+// CCI 32'-60' wide start at 8' tall (Dealer Handbook p6 "All 32-60 wide units start at 8' Tall"; Price Book 2 p5 base
+// "8' to 20' Tall" and the p6 charts start at 8'): 6' and 7' are not offered there (audit M7/M13, 10/9/26).
+function _cciMinH(){
+  var bh=G('bh'); if(!bh) return;
+  var w=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||'';
+  var on=ACTIVE_MFR==='CCI' && bt!=='fslean' && w>=32 && w<=60;
+  for(var i=0;i<bh.options.length;i++){ var o=bh.options[i]; if(o.value==='6'||o.value==='7') o.disabled=on; }
+  if(on && bh.value!=='' && (parseInt(bh.value)||0)<8) bh.value='8';
+}
 function doBld(){
+  _cciMinH();
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, f=[];
   var bt=G('btype').value;
 
@@ -4657,10 +4699,10 @@ function doBld(){
   // A WIDTH change re-evaluates the standard spacing → drop any 4' OC upgrade back
   // to 5' OC (length changes keep the choice). Prevents a prior 4' OC pick from
   // sticking to a different, newly-sized ≤24' building.
-  if(showOC && ocSel && w!==_prevOcWidth) ocSel.value='5oc';
+  if(showOC && ocSel && w!==_prevOcWidth){ ocSel.value='5oc'; if(ocSel.dataset.ocPre) ocSel.dataset.ocPre='5oc'; }
   _prevOcWidth = w;
   _cciPBLock(w, bt); // Palm Beach County: 4' OC stays locked after the width-change reset above
-  if(bt==='fslean' && ocSel && fsCertMph()>=160) ocSel.value='4oc'; // hi-wind county / 170 override already includes 4' OC
+  if(ocSel) _ocHold(ocSel,'fsAuto', bt==='fslean' && fsCertMphCo()>=160); // fslean: hi-wind county / 170 override = 4' OC; the rep's pick comes back when it lifts
   var ocText = showOC ? ((ocSel&&ocSel.value==='4oc')?" — 4' OC":" — 5' OC") : (bt==='fslean' ? (fsCertMph()>=160?" — 4' OC":" — 5' OC") : " — 4' OC");
   if(bt) f.push(bdg(framingGauge+' Framing'+ocText,'bb'));
   if(_delivOnly()) f.push(bdg(''+(_pickupOnly()?'CUSTOMER PICKUP — No Delivery or Installation':'DELIVERED ONLY — No Installation')+'','bo'));
@@ -4700,8 +4742,9 @@ function doBld(){
     if(w&&h&&lowB<7) f.push(bdg('⚠ Low side under 7′ — CCI blocks this (raise height, narrow width, or 2:12 pitch)','bo'));
     if(w&&(w%2)) f.push(bdg('⚠ Odd width — CCI custom quote','bo'));
     var fuF=G('framing-upgrade');
-    if(fuF&&fuF.value==='12'&&fsWidthKey(w)===16&&(parseInt(G('bl').value)||0)===40) f.push(bdg('⚠ Sensei charges $1,220 for 12GA at exactly 16×40 — verify with CCI','bo'));
-    if(fsCertMph()>=160) f.push(bdg('170 MPH + 4ft Wind Cert — $'+fsCert().toLocaleString()+' (in base)','bb'));
+    if(fuF&&fuF.value==='12'&&fsCertMph()<160&&fsWidthKey(w)===16&&(parseInt(G('bl').value)||0)===40) f.push(bdg('⚠ Sensei charges $1,220 for 12GA at exactly 16×40 — verify with CCI','bo'));
+    if(fsCertMph()>=160 && fuF && fuF.value==='12') f.push(bdg('Up to 170 MPH + 4ft Wind Cert — in the 12 GA + 4\' OC row ($'+fsG12().toLocaleString()+', Price Book 2 p2)','bb'));
+    else if(fsCertMph()>=160) f.push(bdg('Up to 170 MPH + 4ft Wind Cert — $'+fsCert().toLocaleString()+' (in base)','bb'));
     else f.push(bdg('150 MPH Wind Cert — included','bb'));
   }
   G('bld-flags').innerHTML=f.join('');
@@ -4796,13 +4839,23 @@ function fsCertMph(){
   if(G('btype')&&G('btype').value==='fslean'){ var _oc=G('oc-spacing'); if(_oc&&_oc.value==='4oc') return 170; }
   // Effective certification for pricing: rep override wins; else FL high-wind
   // county rule (same source the plans logic uses); else 150.
+  return fsCertMphCo();
+}
+// The certification the rep override / county calls for (without the 4' OC pick). #county is a contenteditable SPAN:
+// it was read with .value (always undefined), so a hi-wind county never reached 170 MPH here (audit PB-7, 10/9/26).
+function fsCertMphCo(){
   var ov=G('cert-ovr'); if(ov && ov.value!=='auto') return parseInt(ov.value)||150;
-  var co=G('county')?G('county').value:'';
+  var co=((G('county')||{}).textContent)||'';
   return (typeof HW!=='undefined' && HW.indexOf(co)>=0)?170:150;
 }
 function fsG12(){ // 12GA adder (0 when 14GA)
   var fu=G('framing-upgrade'); if(!fu||fu.value!=='12') return 0;
   var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0; if(!l) return 0;
+  // 12 GA at 170 MPH + 4ft (4' OC): ONE book row, "12G 170mph 4' Centers" 360/480/600/720/840 (Price Book 2 p2, 12'-24'
+  // wide; a free-standing lean-to is priced as a 12-wide unit, Dealer Handbook p24), per connected unit past 40' (p6) —
+  // the cert is IN this row (fsCert = 0). Replaces the Sensei ladders (FS_G12 + FS_G12CERT: 45' $935 vs the book's $840)
+  // and the $1,220 at 16x40 (audit PB-3/PB-4, 10/9/26).
+  if(fsCertMph()>=160) return cci12x4Row(l);
   // Sensei charges exactly $1,220 at 16×40 (reproduced 3×). We match the price
   // authority; doBld shows a verify-with-CCI note on that combo.
   if(fsWidthKey(w)===16 && l===40) return 1220;
@@ -4812,7 +4865,11 @@ function fsCert(){ // certification charge (170+4ft ladder; 150/uncert = $0)
   var l=parseInt(G('bl').value)||0; if(!l) return 0;
   if(fsCertMph()<160) return 0;
   var fu=G('framing-upgrade');
-  return (fu&&fu.value==='12')?FS_G12CERT[fsLenIdx(l)]:FS_CERT[fsLenIdx(l)];
+  if(fu&&fu.value==='12') return 0; // in the 12 GA + 4' OC book row (fsG12; audit PB-3)
+  // 14 GA: "14G 170mph 4' Centers" 300/325/350/375/400 (Price Book 2 p2), per connected unit past 40' — the same
+  // numbers as the Sensei ladder FS_CERT at its nodes, without its 10' node rounding / 100' cap (10/9/26).
+  var V=[300,325,350,375,400];
+  return l>40 ? cciUnitSum(l,V) : V[cciColUp(l)];
 }
 function fsSidePrice(sideH, l){
   var row=FS_SIDE[Math.max(7,Math.min(14,sideH))]; if(!row) return 0;
@@ -4913,6 +4970,18 @@ function gBase(){
   var wi=WIDTHS.indexOf(w); if(wi<0) return 0;
   var T=G('rs').value==='Vertical'?PV:(G('rs').value==='Regular'?PR:PB);
   var isWS=(w>=32);
+  // CCI 12'-30' wide (audit units M3a/M3b/M4, 10/9/26): the brochure sizes are FRAME lengths (Price Book 2 p1/p3 "Roof
+  // Length Is 1ft. Longer Than Frame Length"; 20'/25'/30'/35'/40'), so a frame length between columns rounds UP to the
+  // next one, and past 40' the building is connected units (Dealer Handbook p6 12W-30W combinations, 46' roof =
+  // 21'+26' … 101' = 36'+36'+31' — cciUnits, the same split as the 4' OC / 12 GA lines); each unit prices at its roof
+  // tier (frame + 1'). Replaces, for CCI: nearestStd's 1' round-DOWN at frame lengths ending in 1 or 6 (it compared
+  // the frame with ROOF tiers), combination keys read as frame lengths, and the straight line past 106'. Past 101'
+  // roof the handbook lists no combinations: same rule (README).
+  if(ACTIVE_MFR==='CCI' && !isWS){
+    var _cu=cciUnits(l), _cs=0;
+    for(var _ci=0;_ci<_cu.length;_ci++) _cs+=(T[Math.max(20,_cu[_ci])+1]||[])[wi]||0; // under 20' = the 20' column
+    if(_cs>0) return _cs;
+  }
   if(l<=51&&!isWS){
     // Standard: use CA standard tiers [21,26,31,36,41,46,51]
     var pl=nearestStd(l);
@@ -5018,7 +5087,9 @@ function gLeg(){
     // 7'-10' tall fell back to its 16' row), the straight line past 100', and the CA
     // width stretch at 54'-60' wide x 49'-52' long. 7'-10' tall read the 10' row (the
     // lowest the brochure lists). EXT_SH stays for CA and for CCI 17'+ standard widths.
-    if(ACTIVE_MFR==='CCI' && w>=32 && w<=60) return cciWideUnitSum(l, SHT[hk]||SHT[16]);
+    // 8' is the BASE height (Dealer Handbook p6 "All 32-60 wide units start at 8' Tall"; Price Book 2 p5 base "8' to 20'
+    // Tall", the p6 SIDE HEIGHT chart starts at 10'): no leg charge at 8' (audit M1/O1, 10/9/26). 9' reads the 10' row.
+    if(ACTIVE_MFR==='CCI' && w>=32 && w<=60) return h<=8 ? 0 : cciWideUnitSum(l, SHT[hk]||SHT[16]);
     // Index axis and ext threshold from manufacturer config
     if(l>MFR().shExtThresh){
       var extRow=EXT_SH[hk]||EXT_SH[16]||[];
@@ -5050,6 +5121,15 @@ function gLeg(){
       shVal=Math.round(shVal+shRate*(w-SHC[ci]));
     }
     return shVal;
+  }
+  // CCI 12'-30' wide up to 16' (audit M5, 10/9/26): the SIDE HEIGHT chart per connected unit (Price Book 2 p2 12'-24',
+  // p4 26'-30'; Dealer Handbook p6 — cciUnits), each unit's FRAME length rounded UP to its column (the HU rows hold the
+  // book; index = the unit's roof tier). Replaces the straight line from the 20'/40' cells past 40', EXT_SH_30 and the
+  // 1' round-down at frame lengths ending in 1 or 6. 17'+ (commercial chart) is unchanged.
+  if(ACTIVE_MFR==='CCI' && h<=16){
+    var _hr=(w<=24?HU_N:HU_M)[h]||[], _hu=cciUnits(l), _hs=0;
+    for(var _hi=0;_hi<_hu.length;_hi++) _hs+=_hr[LENGTHS.indexOf(Math.max(20,_hu[_hi])+1)]||0; // under 20' = the 20' column
+    return _hs;
   }
   // Standard (12-30ft): use HU tables for l<=40, EXT_SH_30 for 30ft, extrapolate others
   var hk2=h<=16?h:(h<=18?18:20);
@@ -5152,7 +5232,17 @@ function gableOnlyCost(){
   // 72-80 $1,200 · 82-90 $1,350 · 92-100 $1,500.
   var _gwC=parseInt(G('bw')?G('bw').value:0)||0; if(_gwC % 2 === 1) _gwC++;
   if(cciWideOn(_gwC)) return _gwC<=70?1050:(_gwC<=80?1200:(_gwC<=90?1350:1500));
+  // CCI 32'-60' wide (Price Book 2 p6 "Gable End", per end): 32'-40' $600 · 42'-50' $750 · 52'-60' $900 (audit M3/M7).
+  if(_gwC>=32 && _gwC<=60) return _gwC<=40?600:(_gwC<=50?750:900);
   return MFR().gableOnlyPrice||300;
+}
+// Half Closed end (the gable sheeted PLUS a 6' panel). CCI: never less than the Gable End price for the width — the
+// 62'-100' gable is $1,050-$1,500 while the flat Sensei $900 was charged (audit M8, 10/9/26). CCI's books have no
+// Half Closed price of their own (README owner question).
+function halfClosedCost(){
+  var p=(typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
+  if(typeof ACTIVE_MFR!=='undefined' && ACTIVE_MFR==='CCI') p=Math.max(p, gableOnlyCost());
+  return p;
 }
 function sBkt(l){ return l<=22?20:l<=27?25:l<=32?30:l<=37?35:40; }
 function eBkt(w){ return w<=12?12:w<=18?18:w<=20?20:w<=22?22:w<=24?24:w<=26?26:w<=28?28:30; }
@@ -5260,6 +5350,16 @@ function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' only — 
     }
     return Math.round(bscVal/2);
   }
+  // CCI 12'-30' wide up to 16' (audit O3 + units, 10/9/26): the BOTH SIDES CLOSED row of the building's OWN height
+  // (Price Book 2 p2/p4: 6', 7', 8'-9', 10', 11'-12', 13', 14'-15', 16' — SC holds those rows; the even key above read
+  // 6'/7' as 8', 9' as 10', 13' as 14', 15' as 16'), per connected unit past 40' (Dealer Handbook p6, cciUnits), each
+  // FRAME length rounded UP to its column. The pair comes straight from the chart (no $1 drift); one side = half.
+  // Replaces the straight line past 40' and EXT_BSC_30. 17'+ (commercial chart) is unchanged.
+  if(ACTIVE_MFR==='CCI' && h<=16){
+    var _sr=SC[Math.max(6,h)]||SC[16], _su=cciUnits(l), _ss=0;
+    for(var _si=0;_si<_su.length;_si++) _ss+=_sr[Math.max(20,_su[_si])]||0; // under 20' (a GCH's enclosed part) = the 20' column
+    return pair ? _ss : Math.round(_ss/2);
+  }
   // Standard (12-30ft): use SC table for l<=40, EXT_BSC_30 for w=30 l>40
   var SC_COLS=[20,25,30,35,40];
   if(l>40 && w2===30 && EXT_BSC_30[hk]){
@@ -5296,6 +5396,7 @@ function scPairLookup(h,l,w){
   if(w2 % 2 === 1) w2++;
   if(ACTIVE_MFR==='CCI' && w2>=62 && w2<=100) return cciWideSCBothSides(h, l);
   if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60) return scLookup(h,l,w,true); // units: the pair from the chart, no $1 rounding drift
+  if(ACTIVE_MFR==='CCI' && w2<=30 && (parseInt(h)||0)<=16) return scLookup(h,l,w,true); // 12'-30': the pair from the chart (audit O3)
   return scLookup(h,l,w)*2;
 }
 // Vertical wall upgrade — CA "VERTICAL OR LAP SIDING" tables
@@ -5324,6 +5425,9 @@ function vertSideUpcharge(h, l){
   var lk;
   if(l<=20) lk=20; else if(l<=25) lk=25; else if(l<=30) lk=30; else if(l<=35) lk=35; else if(l<=40) lk=40;
   else {
+    // CCI: VERTICAL SIDES (BOTH SIDES) per connected unit (Price Book 2 p2/p4; Dealer Handbook p6, cciUnits) — audit
+    // M6, 10/9/26 (the straight line at the 35'-40' rate under-charged: 24x100x10 $1,320 vs 540+540+480 = $1,560).
+    if(ACTIVE_MFR==='CCI'){ var _vu=cciUnits(l), _vs=0; for(var _vi=0;_vi<_vu.length;_vi++) _vs+=row[_vu[_vi]]||0; return _vs; }
     // Beyond the 40' column: pass through any verified longer anchors
     // (VERT_SIDE_EXT), then edge-rate extrapolate. Falls back to the old
     // 35→40 chart rate when a bucket has no verified anchors.
@@ -5434,16 +5538,21 @@ function cciUnits(L){
 function cciUnitSum(L, v){ // v = [20',25',30',35',40'] column prices
   return cciUnits(L).reduce(function(s,x){ var i=Math.max(0,Math.min(4,Math.round((x-20)/5))); return s+v[i]; },0);
 }
+// CCI option columns 20'/25'/30'/35'/40' are FRAME lengths: a length between two columns rounds UP to the next one,
+// like the base and the units past 40' (audit PB-9 / units M6, 10/9/26 — these lines rounded DOWN: 24' read 20').
+function cciColUp(l){ var S=[20,25,30,35,40]; for(var k=0;k<S.length;k++){ if(S[k]>=l) return k; } return S.length-1; }
+// "12G 170mph 4' Centers" (Price Book 2 p2, 12'-24' wide): 12 GA + 4' OC as ONE row, per connected unit past 40'.
+function cci12x4Row(l){ var V=[360,480,600,720,840]; return l>40 ? cciUnitSum(l,V) : V[cciColUp(l)]; }
+// Side panels (Price Book 2 p2/p4 "Panels 3'": 21'/26'/31'/36' long) — one panel per connected unit (handbook p6,
+// p14). A unit's roof is its frame + 1'; a 41' roof unit has no panel length in the book and keeps the 36' price.
+function cciPanelTiers(l){ return cciUnits(l).map(function(x){ return Math.min(36, Math.max(21, x+1)); }); }
 // CCI 12'-24' wide with BOTH 12-gauge AND 4' centers: the price book prices
 // the pair as ONE option row, "12G 170mph 4' Centers" (360/480/600/720/840),
 // NOT 12G 5' Centers + 14G 4' Centers stacked. Returns that price (per
 // connected unit past 40'), or null when the combo doesn't apply.
 function cciCombo12x4(fu, oc, w, bt, l){
   if(ACTIVE_MFR!=='CCI'||fu!=='12'||oc!=='4oc'||!(w>0&&w<=24)||bt==='widespan'||bt==='fslean') return null;
-  var V=[360,480,600,720,840];
-  if(l>40) return cciUnitSum(l,V);
-  var S=[20,25,30,35,40],i=0; for(var k=0;k<S.length;k++){ if(S[k]<=l) i=k; else break; }
-  return V[i];
+  return cci12x4Row(l); // columns round UP (audit PB-9)
 }
 // CCI 4' OC on the attached lean-tos (Sensei round 3, "170 MPH + 4ft"): each
 // attached lean adds the main's 4' OC column at the LEAN's length (20' →
@@ -5655,7 +5764,7 @@ function gWalls(){
   //     at the peak (MFR().gableOnlyPrice, much cheaper). Was previously bugged —
   //     "Gable Only" was incorrectly charged the same as "Closed" (~$2,800 overcharge).
   var _gablP = gableOnlyCost();
-  var _halfP = (typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
+  var _halfP = halfClosedCost();
   if(fgv==='Closed') t += ecLookup(w, h);
   else if(fgv==='Gable Only') t += _gablP;
   else if(fgv==='Half Closed') t += _halfP;
@@ -5781,12 +5890,18 @@ function eaveHeaderCost(doorWidthFt, bldgWidthFt){
   // CCI 62'-100' wide (sheet 4/30/26): "Side Openings With Garage Door" $750 per
   // opening (header bars up to 16' are standard; a wider header is a CCI upgrade).
   if(cciWideOn(bw)) return 750;
+  // CCI 32'-60' wide: "Side Openings Up To 16' — With Garage Door $325" (Price Book 2 p6; audit M4/O2, 10/9/26).
+  // No CCI price over 16': the wide-span tier below stays for 17'-20' doors (README).
+  if(ACTIVE_MFR==='CCI' && bw>=32 && bw<=60 && dw<=16) return 325;
   if(bw>=32){
     // Wide-span tier (double welds)
     if(dw<=4) return 360;
     if(dw<=16) return 425;
     return 850;                  // 17-20' wide door
   }
+  // CCI 12'-30' wide: "Side Openings — With Garage Door" 6'-10' $150 · 12' $200 · 14' $250 · 16' $300 (Price Book 2
+  // p2/p4; audit M15, 10/9/26). Over 16': no CCI price — the tier below stays (README).
+  if(ACTIVE_MFR==='CCI' && dw<=16) return dw<=10?150:(dw<=12?200:(dw<=14?250:300));
   // Standard tier (12-30 wide buildings)
   if(dw<=12) return 200;
   // CCI 13-16' doors: $250 — reverse-engineered from Sensei door bundles 8/31/26
@@ -6340,7 +6455,8 @@ function sideClosureFeet(val, H){
 function sideClosurePrice(val, H, tier, closedLen, w){
   if(val==='open'||!val) return 0;
   var sp=MFR().sidePanels; if(!sp) return 0;
-  var full=sp.full[tier]||0, halfTrim=sp.halfTrim[tier]||0;
+  var full=0, halfTrim=0, _tl=(tier&&tier.length)?tier:[tier]; // CCI 12'-30': one tier per connected unit (audit M12)
+  for(var _ti=0;_ti<_tl.length;_ti++){ full+=sp.full[_tl[_ti]]||0; halfTrim+=sp.halfTrim[_tl[_ti]]||0; }
   if(val==='closed') return (typeof scLookup==='function')?scLookup(H, closedLen, w):0;
   var m=/^(\d)(_5)?panel$/.exec(val);
   if(m){ var p=parseInt(m[1],10)*full; if(m[2]) p+=Math.round(halfTrim/2); return p; }
@@ -6366,6 +6482,9 @@ function gSidePanels(){
   var H=parseInt(G('bh').value)||0;
   var w=parseInt(G('bw').value)||0;
   if(!H) return 0;
+  // CCI 12'-30' carport / standard: one panel per connected unit (Price Book 2 p2/p4 "Panels 3'"; handbook p6/p14 —
+  // audit M12, 10/9/26: any length over 36' was charged ONE 36' panel). GCH (panels on the open part only): unchanged.
+  if(ACTIVE_MFR==='CCI' && bt!=='gch' && bt!=='widespan' && w<=30) tier=cciPanelTiers(l);
   // For a "Closed" side, the charged length is the open-section length on a GCH,
   // otherwise the full building length.
   var closedLen = (bt==='gch') ? (parseInt(G('gch-open').value)||l) : l;
@@ -6428,11 +6547,12 @@ function updateSidePanelNote(){
   var H=parseInt(G('bh').value)||0;
   var tier=MFR().panelTier(sidePanelLength());
   var w=parseInt(G('bw').value)||0;
+  if(ACTIVE_MFR==='CCI' && w<=30) tier=cciPanelTiers(sidePanelLength()); // per connected unit (audit M12)
   var closedLen=sidePanelLength();
   var parts=[];
   if(lv!=='open') parts.push('Left: '+lbl(lv)+' = $'+sideClosurePrice(lv,H,tier,closedLen,w).toLocaleString());
   if(rv!=='open') parts.push('Right: '+lbl(rv)+' = $'+sideClosurePrice(rv,H,tier,closedLen,w).toLocaleString());
-  note.textContent='Panel tier: '+tier+"' — "+parts.join(' · ');
+  note.textContent=(tier&&tier.length?'Panel tiers (one per connected unit): '+tier.join("' + ")+"'":'Panel tier: '+tier+"'")+' — '+parts.join(' · ');
   note.style.display='block';
 }
 
@@ -8067,6 +8187,22 @@ var AC_PRICES={}; // populated by initMfrPricing() from MANUFACTURERS[ACTIVE_MFR
 function acUnitPrice(comp, el){
   var u=AC_PRICES[comp]!==undefined?AC_PRICES[comp]:0;
   var bw=parseInt(G('bw')?G('bw').value:0)||0; if(bw % 2 === 1) bw++;
+  if(ACTIVE_MFR==='CCI' && bw>=32 && bw<=60){
+    // Extended Gable frame charge on 32W-60W = "Double Price of Gable Cost" (Dealer Handbook p14) = 2 x the Gable End
+    // for the width (Price Book 2 p6): $1,200 / $1,500 / $1,800 per end — it was $0 (audit M9, 10/9/26).
+    if(comp.indexOf('Extended Gable Frame Charge')===0 && comp.indexOf('32W-60W')>=0) return 2*gableOnlyCost();
+    // EAVE-side framed openings up to 16' (Price Book 2 p6 "Side Openings Up To 16'": with garage door $325, without
+    // $425; Dealer Handbook p17/p22 "$425 for each frame-out") — the 12'-30' catalog was charged (audit M5/M10).
+    // 18'/20' wide: no CCI price — the catalog stays (README).
+    var _foL=el&&el.querySelector('.fo-loc');
+    if(comp.indexOf('Framed Opening')===0 && comp.indexOf('(Custom Size)')<0 && _foL && isEaveSide(_foL.value)){
+      var _foM=/\((\d+)'?(?:-(\d+)')? Wide\)/.exec(comp), _foW=_foM?parseInt(_foM[2]||_foM[1],10):0;
+      if(_foW && _foW<=16){
+        if(comp.indexOf('Side Opening, No Door')>=0) return 425;
+        if(comp.indexOf('Garage Door (')>=0) return 325;
+      }
+    }
+  }
   if(cciWideOn(bw) && comp.indexOf('Framed Opening')===0 && comp.indexOf('(Custom Size)')<0){
     var loc=el&&el.querySelector('.fo-loc');
     if(loc && isEaveSide(loc.value)){
@@ -8229,7 +8365,7 @@ function foSfVis(entry){
   var note=entry.querySelector('.fo-sf-incl-note');
   if(note) note.classList.toggle('hidden',!(show&&wideCCI));
   if(note && show && wideCCI){ var _bwN=parseInt(G('bw').value)||0; if(_bwN % 2 === 1) _bwN++;
-    note.innerHTML=cciWideOn(_bwN)?'CCI 62&#39;&ndash;100&#39; wide side opening (CCI 4/30/26): $750 with a garage door &middot; $1,250 without (up to 20&#39;) &mdash; side frame &amp; header included':'Side frame &amp; header included in the framed-opening price (CCI over 30&#39; wide)'; }
+    note.innerHTML=cciWideOn(_bwN)?'CCI 62&#39;&ndash;100&#39; wide side opening (CCI 4/30/26): $750 with a garage door &middot; $1,250 without (up to 20&#39;) &mdash; side frame &amp; header included':(_bwN>=32&&_bwN<=60)?'CCI 32&#39;&ndash;60&#39; wide side opening (Price Book 2 p6): $325 with a garage door &middot; $425 without (up to 16&#39;) &mdash; side frame &amp; header included':'Side frame &amp; header included in the framed-opening price (CCI over 30&#39; wide)'; }
   r.classList.toggle('hidden',!show||wideCCI);
   if(!show||wideCCI){ var sf=entry.querySelector('.fo-sf'); if(sf) sf.value='0'; }
 }
@@ -8441,7 +8577,11 @@ function qMoney(sub){
 }
 // Engineered-plans fee for a subtotal — the one formula the plan note, the text
 // quote, the PDF and the contract all show.
+// CCI 62'-100' wide: "Always add 5% of the total price for site specific plans" (CCI 62'-100' sheet p3; letter 4/30/26:
+// 5% of the full retail cost, max $6,500) — whatever the permit field says (audit W62-1/M11, 10/9/26).
+function _cciWidePlans(){ return ACTIVE_MFR==='CCI' && cciWideOn(parseInt((G('bw')||{}).value)||0); }
 function qPlan(sub){
+  if(_cciWidePlans() && !(G('perm')&&G('perm').value==='yes')) return {planType:'Site Specific Plans', planCost:MFR().planCostFn('Site Specific Plans',sub,false), always:true};
   if(!G('perm')||G('perm').value!=='yes') return {planType:'', planCost:0};
   var plansSel=G('plans-sel');
   var planType=plansSel?plansSel.value:MFR().defaultPlan;
@@ -8452,6 +8592,7 @@ function qPlan(sub){
 function qPlanNote(pl){
   var pn=G('plnote'); if(!pn) return;
   var perm=G('perm').value;
+  if(pl && pl.always){ pn.textContent='Engineering Plans: '+MFR().planDisplayFn(pl.planType,pl.planCost)+' | CCI 62\'-100\' wide: always charged, permit or not (CCI 4/30/26) | Invoiced separately after deposit. Not included in total above.'; pn.className='pnote'; return; }
   if(perm==='yes'){
     if(pl.planType==='No Permit Required'){
       pn.textContent='No permit required for this county.';
@@ -8602,6 +8743,7 @@ function rc(){
   //    These references appear ~250 lines before the original declaration; without this
   //    early declaration `w` was `undefined`, causing `w<=24` to be false in every check
   //    and silently wrong values (e.g. 12GA $650 instead of $600 on a 24'-wide quote).
+  _cciMinH(); // CCI 32'-60' start at 8' tall (audit M7/M13)
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6;
   // CCI 17'+ = AUTOMATIC vertical sidewalls (owner rule 9/1/26 — Sensei locks
   // vertical at 17+; Chris's 30x98x18 went out horizontal because we didn't).
@@ -8612,22 +8754,40 @@ function rc(){
     if(ACTIVE_MFR==='CCI' && h>=17){ _wsF.value='Vertical'; _wsF.disabled=true; _wsF.title="Vertical is automatic at 17'+ walls (CCI)"; }
     else { _wsF.disabled=false; _wsF.title=''; }
   }
+  // CCI roof style (audit pricebook M2 / units M2 / zero-fallbacks M1-M3, 10/9/26): VERTICAL is required for 32'-60'
+  // wide ("32'-60' Wide units are priced as all vertical", Dealer Handbook p18; Price Book 2 p5 has one table) and for
+  // any building over 35' long ("Buildings over 35 feet long must be vertical roof style", Price Book 2 p1/p3; handbook
+  // p5 "Any Unit over 36' must be a Vertical Roof Unit", p6 "Units that are connected end-to-end must be vertical").
+  // Locked with a note; when the rule lifts (shorter / narrower / CA) the rep's own pick comes back.
+  var _rsF=G('rs'), _rsL=parseInt(G('bl').value)||0, _rsW=(w%2)?w+1:w;
+  var _rsWide=(_rsW>=32 && _rsW<=60), _rsReq=ACTIVE_MFR==='CCI' && w>0 && (_rsWide || _rsL>=36);
+  if(_rsF){
+    if(_rsReq){ if(_rsF.dataset.rsLock!=='1'){ _rsF.dataset.rsLock='1'; _rsF.dataset.rsPre=_rsF.value; } _rsF.value='Vertical'; _rsF.disabled=true; _rsF.title='Vertical roof required (CCI)'; }
+    else if(_rsF.dataset.rsLock==='1'){ _rsF.disabled=false; _rsF.title=''; _rsF.value=_rsF.dataset.rsPre||'Vertical'; delete _rsF.dataset.rsLock; delete _rsF.dataset.rsPre; }
+  }
+  var _rsN=G('rs-lock-note');
+  if(_rsN){ _rsN.classList.toggle('hidden', !_rsReq);
+    if(_rsReq) _rsN.innerHTML='Roof style locked to <b>Vertical</b> — CCI: '+(_rsWide?'32&#39;&ndash;60&#39; wide units are priced as all vertical (Dealer Handbook p18; Price Book 2 p5).':'buildings over 35&#39; long must be vertical roof style (Price Book 2 p1/p3; Dealer Handbook p5/p6).'); }
   // CCI in a hi-wind county (the HW list — certified above 150 MPH) and WIDER
   // than 24' REQUIRES 12-gauge framing (owner rule 9/23/26, Palm Beach etc.).
   // Auto-selected and locked — it's a CHARGED upgrade, priced as normal.
   var _fuF=G('framing-upgrade');
   var _req12=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0) || cciPBRule(); // Palm Beach: every width (owner rule 10/9/26)
-  var _pbN=cciPBRule() && w<=24; // Palm Beach 24' and narrower: the new rule's own notes (wider keeps the 9/23 hi-wind notes)
+  var _pbN=cciPBRule() && w>0 && w<=24; // Palm Beach 24' and narrower: the new rule's own notes (wider keeps the 9/23 hi-wind notes)
   // Override memory resets whenever the width class / county / mfr changes, so
   // a NEW hi-wind wide build always starts locked at 12 GA again.
   var _reqKey=ACTIVE_MFR+'|'+(w>24?'wide':'narrow')+'|'+G('county').textContent;
   if(window._req12Key!==_reqKey){ window._req12Key=_reqKey; window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; }
-  if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12'){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; } // rep re-picked 12 → re-lock
+  // Rep re-picked a COMPLIANT build → re-lock. Palm Beach (24' and narrower, not wide span) needs 4' OC too: a
+  // reopened quote sold at 12 GA / 5' OC stays grandfathered instead of being forced to 4' OC (audit PB-1, 10/9/26).
+  var _pbOcReq=_pbN && G('btype').value!=='widespan';
+  if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12' && !(_pbOcReq && ((G('oc-spacing')||{}).value||'5oc')!=='4oc')){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; }
   if(_fuF){
-    if(_req12 && !window._fu14Ovr){ _fuF.value='12'; _fuF.disabled=true; _fuF.title=cciPBRule()?"12-gauge + 4' OC required: Palm Beach County (CCI), every building size":"12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
-    else { _fuF.disabled=false; _fuF.title=''; }
+    if(_req12 && !window._fu14Ovr){ _fuHold(_fuF,true); _fuF.title=cciPBRule()?"12-gauge + 4' OC required: Palm Beach County (CCI), every building size":"12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
+    else { _fuHold(_fuF,false,!_req12); _fuF.disabled=false; _fuF.title=''; } // rule lifted (county / width / mfr): the rep's own pick comes back (audit PB-5/PB-6)
   }
   _cciPBLock(w, G('btype').value); // Palm Beach County: 4' OC locked on 24' and narrower (before pricing)
+  var _bfl=G('bld-flags'); if(_bfl){ var _fbt=_framingBadgeText(); [].forEach.call(_bfl.children,function(c){ if(/^1[24] Gauge Framing/.test(c.textContent) && c.textContent!==_fbt) c.textContent=_fbt; }); } // audit PB-11
   var _fr12=G('framing-req-note');
   if(_fr12){
     if(_req12 && !window._fu14Ovr){
@@ -8752,7 +8912,7 @@ function rc(){
         var ga12rate=(GA12SV[4]-GA12SV[3])/5;
         framingUpgrade=(ACTIVE_MFR==='CCI')?cciUnitSum(l,GA12SV):Math.round(GA12SV[4]+ga12rate*(l-40));
       } else {
-        framingUpgrade=GA12SV[gcis];
+        framingUpgrade=(ACTIVE_MFR==='CCI')?GA12SV[cciColUp(l)]:GA12SV[gcis]; // CCI: round UP (audit PB-9); CA as before
       }
     }
   }
@@ -8765,7 +8925,7 @@ function rc(){
     var OC4S=[20,25,30,35,40], OC4V=[300,325,350,375,400];
     var oci=0; for(var oi=0;oi<OC4S.length;oi++){if(OC4S[oi]<=l)oci=oi;else break;}
     if(l>40){ ocUpgrade=cciUnitSum(l,OC4V); }
-    else { ocUpgrade=OC4V[oci]; }
+    else { ocUpgrade=OC4V[cciColUp(l)]; } // round UP like the base (audit PB-9 / units M6)
     ocLean=cciOC4Leans(); ocUpgrade+=ocLean; // Sensei: each attached lean adds the 4' OC column at its own length
   }
   var _cbR=cciCombo12x4(fuVal, ocSpacingVal, w, bt3, l);
@@ -9136,7 +9296,7 @@ function sy(){
   }
   // Manual override wins everywhere (summary + both PDF paths read G('sc'))
   var _cOv2=G('cert-ovr'); if(_cOv2 && _cOv2.value!=='auto') cert=_cOv2.value+' MPH';
-  G('sc').textContent=cert;
+  G('sc').textContent=certLabel(cert); // "Up to 170 MPH" (owner 10/9/26) — quote PDF / contract / revision / spacing page read this
   var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0, h=parseInt(G('bh').value)||6;
   G('ssz').textContent=(w&&l)?(w+"'W \xD7 "+l+"'L \xD7 "+h+"'H"):'—';
   // Roof Length: standard 6" overhang each end = +1'; 1' gable overhang upgrade = +2'
@@ -10748,10 +10908,10 @@ function _permOvr(k,on){
   else if(k==='ns'){ window._nsOvr=on; var dt=G('delivery-type'); if(dt){ if(on){ window._dtPre=dt.value; dt.value='pickup'; } else { dt.value=window._dtPre&&window._dtPre!=='pickup'?window._dtPre:'installed'; } } }
   rc();
 }
-function _fu14Override(){ window._fu14Ovr=true; if(window._plGrand) window._plGrand.fu14=false; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; }
-  var o=G('oc-spacing'); if(o && o.dataset.pbLock==='1'){ o.disabled=false; o.title=''; o.value='5oc'; delete o.dataset.pbLock; doBld(); return; } // Palm Beach: 14 GA / 5' OC
+function _fu14Override(){ window._fu14Ovr=true; if(window._plGrand) window._plGrand.fu14=false; var f=G('framing-upgrade'); if(f){ f.disabled=false; f.value='14'; delete f.dataset.reqLock; delete f.dataset.reqPre; }
+  var o=G('oc-spacing'); if(o && o.dataset.pbLock==='1'){ o.disabled=false; o.title=''; _ocHold(o,'pbLock',false,false); if(o.dataset.fsAuto!=='1') o.value='5oc'; doBld(); return; } // Palm Beach: 14 GA / 5' OC
   rc(); }
-function _fu12Reapply(){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; rc(); }
+function _fu12Reapply(){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; doBld(); } // doBld: badge / GCH / storage follow the re-applied lock (audit PB-11)
 function _delivOnly(){var e=G('delivery-type');return !!(e&&(e.value==='delivered'||e.value==='pickup'));}
 function _pickupOnly(){var e=G('delivery-type');return !!(e&&e.value==='pickup');}
 function collectQuoteData(){
@@ -10912,7 +11072,9 @@ function collectQuoteData(){
   // which ones are grandfathered, and session price edits. (data.inputMode +
   // the ip-* manual prices are saved above, next to data.mfr.)
   var _gf=window._plGrand||{};
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr,
+  // pbRule: saved by a program that HAS the 10-9b Palm Beach framing rule — a quote without it was made under a program
+  // that did not, so the price lock grandfathers it when it does not comply (audit PB-2, 10/9/26).
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -11887,7 +12049,7 @@ async function printQuote(){
   if(perm==='yes'){
     var plansSel=G('plans-sel');
     planType=plansSel?plansSel.value:MFR().defaultPlan;
-  }
+  } else if(_cciWidePlans()) planType='Site Specific Plans'; // CCI 62'-100': always (audit W62-1)
 
   var needsLift=(parseInt(h)||6)>14||bt2==='widespan';
   document.querySelectorAll('.rlift').forEach(function(el){if(el.style.display!=='none') needsLift=true;});
@@ -11932,7 +12094,7 @@ async function printQuote(){
   var holdPQ=T.holdP||0; // reopened-quote price lock: already inside T.sub (rc's pass)
 
   // Plans HTML (CCI Site Specific = 5% of retail) — fee from the screen's pass
-  if(perm==='yes'){
+  if(perm==='yes' || _cciWidePlans()){
     planCost=T.planCost;
     if(planType==='No Permit Required'){
       plansHTML='<div class="qplans">No permit required for this county.</div>';
@@ -11972,7 +12134,7 @@ async function printQuote(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) rows+=row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) rows+=row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
+  if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
   if(ocUpgradeP) rows+=row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) rows+=row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
@@ -11984,7 +12146,7 @@ async function printQuote(){
   // Closed and Gable-Only are billed and labeled SEPARATELY (different prices).
   var endP = ecLookup(parseInt(w)||0, wallH);
   var gablP = gableOnlyCost();
-  var halfP = (typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
+  var halfP = halfClosedCost();
   var fClosed = (wfgv==='Closed'), bClosed = (wbgv==='Closed');
   var fGable  = (wfgv==='Gable Only'), bGable  = (wbgv==='Gable Only');
   var fHalf   = (wfgv==='Half Closed'), bHalf  = (wbgv==='Half Closed');
@@ -12058,7 +12220,7 @@ async function printQuote(){
   if(bt3p==='fslean'){
     rows+=row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
     rows+=row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
-    if(fsCert()>0) rows+=row('170 MPH + 4ft Wind Certification (included in base)',null,null,0);
+    if(fsCertMph()>=160) rows+=row('Up to 170 MPH + 4ft Wind Certification (included in '+(fsCert()>0?'base':'the 12-gauge framing line')+')',null,null,0);
     // fslean walls are priced by fsWalls() (in the Building Amount) — itemize them
     if(walls) rows+=row(fsWallsDesc(),null,null,walls);
   }
@@ -13477,7 +13639,8 @@ async function printContract(){
   var _planTypeC = G('plans-sel') ? G('plans-sel').value : '';
   var _permSvcC  = G('permit-svc') ? G('permit-svc').value : 'none';
   var _planCostC = 0, _planLabelC = '', _hasPlansC = false;
-  if(permVal === 'yes' && _planTypeC && _planTypeC !== 'No Permit Required'){
+  if(permVal !== 'yes' && _cciWidePlans()) _planTypeC = 'Site Specific Plans'; // CCI 62'-100': always (audit W62-1)
+  if((permVal === 'yes' || _cciWidePlans()) && _planTypeC && _planTypeC !== 'No Permit Required'){
     _planCostC = plC.planCost;
     var _lblMap = (typeof MFR === 'function' && MFR().planLabels) ? MFR().planLabels : {};
     var _rawLbl2 = _lblMap[_planTypeC] || _planTypeC;
@@ -13580,7 +13743,7 @@ async function printContract(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
+  if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
   if(ocUpgradeP) row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
@@ -13590,7 +13753,7 @@ async function printContract(){
   // Closed and Gable-Only are billed and labeled SEPARATELY (different prices).
   var endP_b = ecLookup(parseInt(w)||0, wallH);
   var gablP_b = gableOnlyCost();
-  var halfP_b = (typeof MFR==='function' && MFR().halfGablePrice) ? MFR().halfGablePrice : 0;
+  var halfP_b = halfClosedCost();
   var fClosed_b = (wfgv==='Closed'),    bClosed_b = (wbgv==='Closed');
   var fGable_b  = (wfgv==='Gable Only'), bGable_b  = (wbgv==='Gable Only');
   var fHalf_b   = (wfgv==='Half Closed'), bHalf_b  = (wbgv==='Half Closed');
@@ -13657,7 +13820,7 @@ async function printContract(){
   if(bt3p==='fslean'){
     row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
     row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
-    if(fsCert()>0) row('170 MPH + 4ft Wind Certification (included in base)',null,null,0);
+    if(fsCertMph()>=160) row('Up to 170 MPH + 4ft Wind Certification (included in '+(fsCert()>0?'base':'the 12-gauge framing line')+')',null,null,0);
     // fslean walls are priced by fsWalls() (in the Building Subtotal) — itemize them
     if(walls) row(fsWallsDesc(),null,null,walls);
   }
@@ -16789,7 +16952,7 @@ function textQuote(){
   var insText='None';var iSel=G('insul-sel');
   if(iSel&&iSel.value==='roof')insText='Roof Only';else if(iSel&&iSel.value==='roof-walls')insText='Roof + Walls';
   var planLine='';
-  if(G('perm').value==='yes'){
+  if(G('perm').value==='yes' || _cciWidePlans()){ // CCI 62'-100': always (audit W62-1)
     // Plans fee from the same pass as TOTAL (T.planCost \u2014 the fee the screen's
     // plan note, the PDF and the contract show, priced on T.sub).
     var planType=T.planType;
@@ -17331,7 +17494,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   var T_UNITS        = tms('2026-09-28T09:40:00-04:00'); // 348a766
   var T_COMBO        = tms('2026-09-28T09:45:00-04:00'); // 6ab9572
   var T_PERMIT       = tms('2026-09-28T10:42:00-04:00'); // 4930a13
-  var T_PB           = tms('2026-10-09T18:00:00-04:00'); // 10-9b: Palm Beach 4' OC + 12GA at every size
+  var T_PB           = tms('2026-10-09T18:00:00-04:00'); // 10-9b: Palm Beach 4' OC + 12GA (rule date only — grandfathering uses the save marker data.overrides.pbRule, audit PB-2)
   var T_ANCHORS      = tms('2026-07-01T17:18:58-04:00'); // f86f4ce (ground anchors at $68)
   var T_LT_HANDBOOK  = tms('2026-07-24T15:32:09-04:00'); // 23f6db4 (CCI lean-to half-of-2W method)
   PL.RULES = {
@@ -17582,6 +17745,11 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   // Called by restoreQuoteData right after the county is restored (Step 3b).
   PL.restoreFlags = function(data, opts){
     opts=opts||{};
+    // The fields were just restored: forget what the rule locks remembered of the PREVIOUS build's picks, or a rule
+    // lifting would put those back over the saved ones (rc() re-locks from the saved values).
+    ['framing-upgrade','oc-spacing','rs'].forEach(function(id){ var el=$(id); if(!el) return; var had=false;
+      ['reqLock','reqPre','pbLock','fsAuto','ocPre','rsLock','rsPre'].forEach(function(k){ if(el.dataset[k]!==undefined){ had=true; delete el.dataset[k]; } });
+      if(had) el.disabled=false; });
     var f=data.fields||{}, c=ruleCtx();
     // Pin the rule keys to the restored build so rc() does not reset the flags.
     root._req12Key=root.ACTIVE_MFR+'|'+(c.w>24?'wide':'narrow')+'|'+c.co;
@@ -17593,7 +17761,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       if(ov.grand){ gf.fu14=!!ov.grand.fu14; gf.imp=!!ov.grand.imp; gf.lap=!!ov.grand.lap; gf.ns=!!ov.grand.ns; }
       // Palm Beach 4' OC + 12GA at every size (10/9/26): a reopened quote saved before the rule that does
       // not comply is kept as sold (GRANDFATHERED), never silently re-priced.
-      if(opts.lock && !ov.fu14 && c.pbN && ((f['framing-upgrade']||'14')!=='12' || (c.req4oc && (f['oc-spacing']||'5oc')!=='4oc')) && (tms(data.savedAt)||0)<T_PB){ root._fu14Ovr=true; gf.fu14=true; }
+      // Saved by a program without the rule = no pbRule marker (the go-live moment of each copy: 3D Builder, CRM desktop,
+      // CRM web, NEWTOOL — whenever each one is updated; no clock or commit time involved). Audit PB-2.
+      if(opts.lock && !ov.fu14 && c.pbN && ((f['framing-upgrade']||'14')!=='12' || (c.req4oc && (f['oc-spacing']||'5oc')!=='4oc')) && !ov.pbRule){ root._fu14Ovr=true; gf.fu14=true; }
     } else if(opts.lock){
       // Older quotes: infer the flag wherever the saved build differs from what the
       // rule would force. Saved before the rule -> "Grandfathered", else a rep override.
@@ -17603,7 +17773,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       root._impOvr=!!(c.imp && savedNonImpact(data));
       root._lapOvr=!!(c.lap && f.lap!=='yes');
       root._nsOvr=!!(c.ns && f['delivery-type']==='pickup');
-      var t12=(c.co==='St. Lucie')?T_PERMIT:(c.pbN?T_PB:T_HW12);
+      var t12=(c.co==='St. Lucie')?T_PERMIT:(c.pbN?Infinity:T_HW12); // Palm Beach: a pre-v3 save predates the 10-9b rule
       gf.fu14=root._fu14Ovr && sT<t12;
       gf.imp=root._impOvr && sT<T_PERMIT;
       gf.lap=root._lapOvr && sT<T_PERMIT;
@@ -17617,7 +17787,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   PL.reapplySaved = function(data){
     var f=data.fields||{}, el;
     if(root._fu14Ovr && f['framing-upgrade']!==undefined && (el=$('framing-upgrade'))){ el.disabled=false; el.value=f['framing-upgrade']; }
-    if(root._fu14Ovr && f['oc-spacing']!==undefined && (el=$('oc-spacing'))){ el.disabled=false; el.value=f['oc-spacing']; delete el.dataset.pbLock; }
+    if(root._fu14Ovr && f['oc-spacing']!==undefined && (el=$('oc-spacing'))){ el.disabled=false; el.value=f['oc-spacing']; delete el.dataset.pbLock; delete el.dataset.ocPre; }
     if(root._lapOvr && f.lap!==undefined && (el=$('lap'))){ el.disabled=false; el.value=f.lap; root._lapPre=null; }
     if(root._nsOvr && f['delivery-type']!==undefined && (el=$('delivery-type'))) el.value=f['delivery-type'];
     if(root._impOvr){
@@ -17649,6 +17819,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       if((k==='wre'||k==='wle') && (bt==='carport'||bt==='gch')) return;     // mirrors of the side-panel store
       if(k==='oc-spacing' && (w>24 || bt==='widespan')) return;              // hidden + unpriced there
       if(k==='pitch-sel' && bt==='fslean') return;                           // fslean pitch lives in fs-pitch
+      if(k==='rs' && cci && g.rs==='Vertical' && (($('rs')||{}).dataset||{}).rsLock==='1'){ issues.push('Roof style: saved "'+f[k]+'", now "Vertical" — CCI requires a vertical roof at this size (Dealer Handbook p5/p6/p18; Price Book 2 p1/p3).'); return; }
       issues.push(k+': saved "'+f[k]+'", now "'+g[k]+'"');
     });
     function cmpList(name, a, b, keys, skip){
@@ -18011,7 +18182,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
           var sols=solveHolds(before.sub, function(){ setThrState(th0); });
           if(sols.length){ newH=sols[0].h; sols.forEach(function(s){ if(Math.abs(s.h-(oldH-d))<Math.abs(newH-(oldH-d))) newH=s.h; }); }
           setThrState(th0);
-          parts.push({ k:'nc-'+k, label:NC_LABEL[k]||'Included at no charge', amt:r2(newH-oldH), rules:[ruleId] });
+          var ncLbl=(ruleId==='pb-framing' && ruleCtx().req4oc)?"4' OC + 12-gauge framing (included at no charge)":(NC_LABEL[k]||'Included at no charge'); // audit PB-13
+          parts.push({ k:'nc-'+k, label:ncLbl, amt:r2(newH-oldH), rules:[ruleId] });
           st.hold=newH; st.parts=parts; setHold(st.hold, parts, src);
         }
       }

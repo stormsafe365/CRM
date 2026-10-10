@@ -138,6 +138,9 @@ test('building: size, pitch, wind, truss spacing, gauge, legs, config', () => {
   // saved fields only (no program): spans + OC rule
   const b2 = buildingFromRaw({ fields: { btype: 'standard', bw: '24', bl: '30', bh: '10', 'oc-spacing': '5oc', _span_pitch: '3:12', '_span_cert-req': '150 MPH' } }).building
   assert.equal(b2.trussOC, 5); assert.equal(b2.wind, 150); assert.equal(b2.pitch, '3:12')
+  // the program prints "Up to 170 MPH" since 10/9/26 (owner): still 170 on the sheet
+  assert.equal(buildingFromRaw({ fields: { btype: 'standard', bw: '30', bl: '40', bh: '12', '_span_cert-req': 'Up to 170 MPH' } }).building.wind, 170)
+  assert.equal(buildingFromRaw({ fields: { btype: 'standard', bw: '30', bl: '40', bh: '12', '_span_cert-req': '—' } }).building.wind, 150) // layout default + note
   const gch = buildingFromRaw({ fields: { btype: 'gch', bw: '24', bl: '40', bh: '12', 'gch-open': '20' } }).building
   assert.deepEqual([gch.config, gch.openEnd, gch.openLength, gch.gableSheet], ['hybrid', 'front', 20, 'gable'])
   assert.equal(buildingFromRaw({ fields: { btype: 'carport', bw: '20', bl: '20', bh: '8' } }).building.config, 'carport')

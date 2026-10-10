@@ -173,6 +173,8 @@ export function elevToLayoutOpenings(elev, labels, opts = {}) {
 
 // ── building / finishes from the program (or the payload's saved fields) ───
 const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : null }
+// "150 MPH" / "Up to 170 MPH" (the program's certification text) / 170 -> the number; "N/A" / "—" -> null
+const windNum = (v) => { const m = /(\d+(?:\.\d+)?)\s*MPH/i.exec(String(v ?? '')); return m ? parseFloat(m[1]) : num(v) }
 const LAYOUT_DEFAULT_WIND = 150 // layout-src DEFAULT_BUILDING.wind
 
 /** Program leg style (quote-builder badges, Book 7/16/26): ladder on wide spans, double at 16'+. */
@@ -206,7 +208,8 @@ export function buildingFromRaw(raw, catalogs) {
   const mfrU = String(raw?.mfr || '').toUpperCase()
   const mfr = mfrU === 'CCI' ? 'cci' : 'ca'
   const pitch = String(raw?.pitch || f._span_pitch || '').trim() || (f['pitch-sel'] && f['pitch-sel'] !== 'standard' ? f['pitch-sel'] : '3:12')
-  const wind = num(raw?.wind ?? f['_span_cert-req'])
+  // The program's certification text reads "Up to 170 MPH" since 10/9/26 (owner): take the number in it.
+  const wind = windNum(raw?.wind ?? f['_span_cert-req'])
   const ocSel = f['oc-spacing'] || '5oc'
   const trussOC = num(raw?.trussOC) || ((W <= 24 && btype !== 'widespan' && ocSel !== '4oc') ? 5 : 4)
   const gauge = String(f['framing-upgrade'] || '14') === '12' ? '12' : '14'
