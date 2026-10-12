@@ -438,9 +438,21 @@
     const wL = sideL.reduce((m, q) => Math.max(m, q.w), 0), wR = sideR.reduce((m, q) => Math.max(m, q.w), 0);
     const dy3 = sideL.length || sideR.length ? dy2 + FS.end + 30 : null;
     const wrapFoot = (spec.foot || []).filter((f) => f.wA > 0 || f.wB > 0);
-    const dyW = (i) => (dy3 != null ? dy3 : dy2 + FS.end + 8) + 34 * (i + 1);
-    const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length);
-    return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, dyW };
+    const wrapBelow = wrapFoot.map((f) => (f.len + (f.wA || 0) + (f.wB || 0)) * s < textW(wrapBarLabel(f), FS.lt) + 30);
+    const wrapY = [];
+    let yW = dy3 != null ? dy3 : dy2 + FS.end + 8;
+    wrapFoot.forEach((f, i) => {
+      yW += 34;
+      wrapY.push(yW);
+      if (wrapBelow[i]) yW += 18;
+    });
+    const dyW = (i) => wrapY[i];
+    const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length + 18 * wrapBelow.filter(Boolean).length);
+    return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, wrapBelow, dyW };
+  }
+  function wrapBarLabel(f) {
+    const cw = [f.wA, f.wB].filter((v) => v > 0);
+    return `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(" + ")} corner${cw.length > 1 ? "s" : ""})`;
   }
   function paginate(heights, avail, signH, maxPer = 3, p1Room = 0) {
     const pages = [];
@@ -1090,9 +1102,10 @@
     ;
     (lay.wrapFoot || []).forEach((f, i) => {
       const a = f.x0 - (f.wA || 0), b = f.x0 + f.len + (f.wB || 0), yy = lay.dyW(i);
-      const cw = [f.wA, f.wB].filter((v) => v > 0);
-      const t = `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(" + ")} corner${cw.length > 1 ? "s" : ""})`, bw = textW(t, FS.lt) + 14;
-      els.push(/* @__PURE__ */ React.createElement("g", { key: "wrb" + i }, /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy, x2: X(b), y2: yy, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy - 7, x2: X(a), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(b), y1: yy - 7, x2: X(b), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("rect", { x: X((a + b) / 2) - bw / 2, y: yy - 11, width: bw, height: "22", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: X((a + b) / 2), y: yy + FS.lt * 0.36, textAnchor: "middle", fontSize: FS.lt, fontWeight: "700", fill: TEAL_D, className: "lt-wrap" }, t)));
+      const t = wrapBarLabel(f), bw = textW(t, FS.lt) + 14;
+      const below = !!(lay.wrapBelow && lay.wrapBelow[i]), half = textW(t, FS.lt) * 0.41;
+      const tx = below ? Math.min(Math.max(X((a + b) / 2), half + 4), lay.VW - half - 4) : X((a + b) / 2);
+      els.push(/* @__PURE__ */ React.createElement("g", { key: "wrb" + i }, /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy, x2: X(b), y2: yy, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy - 7, x2: X(a), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(b), y1: yy - 7, x2: X(b), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), below ? null : /* @__PURE__ */ React.createElement("rect", { x: X((a + b) / 2) - bw / 2, y: yy - 11, width: bw, height: "22", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: tx, y: below ? yy + 9 + FS.lt : yy + FS.lt * 0.36, textAnchor: "middle", fontSize: FS.lt, fontWeight: "700", fill: TEAL_D, className: "lt-wrap" }, t)));
     });
     els.push(/* @__PURE__ */ React.createElement("g", { key: "ov" }, /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2, x2: X(F), y2: dy2, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2 - 7, x2: X(0), y2: dy2 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(F), y1: dy2 - 7, x2: X(F), y2: dy2 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("rect", { x: X(F / 2) - mainBox / 2, y: dy2 - 12, width: mainBox, height: "24", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: X(F / 2), y: dy2 + FS.total * 0.36, textAnchor: "middle", fontSize: FS.total, fontWeight: "700", fill: INK, className: "ch-total" }, mainTxt), /* @__PURE__ */ React.createElement("text", { x: X(0), y: dy2 + FS.end + 10, fontSize: FS.end, fontWeight: "700", fill: LINE, letterSpacing: ".1em" }, spec.ends[0]), /* @__PURE__ */ React.createElement("text", { x: X(F), y: dy2 + FS.end + 10, textAnchor: "end", fontSize: FS.end, fontWeight: "700", fill: LINE, letterSpacing: ".1em" }, spec.ends[1])));
     const toSvg = (e) => {

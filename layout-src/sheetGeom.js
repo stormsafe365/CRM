@@ -412,11 +412,22 @@ export function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT =
   // lean-tos end-on: that line reads "LT · main · LT", the overall width one row further down
   const wL = sideL.reduce((m, q) => Math.max(m, q.w), 0), wR = sideR.reduce((m, q) => Math.max(m, q.w), 0)
   const dy3 = sideL.length || sideR.length ? dy2 + FS.end + 30 : null
-  // wrap-around lean-tos on this wall: one "wrap length" bar each, under the overall
+  // wrap-around lean-tos on this wall: one "wrap length" bar each, under the overall. A bar shorter than
+  // its label gets the label UNDER it (no white box over the bar and its end ticks) and an 18px taller row
+  // (verify W2 10/12/26: a 20′ + 12′ bar was hidden under its own label box).
   const wrapFoot = (spec.foot || []).filter((f) => f.wA > 0 || f.wB > 0)
-  const dyW = (i) => (dy3 != null ? dy3 : dy2 + FS.end + 8) + 34 * (i + 1)
-  const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length)
-  return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, dyW }
+  const wrapBelow = wrapFoot.map((f) => (f.len + (f.wA || 0) + (f.wB || 0)) * s < textW(wrapBarLabel(f), FS.lt) + 30)
+  const wrapY = []
+  let yW = dy3 != null ? dy3 : dy2 + FS.end + 8
+  wrapFoot.forEach((f, i) => { yW += 34; wrapY.push(yW); if (wrapBelow[i]) yW += 18 })
+  const dyW = (i) => wrapY[i]
+  const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length + 18 * wrapBelow.filter(Boolean).length)
+  return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, wrapBelow, dyW }
+}
+/** The wrap-length bar's label on an elevation: "LT2 wrap length 36′ (24′ + 12′ corner)". */
+export function wrapBarLabel(f) {
+  const cw = [f.wA, f.wB].filter((v) => v > 0)
+  return `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(' + ')} corner${cw.length > 1 ? 's' : ''})`
 }
 
 // ── pagination ─────────────────────────────────────────────────────────────

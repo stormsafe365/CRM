@@ -73,3 +73,110 @@ test('revision diff: adding a wrap is one priced change, after the lean-to it ne
   // no wraps on either side: no wrap unit (old quotes diff exactly as before)
   assert.deepEqual(diffBuilds(base, { ...base }).units, [])
 })
+
+// ── Verify fixes (10/12/26) ───────────────────────────────────────────────
+import { priceChanges, r2 } from '../src/lib/revisionDiff.js'
+import { applyWrapMarks, wrapMarksOf } from '../src/lib/revisionWrapMarks.js'
+import { wrapBarLabel } from '../layout-src/sheetGeom.js'
+
+// A toy price engine with the program's wrap shape: each lean-to 100·w + 10·l; a corner holds when it is
+// requested and both of its lean-tos are there with the same width; each held corner adds $300 and the
+// corner square to BOTH lean-tos (10·w each) — so a wrap can't hold between two width steps.
+const SIDES = { FL: ['Left Eave', 'Front Gable'], FR: ['Right Eave', 'Front Gable'], BL: ['Left Eave', 'Back Gable'], BR: ['Right Eave', 'Back Gable'] }
+function toyPrice(p) {
+  const lts = p.leantos || []
+  let sum = lts.reduce((s, l) => s + 100 * Number(l.ltw) + 10 * Number(l.ltl2) + 50 * (l.accs || []).length, 0)
+  for (const k of String(p.ltWraps || '').split(',').filter(Boolean)) {
+    const a = lts.find((l) => l.lts === SIDES[k][0]), b = lts.find((l) => l.lts === SIDES[k][1])
+    if (a && b && a.ltw === b.ltw) sum += 300 + 2 * 10 * Number(a.ltw)
+  }
+  return sum
+}
+const LT = (lts, w, l, extra = {}) => ({ lts, ltw: String(w), ltl2: String(l), lth: '10', ltp: '2:12', 'lt-type': 'attached', 'lt-wm': 'open', accs: [], ...extra })
+const B0 = (leantos, ltWraps) => ({ mfr: 'CCI', fields: { bw: '24', bl: '40', bh: '12' }, doors: [], wtds: [], windows: [], addcomps: [], leantos, ...(ltWraps ? { ltWraps } : {}) })
+async function itemize(base, next) {
+  const { units } = diffBuilds(base, next)
+  const res = await priceChanges({ base, units, priceOf: async (p) => toyPrice(p), nextSub: toyPrice(next) })
+  return { units, lines: res.lines.map((l) => [l.desc.replace(/ —.*$/, ''), l.amount]), residual: res.residual }
+}
+
+test('revision order (verify 10/12/26): removing a lean-to with its wrap — the wrap comes off FIRST and carries its own price', async () => {
+  const base = B0([LT('Left Eave', 12, 40), LT('Front Gable', 12, 24)], 'FL')
+  const next = B0([LT('Left Eave', 12, 40)])
+  const r = await itemize(base, next)
+  assert.deepEqual(r.units.map((u) => u.kind + ':' + (u.field || u.cat)), ['field:ltWraps', 'remove:leantos'])
+  assert.deepEqual(r.lines, [['Wrap-around lean-to corners: Front Left → none', -540], ['Remove lean-to attached', -1440]])
+  assert.equal(r.residual, 0)
+})
+
+test('revision order: both wrapped lean-tos narrowed 12 → 10, wrap kept — each lean-to line is its own change, the wrap difference is ONE line', async () => {
+  const base = B0([LT('Left Eave', 12, 40), LT('Front Gable', 12, 24)], 'FL')
+  const next = B0([LT('Left Eave', 10, 40), LT('Front Gable', 10, 24)], 'FL')
+  const r = await itemize(base, next)
+  assert.deepEqual(r.units.map((u) => u.kind + ':' + (u.field || u.cat)), ['field:ltWraps', 'change:leantos', 'change:leantos', 'field:ltWraps'])
+  assert.deepEqual(r.lines.map(([d, a]) => [d.replace(/^Lean-to.*$/, 'Lean-to change'), a]), [
+    ['Lean-to change', -200], ['Lean-to change', -200], ['Wrap-around lean-to corners: Front Left (re-priced for the lean-to change)', -40]])
+  assert.equal(r.lines.reduce((s, [, a]) => s + a, 0), toyPrice(next) - toyPrice(base))
+  assert.equal(r.residual, 0)
+})
+
+test('revision order: a kept wrap whose re-price is $0 prints no line; an accessory-only change never touches the wrap', async () => {
+  // Left lengthened 40 → 45 with FL kept: the corner's price is the same → no wrap line
+  const base = B0([LT('Left Eave', 12, 40), LT('Front Gable', 12, 24)], 'FL')
+  const r = await itemize(base, B0([LT('Left Eave', 12, 45), LT('Front Gable', 12, 24)], 'FL'))
+  assert.deepEqual(r.lines.map(([d]) => d), ['Lean-to attached'])
+  // a door added to the wrapped Left lean-to: one lean-to line, no wrap steps at all
+  const acc = await itemize(base, B0([LT('Left Eave', 12, 40, { accs: [{ 'lt-acc-type': 'wtd', 'lt-acc-qty': '1' }] }), LT('Front Gable', 12, 24)], 'FL'))
+  assert.deepEqual(acc.units.map((u) => u.kind + ':' + (u.field || u.cat)), ['change:leantos'])
+  // adding a wrap still goes on after the lean-to it needs (unchanged)
+  const add = await itemize(B0([LT('Left Eave', 12, 40)]), base)
+  assert.deepEqual(add.lines, [['Add lean-to attached', 1440], ['Wrap-around lean-to corners: none → Front Left', 540]])
+})
+
+// A fake program window for the revision marks (holdBuilderAt → applyWrapMarks).
+function fakePg(lts, active, lens) {
+  const els = lts.map((f, i) => {
+    const F = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, { value: String(v) }]))
+    return { dataset: {}, querySelector: (s) => F[s] || null, _len: lens[i] }
+  })
+  return { els, pg: { document: { querySelectorAll: () => els }, ltWraps: () => ({ active: active.split(',').filter(Boolean) }), ltWrapOf: (el) => ({ len: el._len }) } }
+}
+const F = (lts, w, l, off = 0) => ({ '.lts': lts, '.ltw': w, '.ltl2': l, '.ltoff': off, '.lt-type': 'attached' })
+
+test('revised contract marks (verify 10/12/26): an unchanged wrap tags nothing; a removed wrap tags its lean-tos', () => {
+  // signed config D (FL), reopened in the engine
+  const signed = fakePg([F('Left Eave', 12, 40), F('Front Gable', 12, 24)], 'FL', [52, 36])
+  const marks = wrapMarksOf(signed.pg)
+  assert.deepEqual(marks, { active: 'FL', lts: [{ sig: 'Left Eave|12|40|0|attached', len: 52 }, { sig: 'Front Gable|12|24|0|attached', len: 36 }] })
+  // revision adds a walk door elsewhere: the live build still wraps FL -> marks = today = no tags
+  const live = fakePg([F('Left Eave', 12, 40), F('Front Gable', 12, 24)], 'FL', [52, 36])
+  applyWrapMarks(live.pg, marks)
+  assert.deepEqual(live.els.map((e) => e.dataset.rvWrap), ['52', '36'])
+  assert.equal(live.pg._rvWraps, 'FL')
+  // revision removes the wrap: the lean-tos now price unwrapped -> their marks keep the signed lengths (CHANGED)
+  const unwrapped = fakePg([F('Left Eave', 12, 40), F('Front Gable', 12, 24)], '', [0, 0])
+  applyWrapMarks(unwrapped.pg, marks)
+  assert.deepEqual(unwrapped.els.map((e) => e.dataset.rvWrap), ['52', '36'])
+  // a lean-to the revision added / changed is marked as such; a list that shifted still pairs up by its sig
+  const shifted = fakePg([F('Right Eave', 12, 40), F('Left Eave', 12, 40), F('Front Gable', 12, 24)], 'FL', [0, 52, 36])
+  applyWrapMarks(shifted.pg, marks, (i) => i === 0)
+  assert.deepEqual(shifted.els.map((e) => e.dataset.rvWrap), ['(as signed)', '52', '36'])
+  // no marks (older engine): today's state, so nothing is tagged by the wrap
+  const none = fakePg([F('Left Eave', 12, 40)], 'FL', [52])
+  applyWrapMarks(none.pg, null)
+  assert.deepEqual([none.els[0].dataset.rvWrap, none.pg._rvWraps], ['52', 'FL'])
+})
+
+test('Approval Sheet (verify W2): a wrap bar shorter than its label puts the label under the bar, in a taller row', () => {
+  const g = { ...geom, leanTos: [lt({ side: 'Right Eave', k: 'right', len: 20, ll: 20, start: 20, wrap: { len: 32, meets: [{ k: 'BR', w: 12 }] } }),
+    lt({ n: 2, side: 'Back Gable', k: 'back', len: 12, ll: 12, start: 0, wrap: { len: 24, meets: [{ k: 'BR', w: 12 }] } })], wraps: [{ k: 'BR', w: 12 }] }
+  const back = elevationSpecs(building, [], g, {}, { all: true }).find((s) => s.key === 'back')
+  const lay = elevLayout(back)
+  assert.deepEqual(lay.wrapBelow, [true])
+  const plain = elevLayout({ ...back, foot: back.foot.map(({ wA, wB, ...f }) => f) })
+  assert.equal(lay.VH - plain.VH, 34 + 18)
+  assert.equal(wrapBarLabel(back.foot[0]), 'LT2 wrap length 24′ (12′ + 12′ corner)')
+  // config D's 36' front bar still fits: label boxed on the bar, row unchanged
+  const front = elevationSpecs(building, [], geom, {}, { all: true }).find((s) => s.key === 'front')
+  assert.deepEqual(elevLayout(front).wrapBelow, [false])
+})

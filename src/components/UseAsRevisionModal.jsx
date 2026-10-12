@@ -113,7 +113,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     if (!money || !original) return
     onFinish({
       original, mode: 'auto', lines, money, signed: result.signed, terms: result.terms, forward: result.forward,
-      origDims: result.origDims, aewChanged: result.aewChanged, baseToday: result.baseToday, revNo: revNo.trim() || '1', date, note: note.trim(),
+      origDims: result.origDims, aewChanged: result.aewChanged, baseToday: result.baseToday, origWraps: result.origWraps || null, revNo: revNo.trim() || '1', date, note: note.trim(),
     })
   }
 

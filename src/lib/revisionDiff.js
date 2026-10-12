@@ -272,20 +272,49 @@ export function diffBuilds(base, next, { labelOf = null } = {}) {
       adds.push({ id: uid(), cat: kind, kind: 'add', printKind: 'Add', nextIndex: n.i, desc: `Add ${lowerFirst(itemDesc(kind, n.it, labelOf))}`, op: { type: 'add', kind, item: n.it, nextIndex: n.i } })
     }
   }
-  units.push(...removes, ...changes, ...adds, ...moves)
-  // Wrap-around lean-to corners (the program's top-level data.ltWraps, "FL,FR"): one priced
-  // change, after the lean-to changes it depends on (a corner only prices once both of its
-  // lean-tos are in the build).
-  const wb = wrapKeys(base.ltWraps), wn = wrapKeys(next.ltWraps)
-  if (wb !== wn) units.push({ id: uid(), cat: 'field', field: 'ltWraps', kind: 'field', printKind: 'Modify',
-    desc: `Wrap-around lean-to corners: ${wrapText(wb)} → ${wrapText(wn)}`, op: { type: 'wraps', value: wn } })
+  // Wrap-around lean-to corners (the program's top-level data.ltWraps, "FL,FR"). The changes are
+  // priced one at a time, so the order decides which line carries a wrap's price (verify 10/12/26):
+  //  - corners the revision REMOVES come off first, before any lean-to remove / change (a lean-to
+  //    removed with its wrap then prices as a plain lean-to, and the wrap line carries the wrap);
+  //  - corners it ADDS go on last, after the lean-to adds they need;
+  //  - a corner KEPT through a change to one of its lean-tos' size / place (the two must match for
+  //    the corner to hold, so it can't hold between two steps) comes off before and goes back on
+  //    after the lean-to changes, and those two steps print as ONE wrap line (mergeKey) — each
+  //    lean-to line is its own change, the wrap's difference sits on the wrap line.
+  const wb = wrapKeys(base.ltWraps).split(',').filter(Boolean), wn = wrapKeys(next.ltWraps).split(',').filter(Boolean)
+  const touched = new Set()
+  const sideOf = (it) => (it && str(it['lt-type'] || 'attached') === 'attached' ? str(it.lts) : '')
+  for (const u of [...removes, ...changes, ...adds]) {
+    if (u.cat !== 'leantos') continue
+    const a = u.kind !== 'add' ? (base.leantos || [])[u.baseIndex] : null
+    const b = u.kind !== 'remove' ? (next.leantos || [])[u.nextIndex] : null
+    if (u.kind === 'change' && !WRAP_GEOM.some((k) => J(a && a[k]) !== J(b && b[k]))) continue
+    ;[sideOf(a), sideOf(b)].forEach((s) => { if (s) touched.add(s) })
+  }
+  const reprice = wb.filter((k) => wn.includes(k) && WRAP_SIDES[k].some((s) => touched.has(s)))
+  const off = wb.filter((k) => !wn.includes(k) || reprice.includes(k))
+  const on = wn.filter((k) => !wb.includes(k) || reprice.includes(k))
+  const mid = wb.filter((k) => !off.includes(k))
+  const join = (a) => WRAP_KEYS.filter((k) => a.includes(k)).join(',')
+  const same = join(wb) === join(wn)
+  const merge = reprice.length ? { mergeKey: 'ltWraps', mergeDropZero: same,
+    mergeDesc: `Wrap-around lean-to corners: ${same ? wrapText(join(wn)) + ' (re-priced for the lean-to change)' : wrapText(join(wb)) + ' → ' + wrapText(join(wn))}` } : {}
+  const wOff = off.length ? [{ id: uid(), cat: 'field', field: 'ltWraps', kind: 'field', printKind: 'Modify', ...merge,
+    desc: `Wrap-around lean-to corners: ${wrapText(join(wb))} → ${wrapText(join(mid))}`, op: { type: 'wraps', value: join(mid) } }] : []
+  const wOn = on.length ? [{ id: uid(), cat: 'field', field: 'ltWraps', kind: 'field', printKind: 'Modify', ...merge,
+    desc: `Wrap-around lean-to corners: ${wrapText(join(mid))} → ${wrapText(join(wn))}`, op: { type: 'wraps', value: join(wn) } }] : []
+  units.push(...wOff, ...removes, ...changes, ...adds, ...wOn, ...moves)
   // A field change that is placement-only goes with the moves (end of the list).
   const priced = units.filter((u) => !u.placement)
   const place = units.filter((u) => u.placement)
   return { blockers, units: [...priced, ...place] }
 }
 const WRAP_NAME = { FL: 'Front Left', FR: 'Front Right', BL: 'Back Left', BR: 'Back Right' }
-const wrapKeys = (v) => ['FL', 'FR', 'BL', 'BR'].filter((k) => str(v).split(',').includes(k)).join(',')
+const WRAP_KEYS = ['FL', 'FR', 'BL', 'BR']
+// the two lean-tos (attached sides) that make each corner, and the lean-to fields that decide whether it holds
+const WRAP_SIDES = { FL: ['Left Eave', 'Front Gable'], FR: ['Right Eave', 'Front Gable'], BL: ['Left Eave', 'Back Gable'], BR: ['Right Eave', 'Back Gable'] }
+const WRAP_GEOM = ['lts', 'ltw', 'ltl2', 'ltoff', 'lth', 'ltp', 'lt-type']
+const wrapKeys = (v) => WRAP_KEYS.filter((k) => str(v).split(',').includes(k)).join(',')
 const wrapText = (v) => (v ? v.split(',').map((k) => WRAP_NAME[k] || k).join(', ') : 'none')
 // Where a moved component was and is (the revised contract prints old → new with the
 // program's feet-inch formatter): its wall, typed positions and sill.
@@ -391,7 +420,7 @@ export async function priceChanges({ base, units, priceOf, nextSub, onStep = () 
         const v = units[j]
         lines.push(v.placement ? { ...v, amount: 0 } : { ...v, unpriced: true, reason: 'Not priced — an earlier change could not be priced', amount: null })
       }
-      return { baseSub: r2(baseSub), finalSub: null, residual: null, lines, stopped: true }
+      return { baseSub: r2(baseSub), finalSub: null, residual: null, lines: mergeLines(lines), stopped: true }
     }
     const amt = r2(Number(cur) - Number(prev))
     if (u.placement && !sameCents(amt, 0)) {
@@ -403,6 +432,7 @@ export async function priceChanges({ base, units, priceOf, nextSub, onStep = () 
     prev = Number(cur)
   }
   const finalSub = r2(prev)
+  lines.splice(0, lines.length, ...mergeLines(lines))
   const residual = nextSub == null ? 0 : r2(Number(nextSub) - finalSub)
   if (!sameCents(residual, 0)) {
     lines.push({ id: 'residual', cat: 'residual', kind: 'residual', printKind: 'Modify', unpriced: true, engineDelta: residual,
@@ -410,6 +440,28 @@ export async function priceChanges({ base, units, priceOf, nextSub, onStep = () 
       desc: 'Other difference between the two builds (not itemized)', amount: null })
   }
   return { baseSub: r2(baseSub), finalSub, residual, lines }
+}
+
+// Steps that print as ONE line (a wrap kept through a lean-to change, diffBuilds mergeKey): one line at
+// the last step's place, amount = the steps' sum (unpriced if any step is); dropped when that is $0 and
+// the corners themselves didn't change.
+function mergeLines(lines) {
+  const groups = {}
+  lines.forEach((l) => { if (l.mergeKey) (groups[l.mergeKey] = groups[l.mergeKey] || []).push(l) })
+  const out = []
+  const clean = (l) => { const { mergeKey, mergeDesc, mergeDropZero, ...rest } = l; return rest }
+  for (const l of lines) {
+    if (!l.mergeKey) { out.push(l); continue }
+    const grp = groups[l.mergeKey]
+    if (grp.length < 2) { out.push(clean(l)); continue }
+    if (l !== grp[grp.length - 1]) continue
+    const unpriced = grp.some((x) => x.unpriced || x.amount == null)
+    const amount = unpriced ? null : r2(grp.reduce((s, x) => s + Number(x.amount), 0))
+    if (!unpriced && grp[0].mergeDropZero && sameCents(amount, 0)) continue
+    out.push({ ...clean(grp[0]), id: grp.map((x) => x.id).join('+'), desc: grp[0].mergeDesc || grp[0].desc, amount,
+      ...(unpriced ? { unpriced: true, reason: (grp.find((x) => x.unpriced) || {}).reason || 'Not priced' } : {}) })
+  }
+  return out
 }
 
 // ── The revised order's money ─────────────────────────────────────────────

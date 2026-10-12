@@ -655,7 +655,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     }
     finishUseAsRevision({
       original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
-      origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, revNo: rv.revNo, date: rv.date, note: rv.note,
+      origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, origWraps: m.info.origWraps, revNo: rv.revNo, date: rv.date, note: rv.note,
     })
   }
 
@@ -682,7 +682,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       const bal = revisedBalance(money.total, money.deposit, paid)
       const held = holdBuilderAt({
         pg, targetSub: money.targetSub, money: money.money, terms: r.terms, status: orderStatus, signed: { ...r.signed, deposit: paid },
-        origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), newDetail: r.newDetail || newDetailOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday,
+        origDims: r.origDims, newItems: r.newItems || newItemsOf(r.lines), newDetail: r.newDetail || newDetailOf(r.lines), aewChanged: !!r.aewChanged, baseToday: r.baseToday, origWraps: r.origWraps || null,
       })
       refreshBanner()
       if (!held.ok) { toast(`Revised contract not created — ${escHtml(held.reason)} Nothing was saved.`); return }

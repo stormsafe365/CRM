@@ -13,6 +13,7 @@
 import { checkSigned, diffBuilds, priceChanges, r2, reopenDrift } from './revisionDiff'
 import { isSold, savedTotalsOf, stripForDuplicate } from './priceLockCrm'
 import { newDetailOf } from './contractDocs'
+import { applyWrapMarks, wrapMarksOf } from './revisionWrapMarks.js'
 
 const sameCents = (a, b) => Math.abs(r2(a) - r2(b)) < 0.005
 const HOLD_FIELDS = ['hold-amt', 'hold-ref', 'hold-src', 'hold-dec']
@@ -87,8 +88,9 @@ async function priceBuild(pg, payload, labels) {
   const snap = pg.PriceLock.snapshot()
   if (!snap || !Number.isFinite(Number(snap.sub))) throw new Error('no price')
   if (labels) collectLabels(pg, labels)
-  return { sub: r2(snap.sub), hold: r2(snap.hold || 0), lines: snap.lines, terms: termsOf(pg), data: pg.collectQuoteData() }
+  return { sub: r2(snap.sub), hold: r2(snap.hold || 0), lines: snap.lines, terms: termsOf(pg), data: pg.collectQuoteData(), wraps: wrapMarksOf(pg) }
 }
+
 
 // ── The signed contract ───────────────────────────────────────────────────
 // { ok, sub, total, deposit, balance, terms, from, reason, notes }
@@ -98,7 +100,8 @@ export function signedOf({ original, engineTerms, pg }) {
   const notes = []
   const forwardWith = (terms) => (s) => pg.PriceLock.forward(s, terms)
   const pr = p.priced
-  if (pr && pr.v === 1 && Number.isFinite(Number(pr.sub)) && pr.money) {
+  // v2 = a quote with wrap-around lean-tos (program 10/12/26): same shape as v1
+  if (pr && (pr.v === 1 || pr.v === 2) && Number.isFinite(Number(pr.sub)) && pr.money) {
     const f = pr.fields || {}
     const terms = { disc: +f.disc || 0, tax: +f.tax || 0, agx: !!f.agx, depPct: +pr.depPct || 17, adType: f.adType || '', adVal: +f.adVal || 0 }
     const signed = { sub: r2(pr.sub), total: r2(pr.money.adjTot), deposit: r2(pr.money.dep), balance: r2(pr.money.bal) }
@@ -190,6 +193,7 @@ export async function analyzeRevision({ original, livePg, onProgress = () => {} 
     lines: [...drift, ...priced.lines],
     origDims: [B.data.fields.bw, B.data.fields.bl, B.data.fields.bh].join('x'),
     aewChanged: d.units.some((u) => u.field && /^aew-|add-end-wall/.test(u.field)),
+    origWraps: B.wraps,
   }
 }
 
@@ -220,6 +224,7 @@ export async function analyzeSignedOnly({ original, livePg, onProgress = () => {
   return {
     blockers: [], signed, terms: signed.terms, forward: (s) => eng.PriceLock.forward(s, signed.terms),
     origDims: [B.data.fields.bw, B.data.fields.bl, B.data.fields.bh].join('x'), newItems, newDetail, aewChanged, baseToday: B.sub,
+    origWraps: B.wraps,
   }
 }
 
@@ -243,7 +248,7 @@ export function newItemsOf(lines) {
 const ENTRY_SEL = { doors: '.re.entry', wtds: '.we.entry', windows: '.ne.entry', addcomps: '.ace.entry', leantos: '.lte.entry' }
 // newDetail (optional, contractDocs.newDetailOf): { doors: { 2: { kind:'add'|'change', delta } } } — the
 // Revised Contract tags those rows ADDED / CHANGED (a CHANGED row shows its previous amount).
-export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, origDims, newItems = {}, newDetail = null, aewChanged = false, baseToday = null }) {
+export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, origDims, newItems = {}, newDetail = null, aewChanged = false, baseToday = null, origWraps = null }) {
   const data = pg.collectQuoteData()
   let snap = null
   try { snap = pg.PriceLock.snapshot() } catch { snap = null }
@@ -310,6 +315,12 @@ export function holdBuilderAt({ pg, targetSub, money, terms, status, signed, ori
       })
     }
     try { pg._rvAewSig = aewChanged ? '(as signed)' : (typeof pg.aewSig === 'function' ? pg.aewSig() : null) } catch { /* ignore */ }
+    // Wrap-around corners as signed (verify 10/12/26): the restore above cleared the program's own
+    // marks and its 900 ms "as ordered" timer is cancelled, so without these every wrapped lean-to
+    // printed CHANGED and every corner fee ADDED — and a removed wrap tagged nothing.
+    const ltDet = (newDetail && newDetail.leantos) || null
+    const ltNew = new Set(ltDet ? Object.keys(ltDet).map(Number) : (newItems.leantos || []))
+    applyWrapMarks(pg, origWraps, (i) => ltNew.has(i))
   } catch (e) { console.warn('revision marks failed', e) }
   return { ok: true, screen, state: st }
 }

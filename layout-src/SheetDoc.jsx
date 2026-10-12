@@ -25,7 +25,7 @@ import LOGO from './assets/logo-round.png'
 import {
   FS, elevationSpecs, elevLayout, fmtFtIn, ltRect, ltOpeningPlan, trussFromFront, paginate,
   offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, ltWallLen, parseLtId, getLtOpening, setLtOpeningX, ltHighTxt, ltLowTxt, textW, peakTxt,
-  wrapRect,
+  wrapRect, wrapBarLabel,
 } from './sheetGeom.js'
 
 const R = window.React
@@ -508,14 +508,16 @@ function ElevationCard({ spec, ed, W, L }) {
   // wrap length (unrounded, as Sensei labels it): the lean-to on this wall + the corner square(s) it wraps
   ;(lay.wrapFoot || []).forEach((f, i) => {
     const a = f.x0 - (f.wA || 0), b = f.x0 + f.len + (f.wB || 0), yy = lay.dyW(i)
-    const cw = [f.wA, f.wB].filter((v) => v > 0)
-    const t = `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(' + ')} corner${cw.length > 1 ? 's' : ''})`, bw = textW(t, FS.lt) + 14
+    const t = wrapBarLabel(f), bw = textW(t, FS.lt) + 14
+    // a bar shorter than its label (elevLayout.wrapBelow): the label sits under the bar, kept on the card
+    const below = !!(lay.wrapBelow && lay.wrapBelow[i]), half = textW(t, FS.lt) * 0.41
+    const tx = below ? Math.min(Math.max(X((a + b) / 2), half + 4), lay.VW - half - 4) : X((a + b) / 2)
     els.push(<g key={'wrb' + i}>
       <line x1={X(a)} y1={yy} x2={X(b)} y2={yy} stroke={TEAL_D} strokeWidth="1.3" />
       <line x1={X(a)} y1={yy - 7} x2={X(a)} y2={yy + 7} stroke={TEAL_D} strokeWidth="1.3" />
       <line x1={X(b)} y1={yy - 7} x2={X(b)} y2={yy + 7} stroke={TEAL_D} strokeWidth="1.3" />
-      <rect x={X((a + b) / 2) - bw / 2} y={yy - 11} width={bw} height="22" fill="#ffffff" />
-      <text x={X((a + b) / 2)} y={yy + FS.lt * 0.36} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-wrap">{t}</text>
+      {below ? null : <rect x={X((a + b) / 2) - bw / 2} y={yy - 11} width={bw} height="22" fill="#ffffff" />}
+      <text x={tx} y={below ? yy + 9 + FS.lt : yy + FS.lt * 0.36} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-wrap">{t}</text>
     </g>)
   })
   els.push(<g key="ov">
