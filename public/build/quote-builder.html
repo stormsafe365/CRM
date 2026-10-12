@@ -4984,8 +4984,11 @@ function gBase(){
   // the frame with ROOF tiers), combination keys read as frame lengths, and the straight line past 106'. Past 101'
   // roof the handbook lists no combinations: same rule (README).
   if(ACTIVE_MFR==='CCI' && !isWS){
+    // 14' / 16' are not CCI widths (Dealer Handbook p5 "Standard widths are 12', 18', 20' ..."; Price Book 2 p1 has 12, 18,
+    // 20, 22, 24): priced at the next standard width, 18' (Sensei 16x40 = $4,095 = PB p1 18x40; owner case 10/12/26).
+    var _cwi=(w>12 && w<18) ? WIDTHS.indexOf(18) : wi;
     var _cu=cciUnits(l), _cs=0;
-    for(var _ci=0;_ci<_cu.length;_ci++) _cs+=(T[Math.max(20,_cu[_ci])+1]||[])[wi]||0; // under 20' = the 20' column
+    for(var _ci=0;_ci<_cu.length;_ci++) _cs+=(T[Math.max(20,_cu[_ci])+1]||[])[_cwi]||0; // under 20' = the 20' column
     if(_cs>0) return _cs;
   }
   if(l<=51&&!isWS){
@@ -6505,9 +6508,11 @@ function gSidePanels(){
     if(lv!=='closed') total += sideClosurePrice(lv, H, tier, closedLen, w);
     if(rv!=='closed') total += sideClosurePrice(rv, H, tier, closedLen, w);
   } else if(bt==='carport'){
-    // Carport: the side panels ARE the sides — independent, no main-wall interplay.
-    total += sideClosurePrice(lv, H, tier, closedLen, w);
-    total += sideClosurePrice(rv, H, tier, closedLen, w);
+    // Carport: the side panels ARE the sides. A CLOSED side is priced ONCE, in gWalls ("Each Side Closed" - rc() mirrors
+    // sp-left/sp-right into the wall rows wle/wre), so it is skipped here; partial panels price here (owner case
+    // 10/12/26: since 845415c, 8/26/26, a closed carport side was charged in BOTH places).
+    if(lv!=='closed') total += sideClosurePrice(lv, H, tier, closedLen, w);
+    if(rv!=='closed') total += sideClosurePrice(rv, H, tier, closedLen, w);
   } else {
     // Standard/widespan: partial panel values on wre/wle price per panel;
     // 'Closed'/'Open' return 0 from sideClosurePrice by design.
@@ -6553,8 +6558,8 @@ function updateSidePanelNote(){
   if(ACTIVE_MFR==='CCI' && w<=30) tier=cciPanelTiers(sidePanelLength()); // per connected unit (audit M12)
   var closedLen=sidePanelLength();
   var parts=[];
-  if(lv!=='open') parts.push('Left: '+lbl(lv)+' = $'+sideClosurePrice(lv,H,tier,closedLen,w).toLocaleString());
-  if(rv!=='open') parts.push('Right: '+lbl(rv)+' = $'+sideClosurePrice(rv,H,tier,closedLen,w).toLocaleString());
+  if(lv!=='open') parts.push('Left: '+lbl(lv)+(lv==='closed'?' (priced as Each Side Closed)':' = $'+sideClosurePrice(lv,H,tier,closedLen,w).toLocaleString()));
+  if(rv!=='open') parts.push('Right: '+lbl(rv)+(rv==='closed'?' (priced as Each Side Closed)':' = $'+sideClosurePrice(rv,H,tier,closedLen,w).toLocaleString()));
   note.textContent=(tier&&tier.length?'Panel tiers (one per connected unit): '+tier.join("' + ")+"'":'Panel tier: '+tier+"'")+' — '+parts.join(' · ');
   note.style.display='block';
 }
@@ -8633,8 +8638,9 @@ function sidePanelDesc(){
   var spCfgD=getSidePanelConfig();
   var spLbl=function(v){ for(var i=0;i<SIDE_CLOSURE_OPTS.length;i++){ if(SIDE_CLOSURE_OPTS[i].v===v) return SIDE_CLOSURE_OPTS[i].t; } return v; };
   var spParts=[];
-  if(spCfgD.left.val && spCfgD.left.val!=='open')   spParts.push('Left: '+spLbl(spCfgD.left.val));
-  if(spCfgD.right.val && spCfgD.right.val!=='open') spParts.push('Right: '+spLbl(spCfgD.right.val));
+  var spSkip=function(v){ return !v || v==='open' || (spBt==='carport' && v==='closed'); }; // a closed carport side is on "Each Side Closed"
+  if(!spSkip(spCfgD.left.val))  spParts.push('Left: '+spLbl(spCfgD.left.val));
+  if(!spSkip(spCfgD.right.val)) spParts.push('Right: '+spLbl(spCfgD.right.val));
   if(spParts.length) spDesc='Side Panels - '+spParts.join(', ')+(spBt==='gch'?' (open section)':'');
   return spDesc;
 }
