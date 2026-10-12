@@ -144,6 +144,23 @@ function ltRect(l, W, L) {
 export { ltRect }
 
 /**
+ * A wrapped corner's square in plan coords (z from the FRONT, x from the LEFT
+ * eave): FL z[-w,0] × x[-w,0] · FR z[-w,0] × x[W,W+w] · BL z[L,L+w] × x[-w,0]
+ * · BR z[L,L+w] × x[W,W+w], plus its hip line from the main corner (mz, mx) to
+ * the outer corner (oz, ox).
+ */
+export function wrapRect(c, W, L) {
+  const w = Number(c.w) || 0, front = c.k === 'FL' || c.k === 'FR', left = c.k === 'FL' || c.k === 'BL'
+  const z0 = front ? -w : L, x0 = left ? -w : W
+  return { z0, z1: z0 + w, x0, x1: x0 + w, mz: front ? 0 : L, mx: left ? 0 : W, oz: front ? -w : L + w, ox: left ? -w : W + w }
+}
+/** How far a lean-to's wrap reaches past its own end at corner k (0 = that end isn't wrapped). */
+export function ltWrapW(l, k) {
+  const m = ((l && l.wrap && l.wrap.meets) || []).find((x) => x.k === k)
+  return m ? Number(m.w) || 0 : 0
+}
+
+/**
  * Plan span of one lean-to opening. Plan coords: z = ft from the FRONT gable
  * (along the length), x = ft from the LEFT eave (across; negative = past the
  * left eave). Returns {z0,z1,x0,x1} (one pair equal = the wall line).
@@ -204,7 +221,12 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
   // opts.all (the Edit view): every main wall that can carry an opening is drawn, so
   // openings can be dragged / placed on it; lean-to walls only when they have openings.
   const push = (spec) => { if (spec.items.length || (spec.notes && spec.notes.length) || (opts.all && spec.wall && !spec.open)) out.push(spec) }
-  const ltFoot = (l, x0) => ({ x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` })
+  // wA / wB: a wrap-around's corner square past the foot's low-x / high-x end in this card's frame (the wrap-length bar)
+  const ltFoot = (l, x0, kA, kB) => {
+    const f = { x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` }
+    const wA = kA ? ltWrapW(l, kA) : 0, wB = kB ? ltWrapW(l, kB) : 0
+    return wA > 0 || wB > 0 ? { ...f, wA, wB, n: l.n, ll: l.ll || l.len, wrapLen: (l.wrap && l.wrap.len) || (l.len + wA + wB) } : f
+  }
   const ltSide = (l, onLeft) => ({ onLeft, n: l.n, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` })
 
   // gable views (as you stand outside facing the wall)
@@ -213,12 +235,12 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
   push({
     key: 'front', wall: 'front', title: 'Front gable', sub: 'seen from the front', faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
     items: on('front'), ends: ['LEFT EAVE', 'RIGHT EAVE'], truss: [], oc: 0, open: frontOpen,
-    side: eaveLTs.map((l) => ltSide(l, l.k === 'left')), foot: gableLTs.filter((l) => l.k === 'front').map((l) => ltFoot(l, l.start)),
+    side: eaveLTs.map((l) => ltSide(l, l.k === 'left')), foot: gableLTs.filter((l) => l.k === 'front').map((l) => ltFoot(l, l.start, 'FL', 'FR')),
   })
   push({
     key: 'back', wall: 'back', title: 'Back gable', sub: 'seen from behind', faceW: W, gable: true, eave: H, peak, h: gableH, clr, pitchTxt,
     items: on('back'), ends: ['RIGHT EAVE', 'LEFT EAVE'], truss: [], oc: 0, open: backOpen,
-    side: eaveLTs.map((l) => ltSide(l, l.k === 'right')), foot: gableLTs.filter((l) => l.k === 'back').map((l) => ltFoot(l, l.start)),
+    side: eaveLTs.map((l) => ltSide(l, l.k === 'right')), foot: gableLTs.filter((l) => l.k === 'back').map((l) => ltFoot(l, l.start, 'BR', 'BL')),
   })
   if (hybrid) {
     push({
@@ -239,12 +261,12 @@ export function elevationSpecs(building, openings, geom, tagMap = {}, opts = {})
   push({
     key: 'right', wall: 'right', title: 'Right eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
     items: on('right'), ends: ['FRONT GABLE', 'BACK GABLE'], truss: tFront, oc, open: carport || !!open.right,
-    side: gableLTs.map((l) => ltSide(l, l.k === 'front')), foot: eaveLTs.filter((l) => l.k === 'right').map((l) => ltFoot(l, l.start)),
+    side: gableLTs.map((l) => ltSide(l, l.k === 'front')), foot: eaveLTs.filter((l) => l.k === 'right').map((l) => ltFoot(l, l.start, 'FR', 'BR')),
   })
   push({
     key: 'left', wall: 'left', title: 'Left eave', sub: 'seen from outside', faceW: L, gable: false, eave: H, peak: H, h: flatH,
     items: on('left'), ends: ['BACK GABLE', 'FRONT GABLE'], truss: tFront.map((t) => L - t), oc, open: carport || !!open.left,
-    side: gableLTs.map((l) => ltSide(l, l.k === 'back')), foot: eaveLTs.filter((l) => l.k === 'left').map((l) => ltFoot(l, L - l.start - l.len)),
+    side: gableLTs.map((l) => ltSide(l, l.k === 'back')), foot: eaveLTs.filter((l) => l.k === 'left').map((l) => ltFoot(l, L - l.start - l.len, 'BL', 'FL')),
   })
   lts.forEach((l) => leanToSpecs(l, tFront, oc).forEach(push))
   return out
@@ -390,8 +412,11 @@ export function elevLayout(spec, { VW = 740, maxH = 200, mL = 34, mR = 104, mT =
   // lean-tos end-on: that line reads "LT · main · LT", the overall width one row further down
   const wL = sideL.reduce((m, q) => Math.max(m, q.w), 0), wR = sideR.reduce((m, q) => Math.max(m, q.w), 0)
   const dy3 = sideL.length || sideR.length ? dy2 + FS.end + 30 : null
-  const VH = Math.round(dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20)
-  return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl }
+  // wrap-around lean-tos on this wall: one "wrap length" bar each, under the overall
+  const wrapFoot = (spec.foot || []).filter((f) => f.wA > 0 || f.wB > 0)
+  const dyW = (i) => (dy3 != null ? dy3 : dy2 + FS.end + 8) + 34 * (i + 1)
+  const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length)
+  return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, dyW }
 }
 
 // ── pagination ─────────────────────────────────────────────────────────────

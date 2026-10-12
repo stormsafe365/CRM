@@ -273,11 +273,20 @@ export function diffBuilds(base, next, { labelOf = null } = {}) {
     }
   }
   units.push(...removes, ...changes, ...adds, ...moves)
+  // Wrap-around lean-to corners (the program's top-level data.ltWraps, "FL,FR"): one priced
+  // change, after the lean-to changes it depends on (a corner only prices once both of its
+  // lean-tos are in the build).
+  const wb = wrapKeys(base.ltWraps), wn = wrapKeys(next.ltWraps)
+  if (wb !== wn) units.push({ id: uid(), cat: 'field', field: 'ltWraps', kind: 'field', printKind: 'Modify',
+    desc: `Wrap-around lean-to corners: ${wrapText(wb)} → ${wrapText(wn)}`, op: { type: 'wraps', value: wn } })
   // A field change that is placement-only goes with the moves (end of the list).
   const priced = units.filter((u) => !u.placement)
   const place = units.filter((u) => u.placement)
   return { blockers, units: [...priced, ...place] }
 }
+const WRAP_NAME = { FL: 'Front Left', FR: 'Front Right', BL: 'Back Left', BR: 'Back Right' }
+const wrapKeys = (v) => ['FL', 'FR', 'BL', 'BR'].filter((k) => str(v).split(',').includes(k)).join(',')
+const wrapText = (v) => (v ? v.split(',').map((k) => WRAP_NAME[k] || k).join(', ') : 'none')
 // Where a moved component was and is (the revised contract prints old → new with the
 // program's feet-inch formatter): its wall, typed positions and sill.
 function movePlace(kind, a, b) {
@@ -349,6 +358,9 @@ export function applyUnit(work, unit) {
     p[op.kind] = (p[op.kind] || []).map((it) => (it.__k === 'b' + op.baseIndex ? { ...JSON.parse(JSON.stringify(op.item)), __k: it.__k } : it))
   } else if (op.type === 'add') {
     p[op.kind] = [...(p[op.kind] || []), { ...JSON.parse(JSON.stringify(op.item)), __k: 'n' + op.nextIndex }]
+  } else if (op.type === 'wraps') {
+    if (op.value) p.ltWraps = op.value
+    else delete p.ltWraps
   }
   return p
 }

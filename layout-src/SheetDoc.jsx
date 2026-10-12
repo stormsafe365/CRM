@@ -25,6 +25,7 @@ import LOGO from './assets/logo-round.png'
 import {
   FS, elevationSpecs, elevLayout, fmtFtIn, ltRect, ltOpeningPlan, trussFromFront, paginate,
   offsetFromFrameX, ltDrawToProg, snapAlong, wallSnapLines, ltWallLen, parseLtId, getLtOpening, setLtOpeningX, ltHighTxt, ltLowTxt, textW, peakTxt,
+  wrapRect,
 } from './sheetGeom.js'
 
 const R = window.React
@@ -139,6 +140,12 @@ function PlanKey({ building, openings, tagMap, geom, ed }) {
           onPointerDown={(e) => startLt(e, l, o, { n: l.n, oi, i }, xx)} />)
       })
     })
+  })
+  // wrap-around corners: the open corner square under the continuous roof + its hip line (main corner -> outer corner)
+  ;(g && Array.isArray(g.wraps) ? g.wraps : []).forEach((c) => {
+    const r = wrapRect(c, W, L)
+    els.push(<rect key={'wr' + c.k} x={PZ(r.z0)} y={PX(r.x0)} width={((r.z1 - r.z0) * s).toFixed(1)} height={((r.x1 - r.x0) * s).toFixed(1)} fill="url(#h-lt)" stroke={TEAL_D} strokeWidth="1.2" strokeDasharray="3 3" />)
+    els.push(<line key={'wrh' + c.k} x1={PZ(r.mz)} y1={PX(r.mx)} x2={PZ(r.oz)} y2={PX(r.ox)} stroke={TEAL_D} strokeWidth="1.4" />)
   })
   // partitions
   if (hybrid && window.hasDivider && window.hasDivider(building)) {
@@ -498,6 +505,19 @@ function ElevationCard({ spec, ed, W, L }) {
       <text x={cx} y={dy3 + FS.total * 0.36} textAnchor="middle" fontSize={FS.total} fontWeight="700" fill={INK} className="ch-overall">{ovTxt}</text>
     </g>)
   }
+  // wrap length (unrounded, as Sensei labels it): the lean-to on this wall + the corner square(s) it wraps
+  ;(lay.wrapFoot || []).forEach((f, i) => {
+    const a = f.x0 - (f.wA || 0), b = f.x0 + f.len + (f.wB || 0), yy = lay.dyW(i)
+    const cw = [f.wA, f.wB].filter((v) => v > 0)
+    const t = `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(' + ')} corner${cw.length > 1 ? 's' : ''})`, bw = textW(t, FS.lt) + 14
+    els.push(<g key={'wrb' + i}>
+      <line x1={X(a)} y1={yy} x2={X(b)} y2={yy} stroke={TEAL_D} strokeWidth="1.3" />
+      <line x1={X(a)} y1={yy - 7} x2={X(a)} y2={yy + 7} stroke={TEAL_D} strokeWidth="1.3" />
+      <line x1={X(b)} y1={yy - 7} x2={X(b)} y2={yy + 7} stroke={TEAL_D} strokeWidth="1.3" />
+      <rect x={X((a + b) / 2) - bw / 2} y={yy - 11} width={bw} height="22" fill="#ffffff" />
+      <text x={X((a + b) / 2)} y={yy + FS.lt * 0.36} textAnchor="middle" fontSize={FS.lt} fontWeight="700" fill={TEAL_D} className="lt-wrap">{t}</text>
+    </g>)
+  })
   els.push(<g key="ov">
     <line x1={X(0)} y1={dy2} x2={X(F)} y2={dy2} stroke={LINE} strokeWidth="1.3" />
     <line x1={X(0)} y1={dy2 - 7} x2={X(0)} y2={dy2 + 7} stroke={LINE} strokeWidth="1.3" />
@@ -787,7 +807,7 @@ function SheetEdit(props) {
   )
 }
 function ltLegend(l) {
-  return `LT${l.n} · ${({ left: 'Left eave', right: 'Right eave', front: 'Front gable', back: 'Back gable' })[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? ' · ' + fmtFtIn(l.stor.len) + ' storage at the ' + l.stor.end + ' end' : ''} · ${(l.walls && l.walls.mode) === 'enclosed' ? 'enclosed' : (l.walls && l.walls.mode) === 'custom' ? 'custom walls' : 'open'}`
+  return `LT${l.n} · ${({ left: 'Left eave', right: 'Right eave', front: 'Front gable', back: 'Back gable' })[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L${l.wrap && l.wrap.len > 0 ? ' (wrapped length ' + fmtFtIn(l.wrap.len) + ')' : ''} · ${fmtFtIn(l.low)} low eave${l.stor ? ' · ' + fmtFtIn(l.stor.len) + ' storage at the ' + l.stor.end + ' end' : ''} · ${(l.walls && l.walls.mode) === 'enclosed' ? 'enclosed' : (l.walls && l.walls.mode) === 'custom' ? 'custom walls' : 'open'}`
 }
 
 window.SheetDoc = SheetDoc

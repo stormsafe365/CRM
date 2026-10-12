@@ -85,6 +85,15 @@
     if (l.k === "front") return { z0: -l.w, z1: 0, x0: l.start, x1: l.start + l.len };
     return { z0: L, z1: L + l.w, x0: W - l.start - l.len, x1: W - l.start };
   }
+  function wrapRect(c, W, L) {
+    const w = Number(c.w) || 0, front = c.k === "FL" || c.k === "FR", left = c.k === "FL" || c.k === "BL";
+    const z0 = front ? -w : L, x0 = left ? -w : W;
+    return { z0, z1: z0 + w, x0, x1: x0 + w, mz: front ? 0 : L, mx: left ? 0 : W, oz: front ? -w : L + w, ox: left ? -w : W + w };
+  }
+  function ltWrapW(l, k) {
+    const m = (l && l.wrap && l.wrap.meets || []).find((x) => x.k === k);
+    return m ? Number(m.w) || 0 : 0;
+  }
   function ltOpeningPlan(l, loc, x, w, W, L) {
     const r = ltRect(l, W, L);
     const eave = l.k === "left" || l.k === "right";
@@ -128,7 +137,11 @@
     const push = (spec) => {
       if (spec.items.length || spec.notes && spec.notes.length || opts.all && spec.wall && !spec.open) out.push(spec);
     };
-    const ltFoot = (l, x0) => ({ x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` });
+    const ltFoot = (l, x0, kA, kB) => {
+      const f = { x0, len: l.len, h: l.conn, label: `LT${l.n} · ${fmtFtIn(l.w)} × ${fmtFtIn(l.len)} lean-to` };
+      const wA = kA ? ltWrapW(l, kA) : 0, wB = kB ? ltWrapW(l, kB) : 0;
+      return wA > 0 || wB > 0 ? { ...f, wA, wB, n: l.n, ll: l.ll || l.len, wrapLen: l.wrap && l.wrap.len || l.len + wA + wB } : f;
+    };
     const ltSide = (l, onLeft) => ({ onLeft, n: l.n, w: l.w, low: l.low, conn: l.conn, label: `LT${l.n}` });
     const frontOpen = hybrid ? building.openEnd === "front" : carport || !!open.front;
     const backOpen = hybrid ? building.openEnd === "back" : carport || !!open.back;
@@ -150,7 +163,7 @@
       oc: 0,
       open: frontOpen,
       side: eaveLTs.map((l) => ltSide(l, l.k === "left")),
-      foot: gableLTs.filter((l) => l.k === "front").map((l) => ltFoot(l, l.start))
+      foot: gableLTs.filter((l) => l.k === "front").map((l) => ltFoot(l, l.start, "FL", "FR"))
     });
     push({
       key: "back",
@@ -170,7 +183,7 @@
       oc: 0,
       open: backOpen,
       side: eaveLTs.map((l) => ltSide(l, l.k === "right")),
-      foot: gableLTs.filter((l) => l.k === "back").map((l) => ltFoot(l, l.start))
+      foot: gableLTs.filter((l) => l.k === "back").map((l) => ltFoot(l, l.start, "BR", "BL"))
     });
     if (hybrid) {
       push({
@@ -232,7 +245,7 @@
       oc,
       open: carport || !!open.right,
       side: gableLTs.map((l) => ltSide(l, l.k === "front")),
-      foot: eaveLTs.filter((l) => l.k === "right").map((l) => ltFoot(l, l.start))
+      foot: eaveLTs.filter((l) => l.k === "right").map((l) => ltFoot(l, l.start, "FR", "BR"))
     });
     push({
       key: "left",
@@ -250,7 +263,7 @@
       oc,
       open: carport || !!open.left,
       side: gableLTs.map((l) => ltSide(l, l.k === "back")),
-      foot: eaveLTs.filter((l) => l.k === "left").map((l) => ltFoot(l, L - l.start - l.len))
+      foot: eaveLTs.filter((l) => l.k === "left").map((l) => ltFoot(l, L - l.start - l.len, "BL", "FL"))
     });
     lts.forEach((l) => leanToSpecs(l, tFront, oc).forEach(push));
     return out;
@@ -424,8 +437,10 @@
     const dy2 = segs.length ? rowY(Math.max(1, usedRows)) + 24 : gy + 30;
     const wL = sideL.reduce((m, q) => Math.max(m, q.w), 0), wR = sideR.reduce((m, q) => Math.max(m, q.w), 0);
     const dy3 = sideL.length || sideR.length ? dy2 + FS.end + 30 : null;
-    const VH = Math.round(dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20);
-    return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl };
+    const wrapFoot = (spec.foot || []).filter((f) => f.wA > 0 || f.wB > 0);
+    const dyW = (i) => (dy3 != null ? dy3 : dy2 + FS.end + 8) + 34 * (i + 1);
+    const VH = Math.round((dy3 != null ? dy3 + FS.total * 0.4 + 18 : dy2 + FS.end + 20) + 34 * wrapFoot.length);
+    return { s, ox, gy, dy, dy2, dy3, VH, VW, X, Y: (h) => gy - h * s, rows, rowY, segs, extL, extR, sideL, sideR, wL, wR, hl, wrapFoot, dyW };
   }
   function paginate(heights, avail, signH, maxPer = 3, p1Room = 0) {
     const pages = [];
@@ -636,6 +651,11 @@
           ));
         });
       });
+    });
+    (g && Array.isArray(g.wraps) ? g.wraps : []).forEach((c) => {
+      const r = wrapRect(c, W, L);
+      els.push(/* @__PURE__ */ React.createElement("rect", { key: "wr" + c.k, x: PZ(r.z0), y: PX(r.x0), width: ((r.z1 - r.z0) * s).toFixed(1), height: ((r.x1 - r.x0) * s).toFixed(1), fill: "url(#h-lt)", stroke: TEAL_D, strokeWidth: "1.2", strokeDasharray: "3 3" }));
+      els.push(/* @__PURE__ */ React.createElement("line", { key: "wrh" + c.k, x1: PZ(r.mz), y1: PX(r.mx), x2: PZ(r.oz), y2: PX(r.ox), stroke: TEAL_D, strokeWidth: "1.4" }));
     });
     if (hybrid && window.hasDivider && window.hasDivider(building)) {
       const z = L - window.dividerLengthPos(building);
@@ -1067,6 +1087,13 @@
         return /* @__PURE__ */ React.createElement("g", { key: "ltw" + nm }, /* @__PURE__ */ React.createElement("rect", { x: X(c) - bw / 2, y: dy2 - 11, width: bw, height: "22", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: X(c), y: dy2 + FS.lt * 0.36, textAnchor: "middle", fontSize: FS.lt, fontWeight: "700", fill: TEAL_D, className: "lt-width" }, t));
       }), /* @__PURE__ */ React.createElement("line", { x1: X(-wL), y1: dy3, x2: X(F + wR), y2: dy3, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(-wL), y1: dy3 - 7, x2: X(-wL), y2: dy3 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(F + wR), y1: dy3 - 7, x2: X(F + wR), y2: dy3 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("rect", { x: cx - ovBox / 2, y: dy3 - 12, width: ovBox, height: "24", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: cx, y: dy3 + FS.total * 0.36, textAnchor: "middle", fontSize: FS.total, fontWeight: "700", fill: INK, className: "ch-overall" }, ovTxt)));
     }
+    ;
+    (lay.wrapFoot || []).forEach((f, i) => {
+      const a = f.x0 - (f.wA || 0), b = f.x0 + f.len + (f.wB || 0), yy = lay.dyW(i);
+      const cw = [f.wA, f.wB].filter((v) => v > 0);
+      const t = `LT${f.n} wrap length ${fmtFtIn(f.wrapLen)} (${fmtFtIn(f.ll)} + ${cw.map(fmtFtIn).join(" + ")} corner${cw.length > 1 ? "s" : ""})`, bw = textW(t, FS.lt) + 14;
+      els.push(/* @__PURE__ */ React.createElement("g", { key: "wrb" + i }, /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy, x2: X(b), y2: yy, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(a), y1: yy - 7, x2: X(a), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(b), y1: yy - 7, x2: X(b), y2: yy + 7, stroke: TEAL_D, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("rect", { x: X((a + b) / 2) - bw / 2, y: yy - 11, width: bw, height: "22", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: X((a + b) / 2), y: yy + FS.lt * 0.36, textAnchor: "middle", fontSize: FS.lt, fontWeight: "700", fill: TEAL_D, className: "lt-wrap" }, t)));
+    });
     els.push(/* @__PURE__ */ React.createElement("g", { key: "ov" }, /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2, x2: X(F), y2: dy2, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(0), y1: dy2 - 7, x2: X(0), y2: dy2 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("line", { x1: X(F), y1: dy2 - 7, x2: X(F), y2: dy2 + 7, stroke: LINE, strokeWidth: "1.3" }), /* @__PURE__ */ React.createElement("rect", { x: X(F / 2) - mainBox / 2, y: dy2 - 12, width: mainBox, height: "24", fill: "#ffffff" }), /* @__PURE__ */ React.createElement("text", { x: X(F / 2), y: dy2 + FS.total * 0.36, textAnchor: "middle", fontSize: FS.total, fontWeight: "700", fill: INK, className: "ch-total" }, mainTxt), /* @__PURE__ */ React.createElement("text", { x: X(0), y: dy2 + FS.end + 10, fontSize: FS.end, fontWeight: "700", fill: LINE, letterSpacing: ".1em" }, spec.ends[0]), /* @__PURE__ */ React.createElement("text", { x: X(F), y: dy2 + FS.end + 10, textAnchor: "end", fontSize: FS.end, fontWeight: "700", fill: LINE, letterSpacing: ".1em" }, spec.ends[1])));
     const toSvg = (e) => {
       const svg = svgRef.current;
@@ -1264,7 +1291,7 @@
     return /* @__PURE__ */ React.createElement("div", { className: "sheet-edit doc-print" }, /* @__PURE__ */ React.createElement("div", { className: "sheet sheet-page sheet-edit-page doc-print" }, /* @__PURE__ */ React.createElement(DocHeader, { docInfo, building, revisionMode }), /* @__PURE__ */ React.createElement(SecTitle, { hint: ed.placeType ? "Click a wall to place · Alt = no snap · Esc to stop" : "Drag any opening · snaps + aligns · arrows nudge (Shift 6″, Ctrl 1′) · Del removes" }, "Building Plan"), /* @__PURE__ */ React.createElement("div", { className: "plan-key-wrap" }, /* @__PURE__ */ React.createElement(PlanKey, { building, openings, tagMap, geom, ed }), planLegend.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "plan-legend" }, planLegend.map((t, i) => /* @__PURE__ */ React.createElement("span", { key: i }, t))), sizeMismatch && /* @__PURE__ */ React.createElement("div", { className: "plan-legend warn" }, "The quote’s lean-tos / partitions are hidden: the building size was changed here from the quote’s ", fmtFtIn(geom.W), " × ", fmtFtIn(geom.L), ".")), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Drag an opening along its wall · the chain updates live · same drawings as the Approval Sheet" }, "Wall Elevations"), /* @__PURE__ */ React.createElement(KeyLine, null), specs.map((sp) => /* @__PURE__ */ React.createElement(ElevationCard, { key: sp.key, spec: sp, ed, W, L })), /* @__PURE__ */ React.createElement(SecTitle, { hint: "Tags match the plan and elevations" }, "Opening Schedule"), /* @__PURE__ */ React.createElement(window.Schedule, { building, openings, tagMap })));
   }
   function ltLegend(l) {
-    return `LT${l.n} · ${{ left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" }[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L · ${fmtFtIn(l.low)} low eave${l.stor ? " · " + fmtFtIn(l.stor.len) + " storage at the " + l.stor.end + " end" : ""} · ${(l.walls && l.walls.mode) === "enclosed" ? "enclosed" : (l.walls && l.walls.mode) === "custom" ? "custom walls" : "open"}`;
+    return `LT${l.n} · ${{ left: "Left eave", right: "Right eave", front: "Front gable", back: "Back gable" }[l.k] || l.side} · ${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L${l.wrap && l.wrap.len > 0 ? " (wrapped length " + fmtFtIn(l.wrap.len) + ")" : ""} · ${fmtFtIn(l.low)} low eave${l.stor ? " · " + fmtFtIn(l.stor.len) + " storage at the " + l.stor.end + " end" : ""} · ${(l.walls && l.walls.mode) === "enclosed" ? "enclosed" : (l.walls && l.walls.mode) === "custom" ? "custom walls" : "open"}`;
   }
   window.SheetDoc = SheetDoc;
   window.SheetEdit = SheetEdit;

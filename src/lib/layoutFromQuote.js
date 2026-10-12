@@ -258,6 +258,7 @@ export function ltOpeningText(o, side) {
   return `${o.qty || 1}× ${o.label || 'Opening'}${size} (${names[o.loc] || 'outer wall'}${o.xs ? '' : ', position TBD'})`
 }
 
+const WRAP_NAME = { FL: 'Front Left', FR: 'Front Right', BL: 'Back Left', BR: 'Back Right' }
 /** Lean-tos -> sheet notes (the sheet also draws them, from seed.geom). */
 export function leanToNotes(leanTos) {
   return (leanTos || []).map((l, i) => {
@@ -266,6 +267,7 @@ export function leanToNotes(leanTos) {
     const ref = /eave/i.test(side) ? 'the front gable' : /back/i.test(side) ? 'the right eave corner' : 'the left eave corner'
     const parts = [`Lean-to ${n} — ${side}`]
     if (l.w && l.len) parts.push(`${fmtFtIn(l.w)} W × ${fmtFtIn(l.len)} L`)
+    if (l.wrap && l.wrap.len > 0) parts.push(`wrapped length ${fmtFtIn(l.wrap.len)} (wraps the ${(l.wrap.corners || []).map((k) => WRAP_NAME[k] || k).join(' and ')} corner${(l.wrap.corners || []).length > 1 ? 's' : ''})`)
     if (l.low) parts.push(`${fmtFtIn(l.low)} low eave`)
     if (l.start != null && l.len) parts.push(`starts ${fmtFtIn(l.start)} from ${ref}`)
     if (l.stor) parts.push(`storage ${fmtFtIn(l.stor.len)} at the ${l.stor.end} end`)
@@ -323,6 +325,8 @@ export function sheetGeomFromRaw(raw, building) {
     partition: g.partition || null,
     open: g.open || {},
     clr: g.clr && isFinite(g.clr.peak) && isFinite(g.clr.center) ? { peak: Number(g.clr.peak), center: Number(g.clr.center), to: g.clr.to === 'roof' ? 'roof' : 'truss' } : null,
+    // wrap-around corners (the open corner square): only when the quote has one
+    ...(Array.isArray(g.wraps) && g.wraps.length ? { wraps: g.wraps.filter((c) => c && /^(FL|FR|BL|BR)$/.test(c.k) && Number(c.w) > 0).map((c) => ({ k: c.k, w: Number(c.w) })) } : {}),
   }
 }
 

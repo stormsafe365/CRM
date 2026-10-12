@@ -114,7 +114,8 @@ export function extract(pg) {
           const sz = val(ae, 'lt-acc-size')
           if (t) accs.push(`${q}× ${t}${sz && /^\d+x\d+$/i.test(sz) ? ' ' + sz : ''}`)
         })
-        return { n: l.n, side: l.side, w: l.w, low: l.low, len: l.len, start: l.start, stor: l.stor ? { end: l.stor.end, len: l.stor.len } : null, openings: accs.join(', ') }
+        const wrap = l.wrap && l.wrap.len > 0 ? { len: l.wrap.len, corners: (l.wrap.meets || []).map((m) => m.k) } : null
+        return { n: l.n, side: l.side, w: l.w, low: l.low, len: l.len, start: l.start, stor: l.stor ? { end: l.stor.end, len: l.stor.len } : null, openings: accs.join(', '), ...(wrap ? { wrap } : {}) }
       })
     }
   } catch { leanTos = [] }
@@ -193,8 +194,14 @@ export function readGeom(pg, W, L, H, elev) {
       stor: l.stor ? { end: l.stor.end, len: l.stor.len, at: l.stor.at } : null,
       walls: { front: wl.front || 'open', back: wl.back || 'open', side: wl.side || 'open', mode: wl.mode || 'open' },
       part, openings,
+      // wrap-around (the program's ltWrapOf): the wrapped length + each wrapped corner and the width it adds; key only when wrapped
+      ...(l.wrap && l.wrap.len > 0 ? { wrap: { len: l.wrap.len, meets: (l.wrap.meets || []).map((m) => ({ k: m.k, w: m.w })) } } : {}),
     }
   })
+  // wrapped corners (the open corner square, w × w): from the lean-tos' wraps
+  const wrapW = {}
+  leanTos.forEach((l) => ((l.wrap && l.wrap.meets) || []).forEach((m) => { wrapW[m.k] = Math.max(wrapW[m.k] || 0, Math.min(l.w, m.w)) }))
+  const wraps = ['FL', 'FR', 'BL', 'BR'].filter((k) => wrapW[k] > 0).map((k) => ({ k, w: wrapW[k] }))
   let truss = [], oc = 0
   try { const ti = pg.getTrussInfo(); oc = (ti && ti.spacing) || 0 } catch { oc = 0 }
   try { if (oc && typeof pg.getTrussPositions === 'function') truss = pg.getTrussPositions(L).filter((t) => t > 0 && t < L) } catch { truss = [] }
@@ -221,5 +228,5 @@ export function readGeom(pg, W, L, H, elev) {
     const c = typeof pg.cciClearance === 'function' ? pg.cciClearance(W, (G('rs') || {}).value, H) : null
     if (c && isFinite(c.peak) && isFinite(c.center)) clr = { peak: c.peak, center: c.center, to: c.to === 'roof' ? 'roof' : 'truss' }
   } catch { clr = null }
-  return { W, L, H, truss, oc, leanTos, partition, open, clr }
+  return { W, L, H, truss, oc, leanTos, partition, open, clr, ...(wraps.length ? { wraps } : {}) }
 }
