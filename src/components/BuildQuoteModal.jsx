@@ -6,6 +6,8 @@
 //   • route the save to the CRM (capture totals + branded PDF → quotes row).
 // A matching "Save to Lead" button in the top bar does the same, as a reliable
 // fallback. Pricing/PDF come straight from the program — never re-derived here.
+// The bar's "Quote PDF" choice (Dark / White, owner 10/12/26) is the program's
+// own quote style, so the saved PDF follows it (QuoteStyleToggle).
 //
 // Price lock (owner 9/30/26: "make sure i can reopen that quote exactly as it
 // was"): a saved quote reopens at its SAVED price — restoreQuoteData(data,
@@ -18,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
 import PriceChangeConfirm from './PriceChangeConfirm'
+import QuoteStyleToggle from './QuoteStyleToggle'
 import { uploadClientDocBlob } from '../lib/storage'
 import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
 import { harvestAndSaveQuote, harvestRevisionUpdate, renderQuotePdf } from '../lib/builderSave'
@@ -814,13 +817,16 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   }, [])
 
   const barTone = blocked ? (banner?.tone === 'error' ? 'error' : 'warn') : banner?.tone
+  const barTitle = restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : '3D Builder'
+  const barClient = client?.name || savedTo
   return (
     <div className="qb-overlay" role="dialog" aria-modal="true" aria-label="3D Builder">
       <div className="qb-modal">
         <div className="qb-bar">
-          <div className="qb-bar-title">
-            {restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : '3D Builder'}
-            {(client?.name || savedTo) && <span className="qb-bar-client"> · {client?.name || savedTo}</span>}
+          {/* on a narrow window the title gives way to the buttons (ellipsis); the tooltip keeps it whole */}
+          <div className="qb-bar-title" title={barClient ? `${barTitle} · ${barClient}` : barTitle}>
+            {barTitle}
+            {barClient && <span className="qb-bar-client"> · {barClient}</span>}
           </div>
           {status
             ? <div className="qb-bar-status">{status}</div>
@@ -841,6 +847,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
             )}
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
+            <QuoteStyleToggle getProgramWindow={getProgramWindow} />
             <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
           </div>
         </div>

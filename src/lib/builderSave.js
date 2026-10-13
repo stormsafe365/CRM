@@ -12,7 +12,7 @@ import { appendPriceHistory, planQuoteFields, savedTotalsOf, totalsDiffer, withP
 import { carryCrmMarkers } from './contractDocs'
 
 // Render the captured quote document to a PDF blob. Prefer Electron's native
-// print-to-PDF (honors the quote's print styles + dark theme exactly like the
+// print-to-PDF (honors the quote's print styles + its Dark / White quote style exactly like the
 // builder's own working "Save / Print PDF"); fall back to html2pdf in a browser.
 export async function renderQuotePdf(printHtml) {
   const api = typeof window !== 'undefined' ? window.electronAPI : null

@@ -12,6 +12,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import SaveToLeadPicker from '../components/SaveToLeadPicker'
+import QuoteStyleToggle from '../components/QuoteStyleToggle'
 import { toast } from '../lib/uiFx'
 
 export default function BuildTool() {
@@ -45,11 +46,13 @@ export default function BuildTool() {
       }}>
         <div className="eyebrow-lime" style={{ margin: 0 }}>Price + Render</div>
         <h1 style={{ margin: 0, fontSize: 18, lineHeight: 1 }}>3D Builder</h1>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <a className="btn btn-ghost" href="/build/build.html" target="_blank" rel="noreferrer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6M10 14 21 3" /></svg>
             Open in new tab
           </a>
+          {/* the quote PDF's style (Dark / White) — the program's own choice, followed by Save to lead's PDF */}
+          <QuoteStyleToggle getProgramWindow={getProgramWindow} />
           <button className="btn btn-ghost" onClick={openPicker}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
             Save to lead
