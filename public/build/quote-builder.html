@@ -664,6 +664,15 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="st">9 — Lean-Tos</div>
   <div id="ltl"></div>
   <button class="ab" type="button" onclick="aLT()">+ Add Lean-To</button>
+  <div id="lt-wrap-box" style="display:none;margin-top:8px">
+    <button class="ab" type="button" id="lt-wrap-add" onclick="ltWrapOpen()" title="Wrap-around lean-tos: the lean-to roof continues around a corner of the building">+ Add Wrap</button>
+    <div id="lt-wrap-row" style="display:none;padding:9px 10px;border:1px solid var(--bv);border-radius:7px;background:var(--d4)">
+      <div style="font-size:10px;font-weight:700;color:var(--sb);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px" title="Wrap-arounds can cover any corner of the building; the lean-tos meeting at a corner must be the same width and height">Wrap-Around Corners</div>
+      <div id="lt-wrap-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div id="lt-wrap-note" style="display:none;margin-top:7px;font-size:11px;line-height:1.45;color:var(--sb)"></div>
+    </div>
+    <input type="hidden" id="lt-wraps" value="">
+  </div>
 </div>
 
 <!-- 10. ADDITIONAL COMPONENTS -->
@@ -5258,6 +5267,7 @@ function gConnectionFees(){
     if(!lw||!ll) return;
     total+=connFeeFor(ls, ll);
   });
+  if(typeof ltWrapFeeTotal==='function') total+=ltWrapFeeTotal(); // wrap-around corners: a flat fee each (Sensei), on top of the per-lean-to fees
   return total;
 }
 // Gable-only sheeting per end. CA July 15, 2026 sheet: $225 (≤24' wide) /
@@ -6770,6 +6780,285 @@ function cciLtSidePartial(v,h,l,vert,stLen){
   return {p:p, j:cciLtRunSum(CCI_LT_JTRIM,run), run:run};
 }
 
+// ── WRAP-AROUND LEAN-TOS (owner 10/12/26: "be able to quote wrap around lean-tos") ──
+// Sensei's CCI rule (read live 10/12/26: configs A-F, Full Building and an
+// enclosed wrap; NO CCI document covers wraps, 8 questions open with CCI):
+//  - a wrap is picked by CORNER: Front Left / Front Right / Back Left / Back
+//    Right, or Full Building (= all four; it adds the missing lean-tos);
+//  - the two lean-tos meeting at a wrapped corner must be the SAME WIDTH and
+//    HEIGHT (Sensei's alert) and both must run to that corner; same pitch too,
+//    so the two roofs meet on a straight hip (drawings / 3D);
+//  - each wrapped lean-to is priced as a normal lean-to at its WRAPPED LENGTH
+//    = its own length + the width of every lean-to it meets at a wrapped corner
+//    (the corner square is counted in BOTH lean-tos) for its size, height and
+//    side wall (closed or partial); its ends, connection fee, 4' OC, wainscot
+//    and storage keep its own length. The wrapped length rounds UP to 5' and is
+//    priced as connected units past 40' (Dealer Handbook p6, cciUnits) —
+//    36 → 40, 48 → 25+25, 52 → 30+25, 62/64 → 35+30;
+//  - each wrapped corner adds a flat $300 "<Left/Right> <Front/Back>
+//    Connection Fee" on top of the normal per-lean-to fees.
+// CCI only: CA wraps stay off ("Wrap-arounds: CCI only until CA confirms
+// pricing"). The request lives in #lt-wraps ("FL,FR" — saved as data.ltWraps
+// only when set); a corner is ACTIVE (priced, drawn) only while every rule
+// holds. A requested corner that stops holding is flagged on the form and
+// blocks the quote, contract and text quote until it is fixed or removed.
+// Corner keys: FL = Left Eave + Front Gable, FR = Right Eave + Front Gable,
+// BL = Left Eave + Back Gable, BR = Right Eave + Back Gable.
+var LT_WRAP_KEYS=['FL','FR','BL','BR'];
+var LT_WRAP_NAME={FL:'Front Left',FR:'Front Right',BL:'Back Left',BR:'Back Right'};
+var LT_WRAP_FEE_LBL={FL:'Left Front',FR:'Right Front',BL:'Left Back',BR:'Right Back'}; // Sensei's fee line names
+var LT_WRAP_FEE=300; // Sensei: $300 per wrapped corner at every size (no CCI document — verify with CCI)
+var LT_WRAP_SIDES={FL:['Left Eave','Front Gable'],FR:['Right Eave','Front Gable'],BL:['Left Eave','Back Gable'],BR:['Right Eave','Back Gable']};
+var LT_SIDE_SHORT={'Left Eave':'Left','Right Eave':'Right','Front Gable':'Front','Back Gable':'Back'};
+function ltWrapReq(){
+  var v=String(((G('lt-wraps')||{}).value)||'').split(',');
+  return LT_WRAP_KEYS.filter(function(k){ return v.indexOf(k)>=0; });
+}
+function ltWrapSetReq(list){ var f=G('lt-wraps'); if(f) f.value=LT_WRAP_KEYS.filter(function(k){ return list.indexOf(k)>=0; }).join(','); }
+// One attached lean-to as the wrap rules read it: its TYPED length and the
+// drawings' start clamp (_dimLeanTos: eave from the FRONT, front gable from the
+// LEFT eave corner, back gable from the RIGHT eave corner).
+function _ltWrapRd(el){
+  if(((el.querySelector('.lt-type')||{}).value||'attached')!=='attached') return null;
+  var side=(el.querySelector('.lts')||{}).value||'';
+  var eave=(side==='Left Eave'||side==='Right Eave'); if(!eave&&side!=='Front Gable'&&side!=='Back Gable') return null;
+  var w=parseInt((el.querySelector('.ltw')||{}).value)||0, ll=parseInt((el.querySelector('.ltl2')||{}).value)||0;
+  if(!w||!ll) return null;
+  var W=parseInt((G('bw')||{}).value)||0, L=parseInt((G('bl')||{}).value)||0, host=eave?L:W;
+  var off=parseFloat((el.querySelector('.ltoff')||{}).value)||0, run=Math.min(ll,host), start=Math.max(0,Math.min(off,host-run));
+  return {el:el, side:side, eave:eave, w:w, ll:ll, host:host, start:start, run:run,
+    h:parseInt((el.querySelector('.lth')||{}).value)||6, p:((el.querySelector('.ltp')||{}).value==='3:12')?3:2};
+}
+// Does this lean-to run to corner k (and is it no longer than its wall)?
+function _ltWrapReach(r,k){
+  if(!(r.host>0)||r.ll>r.host) return false;
+  var front=(k==='FL'||k==='FR'), left=(k==='FL'||k==='BL'), atStart=(r.start<1e-6), atEnd=(Math.abs(r.start+r.run-r.host)<1e-6);
+  if(r.eave) return front?atStart:atEnd;
+  if(r.side==='Front Gable') return left?atStart:atEnd;
+  return left?atEnd:atStart; // back gable runs from the RIGHT eave corner
+}
+// Every corner: {req, active:[k], pair:{k:{e,g}} (corners that CAN wrap), why:{k:reason}}.
+// window._ltWrapFrozen (Section 5 per-card prices) pins one result while a card is priced alone.
+function ltWraps(){
+  if(window._ltWrapFrozen) return window._ltWrapFrozen;
+  var req=ltWrapReq(), rs=[];
+  document.querySelectorAll('.lte').forEach(function(el){ var r=_ltWrapRd(el); if(r) rs.push(r); });
+  // rule / parts: the same reason split into the rule sentence and the lean-tos it names (the
+  // ALERT names each rule once and each lean-to once when one change breaks two corners).
+  var out={req:req, active:[], pair:{}, why:{}, rule:{}, parts:{}};
+  LT_WRAP_KEYS.forEach(function(k){
+    var sE=LT_WRAP_SIDES[k][0], sG=LT_WRAP_SIDES[k][1], nE=LT_SIDE_SHORT[sE], nG=LT_SIDE_SHORT[sG];
+    var es=rs.filter(function(r){ return r.side===sE; }), gs=rs.filter(function(r){ return r.side===sG; });
+    var e=es.filter(function(r){ return _ltWrapReach(r,k); })[0], g=gs.filter(function(r){ return _ltWrapReach(r,k); })[0];
+    var why='', rule='', parts=[], end=(k.charAt(0)==='F'?'front':'back'), lr=((k==='FL'||k==='BL')?'left':'right');
+    var long=function(r,n){ return 'the '+n+' lean-to ('+r.ll+'′) is longer than the building'+(r.eave?' ('+r.host+'′ long)':' is wide ('+r.host+'′)'); };
+    if(ACTIVE_MFR!=='CCI') why='Wrap-arounds: CCI only until CA confirms pricing';
+    else if(!es.length||!gs.length) why='it needs a '+nE+' lean-to and a '+nG+' lean-to';
+    else if(!e) why=(es[0].ll>es[0].host)?long(es[0],nE):('the '+nE+' lean-to has to run to the '+end+' corner (check its Starts At and length)');
+    else if(!g) why=(gs[0].ll>gs[0].host)?long(gs[0],nG):('the '+nG+' lean-to has to run to the '+lr+' corner (check its Starts At and length)');
+    else if(e.w!==g.w||e.h!==g.h){ rule='lean-tos that wrap a corner must be the same width and height'; parts=[nE+' '+e.w+'′ wide × '+e.h+'′ low leg', nG+' '+g.w+'′ wide × '+g.h+'′ low leg']; }
+    else if(e.p!==g.p){ rule='lean-tos that wrap a corner must have the same roof pitch'; parts=[nE+' '+e.p+':12', nG+' '+g.p+':12']; }
+    if(rule) why=rule+' (now '+parts.join(', ')+')';
+    if(why){ out.why[k]=why; out.rule[k]=rule||why; out.parts[k]=parts; }
+    else { out.pair[k]={e:e,g:g}; if(req.indexOf(k)>=0) out.active.push(k); }
+  });
+  return out;
+}
+// One lean-to's wrap: {len: wrapped length (0 = not wrapped), own, meets:[{k, side, w}]}.
+function ltWrapOf(el, wr){
+  wr=wr||ltWraps();
+  var meets=[], own=0;
+  wr.active.forEach(function(k){
+    var p=wr.pair[k];
+    if(p.e.el===el){ own=p.e.ll; meets.push({k:k, side:p.g.side, w:p.g.w}); }
+    else if(p.g.el===el){ own=p.g.ll; meets.push({k:k, side:p.e.side, w:p.e.w}); }
+  });
+  if(!meets.length) return {len:0, own:0, meets:[]};
+  return {len:own+meets.reduce(function(s,m){ return s+m.w; },0), own:own, meets:meets};
+}
+// The wrapped corners' flat connection fees: [{k, label, fee}] (gConnectionFees adds them; the documents print them).
+function ltWrapFeeRows(wr){
+  wr=wr||ltWraps();
+  return wr.active.map(function(k){ return {k:k, label:LT_WRAP_FEE_LBL[k]+' Connection Fee (wrap-around corner)', fee:LT_WRAP_FEE}; });
+}
+function ltWrapFeeTotal(){ return ltWraps().active.length*LT_WRAP_FEE; }
+// Printed wording inside a lean-to row's size parentheses: ", wrapped length 52'" ('' = not wrapped).
+function _ltWrapTxt(el){ var w=ltWrapOf(el); return w.len?(", wrapped length "+w.len+"'"):''; }
+// Rep tooltip: what the wrapped length is made of ("includes the Front and Left lean-to").
+function _ltWrapTip(el, w){
+  w=w||ltWrapOf(el); if(!w.len) return '';
+  var own=LT_SIDE_SHORT[(el.querySelector('.lts')||{}).value]||'';
+  var names=w.meets.map(function(m){ return LT_SIDE_SHORT[m.side]; });
+  return 'Wrapped length '+w.len+'′ = '+own+' '+w.own+'′ + '+w.meets.map(function(m){ return LT_SIDE_SHORT[m.side]+' '+m.w+'′'; }).join(' + ')+
+    ' (corner'+(w.meets.length>1?'s':'')+'). This wrap length includes the '+names.concat([own]).join(' and ')+' lean-to.';
+}
+// Overall footprint with the attached lean-tos (W × L bounding box) — shown apart from the main size when wrapped.
+function ltOverall(){
+  var W=parseInt((G('bw')||{}).value)||0, L=parseInt((G('bl')||{}).value)||0, ext={'Left Eave':0,'Right Eave':0,'Front Gable':0,'Back Gable':0};
+  document.querySelectorAll('.lte').forEach(function(el){ var r=_ltWrapRd(el); if(r) ext[r.side]=Math.max(ext[r.side],r.w); });
+  return {w:W+ext['Left Eave']+ext['Right Eave'], l:L+ext['Front Gable']+ext['Back Gable'], W:W, L:L};
+}
+// Print guard: a requested wrap that no longer holds never reaches a client document.
+function ltWrapPrintIssue(){
+  var wr=ltWraps(), bad=wr.req.filter(function(k){ return wr.active.indexOf(k)<0; });
+  if(!bad.length) return '';
+  return 'Wrap-around '+bad.map(function(k){ return LT_WRAP_NAME[k]+': '+wr.why[k]; }).join(' · ')+'. Fix the lean-tos or remove the wrap first.';
+}
+// ── Wrap UI (Section 9 / Section 5 "Doors, Windows & Add-ons") ──
+function ltWrapOpen(){ window._ltWrapShow=true; ltWrapUI(); }
+function ltWrapClick(k){
+  var req=ltWrapReq();
+  if(ACTIVE_MFR!=='CCI'){
+    // CA / Input: a wrap can't be turned ON (the note says why), but one still requested from a CCI
+    // quote can always be turned OFF — otherwise its print block could never be cleared (verify 10/12/26).
+    if(k==='FULL'&&req.length){ window._ltWrapMsg=''; ltWrapSetReq([]); rc(); return; }
+    if(k!=='FULL'&&req.indexOf(k)>=0){ window._ltWrapMsg=''; ltWrapSetReq(req.filter(function(c){ return c!==k; })); rc(); return; }
+    toast('Wrap-arounds: CCI only until CA confirms pricing.','err'); return;
+  }
+  window._ltWrapMsg='';
+  if(k==='FULL'){
+    if(LT_WRAP_KEYS.every(function(c){ return req.indexOf(c)>=0; })){ ltWrapSetReq([]); rc(); return; }
+    ltWrapAddMissing();
+    var wr=ltWraps(), ok=LT_WRAP_KEYS.filter(function(c){ return !wr.why[c]; }), bad=LT_WRAP_KEYS.filter(function(c){ return wr.why[c]; });
+    ltWrapSetReq(ok);
+    if(bad.length){ window._ltWrapMsg='Full Building — not wrapped: '+bad.map(function(c){ return LT_WRAP_NAME[c]+' ('+wr.why[c]+')'; }).join('; ')+'.'; toast(window._ltWrapMsg,'err'); }
+    rc(); return;
+  }
+  if(req.indexOf(k)>=0){ ltWrapSetReq(req.filter(function(c){ return c!==k; })); rc(); return; }
+  var why=ltWraps().why[k];
+  if(why){ window._ltWrapMsg='Can’t wrap the '+LT_WRAP_NAME[k]+' corner: '+why+'.'; toast(window._ltWrapMsg,'err'); ltWrapUI(); return; }
+  req.push(k); ltWrapSetReq(req); rc();
+}
+// Full Building: add a lean-to on every side that has none — the same width,
+// low leg and pitch as the first attached lean-to (12′, 2:12 and the tallest
+// low leg that fits when there is none), full wall length, Sides & Ends Open
+// (walls are never added on the rep's behalf).
+function ltWrapAddMissing(){
+  var W=parseInt((G('bw')||{}).value)||0, L=parseInt((G('bl')||{}).value)||0; if(!W||!L) return;
+  var have={}, tpl=null;
+  document.querySelectorAll('.lte').forEach(function(el){ var r=_ltWrapRd(el); if(!r) return; have[r.side]=1; if(!tpl) tpl=r; });
+  ['Left Eave','Right Eave','Front Gable','Back Gable'].forEach(function(side){
+    if(have[side]) return;
+    aLT();
+    var es=document.querySelectorAll('.lte.entry'), el=es[es.length-1], set=function(c,v){ var f=el.querySelector(c); if(f) f.value=String(v); };
+    set('.lts',side); set('.ltw',tpl?tpl.w:12); set('.ltp',(tpl?tpl.p:2)+':12');
+    set('.ltl2',(side==='Left Eave'||side==='Right Eave')?L:W); set('.ltoff',0);
+    updateLTHeightOptions(el);
+    var hs=el.querySelector('.lth'), opts=hs?Array.prototype.map.call(hs.options,function(o){ return o.value; }):[];
+    if(hs){ var want=tpl?String(tpl.h):opts[opts.length-1]; if(opts.indexOf(want)>=0) hs.value=want; }
+    updateLTNote(el); refreshLTAccSizes(el);
+  });
+}
+// Sensei's alert: a change that breaks a wrapped corner is undone. Snapshot =
+// the entry's fields at the last pricing pass while it was in an ACTIVE wrap.
+// Typed fields (Length, Starts At) price on every keystroke (oninput rc()), so
+// the wrap can stop holding before their change event: the first keystroke of
+// an edit keeps the snapshot it started from (_ltWrapPre, ltWrapTyping) and the
+// change event checks against THAT (verify 10/12/26: typing 45 into a wrapped
+// 40′ Left used to drop the wrap from the price with no alert).
+var LT_WRAP_SNAP=['.lts','.lt-type','.ltw','.ltl2','.ltoff','.lth','.ltp'];
+function ltWrapTyping(ctl){
+  var el=ctl&&ctl.closest?ctl.closest('.lte'):null;
+  if(el&&!el._ltWrapPre&&el._ltWrapSnap) el._ltWrapPre={snap:el._ltWrapSnap, ks:el._ltWrapKs||[]};
+}
+// The ALERT's reason: each rule once, each lean-to it names once (two corners broken by one change).
+function _ltWrapLostTxt(wr, lost){
+  var rules=[], parts={};
+  lost.forEach(function(k){
+    var r=(wr.rule&&wr.rule[k])||wr.why[k]||''; if(!parts[r]){ parts[r]=[]; rules.push(r); }
+    ((wr.parts&&wr.parts[k])||[]).forEach(function(p){ if(parts[r].indexOf(p)<0) parts[r].push(p); });
+  });
+  return rules.map(function(r){ return r+(parts[r].length?' (now '+parts[r].join(', ')+')':''); }).join('; ');
+}
+function ltWrapGuard(ctl){
+  var el=ctl&&ctl.closest?ctl.closest('.lte'):null; if(!el) return false;
+  var pre=el._ltWrapPre; delete el._ltWrapPre;
+  var snap=pre?pre.snap:el._ltWrapSnap, ks=pre?pre.ks:(el._ltWrapKs||[]);
+  if(!snap) return false;
+  var wr=ltWraps(), lost=ks.filter(function(k){ return wr.req.indexOf(k)>=0&&wr.active.indexOf(k)<0; });
+  if(!lost.length) return false;
+  LT_WRAP_SNAP.forEach(function(c){ var f=el.querySelector(c); if(f&&snap[c]!=null) f.value=snap[c]; });
+  ltTypeChange(el); updateLTNote(el);
+  var h=el.querySelector('.lth'); if(h&&snap['.lth']!=null) h.value=snap['.lth'];
+  window._ltWrapMsg='ALERT — '+lost.map(function(k){ return LT_WRAP_NAME[k]; }).join(' and ')+' wrap: '+_ltWrapLostTxt(wr, lost)+
+    '. The change was undone — lean-tos must be attached to the corners of the adjoining walls, same width and height. Remove the wrap first to change it.';
+  toast(window._ltWrapMsg,'err');
+  rc();
+  return true;
+}
+// Length / Starts At / Attached Side changed: undo it when it breaks an active
+// wrap (Sensei's alert), else price. Nothing is clamped: a front / back lean-to
+// typed longer than the building is wide prices and saves exactly as before the
+// wrap work (on every quote, CCI and CA — verify 10/12/26); such a lean-to just
+// can't wrap a corner (the wrap rules say why).
+function ltLenGuard(ctl){
+  if(!ltWrapGuard(ctl)) rc();
+}
+// Remove a lean-to: the wrapped corners it was part of go with it (named on the
+// form), and so does every REQUESTED corner on its side that no lean-to is left
+// to make — a requested-but-broken corner (a CA quote, a typed change) would
+// otherwise block the documents with nothing left to fix (verify 10/12/26).
+function ltWrapRemove(btn){
+  var el=btn.closest('.lte'); if(!el) return;
+  var wr=ltWraps(), req=wr.req, side=(((el.querySelector('.lt-type')||{}).value||'attached')==='attached')?((el.querySelector('.lts')||{}).value||''):'';
+  el.remove();
+  var left={}; document.querySelectorAll('.lte').forEach(function(x){ var r=_ltWrapRd(x); if(r) left[r.side]=1; });
+  var ks=req.filter(function(k){
+    var p=wr.pair[k]; if(wr.active.indexOf(k)>=0&&p&&(p.e.el===el||p.g.el===el)) return true;
+    var sd=LT_WRAP_SIDES[k]; return !!side&&sd.indexOf(side)>=0&&!(left[sd[0]]&&left[sd[1]]);
+  });
+  if(ks.length){ ltWrapSetReq(req.filter(function(k){ return ks.indexOf(k)<0; })); window._ltWrapMsg='Removed the '+ks.map(function(k){ return LT_WRAP_NAME[k]; }).join(' and ')+' wrap with that lean-to.'; toast(window._ltWrapMsg,'ok'); }
+  rc();
+}
+// Paint the wrap row, the chips, the rep notes and each lean-to's "Wrapped length" badge (end of every rc()).
+function ltWrapUI(){
+  var box=G('lt-wrap-box'); if(!box) return;
+  var wr=ltWraps(), anyLT=false, cci=(ACTIVE_MFR==='CCI');
+  document.querySelectorAll('.lte').forEach(function(el){
+    if(_ltWrapRd(el)) anyLT=true;
+    // The badge has its OWN row under the plain "Lean-To" title (that title stays exactly "Lean-To", so the
+    // Section-5 cards hide it as before and the badge shows in both layouts — verify 10/12/26).
+    var w=ltWrapOf(el, wr), b=el.querySelector('.lt-wrap-badge'), br=el.querySelector('.lt-wrap-badge-row');
+    if(br) br.style.display=w.len?'':'none';
+    if(b){
+      if(w.len){ b.textContent='Wrapped length '+w.len+'′ ⓘ'; b.title=_ltWrapTip(el,w); }
+      else { b.textContent=''; b.title=''; }
+    }
+    // Snapshot for ltWrapGuard (only while this entry is in an ACTIVE wrap).
+    if(w.len){ var s={}; LT_WRAP_SNAP.forEach(function(c){ var f=el.querySelector(c); if(f) s[c]=f.value; }); el._ltWrapSnap=s; el._ltWrapKs=w.meets.map(function(m){ return m.k; }); }
+    else { delete el._ltWrapSnap; delete el._ltWrapKs; }
+  });
+  var open=wr.req.length>0||!!window._ltWrapShow;
+  box.style.display=(anyLT||wr.req.length)?'':'none';
+  var add=G('lt-wrap-add'); if(add) add.style.display=open?'none':'';
+  var row=G('lt-wrap-row'); if(row) row.style.display=open?'':'none';
+  var chips=G('lt-wrap-chips');
+  if(chips){
+    var allOn=LT_WRAP_KEYS.every(function(k){ return wr.active.indexOf(k)>=0; });
+    // usable = this click does something: any chip on CCI; on CA / Input only turning a requested corner OFF
+    var chip=function(k,label,on,bad,usable){
+      var st=on?'background:var(--t);color:var(--d);border:1px solid var(--t)':(bad?'background:transparent;color:#fca5a5;border:1px solid #dc2626':'background:var(--d4);color:var(--sb);border:1px solid var(--bv)');
+      return '<span class="lt-wrap-chip" data-k="'+k+'" role="checkbox" aria-checked="'+(on?'true':'false')+'" tabindex="0"'+((!cci&&usable)?' title="Click to remove this wrap"':'')+' onclick="ltWrapClick(\''+k+'\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();ltWrapClick(\''+k+'\');}" style="cursor:'+(usable?'pointer':'not-allowed')+';opacity:'+(usable?'1':'.5')+';padding:5px 10px;border-radius:5px;font-size:11.5px;font-weight:700;'+st+'">'+(bad?'⚠ ':(on?'✓ ':''))+label+'</span>';
+    };
+    chips.innerHTML=LT_WRAP_KEYS.map(function(k){ var rq=wr.req.indexOf(k)>=0; return chip(k,LT_WRAP_NAME[k],wr.active.indexOf(k)>=0,rq&&wr.active.indexOf(k)<0,cci||rq); }).join('')+chip('FULL','Full Building',allOn,false,cci||wr.req.length>0);
+  }
+  var note=G('lt-wrap-note');
+  if(note){
+    var lines=[];
+    if(!cci) lines.push('<b>Wrap-arounds: CCI only until CA confirms pricing.</b>'+(wr.req.length?' Click a ⚠ corner (or Full Building) to remove the wrap.':''));
+    var bad=wr.req.filter(function(k){ return wr.active.indexOf(k)<0; });
+    if(bad.length) lines.push('<b style="color:#fca5a5">⚠ Not wrapped — '+bad.map(function(k){ return LT_WRAP_NAME[k]+': '+wr.why[k]; }).join('; ')+'.</b> The quote, contract and text quote are blocked until this is fixed or the wrap is removed.');
+    if(window._ltWrapMsg) lines.push(/^(ALERT|Can’t|Full Building)/.test(window._ltWrapMsg)?('<b style="color:#fca5a5">'+window._ltWrapMsg+'</b>'):window._ltWrapMsg);
+    if(cci&&wr.active.length){
+      var ov=ltOverall();
+      lines.push(wr.active.map(function(k){ return LT_WRAP_NAME[k]; }).join(' · ')+' wrapped: + '+fC(LT_WRAP_FEE)+' connection fee per corner · overall footprint '+ov.w+'′ W × '+ov.l+'′ L (main building '+ov.W+'′ × '+ov.L+'′).');
+      var _wsN=((parseInt((G('bw')||{}).value)||0)>=32||((G('btype')||{}).value==='widespan'));
+      lines.push('⚠ Wrap pricing follows Sensei (10/12/26): each wrapped lean-to at its wrapped length (size, height, side wall'+(_wsN?', and on this 32′+ wide building the $5.50/ft lean-to certification adder':'')+') + $300 per corner. No CCI document covers wraps'+(_wsN?' and Sensei was only sampled on 24′ and 30′ wide buildings':'')+' — verify with CCI before the contract. (Rep note — not printed.)');
+    } else if(cci) lines.push('Pick a corner: the two lean-tos meeting there must run to that corner and be the same width and height. Full Building adds any missing lean-to.');
+    note.innerHTML=lines.join('<br>');
+    note.style.display=lines.length?'block':'none';
+  }
+}
 // ── Per-lean-to unit price (base + height + walls; NOT accessories) ─────────
 // Single source of truth shared by the pricing engine (gLT) and the printed
 // quote rows, so the printed lines always sum to the Building Amount.
@@ -6793,6 +7082,8 @@ function ltUnit(el, wallsOvr){
   else { h=isCont ? (parseFloat(el.querySelector('.lth-cont').value)||6) : (parseInt(el.querySelector('.lth').value)||6); }
   if(!w||!l) return {w:w,l:l,h:h,isFree:isFree,bp:0,heightAdj:0,encAdj:0,total:0};
   var ltWalls2=wallsOvr||getLTWalls(el);
+  // Wrap-around (CCI attached): size, height and side wall at the WRAPPED length (ltWrapOf; 0 = not wrapped → priced exactly as before).
+  var _wr=(ACTIVE_MFR==='CCI'&&!isFree&&typeof ltWrapOf==='function')?ltWrapOf(el).len:0;
   var bp, heightAdj=0, encAdj, ltErr='', jTrim=0;
   if(ACTIVE_MFR==='CCI' && !isFree){
     // ── CCI dealer-handbook method (manufacturer-corrected 2026-07-24):
@@ -6805,7 +7096,8 @@ function ltUnit(el, wallsOvr){
     // Length sections: one standard tier through 51', else the dealer
     // combination (same rule as a real 2W-wide building).
     var secs=[];
-    if(l<=51){ secs=[nearestStd(l)]; }
+    if(_wr){ secs=cciUnits(_wr).map(function(u){ return Math.max(20,u)+1; }); } // wrapped: rounds UP to 5', connected units past 40' (handbook p6), each at its roof tier
+    else if(l<=51){ secs=[nearestStd(l)]; }
     else if(MFR().standardCombinations){
       var combos=MFR().standardCombinations, ks=Object.keys(combos).map(Number).sort(function(a,b){return a-b;});
       for(var ci3=0;ci3<ks.length;ci3++){ if(ks[ci3]>=l){ secs=combos[ks[ci3]]; break; } }
@@ -6818,7 +7110,7 @@ function ltUnit(el, wallsOvr){
     // +$5.50/ft, single-point anchor (12x100 → +$550) pending CCI's
     // certified-chart pages.
     var _mwC=parseInt(G('bw').value)||0, _btC=G('btype')?G('btype').value:'';
-    if(_mwC>=32||_btC==='widespan') bp+=CCI_LT_CERT_RATE*l;
+    if(_mwC>=32||_btC==='widespan') bp+=CCI_LT_CERT_RATE*(_wr||l);
     bp=Math.round(bp*100)/100;
     // Height: half of the (2W)-wide leg-height chart over the SAME length
     // sections (10'/60' → $490 and 12'/100' → $1,195, both exact).
@@ -6842,7 +7134,7 @@ function ltUnit(el, wallsOvr){
     var endP=function(v){ return v==='gable'?112.5:Math.round(endPairS/2*(LT_END_FRAC[v]||0)*100)/100; };
     var sideV=ltWalls2.side, sideP=0;
     if(sideV==='closed'){
-      sideP=cciLtSideClosed(h,l,!_hzF);
+      sideP=cciLtSideClosed(h,_wr||l,!_hzF);
       // A closed side under 20 ft with no known Sensei price → NOT priced: $0
       // here, flagged (err) so the rep sees it and the print is blocked.
       if(isNaN(sideP)){ ltErr=cciLtShortSideMsg('Lean-to side',h,!_hzF); sideP=0; }
@@ -6860,7 +7152,7 @@ function ltUnit(el, wallsOvr){
       if(_np && _np>_mp){
         ltErr=_np+" Panel"+(_np>1?'s':'')+" ("+(3*_np)+"') isn't offered on a "+h+"' lean-to side (CCI offers "+(_mp?'up to '+_mp+' panel'+(_mp>1?'s':''):'no panels')+" there) — pick another Side Wall option";
       } else {
-        var _pt=cciLtSidePartial(sideV,h,l,!_hzF,_stL);
+        var _pt=cciLtSidePartial(sideV,h,_wr||l,!_hzF,_stL);
         if(isNaN(_pt.p)||isNaN(_pt.j)) ltErr="Lean-to partial side on a "+_pt.run+"' run isn't priced yet — verify with CCI";
         else { sideP=_pt.p+_pt.j; jTrim=_pt.j; }
       }
@@ -6892,6 +7184,7 @@ function ltUnit(el, wallsOvr){
   var _ltU={w:w,l:l,h:h,isFree:isFree,bp:bp,heightAdj:heightAdj,encAdj:encAdj,total:_ltTot};
   if(jTrim) _ltU.jTrim=jTrim; // CCI partial side: the J trim inside encAdj
   if(ltErr) _ltU.err=ltErr; // only an unpriced lean-to carries the key
+  if(_wr) _ltU.wrapLen=_wr; // wrapped (CCI): the length its size, height and side wall were priced at
   return _ltU;
 }
 function gLT(){
@@ -7162,6 +7455,7 @@ function ltPartitionIssue(el){
 // that is orphaned or unpriced, must not slip onto a client document.
 function ltStoragePrintBlock(){
   var msg='', pmsg='', umsg='';
+  var _wpi=(typeof ltWrapPrintIssue==='function')?ltWrapPrintIssue():''; if(_wpi){ toast(_wpi,'err'); return true; } // a requested wrap that no longer holds
   document.querySelectorAll('.lte').forEach(function(el){
     var u=ltUnit(el); if(!umsg && u.err) umsg=u.err;
     var s=ltStorage(el); if(!msg && s.on && !s.valid) msg=s.err;
@@ -8101,30 +8395,31 @@ function aLT(){
   d.className='lte entry';
   d.innerHTML=
     '<div style="font-size:11px;font-weight:700;color:#1C3557;margin-bottom:6px">Lean-To</div>'+
+    '<div class="lt-wrap-badge-row" style="display:none;margin:-2px 0 7px"><span class="lt-wrap-badge" style="display:inline-block;padding:1px 8px;border-radius:9px;background:rgba(31,206,196,.14);color:var(--t);font-size:10.5px;font-weight:700;cursor:help"></span></div>'+
     '<div class="row"><label>Type</label>'+
-    '<select class="lt-type" onchange="ltTypeChange(this.closest(\'.lte\'));rc()">'+
+    '<select class="lt-type" onchange="if(ltWrapGuard(this))return;ltTypeChange(this.closest(\'.lte\'));rc()">'+
     '<option value="attached">Attached (to main building)</option>'+
     '<option value="freestanding">Free-Standing / Single Slope</option>'+
     '</select></div>'+
     '<div class="row lt-attach-row"><label>Attached Side</label>'+
-    '<select class="lts" onchange="rc()">'+
+    '<select class="lts" onchange="ltLenGuard(this)">'+
     '<option value="Left Eave">Left Eave</option>'+
     '<option value="Right Eave">Right Eave</option>'+
     '<option value="Front Gable">Front Gable</option>'+
     '<option value="Back Gable">Back Gable</option>'+
     '</select></div>'+
     '<div class="row"><label>Width (ft)</label>'+
-    '<select class="ltw" onchange="updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
+    '<select class="ltw" onchange="if(ltWrapGuard(this))return;updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
     '<option value="8">8\'</option><option value="10">10\'</option>'+
     '<option value="12" selected>12\'</option><option value="14">14\'</option>'+
     '<option value="16">16\'</option><option value="20">20\'</option>'+
     '</select></div>'+
     '<div class="row"><label>Length (ft)</label>'+
-    '<input type="number" class="ltl2" placeholder="e.g. 30" min="10" max="300" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+    '<input type="number" class="ltl2" placeholder="e.g. 30" min="10" max="300" oninput="ltWrapTyping(this);rc()" onchange="ltLenGuard(this)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-off-row" title="Only matters when the lean-to is shorter than the wall it sits on. Eave lean-to: feet from the front corner. Gable lean-to: feet from the corner on your left as you stand outside facing that gable (front gable: the left eave corner; back gable: the right eave corner)."><label>Starts At (ft from front / your-left corner)</label>'+
-    '<input type="number" class="ltoff" placeholder="0 = at the corner" min="0" step="1" oninput="rc()" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
+    '<input type="number" class="ltoff" placeholder="0 = at the corner" min="0" step="1" oninput="ltWrapTyping(this);rc()" onchange="ltLenGuard(this)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-lowleg-row"><label>Low Leg Height (ft)</label>'+
-    '<select class="lth" onchange="updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
+    '<select class="lth" onchange="if(ltWrapGuard(this))return;updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
     '<option value="6">6\'</option><option value="7">7\'</option><option value="8">8\'</option>'+
     '<option value="9">9\'</option><option value="10">10\'</option><option value="12">12\'</option>'+
     '</select></div>'+
@@ -8135,7 +8430,7 @@ function aLT(){
     '<option value="14">14\'</option><option value="16">16\'</option>'+
     '</select></div>'+
     '<div class="row"><label>Roof Pitch</label>'+
-    '<select class="ltp" onchange="updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
+    '<select class="ltp" onchange="if(ltWrapGuard(this))return;updateLTNote(this.closest(\'.lte\'));refreshLTAccSizes(this.closest(\'.lte\'));rc()">'+
     '<option value="2:12">2:12 (standard)</option>'+
     '<option value="3:12">3:12</option>'+
     '</select></div>'+
@@ -8208,7 +8503,7 @@ function aLT(){
     '</div>'+
     '<div class="lt-acc-list"></div>'+
     '</div>';
-  d.appendChild(mkRm('.lte'));
+  var _ltRm=mkRm('.lte'); _ltRm.onclick=function(){ ltWrapRemove(this); }; d.appendChild(_ltRm); // its wrapped corners go with it
   G('ltl').appendChild(d);
   rc();
 }
@@ -8744,6 +9039,7 @@ function _rvClear(){
   window._rvOrig=null; window._rvForce=false;
   document.querySelectorAll('[data-rv-orig]').forEach(function(el){ delete el.dataset.rvOrig; });
   document.querySelectorAll('[data-rv-stor]').forEach(function(el){ delete el.dataset.rvStor; }); // lean-to storage signature (as ordered)
+  document.querySelectorAll('[data-rv-wrap]').forEach(function(el){ delete el.dataset.rvWrap; }); window._rvWraps=null; // wrap-around corners (as ordered)
   document.querySelectorAll('[data-rv-new]').forEach(function(el){ delete el.dataset.rvNew; delete el.dataset.rvDelta; }); // Use as revision: added / changed marks
   window._rvAewSig=null; // main-building storage wall (as ordered)
 }
@@ -8847,7 +9143,7 @@ function cpWallChanged(wallId, spId){
 function rc(){
   window._qTotals=null; // republished below (or by rcManual) once this pass has priced the build
   if(typeof updateGchEncWarn==='function') updateGchEncWarn();
-  if(INPUT_MODE) return rcManual();
+  if(INPUT_MODE){ var _rcm=rcManual(); if(typeof ltWrapUI==='function') ltWrapUI(); return _rcm; } // the wrap chips / badges follow Input mode too (verify 10/12/26)
   // Lean-to storage length dropdowns follow the lean length + frame spacing
   // BEFORE anything is priced (a spacing change snaps them with a rep note).
   document.querySelectorAll('.lte').forEach(function(el){ if(ltStorOn(el)) populateLTStorLen(el); });
@@ -9268,6 +9564,7 @@ function rc(){
   if(connBox) connBox.style.display=connFeeTotal?'block':'none';
   if(pconnEl) pconnEl.textContent=connFeeTotal?fC(connFeeTotal):'—';
   document.querySelectorAll('.lte').forEach(function(el){ updateLTHeightOptions(el); updateLTNote(el); updateLTStorNote(el); updateLTPriceNote(el); updateLTSenseiNote(el); });
+  ltWrapUI(); // wrap-around chips, notes and each lean-to's "Wrapped length" badge
   var pacEl=G('pac'); if(pacEl) pacEl.textContent=addCompTotal?fC(addCompTotal):'—';
   // Overhang summary row
   var pohEl=G('poh'); var ohRow=G('overhang-summary-row');
@@ -9417,6 +9714,8 @@ function sy(){
   G('sc').textContent=certLabel(cert); // "Up to 170 MPH" (owner 10/9/26) — quote PDF / contract / revision / spacing page read this
   var w=parseInt(G('bw').value)||0, l=parseInt(G('bl').value)||0, h=parseInt(G('bh').value)||6;
   G('ssz').textContent=(w&&l)?(w+"'W \xD7 "+l+"'L \xD7 "+h+"'H"):'—';
+  // Wrap-around lean-tos: the OVERALL footprint on its own line — never mixed up with the main building's size (owner).
+  if(w&&l&&ltWraps().active.length){ var _ovS=ltOverall(), _ovD=document.createElement('div'); _ovD.style.cssText='font-size:10px;font-weight:600;color:var(--sb);margin-top:2px'; _ovD.textContent='Overall '+_ovS.w+"'W \xD7 "+_ovS.l+"'L with lean-tos"; G('ssz').appendChild(_ovD); }
   // Roof Length: standard 6" overhang each end = +1'; 1' gable overhang upgrade = +2'
   // CA: always +1' (no overhang upgrade option). CCI: depends on overhang-sel.
   var ohForRoof=G('overhang-sel')?G('overhang-sel').value:'none';
@@ -11164,6 +11463,8 @@ function collectQuoteData(){
     });
     data.leantos.push(d);
   });
+  // Wrap-around corners (10/12/26): saved only when set, so a quote without one saves exactly as before.
+  var _wrS=ltWrapReq(); if(_wrS.length) data.ltWraps=_wrS.join(',');
 
   // Additional components
   data.addcomps = [];
@@ -11952,6 +12253,9 @@ function _restoreQuoteDataImpl(data, opts){
 
   // Step 8: Clear and restore lean-tos
   var ltl=G('ltl'); if(ltl) ltl.innerHTML='';
+  // Wrap-around corners (absent in older saves → none). Set first: a corner prices once both of its lean-tos are back.
+  if(G('lt-wraps')) G('lt-wraps').value=(typeof data.ltWraps==='string')?data.ltWraps:'';
+  window._ltWrapMsg=''; window._ltWrapShow=false;
   (data.leantos||[]).forEach(function(d){
     aLT();
     var entries=document.querySelectorAll('.lte.entry');
@@ -12105,7 +12409,8 @@ function _restoreQuoteDataImpl(data, opts){
       window._rvOrig=_plSaved?{ tot:_plSaved.total, dep:_plSaved.deposit, dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) }
         :{ tot:_rvNum(G('ptot').textContent), dep:_rvNum(G('pdep').textContent), dims:(G('bw').value+'x'+G('bl').value+'x'+G('bh').value) };
       document.querySelectorAll('.re,.we,.ne,.ace,.lte').forEach(function(el){ el.dataset.rvOrig='1'; });
-      document.querySelectorAll('.lte').forEach(function(el){ el.dataset.rvStor=ltStorSig(el); });
+      document.querySelectorAll('.lte').forEach(function(el){ el.dataset.rvStor=ltStorSig(el); el.dataset.rvWrap=String(ltWrapOf(el).len||''); });
+      window._rvWraps=ltWraps().active.join(','); // wrap-around corners as ordered
       window._rvAewSig=(typeof aewSig==='function')?aewSig():null; // storage wall as ordered
     }catch(e){}
   }, 900);
@@ -12606,7 +12911,7 @@ async function printQuote(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsQ=ltStorage(el); if(_lsQ.valid&&_lsQ.total) rows+=row('  '+ltStorageLabel(_lsQ),null,null,_lsQ.total);
       // Lean-to accessories
@@ -12673,6 +12978,8 @@ async function printQuote(){
       }
     }
   });
+  // Wrap-around corners (Sensei): a flat connection fee each — inside the Building Amount like the per-lean-to fees.
+  ltWrapFeeRows().forEach(function(f){ rows+=row('  Lean-To: '+f.label,null,null,f.fee); });
   // Additional components
   document.querySelectorAll('.ace').forEach(function(el){
     var comp=el.querySelector('.act').value;
@@ -12751,6 +13058,7 @@ async function printQuote(){
   '<div class="qsec">'+
   '<div class="qsec-title">Building Specs</div>'+
   '<div class="qfield"><span class="fl">Dimensions</span><span class="fv hl">'+w+"' \xD7 "+l+"' \xD7 "+h+"'</span></div>"+
+  (ltWraps().active.length?(function(){ var o=ltOverall(); return '<div class="qfield"><span class="fl">Overall Footprint</span><span class="fv">'+o.w+"' \xD7 "+o.l+"' (main building + wrap-around lean-tos)</span></div>"; })():'')+
   '<div class="qfield"><span class="fl">Roof Length</span><span class="fv">'+(function(){var oh=G('overhang-sel')?G('overhang-sel').value:'none';var ex=(ACTIVE_MFR==='CCI'&&(oh==='gables'||oh==='both'))?2:1;return (parseInt(l)+ex)+"' ("+(ex===2?"1' overhang":"6\" overhang")+")";})()+'</span></div>'+
   '<div class="qfield"><span class="fl">Square Footage</span><span class="fv">'+sqft.toLocaleString()+' sq. ft.</span></div>'+
   '<div class="qspecs-grid">'+
@@ -13139,7 +13447,7 @@ function _dimT(x,y,txt,a){
 // The storage partition sits where the 3D puts it (geometry.ts runAt): front
 // end → start + length, back end → end − length.
 function _dimLeanTos(W,L,H){
-  var out=[];
+  var out=[], _wrD=(typeof ltWraps==='function')?ltWraps():null;
   document.querySelectorAll('.lte').forEach(function(el,i){
     var t=el.querySelector('.lt-type'); if(t&&t.value!=='attached') return;
     var side=(el.querySelector('.lts')||{}).value||'';
@@ -13152,10 +13460,18 @@ function _dimLeanTos(W,L,H){
     var st=(typeof ltStorage==='function')?ltStorage(el):null;
     var stor=(st&&st.on&&st.valid&&(st.end==='front'||st.end==='back')&&st.len>0)?{end:st.end,len:st.len,at:(st.end==='front'?start+st.len:start+run-st.len)}:null;
     out.push({n:i+1,el:el,side:side,eave:eave,k:(side==='Left Eave'?'left':side==='Right Eave'?'right':side==='Front Gable'?'front':'back'),
-      w:d.w,low:d.h,pitch:p,conn:Math.min(H,d.h+d.w*p/12),len:run,ll:ll,start:start,walls:getLTWalls(el),stor:stor});
+      w:d.w,low:d.h,pitch:p,conn:Math.min(H,d.h+d.w*p/12),len:run,ll:ll,start:start,walls:getLTWalls(el),stor:stor,wrap:_wrD?ltWrapOf(el,_wrD):{len:0,own:0,meets:[]}});
   });
   return out;
 }
+// Wrapped corners as the drawings place them: [{k, w}] — the corner square is w × w (w = the lean-tos' width).
+function _dimWrapCorners(lts){
+  var ks={};
+  lts.forEach(function(l){ ((l.wrap&&l.wrap.meets)||[]).forEach(function(m){ ks[m.k]=Math.max(ks[m.k]||0,Math.min(l.w,m.w)); }); });
+  return LT_WRAP_KEYS.filter(function(k){ return ks[k]>0; }).map(function(k){ return {k:k,w:ks[k]}; });
+}
+// How far a lean-to's wrap reaches past its own end at corner k (0 = that end isn't wrapped).
+function _dimWrapW(l,k){ var m=((l.wrap&&l.wrap.meets)||[]).filter(function(x){ return x.k===k; })[0]; return m?m.w:0; }
 // Small top-down plan for one wall card (the demo's renderPlan): building
 // outline (open walls dashed), attached lean-tos (dashed when their outer side
 // is open) with their storage partition, the GCH divider / storage partition
@@ -13184,6 +13500,13 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
       o+='<line x1="'+ln[0].toFixed(1)+'" y1="'+ln[1].toFixed(1)+'" x2="'+ln[2].toFixed(1)+'" y2="'+ln[3].toFixed(1)+'" stroke="'+(hl?DIM_C.teal:DIM_K.lt)+'" stroke-opacity="'+(hl?'1':'.7')+'" stroke-width="'+(hl?'2.6':'1')+'"'+(hl?'':' stroke-dasharray="2 2"')+' stroke-linecap="round"/>';
     }
     o+=_dimT(r[0]+r[2]/2, r[1]+r[3]/2+3, 'LT'+l.n, {anchor:'middle',size:8,fill:DIM_K.ltText});
+  });
+  // wrap-around corners: the open corner square under the continuous roof, with its hip line (main corner → outer corner)
+  (typeof _dimWrapCorners==='function'?_dimWrapCorners(lts):[]).forEach(function(c){
+    var w=c.w, xa=(c.k==='FL'||c.k==='BL')?-w:W, ya=(c.k==='FL'||c.k==='FR')?-w:L; // plan ft: x from the left eave, y from the FRONT
+    var x0=px(xa), x1=px(xa+w), y0=py(ya+w), y1=py(ya), mx=(xa<0?px(0):px(W)), my=(ya<0?py(0):py(L)), ox=(xa<0?x0:x1), oy=(ya<0?y1:y0);
+    o+='<rect x="'+x0+'" y="'+y0+'" width="'+(x1-x0).toFixed(1)+'" height="'+(y1-y0).toFixed(1)+'" fill="rgba(167,139,250,.10)" stroke="'+DIM_K.lt+'" stroke-opacity=".7" stroke-width=".9" stroke-dasharray="1.5 2"/>'+
+       '<line x1="'+mx+'" y1="'+my+'" x2="'+ox+'" y2="'+oy+'" stroke="'+DIM_K.lt+'" stroke-opacity=".85" stroke-width=".8"/>';
   });
   if(part){
     var on=(sel==='partition'||(sel==='front'&&part.gch));
@@ -13243,6 +13566,8 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     mR=Math.max(mR,Math.ceil(sideR.length?_mw(sideR):_tw(legTxt,10.5))+34);
     mB+=30;
   }
+  var wrapFoot=foot.filter(function(q){ return q.wA>0||q.wB>0; }); // wrap-around lean-tos on this wall: one "wrap length" bar each
+  mB+=26*wrapFoot.length;
   var sorted=items.slice().sort(function(a,b){return a.x-b.x;});
   var extL=0, extR=0;
   sideLeans.forEach(function(q){ if(q.onLeft) extL=Math.max(extL,q.l.w); else extR=Math.max(extR,q.l.w); });
@@ -13488,6 +13813,14 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     var dy3=dy2+34;
     o+=bar(dy3,-wL,faceW+wR,[-wL,faceW+wR])+lab(X((faceW+wR-wL)/2),dy3,_dimFtIn(wL+faceW+wR)+' overall',11.5,600,DIM_C.text);
   }
+  // wrap length (unrounded, as Sensei labels it): the lean-to on this wall + the corner square(s) it wraps
+  wrapFoot.forEach(function(q,i){
+    var l=q.l, a=q.x0-(q.wA||0), b=q.x0+l.len+(q.wB||0), yy=dy2+(sideLeans.length?34:0)+28*(i+1);
+    o+='<line x1="'+X(a)+'" y1="'+yy.toFixed(1)+'" x2="'+X(b)+'" y2="'+yy.toFixed(1)+'" stroke="'+DIM_K.lt+'" stroke-width="1"/>';
+    [a,b].forEach(function(t){ o+='<line x1="'+X(t)+'" y1="'+(yy-5).toFixed(1)+'" x2="'+X(t)+'" y2="'+(yy+5).toFixed(1)+'" stroke="'+DIM_K.lt+'" stroke-width="1"/>'; });
+    var cw=[q.wA,q.wB].filter(function(v){ return v>0; }), t='LT'+l.n+' wrap length '+_dimFtIn((l.wrap&&l.wrap.len)||(l.ll+(q.wA||0)+(q.wB||0)))+' ('+_dimFtIn(l.ll)+' + '+cw.map(_dimFtIn).join(' + ')+' corner'+(cw.length>1?'s':'')+')', tw=_tw(t,10)+8;
+    o+='<rect x="'+(X((a+b)/2)-tw/2).toFixed(1)+'" y="'+(yy-9).toFixed(1)+'" width="'+tw.toFixed(1)+'" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X((a+b)/2), yy+4, t, {anchor:'middle',size:10,weight:600,fill:DIM_K.ltText});
+  });
   o+=_dimT(X(0), dy2+17, ends[0], {size:8.5,ls:1.2})+_dimT(X(faceW), dy2+17, ends[1], {anchor:'end',size:8.5,ls:1.2});
   o+='</svg>';
   return o;
@@ -13538,10 +13871,10 @@ function dimSpacingPageHTML(theme){
   // left — x (getPosItems) runs from the drawing's left corner on both.
   html+=card('Front','front',dimElevSVG(W,H,peakH,true,it.front,isGCH,null,clr,{pitch:pitch,ends:['LEFT EAVE','RIGHT EAVE'],open:open.front&&!isGCH,
     sideLeans:eaveLTs.map(function(l){return {l:l,onLeft:l.side==='Left Eave',closed:l.walls.frontClosed};}),
-    foot:gableLTs.filter(function(l){return l.side==='Front Gable';}).map(function(l){return {l:l,x0:l.start};})}));
+    foot:gableLTs.filter(function(l){return l.side==='Front Gable';}).map(function(l){return {l:l,x0:l.start,wA:_dimWrapW(l,'FL'),wB:_dimWrapW(l,'FR')};})}));
   html+=card('Back · seen from behind','back',dimElevSVG(W,H,peakH,true,it.back,false,null,clr,{pitch:pitch,ends:['RIGHT EAVE','LEFT EAVE'],open:open.back,
     sideLeans:eaveLTs.map(function(l){return {l:l,onLeft:l.side==='Right Eave',closed:l.walls.backClosed};}),
-    foot:gableLTs.filter(function(l){return l.side==='Back Gable';}).map(function(l){return {l:l,x0:l.start};})}));
+    foot:gableLTs.filter(function(l){return l.side==='Back Gable';}).map(function(l){return {l:l,x0:l.start,wA:_dimWrapW(l,'BR'),wB:_dimWrapW(l,'BL')};})}));
   // End Storage partition doors (10/1/26): their own view, measured like the
   // Front view (seen from the front), placed only where the wall is drawn.
   if(_sp && _sp.on && _sp.kind==='end' && it.partition && it.partition.length){
@@ -13552,10 +13885,10 @@ function dimSpacingPageHTML(theme){
   // (front on the left of the drawing), Left Eave x from the BACK.
   html+=card('Right Eave','right',dimElevSVG(L,H,peakH,false,it.right,false,'left',null,{ends:['FRONT GABLE','BACK GABLE'],open:open.right,truss:trussFront,oc:oc,
     sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Front Gable',closed:l.walls.mode!=='open'};}),
-    foot:eaveLTs.filter(function(l){return l.side==='Right Eave';}).map(function(l){return {l:l,x0:l.start};})}));
+    foot:eaveLTs.filter(function(l){return l.side==='Right Eave';}).map(function(l){return {l:l,x0:l.start,wA:_dimWrapW(l,'FR'),wB:_dimWrapW(l,'BR')};})}));
   html+=card('Left Eave','left',dimElevSVG(L,H,peakH,false,it.left,false,'right',null,{ends:['BACK GABLE','FRONT GABLE'],open:open.left,truss:trussFront.map(function(t){return L-t;}),oc:oc,
     sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Back Gable',closed:l.walls.mode!=='open'};}),
-    foot:eaveLTs.filter(function(l){return l.side==='Left Eave';}).map(function(l){return {l:l,x0:L-l.start-l.len};})}));
+    foot:eaveLTs.filter(function(l){return l.side==='Left Eave';}).map(function(l){return {l:l,x0:L-l.start-l.len,wA:_dimWrapW(l,'BL'),wB:_dimWrapW(l,'FL')};})}));
   // Lean-to storage partitions that carry openings: the partition under the
   // lean-to rafter (ltPartGeom / ltPartWallH), its openings where ltPartLayout
   // puts them (the same spots the 3D draws and the fit rules check), measured
@@ -13715,7 +14048,7 @@ function rvPayRowsHTML(o){
 }
 // Itemized pricing: the row style / tag for an added or changed item, the struck
 // previous amount, and the removed items (kept, struck through, credit negative).
-var RV_TAGS={ ADDED:['#ecfdf5','#bbf7d0','#14532d'], CHANGED:['#fff4dc','#f59e0b','#7c2d12'], NEW:['#fff4dc','#f59e0b','#7c2d12'], REMOVED:['#fef2f2','#fecaca','#7f1d1d'] };
+var RV_TAGS={ ADDED:['#ecfdf5','#bbf7d0','#14532d'], CHANGED:['#fff7ed','#f0883e','#431407'], NEW:['#fff7ed','#f0883e','#431407'], REMOVED:['#fef2f2','#fecaca','#7f1d1d'] }; // CHANGED / NEW = the brand orange, never amber or yellow (owner 10/12/26)
 function rvRowAttr(it){ if(!it||!it.hl) return ''; var c=RV_TAGS[it.tag||'ADDED']||RV_TAGS.ADDED; return ' style="background:'+c[0]+'"'; }
 function rvRowTag(it){ if(!it||!it.hl) return ''; var t=it.tag||'ADDED', c=RV_TAGS[t]||RV_TAGS.ADDED; return '<span style="display:inline-block;background:'+c[1]+';color:'+c[2]+';font-size:6pt;font-weight:900;letter-spacing:.5px;border-radius:3px;padding:1px 5px;margin-right:6px">'+t+'</span>'; }
 function rvOldAmt(it, fmt){ return (it&&it.old!=null)?'<s style="color:#94a3b8;font-weight:600">'+fmt(it.old)+'</s> → ':''; }
@@ -14191,7 +14524,8 @@ async function printContract(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"') — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+      window._rvHlCur=_wHl; // a wrap added / changed since the order highlights the lean-to row only
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsC=ltStorage(el);
       if(_lsC.valid&&_lsC.total){
@@ -14264,6 +14598,9 @@ async function printContract(){
       }
     }
   });
+  // Wrap-around corners (Sensei): a flat connection fee each; a corner added since the order is highlighted on a revised contract.
+  ltWrapFeeRows().forEach(function(f){ window._rvHlCur=!!(_rvMode&&(window._rvWraps==null||String(window._rvWraps).split(',').indexOf(f.k)<0)); window._rvElCur=null; row('  Lean-To: '+f.label,null,null,f.fee); });
+  window._rvHlCur=false; window._rvElCur=null;
   // Additional Components (framed openings, custom items, etc.) — mirror of printQuote
   document.querySelectorAll('.ace').forEach(function(el){
     window._rvHlCur=(_rvMode&&!(el.dataset&&el.dataset.rvOrig==='1')); window._rvElCur=el;
@@ -14371,7 +14708,7 @@ async function printContract(){
       var lw=parseFloat((el.querySelector('.ltw')||{}).value)||0;
       var ll=parseFloat((el.querySelector('.ltl2')||{}).value)||0;
       var off=parseFloat((el.querySelector('.ltoff')||{}).value)||0;
-      if(lw>0&&ll>0) _fpLTs.push({side:side,lw:lw,ll:ll,off:off});
+      if(lw>0&&ll>0) _fpLTs.push({side:side,lw:lw,ll:ll,off:off,wrap:ltWrapOf(el)});
     });
     _fpLTs.forEach(function(lt){
       var need=lt.lw*scale+40;
@@ -14390,6 +14727,10 @@ async function printContract(){
       else if(lt.side==='Back Gable') _ltExt.top=Math.max(_ltExt.top,e);
       else if(lt.side==='Front Gable') _ltExt.bottom=Math.max(_ltExt.bottom,e);
     });
+    // Wrap-around: the "OVERALL WITH LEAN-TOS" footer gets its own row above the legend, and the plan keeps clear of it
+    // (the FRONT label used to sit on it when the wrap was only at the back; on a narrow plan it ran into the legend).
+    var _fpWrapOn = ltWraps().active.length > 0;
+    if(_fpWrapOn) MB = Math.max(MB, 96 + _ltExt.bottom + 44);
     var SW = Math.round(bw + ML + MR);
     var SH = Math.round(bl + MT + MB);
     var bx = ML, by = MT;
@@ -14456,8 +14797,20 @@ async function printContract(){
       }
       s+='<rect x="'+x+'" y="'+y+'" width="'+w2+'" height="'+h2+'" fill="#eef4fa" stroke="#111827" stroke-width="2.5" stroke-dasharray="8,5"/>';
       var cx=x+w2/2, cy=y+h2/2, vert=h2>w2;
-      s+='<text x="'+cx+'" y="'+(cy+3)+'" text-anchor="middle" font-family="Arial" font-size="9" font-weight="800" fill="#111827" letter-spacing="1"'+(vert?' transform="rotate(-90,'+cx+','+cy+')"':'')+'>LEAN-TO '+lt.lw+'′ × '+lt.ll+'′</text>';
+      s+='<text x="'+cx+'" y="'+(cy+3)+'" text-anchor="middle" font-family="Arial" font-size="9" font-weight="800" fill="#111827" letter-spacing="1"'+(vert?' transform="rotate(-90,'+cx+','+cy+')"':'')+'>LEAN-TO '+lt.lw+'′ × '+lt.ll+'′'+((lt.wrap&&lt.wrap.len)?' (WRAP LENGTH '+lt.wrap.len+'′)':'')+'</text>';
     });
+    // ── Wrap-around corners: the open corner square under the continuous roof + its hip line ──
+    (function(){
+      var wr=ltWraps();
+      wr.active.forEach(function(k){
+        var p=wr.pair[k], e=Math.min(p.e.w,p.g.w)*scale, left=(k==='FL'||k==='BL'), front=(k==='FL'||k==='FR');
+        var x=left?bx-e:bx+bw, y=front?by+bl:by-e, mx=left?bx:bx+bw, my=front?by+bl:by, ox=left?bx-e:bx+bw+e, oy=front?by+bl+e:by-e;
+        s+='<rect x="'+x+'" y="'+y+'" width="'+e+'" height="'+e+'" fill="#f4f7fb" stroke="#111827" stroke-width="1.5" stroke-dasharray="3,4"/>';
+        s+='<line x1="'+mx+'" y1="'+my+'" x2="'+ox+'" y2="'+oy+'" stroke="#111827" stroke-width="1.2"/>';
+        var ty=Math.min(my,oy), tx=(ty===my)?ox:mx; // the square's other top corner: label in that half
+        s+='<text x="'+((mx+ox+tx)/3)+'" y="'+((my+oy+ty)/3+3)+'" text-anchor="middle" font-family="Arial" font-size="8" font-weight="800" fill="#111827" letter-spacing="1">WRAP</text>';
+      });
+    })();
 
     // ── Partition wall (GCH only) ─────────────────────────────────────────────
     // A garage-carport hybrid splits the length into an ENCLOSED bay at the BACK
@@ -14670,6 +15023,11 @@ async function printContract(){
 
     // Legend hint
     s += '<text x="'+(SW-12)+'" y="'+(SH-8)+'" text-anchor="end" font-family="Arial" font-size="7.5" fill="#94a3b8">Solid = enclosed wall &nbsp; Dashed = open wall</text>';
+    if(_fpWrapOn){
+      var _ovF=ltOverall(), _ovT='OVERALL WITH LEAN-TOS '+_ovF.w+'′ × '+_ovF.l+'′ &nbsp;·&nbsp; MAIN BUILDING '+W+'′ × '+L+'′';
+      var _ovW=58*5.9, _ovFit=(_ovW>SW-24)?' textLength="'+(SW-24)+'" lengthAdjust="spacingAndGlyphs"':''; // ~58 chars of 9px bold: squeeze only when the plan is narrower
+      s += '<text x="12" y="'+(SH-24)+'" font-family="Arial" font-size="9" font-weight="800" fill="#111827" letter-spacing=".5"'+_ovFit+'>'+_ovT+'</text>';
+    }
 
     s += '</svg>';
     return s;
@@ -14918,6 +15276,7 @@ async function printContract(){
         return '<div class="c-spec"><div class="l">Dimensions</div><div class="v hl">'+w+"\xD7"+l+"\xD7"+h+"'</div>"+
           '<div class="v" style="font-size:6.8pt;color:#64748b;font-weight:600;margin-top:2px;letter-spacing:.2px">Roof line: '+roofLen+"' &middot; "+ohLabel+'</div></div>';
       })()+
+      (ltWraps().active.length?(function(){ var o=ltOverall(); return '<div class="c-spec"><div class="l">Overall w/ Lean-Tos</div><div class="v">'+o.w+"\xD7"+o.l+"'</div></div>"; })():'')+
       '<div class="c-spec"><div class="l">Sq. Footage</div><div class="v">'+sqft.toLocaleString()+' sq ft</div></div>'+
       '<div class="c-spec"><div class="l">Roof Style</div><div class="v">'+roofStyle+'</div></div>'+
       '<div class="c-spec"><div class="l">Wall Style</div><div class="v">'+wallStyle+'</div></div>'+
@@ -15368,6 +15727,7 @@ function resetAll(){
   });
   G('rl').innerHTML=''; G('wl').innerHTML=''; G('nl').innerHTML='';
   var ltlEl=G('ltl'); if(ltlEl) ltlEl.innerHTML='';
+  if(G('lt-wraps')) G('lt-wraps').value=''; window._ltWrapMsg=''; window._ltWrapShow=false;
   var aclEl=G('acl'); if(aclEl) aclEl.innerHTML='';
   G('pitch').textContent='3:12'; G('plnote').textContent=''; G('plnote').className='';
   var ovEl=G('base-override'); if(ovEl) ovEl.value='';
@@ -17220,8 +17580,9 @@ function textQuote(){
     if(!lw||!ll) return;
     var ltT=el.querySelector('.lt-type'),ltFree=(ltT&&ltT.value==='freestanding');
     var ltSide=ltFree?'':((el.querySelector('.lts')||{}).value||'');
-    ltLines.push((ltFree?'Free-Standing Lean-To ':'Lean-To ')+lw+'\' \u00D7 '+ll+'\''+(ltSide?' ('+ltSide+')':''));
+    ltLines.push((ltFree?'Free-Standing Lean-To ':'Lean-To ')+lw+'\' \u00D7 '+ll+'\''+(ltSide?' ('+ltSide+')':'')+_ltWrapTxt(el).replace(/^, /,' \u2014 '));
   });
+  ltWrapFeeRows().forEach(function(f){ ltLines.push('Wrap-Around Corner \u2014 '+LT_WRAP_NAME[f.k]); });
   // Overhang, side panels and ground anchors: one short wording line each when
   // this build is priced with them (no prices) \u2014 same wording as the PDF rows.
   var optLines=[];
@@ -17254,6 +17615,7 @@ function textQuote(){
   m+=w+'\' \u00D7 '+l+'\' \u00D7 '+h+'\' ('+sqft.toLocaleString()+' sq ft)\n';
   m+=roofStyle+' Roof \u2022 '+wallStyle+' Walls \u2022 '+pitch+'\n';
   m+=(fuVal==='12'?'12GA':'14GA')+' Framing \u2022 '+(T.sheet26?'26GA':'Standard Sheeting')+'\n';
+  if(ltWraps().active.length){ var _ovT=ltOverall(); m+='Overall with lean-tos: '+_ovT.w+'\' \u00D7 '+_ovT.l+'\' (main building '+w+'\' \u00D7 '+l+'\')\n'; }
   ltLines.forEach(function(s){m+='\u2022 '+s+'\n';});
   optLines.forEach(function(s){m+='\u2022 '+s+'\n';});
   m+='\n';
@@ -18010,7 +18372,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(src!=='snapshot' && rcl && !rcl.manual && !anyLeanStorage()){
       if(mfr==='CCI' && (!savedT || savedT>=T_LT_HANDBOOK)){
         var ltD=0;
-        cciAttachedLeans().forEach(function(x){ ltD+=(x.u.bp+x.u.heightAdj+ltEncPre(x.el,x.u))-x.u.total; });
+        cciAttachedLeans().forEach(function(x){ if(x.u.wrapLen) return; /* wrap-arounds (10/12/26) came after these rules: nothing older to compare */ ltD+=(x.u.bp+x.u.heightAdj+ltEncPre(x.el,x.u))-x.u.total; });
         ltD=r2(ltD);
         if(ltD) out.push({ k:'leanWalls', label:'Lean-to walls (as originally quoted)', amt:ltD, rules:['lean-walls'] });
       }
@@ -18185,6 +18547,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         });
       });
     });
+    if(String(data.ltWraps||'')!==String(now.ltWraps||'')) issues.push('Lean-to wraps: saved "'+(data.ltWraps||'none')+'", now "'+(now.ltWraps||'none')+'"');
     return issues;
   };
 
@@ -18310,7 +18673,11 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var p=curP();
     // 1) The saved price
     var S=null, pr=data.priced;
-    if(pr && pr.v===1 && isFinite(+pr.sub) && pr.money){
+    // v2 = a quote with wrap-around lean-tos (10/12/26): same shape as v1. Programs older than wraps read only v1, so
+    // they reprice such a quote visibly ("No saved price on record") instead of silently holding the wrap premium on an
+    // unwrapped build. A newer version than this program knows is named as an issue (reopen it in the updated app).
+    if(pr && pr.v>2) st.issues.push('This quote was saved by a newer version of the quote program (price snapshot v'+pr.v+'). Open it in the updated app before changing or printing it.');
+    if(pr && (pr.v===1||pr.v===2) && isFinite(+pr.sub) && pr.money){
       S={ sub:+pr.sub, src:'snapshot', depPct:pr.depPct||17, parts:pr.holdParts||[], freeThresh:pr.freeThresh,
           totals:{ total:+pr.money.adjTot, deposit:+pr.money.dep, balance:+pr.money.bal } };
       st.pricedAt=pr.pricedAt||null;
@@ -18624,7 +18991,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(!$('bw') || !$('bw').value || !$('bl') || !$('bl').value) return null;
     var r=pass(); if(!r) return null;
     var st=PL.st;
-    return { v:1, pricedAt:new Date().toISOString(), engineRev:PL.ENGINE_REV, inputMode:!!root.INPUT_MODE,
+    var _snapV=(typeof root.ltWrapReq==='function' && root.ltWrapReq().length)?2:1; // v2 = wrap-around lean-tos (see the restore)
+    return { v:_snapV, pricedAt:new Date().toISOString(), engineRev:PL.ENGINE_REV, inputMode:!!root.INPUT_MODE,
       source:PL.on?'held':'engine', sub:r.sub, hold:r2(r.holdP||0), holdParts:PL.on?holdParts():[], depPct:r.depPct, freeThresh:(root._freeThresh||10000),
       // free 26GA / free fasteners as priced (the $10k thresholds on the saved price)
       free:{ sheet:!!r.sheetFree, fastener:!!r.fastenerFree }, thrPre:r2(r.thrPre!=null?r.thrPre:r.preSheetSub),
@@ -19042,7 +19410,15 @@ function linePrice(el,k){
     if(k==='re') return lineDiff(el,'re',function(){ return gRUD().rud; });
     if(k==='we') return lineDiff(el,'we',function(){ var r=gWTD(); return r.wtd+r.sf; });
     if(k==='ne') return lineDiff(el,'ne',function(){ var r=gWIN(); return r.win+r.sf; });
-    if(k==='lte') return lineDiff(el,'lte',function(){ return gLT()+gConnectionFees(); });
+    if(k==='lte'){
+      // Wrap-around: price this card with the corners pinned (its partner keeps its wrapped length) + the fee of each
+      // wrapped corner this lean-to is the EAVE side of — the cards still add up to the quote, no corner counted twice.
+      var _wf=(typeof window.ltWraps==='function')?window.ltWraps():null, _wp;
+      window._ltWrapFrozen=_wf;
+      try{ _wp=lineDiff(el,'lte',function(){ return gLT()+gConnectionFees(); }); } finally { window._ltWrapFrozen=null; }
+      if(_wf) _wf.active.forEach(function(c){ if(_wf.pair[c].e.el===el) _wp+=window.LT_WRAP_FEE; });
+      return Math.round(_wp*100)/100;
+    }
     if(k==='ace') return lineDiff(el,'ace',gAC);
   }catch(e){ return null; }
   return null;
@@ -19116,6 +19492,7 @@ function describe(el,k){
     var pn=q('.lt-price-note'); if(inlineShown(pn)&&pn.textContent.trim()) d.bad.push('not fully priced — see note');
     var sn=q('.lt-stor-note'); if(sn){ var sb=inlineShown(sn)&&/NOT priced/i.test(sn.textContent); sn.setAttribute('data-s5',sb?'bad':'warn'); if(sb) d.bad.push('storage not priced'); }
     if(inlineShown(q('.lt-sensei-note'))) d.warn.push('Sensei prices this size differently');
+    if(typeof window.ltWrapOf==='function'){ var _wo=window.ltWrapOf(el); if(_wo.len) d.sub.push('wrapped length '+_wo.len+'′'); }
     if(el.querySelector('.lt-acc-warn,.lt-acc-pwarn,.lt-acc-fitwarn,.ovl-warn')) d.bad.push('an opening doesn’t fit — see card');
   } else if(k==='ace'){
     var key=(q('.act')||{}).value||'';
@@ -19496,7 +19873,7 @@ function build(){
   var sec5=rl.closest('.sec');
   S.secs=ORDER.map(function(k){ return $(KINDS[k].cont).closest('.sec'); });
   ORDER.forEach(function(k){ var c=$(KINDS[k].cont); S.home[k]={c:c,parent:c.parentNode,next:c.nextSibling}; });
-  ['lift-note','cci-door-spacing-note'].forEach(function(id){ var n=$(id); if(n) S.notes[id]={n:n,parent:n.parentNode,next:n.nextSibling}; });
+  ['lift-note','cci-door-spacing-note','lt-wrap-box'].forEach(function(id){ var n=$(id); if(n) S.notes[id]={n:n,parent:n.parentNode,next:n.nextSibling}; });
 
   var sec=D.createElement('div'); sec.className='sec s5'; sec.id='s5-sec';
   sec.innerHTML='<div class="st">5 — Doors, Windows &amp; Add-ons</div>'+
@@ -19511,6 +19888,7 @@ function build(){
     '<div class="s5-cards" id="s5-cards"></div>'+
     '<div class="s5-empty" id="s5-empty">Nothing added yet.</div>'+
     '<div class="s5-hidden" id="s5-hidden"></div>'+
+    '<div id="s5-wrap"></div>'+
     '<details class="s5-rules"><summary>CCI roll-up door leg-height rules</summary><div id="s5-notes-bottom"></div></details>'+
     '<div class="s5-sum" id="s5-sum"></div>';
   sec5.parentNode.insertBefore(sec,sec5);
@@ -19589,6 +19967,7 @@ function setMode(m){
     ORDER.forEach(function(k){ cards.appendChild(S.home[k].c); });
     if(S.notes['lift-note']) $('s5-notes-top').appendChild(S.notes['lift-note'].n);
     if(S.notes['cci-door-spacing-note']) $('s5-notes-bottom').appendChild(S.notes['cci-door-spacing-note'].n);
+    if(S.notes['lt-wrap-box']) $('s5-wrap').appendChild(S.notes['lt-wrap-box'].n); // wrap-around corners under the cards
     S.secs.forEach(function(s){ s.classList.add('s5-gone'); });
     sec.classList.remove('s5-gone');
     D.body.classList.add('s5-new');
