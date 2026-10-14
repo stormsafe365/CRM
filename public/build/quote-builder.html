@@ -13062,7 +13062,7 @@ async function printQuote(){
   '<div class="qfield"><span class="fl">Roof Length</span><span class="fv">'+(function(){var oh=G('overhang-sel')?G('overhang-sel').value:'none';var ex=(ACTIVE_MFR==='CCI'&&(oh==='gables'||oh==='both'))?2:1;return (parseInt(l)+ex)+"' ("+(ex===2?"1' overhang":"6\" overhang")+")";})()+'</span></div>'+
   '<div class="qfield"><span class="fl">Square Footage</span><span class="fv">'+sqft.toLocaleString()+' sq. ft.</span></div>'+
   '<div class="qspecs-grid">'+
-  '<div class="qspec-box"><span class="fl">Certification</span><span class="fv">'+cert+'</span></div>'+
+  '<div class="qspec-box"><span class="fl">Certification</span><span class="fv qcert">'+cert+'</span></div>'+
   '<div class="qspec-box"><span class="fl">Framing</span><span class="fv">'+((ti&&ti.spacing)?ti.spacing:4)+'\' OC</span></div>'+
   '<div class="qspec-box"><span class="fl">Sheeting</span><span class="fv">'+sheetGA+'</span></div>'+
   '<div class="qspec-box"><span class="fl">Frame GA</span><span class="fv">'+framingGA+'</span></div>'+
@@ -13191,6 +13191,9 @@ async function printQuote(){
 
   // Build self-contained HTML doc with all CSS inline - opens in new tab
   var _printTiles = await printTileUrls(); // last page: color selections + chart (CCI print-panel tiles)
+  // Page 1's print rules (unchanged) + a measuring copy of them under html.qp-m (_qpFit below).
+  var _P1PRINT='.qpg{display:block!important;background:#080f14!important}.qbody{display:flex!important;align-items:stretch!important}.qsidebar{align-self:stretch!important}.qmain{display:flex!important;flex-direction:column!important;align-self:stretch!important;background:#111d28!important}.qfooter{margin-top:12px!important;position:static!important}.qsec{margin-bottom:8px!important;padding-bottom:6px!important}.qfield{margin-bottom:4px!important}.qsec-title{margin-bottom:5px!important;font-size:6pt!important}.qfield .fl{font-size:5.5pt!important}.qfield .fv{font-size:8pt!important}.qspec-box{padding:4px 5px!important}.qspec-box .fl{font-size:5pt!important}.qspec-box .fv{font-size:8pt!important}.qcolor-row{padding:2px 0!important}.qspec-box .fv.qcert{font-size:7pt!important;letter-spacing:-.1px;white-space:nowrap}'; // + the certification tile on one line (10-14a)
+  var _P1MEASURE=_P1PRINT.replace(/(^|})([^{}]+)\{/g, function(m,b,sel){ return b+sel.split(',').map(function(x){ return 'html.qp-m '+x.trim(); }).join(',')+'{'; });
   var fullDoc = '<!DOCTYPE html><html><head>'+
     '<meta charset="UTF-8">'+
     '<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">'+
@@ -13270,8 +13273,8 @@ async function printQuote(){
     '.qfooter-l{font-size:8.5pt;color:#8aa3b5;font-weight:600}'+
     '.qfooter-r{font-size:7.5pt;color:#4e6070;text-align:right}'+
     '.print-only{display:none}'+
-    '@media print{@page{margin:0;size:letter portrait}body{background:#080f14;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-only{display:block}.qpg{display:block!important;background:#080f14!important}.qbody{display:flex!important;align-items:stretch!important}.qsidebar{align-self:stretch!important}.qmain{display:flex!important;flex-direction:column!important;align-self:stretch!important;background:#111d28!important}.qfooter{margin-top:12px!important;position:static!important}.qsec{margin-bottom:8px!important;padding-bottom:6px!important}.qfield{margin-bottom:4px!important}.qsec-title{margin-bottom:5px!important;font-size:6pt!important}.qfield .fl{font-size:5.5pt!important}.qfield .fv{font-size:8pt!important}.qspec-box{padding:4px 5px!important}.qspec-box .fl{font-size:5pt!important}.qspec-box .fv{font-size:8pt!important}.qcolor-row{padding:2px 0!important}}'+
-    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : _qwDrawing(qWhite, buildingPageHTML))+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML('dark') : '')+zoningChecklistHTML()+colorChartPageHTML(_printTiles)+'</div>'+'</body></html>';
+    '@media print{@page{margin:0;size:letter portrait}body{background:#080f14;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-only{display:block}'+_P1PRINT+'}'+_P1MEASURE+'html.qp-m body{width:900px!important;min-width:900px!important}html.qp-m .qpg{min-height:0!important}'+
+    '</style></head><body>'+html.split("\'+LOGO+\'").join(LOGO)+'<div class="print-only">'+((imgs3D && imgs3D.iso) ? threeDPageHTML(imgs3D) : _qwDrawing(qWhite, buildingPageHTML))+((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML('dark') : '')+zoningChecklistHTML()+colorChartPageHTML(_printTiles)+'</div>'+'<script>(function(){function qpFit(){ var pg=document.querySelector(\'.qpg\'); if(!pg) return; var de=document.documentElement; pg.style.zoom=\'\'; de.classList.add(\'qp-m\'); var w=pg.getBoundingClientRect().width||900, h=pg.scrollHeight; var ft=pg.querySelector(\'.qfooter\'); var fh=ft?ft.getBoundingClientRect().height+12:0; de.classList.remove(\'qp-m\'); var pageH=w*11/8.5-6, z=1; if(h>pageH){ if(h*0.62<=pageH) z=pageH/h; else { var k=Math.ceil((h-fh)/pageH); if(h>k*pageH) z=k*pageH/h; } } if(z<1) pg.style.zoom=String(Math.floor(z*1000)/1000); pg.setAttribute(\'data-fit\',String(Math.round(z*1000)/1000)); }qpFit(); window.addEventListener(\'beforeprint\',qpFit); if(document.fonts&&document.fonts.ready) document.fonts.ready.then(qpFit);})();<\/script>'+'</body></html>';
 
   if(qWhite) fullDoc = quoteWhiteDoc(fullDoc); // White (print-friendly): the same pages, light colours
 
