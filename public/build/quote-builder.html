@@ -5659,6 +5659,20 @@ function cci12GA(l){
   for(var k=0;k<CCI_GA12_L.length;k++){ if(CCI_GA12_L[k]>=l){i=k;break;} }
   return CCI_GA12_V[i];
 }
+// CCI TRIPLE WIDE (26'-30') ON COMMERCIAL LADDER LEGS: at 17'+ a CCI 12'-30' build's legs price from the commercial
+// brochure's SIDE HEIGHT chart (gLeg: w>=32 || (CCI && h>=17); CCI 8/14/26: ">16 ft legs price ladder legs from the
+// commercial brochure"). CCI 10/14/26, order SS-2026-93350 (Tejada 30x40x20, "12-Gauge Framing Upgrade" $840 -> $1,440):
+// "When pricing ladder legs on a triple wide, you must use the 12 gauge price from the commercial brochure, as we will
+// be using commercial legs." = Price Book 2 p6 OPTIONS "12 Gauge" (20' $840 ... 40' $1,440 ... 52' $1,800), the length
+// rounded UP to its 4' column, per connected unit past 52' (cciCom12GA) - not the triple-wide series (cci12GA).
+// 25' / 27' / 29' price as the next even width (gLeg), so w>24. 12 gauge stays an option (PB p5: commercial price
+// includes 14 gauge framing, "12 gauge upgrade available") - this only prices it.
+function cciLadder12(w, h, bt){ return ACTIVE_MFR==='CCI' && w>24 && w<=30 && h>=17 && bt!=='widespan' && bt!=='fslean'; }
+// CCI 25'-30' wide (not wide span / free-standing lean-to) 12-gauge line: commercial row on ladder legs, else cci12GA.
+function cciTripleWide12GA(w, h, l, bt){ return cciLadder12(w, h, bt) ? cciCom12GA(l) : cci12GA(l); }
+// The breakdown row's name follows the documents: "12-Gauge Framing (commercial ladder legs)" when the commercial row priced
+// the line (_qTotals.ladder12), else "12GA Framing Upgrade" as before. NEWTOOL's Quote tab / Sales Quote prints this name.
+function _pfrLabel(lad){ var e=G('pfr'), k=e&&e.parentNode&&e.parentNode.querySelector('.pk'); if(!k) return; var t=lad?'12-Gauge Framing (commercial ladder legs)':'12GA Framing Upgrade'; if(k.textContent!==t) k.textContent=t; }
 function winRowLabel(v){
   var arr=(MFR().winTypes||[]);
   for(var i=0;i<arr.length;i++){ if(arr[i].v===v) return arr[i].label+' Window'; }
@@ -8882,7 +8896,7 @@ function rcManual(){
   var adjP=gAdj();
   sub+=adjP;
   function setT(id,v){ var e=G(id); if(e) e.textContent = v ? fC(v) : '\u2014'; }
-  setT('pb',base); setT('plg',leg); setT('pfr',framing); setT('ppch',pitch);
+  setT('pb',base); setT('plg',leg); setT('pfr',framing); setT('ppch',pitch); _pfrLabel(false);
   setT('pwl',walls); setT('prd',rud); setT('pwd',wtd); setT('pwn',win);
   setT('psp',sp); setT('plt',lt); setT('pac',addl);
   var _pltK=G('plt-k'); if(_pltK) _pltK.textContent='Lean-Tos';
@@ -9339,7 +9353,7 @@ function rc(){
       var GA12SV=w<=24?[210,240,270,300,330]:[360,480,600,720,840];
       var gcis=0; for(var gis=0;gis<GA12S.length;gis++){if(GA12S[gis]<=l)gcis=gis;else break;}
       if(ACTIVE_MFR==='CCI' && w>24){
-        framingUpgrade=cci12GA(l); // Sensei-sampled CCI series (see cci12GA)
+        framingUpgrade=cciTripleWide12GA(w,h,l,bt3); // 17'+ ladder legs: commercial 12 Gauge row (CCI 10/14/26); else the Sensei-sampled series (see cci12GA)
       } else if(l>40){
         var ga12rate=(GA12SV[4]-GA12SV[3])/5;
         framingUpgrade=(ACTIVE_MFR==='CCI')?cciUnitSum(l,GA12SV):Math.round(GA12SV[4]+ga12rate*(l-40));
@@ -9504,6 +9518,7 @@ function rc(){
     preSheetSub:preSheetSub, thrPre:thrPre, subPreFastener:subPreFastener, sheetFree:sheetFree, sheetUpgrade:sheetUpgrade, fastenerFree:fastenerFree, fastenerP:fastenerP,
     sheet26:(bt3==='widespan'||sheetFree||sheetUpgrade>0)}, M, pl);
   if(freightP) window._qTotals.freightP=freightP; // CCI 62'-100' freight (key only when charged)
+  if(framingUpgrade>0 && fuVal==='12' && _cbR==null && cciLadder12(w,h,bt3)) window._qTotals.ladder12=true; // documents: "12-Gauge Framing (commercial ladder legs)" (key only when it applies)
   var _frtRow=G('freight-summary-row'); if(_frtRow) _frtRow.style.display=freightP?'':'none';
   var _frtEl=G('pfrt'); if(_frtEl) _frtEl.textContent=freightP?fD(freightP):'—';
 
@@ -9530,6 +9545,7 @@ function rc(){
   G('plg').textContent=leg?fC(leg):'—';
   // Framing upgrade display
   var pfrEl=G('pfr'); if(pfrEl) pfrEl.textContent=framingUpgrade?fC(framingUpgrade):'—';
+  _pfrLabel(!!(window._qTotals||{}).ladder12);
   var framingNoteEl=G('framing-note'); if(framingNoteEl) framingNoteEl.classList.toggle('hidden',!framingUpgrade);
   // 4' OC (main + attached leans) and ground anchors get their own rows, so the
   // breakdown adds up to the Building Price like the quote PDF / contract rows.
@@ -12741,7 +12757,7 @@ async function printQuote(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) rows+=row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) rows+=row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
+  if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":(T.ladder12?'12-Gauge Framing (commercial ladder legs)':'12-Gauge Framing Upgrade')),null,null,framingUpgP);
   if(ocUpgradeP) rows+=row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) rows+=row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
@@ -14384,7 +14400,7 @@ async function printContract(){
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
   if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) row(h+"' Leg Height",null,null,leg);
-  if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":'12-Gauge Framing Upgrade'),null,null,framingUpgP);
+  if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":(T.ladder12?'12-Gauge Framing (commercial ladder legs)':'12-Gauge Framing Upgrade')),null,null,framingUpgP);
   if(ocUpgradeP) row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
   if(pitchUpgradeP) row('Roof Pitch Upgrade '+pitchSelValP+' Pitch',null,null,pitchUpgradeP);
 
