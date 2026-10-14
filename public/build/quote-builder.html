@@ -989,8 +989,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <button class="sbtn" type="button" onclick="printContract()" style="background:#00d9d9;color:#080f14">GENERATE CONTRACT</button>
     <button class="sbtn" type="button" onclick="printExecutedCopy()" style="background:#15803d;color:#fff" title="Watermarked copy for fully signed orders with deposit collected — acts as the bill of sale">EXECUTED COPY — DEPOSIT PAID</button>
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
-    <button class="sbtn" type="button" onclick="useAsRevision()" style="background:#fbbf24;color:#080f14" title="Turn this quote (changes already made) into the revised contract for a signed order">USE AS REVISION</button>
-    <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#fbbf24;color:#080f14">REVISED LAYOUT</button>
+    <button class="sbtn" type="button" onclick="useAsRevision()" style="background:#f0883e;color:#080f14" title="Turn this quote (changes already made) into the revised contract for a signed order">USE AS REVISION</button>
+    <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#f0883e;color:#080f14">REVISED LAYOUT</button>
     <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
   </div>
 </div>
@@ -5237,6 +5237,20 @@ function connFeeFor(attachedSide, connLen){
   var bt=G('btype')?G('btype').value:'';
   var isWS=(bw>=32||bt==='widespan');
   var isGable=(attachedSide==='Front Gable'||attachedSide==='Back Gable');
+  // CCI 12'-30' wide mains (owner 10/14/26: Price Book 2 / Sensei). Side (eave) =
+  // Price Book 2 p2 / p4 "Side to Side 21' Long Start at $100, Add $25 For Each
+  // Additional 5' in Length" (Sensei 24x40: $200 at 40'); the old $300 floor was
+  // CCI's 7/24 correction for 32'-60' mains and stays there (below). No CCI page
+  // prices a gable (end) connection; Sensei, the only data (10/12/26): 24-wide
+  // $250 at 24' = twice the side rule; Triple Wide (26'-30') 30x50: side $450 at
+  // 50' = the side rule + $200, end $750 at 30' = $700 + $25 per 5' past 21'.
+  // These reproduce every Sensei sample; other lengths / 26'-28' mains are unsampled.
+  if(ACTIVE_MFR==='CCI' && !isWS){
+    var _bookSide=100+Math.ceil(Math.max(0,connLen-21)/5)*25;
+    var _triple=(bw>=26);
+    if(!isGable) return _triple ? _bookSide+200 : _bookSide;
+    return _triple ? 700+Math.ceil(Math.max(0,connLen-21)/5)*25 : 2*_bookSide;
+  }
   if(ACTIVE_MFR==='CCI' && !isGable){
     // CCI eave connection — per lean, by lean length. Manufacturer-corrected
     // 2026-07-24: two 60' leans → $600 total ($300 each, check-marked by
@@ -5635,8 +5649,7 @@ function cciOC4Leans(){
     var l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
     if(!l||!(parseInt((el.querySelector('.ltw')||{}).value)>0)) return;
     if(l>40){ t+=cciUnitSum(l,V); return; }
-    var i=0; for(var k=0;k<S.length;k++){ if(S[k]<=l) i=k; else break; }
-    t+=V[i];
+    t+=V[cciColUp(l)]; // a length between two columns rounds UP (audit PB-9; owner 10/14/26 - was rounding down)
   });
   return t;
 }
@@ -7093,18 +7106,23 @@ function ltUnit(el, wallsOvr){
     var vw=2*w; if(vw%2) vw++;
     var T=(G('rs')&&G('rs').value==='Regular')?PR:((G('rs')&&G('rs').value==='Boxed Eave')?PB:PV);
     var wi=WIDTHS.indexOf(vw);
-    // Length sections: one standard tier through 51', else the dealer
-    // combination (same rule as a real 2W-wide building).
-    var secs=[];
-    if(_wr){ secs=cciUnits(_wr).map(function(u){ return Math.max(20,u)+1; }); } // wrapped: rounds UP to 5', connected units past 40' (handbook p6), each at its roof tier
-    else if(l<=51){ secs=[nearestStd(l)]; }
-    else if(MFR().standardCombinations){
-      var combos=MFR().standardCombinations, ks=Object.keys(combos).map(Number).sort(function(a,b){return a-b;});
-      for(var ci3=0;ci3<ks.length;ci3++){ if(ks[ci3]>=l){ secs=combos[ks[ci3]]; break; } }
-      if(!secs.length) secs=combos[ks[ks.length-1]];
-    }
+    // Length sections (owner 10/14/26, the 10-9b main-building rule): the FRAME
+    // length rounds UP to the next 5' column (20' minimum; 26' prices as 30') and
+    // past 40' is priced as connected units (handbook p6: 41'-45' = 20'+25',
+    // 52' = 30'+25'), each at its roof tier - wrapped (at the wrapped length) or not.
+    var secs=cciUnits(_wr||l).map(function(u){ return Math.max(20,u)+1; });
     bp=0;
     if(wi>=0){ for(var sj=0;sj<secs.length;sj++) bp+=((T[secs[sj]]||[])[wi]||0); bp=bp/2; }
+    // TRIPLE WIDE main (26'-30' wide, owner 10/14/26 = Sensei 30x50x14, 10/12/26):
+    // handbook p27 - lean-tos on 26'+ mains need extra bows (its price sheet says
+    // 'See Attachment', which we do not have). Sensei's premium over the half-of-2W
+    // price, per connected unit, is half of (Boxed-Eave 30' - Vertical 24') at that
+    // unit's tier: 20' $250, 25' $300, 30' $350, 35' $450 (12x30 $2,497.50, 12x50
+    // $4,195, wrapped 42' $3,795, 62' $5,445 - all exact; 40' $500 by the same rule,
+    // unsampled). Only 12'-wide lean-tos on a 30'-wide main were sampled.
+    var _mwT=parseInt(G('bw').value)||0, _btT=G('btype')?G('btype').value:'';
+    var _tripleLT=(_mwT>=26&&_mwT<=30&&_btT!=='widespan');
+    if(_tripleLT&&wi>=0){ var _i30=WIDTHS.indexOf(30), _i24=WIDTHS.indexOf(24); for(var tj=0;tj<secs.length;tj++) bp+=(((PB[secs[tj]]||[])[_i30]||0)-((PV[secs[tj]]||[])[_i24]||0))/2; }
     // Commercial / widespan main → the lean itself must be 170-certified and
     // prices off CCI's certified chart ("170 14g" on the corrected quote):
     // +$5.50/ft, single-point anchor (12x100 → +$550) pending CCI's
@@ -7115,7 +7133,7 @@ function ltUnit(el, wallsOvr){
     // Height: half of the (2W)-wide leg-height chart over the SAME length
     // sections (10'/60' → $490 and 12'/100' → $1,195, both exact).
     if(h>6){
-      var huT3=(vw<=24?HU_N:(vw<=30?HU_M:HU));
+      var huT3=_tripleLT?HU_M:(vw<=24?HU_N:(vw<=30?HU_M:HU)); // Triple Wide main: its own 26'-30' height chart (Sensei 10/12/26: $570 / $995 / $917.50 / $1,217.50 exact)
       var hk3=h<=16?h:(h<=18?18:20);
       var huRow=huT3[hk3]||huT3[16]||[];
       var huSum=0;
@@ -11169,7 +11187,7 @@ function buildingPageHTML(prefixHTML){
       '</div>'+
     '</div>'+
     '<div style="margin-top:12px;font-size:8pt;color:#8aa3b5;text-align:center">'+W+'\' Wide × '+L+'\' Long × '+H+'\' Tall &nbsp;|&nbsp; Roof Length: '+(function(){var oh=G('overhang-sel')?G('overhang-sel').value:'none';var ex=(ACTIVE_MFR==='CCI'&&(oh==='gables'||oh==='both'))?2:1;return (L+ex)+"' ("+(ex===2?"1' overhang":"6\" overhang")+")";})()+' &nbsp;|&nbsp; '+pitch+':12 Roof Pitch &nbsp;|&nbsp; '+wallStyle+' Walls</div>'+
-    (colorsTBD?'<div style="margin-top:8px;background:#182535;border:1px solid #f59e0b;border-radius:5px;padding:7px 12px;font-size:8pt;color:#f59e0b;text-align:center">&#9888; Colors have not yet been selected for this building. Please reference our color chart and select color choices for Roof, Walls, Trim &amp; Wainscot (if applicable).</div>':'')+
+    (colorsTBD?'<div style="margin-top:8px;background:#182535;border:1px solid #f0883e;border-radius:5px;padding:7px 12px;font-size:8pt;color:#f0883e;text-align:center">&#9888; Colors have not yet been selected for this building. Please reference our color chart and select color choices for Roof, Walls, Trim &amp; Wainscot (if applicable).</div>':'')+
     '</div></div>';
 }
 
@@ -11280,7 +11298,7 @@ function colorChartPageHTML(tiles){
       ? '<div style="height:86px;'+_swatchCSS(e.h,e.n,tile)+'"></div>'
       : '<div style="height:86px;border:1.5px dashed #4a6480;border-radius:0;background:repeating-linear-gradient(135deg,#0d1820 0,#0d1820 7px,#111d28 7px,#111d28 14px)"></div>';
     var nm=e?'<div style="font-size:10.5pt;font-weight:800;color:#dde7ef">'+e.n+'</div>'+((e.c&&!p.print&&!/galvalume/i.test(e.c))?'<div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">'+e.c+'</div>':'')+(p.print?'<div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">Print panel</div>':'')
-                 :'<div style="font-size:10.5pt;font-weight:800;color:#f59e0b">To be selected</div><div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">Choose from the chart below</div>';
+                 :'<div style="font-size:10.5pt;font-weight:800;color:#f0883e">To be selected</div><div style="font-size:7.5pt;color:#8aa3b5;margin-top:1px">Choose from the chart below</div>';
     return '<div style="background:#111d28;border:1px solid #243c50;border-radius:6px;overflow:hidden;page-break-inside:avoid;break-inside:avoid">'+
              '<div style="background:#1C2E3F;color:#fff;font-size:8.5pt;font-weight:800;letter-spacing:2px;text-align:center;padding:5px;text-transform:uppercase">'+p.role+'</div>'+
              sw+'<div style="padding:8px 10px 9px">'+nm+'</div>'+
@@ -11675,7 +11693,7 @@ function printRevisionForm(fromUse){
   '.price-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}'+
   '.price-row.total{border-top:2px solid #22d3c8;margin-top:6px;padding-top:8px;font-weight:800;font-size:14px;color:#fff}'+
   '.price-row .blank-amt{border-bottom:1px solid #94a3b8;width:120px;display:inline-block;height:16px}'+
-  '.rev-badge{background:rgba(251,191,36,.15);color:#fbbf24;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.3)}'+
+  '.rev-badge{background:rgba(240,136,62,.15);color:#f0883e;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.3)}'+
   'input.fill,select.fill{background:transparent;border:none;border-bottom:1px solid #64748b;color:#e2e8f0;font:inherit;font-size:12px;font-weight:600;width:100%;padding:3px 4px;outline:none;border-radius:0}'+
   'input.fill:focus,select.fill:focus{border-bottom-color:#22d3c8}'+
   'select.fill option{background:#0d1925;color:#e2e8f0}'+
@@ -11743,7 +11761,7 @@ function printRevisionForm(fromUse){
   html+='<div class="sig"><div class="line"></div><div class="lab">Date</div></div>';
   html+='</div></div>';
   html+='<div class="rv-toolbar"><button onclick="window.print()">PRINT / SAVE PDF</button></div>';
-  html+='<div class="rv-hint">'+(fromUse===true?'<b style="color:#fbbf24">Use as Revision</b> — no CRM connected, so fill in this Revision Order here. ':'')+'Type into the underlined fields — the totals and deposit fill in automatically — then Print / Save PDF.</div>';
+  html+='<div class="rv-hint">'+(fromUse===true?'<b style="color:#f0883e">Use as Revision</b> — no CRM connected, so fill in this Revision Order here. ':'')+'Type into the underlined fields — the totals and deposit fill in automatically — then Print / Save PDF.</div>';
   html+='<scr'+'ipt>var RV_AUTO='+JSON.stringify(_rvAuto)+';function rvCalc(){function f(n){return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}if(RV_AUTO){var net=RV_AUTO.curTot-RV_AUTO.origTot;document.getElementById("rv-add").textContent="$ "+f(Math.max(net,0));document.getElementById("rv-cred").textContent="$ "+f(Math.max(-net,0));document.getElementById("rv-total").textContent="$ "+f(RV_AUTO.curTot);document.getElementById("rv-depadd").textContent="$ "+f(Math.max(0,RV_AUTO.curDep-RV_AUTO.origDep));return;}var add=0,cred=0;document.querySelectorAll(".rv-amt").forEach(function(i){var v=parseFloat(i.value);if(isNaN(v))return;if(v>=0)add+=v;else cred+=-v;});document.getElementById("rv-add").textContent="$ "+f(add);document.getElementById("rv-cred").textContent="$ "+f(cred);var o=parseFloat(document.getElementById("rv-orig").value);var rt=document.getElementById("rv-total");if(!isNaN(o)){rt.textContent="$ "+f(o+add-cred);}else{rt.textContent=(add||cred)?((add>=cred?"+ $ ":"− $ ")+f(Math.abs(add-cred))+" vs original"):"$ —";}var d=parseFloat(document.getElementById("rv-dep").value);var da=document.getElementById("rv-depadd");if(!isNaN(d)&&!isNaN(o)&&o>0){da.textContent="$ "+f(Math.max(0,(add-cred)*(d/o)));}else{da.textContent="$ 0.00";}}if(RV_AUTO){document.getElementById("rv-orig").value=RV_AUTO.origTot;document.getElementById("rv-dep").value=RV_AUTO.origDep;document.getElementById("rv-autonote").style.display="block";}rvCalc();</scr'+'ipt>';
   html+='</div></body></html>';
   pwin.document.write(html);
@@ -11858,8 +11876,8 @@ async function printRevisedLayout(){
     }
   });
   var colors={
-    'Roll-Up Door':'#2563eb','Walk-Through Door':'#0e9488','Window':'#f59e0b',
-    'Framed Opening (Custom Size)':'#7c3aed','Hi-Impact Window':'#f59e0b'
+    'Roll-Up Door':'#2563eb','Walk-Through Door':'#0e9488','Window':'#f0883e',
+    'Framed Opening (Custom Size)':'#7c3aed','Hi-Impact Window':'#f0883e'
   };
   function typeColor(t){
     for(var k in colors){ if(t.indexOf(k)>=0||k.indexOf(t)>=0) return colors[k]; }
@@ -11896,7 +11914,7 @@ async function printRevisedLayout(){
   '*{margin:0;padding:0;box-sizing:border-box}'+
   'body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#0f1b2d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
   '.page{max-width:7.5in;margin:0 auto;padding:10px 0}'+
-  '.hdr{background:#08121d;color:#fff;display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-radius:6px 6px 0 0;border-bottom:4px solid #fbbf24}'+
+  '.hdr{background:#08121d;color:#fff;display:flex;justify-content:space-between;align-items:center;padding:16px 22px;border-radius:6px 6px 0 0;border-bottom:4px solid #f0883e}'+
   '.hdr h1{font-family:Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}'+
   '.hdr h1 span{color:#22d3c8}'+
   '.hdr .rt{text-align:right;font-size:10px;color:#9fb3c4;line-height:1.5}'+
@@ -11921,7 +11939,7 @@ async function printRevisedLayout(){
   '.type-cell{font-weight:700}'+
   '.changes{margin:14px 0}'+
   '.ch-line{border-bottom:1px solid #c9d4e0;height:24px}'+
-  '.signoff{background:#f4f7fa;border:1px solid #c9d4e0;border-left:4px solid #fbbf24;border-radius:5px;padding:14px 16px;margin-top:14px}'+
+  '.signoff{background:#f4f7fa;border:1px solid #c9d4e0;border-left:4px solid #f0883e;border-radius:5px;padding:14px 16px;margin-top:14px}'+
   '.signoff .ack{font-size:11px;color:#3c4a5e;line-height:1.5;margin-bottom:10px}'+
   '.signoff .ack strong{color:#0f1b2d}'+
   '.sig-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}'+
@@ -13130,7 +13148,7 @@ async function printQuote(){
   '<div class="qdep-box"><div class="dl">Deposit Due</div><div class="dv">'+fD(dep)+'</div></div>'+
   '<div class="qdep-box"><div class="dl">Remaining Balance</div><div class="dv">'+fD(bal)+'</div></div>'+
   '</div>'+
-  (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f59e0b;background:#151009;color:#e8b45a;font-size:7.5pt;font-weight:700;letter-spacing:.4px">'+(_pickupOnly()?'CUSTOMER PICKUP \u2014 no delivery or installation. Remaining balance due at pickup.':'DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.')+'</div>':'')+
+  (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f0883e;background:#151009;color:#f0883e;font-size:7.5pt;font-weight:700;letter-spacing:.4px">'+(_pickupOnly()?'CUSTOMER PICKUP \u2014 no delivery or installation. Remaining balance due at pickup.':'DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.')+'</div>':'')+
 
   // Balance > $15,000: split into two payments (50% at scheduling, 50% after installation)
   (bal > 15000 ? (function(){
@@ -13170,8 +13188,8 @@ async function printQuote(){
 
   (needsLift?
   '<div class="qwarr">'+
-  '<div class="qwarr-head" style="border-color:#f59e0b;background:#1a1e0a;color:#f59e0b">&#9888; Equipment Required</div>'+
-  '<div class="qwarr-body" style="font-size:8pt;color:#f59e0b;font-weight:600;line-height:1.5">'+
+  '<div class="qwarr-head" style="border-color:#f0883e;background:#151009;color:#f0883e">&#9888; Equipment Required</div>'+
+  '<div class="qwarr-body" style="font-size:8pt;color:#f0883e;font-weight:600;line-height:1.5">'+
   'Buyer must provide a Reach Lift (6,000 lb, 26\' reach) on site. Rental fees are buyer\'s responsibility.'+
   '</div></div>':'')+
 
@@ -13257,7 +13275,7 @@ async function printQuote(){
     '.qdep-box{border-radius:6px;padding:8px 16px}'+
     '.qdep-box .dl{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}'+
     '.qdep-box .dv{font-size:16pt;font-weight:900}'+
-    '.dep{background:#182535;border:1px solid #243c50;border-radius:6px}.dep .dl{color:#f59e0b}.dep .dv{color:#f59e0b}'+
+    '.dep{background:#182535;border:1px solid #243c50;border-radius:6px}.dep .dl{color:#f0883e}.dep .dv{color:#f0883e}'+
     '.bal{background:#182535;border:1px solid #243c50;border-radius:6px}.bal .dl{color:#1fcec4}.bal .dv{color:#1fcec4}'+
     '.qplans{border-left:3px solid #1fcec4;border-radius:4px;padding:6px 11px;font-size:8.5pt;color:#8aa3b5;margin-bottom:6px;line-height:1.5;background:#182535}'+
     '.qplans strong{color:#1fcec4}'+
@@ -13266,7 +13284,7 @@ async function printQuote(){
     '.qwarr-body{padding:5px 12px;background:#111d28}'+
     '.qw{font-size:8.5pt;color:#8aa3b5;display:flex;align-items:center;gap:6px;padding:2px 0}'+
     '.qw::before{content:"\u2713";color:#1B8A8A;font-weight:900;font-size:10pt;flex-shrink:0}'+
-    '.qlift{background:#182535;border:1px solid #f59e0b;border-radius:5px;padding:5px 11px;font-size:8pt;color:#f59e0b;font-weight:600;margin-bottom:6px}'+
+    '.qlift{background:#182535;border:1px solid #f0883e;border-radius:5px;padding:5px 11px;font-size:8pt;color:#f0883e;font-weight:600;margin-bottom:6px}'+
     '.qclosing{text-align:center;font-size:9pt;color:#8aa3b5;font-style:italic;padding:5px 0 4px;border-top:1px solid #243c50;margin-top:4px}'+
     '.qclosing strong{color:#1fcec4;font-style:normal}'+
     '.qfooter{background:#0d1820;padding:11px 24px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1fcec4;margin-top:auto}'+
@@ -14016,11 +14034,11 @@ function rvBoxHTML(o){
   var legend=parts.length?'In the itemized pricing below, '+(parts.length>1?parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1]:parts[0])+'. ':'';
   var money=(isFinite(Number(o.origTot))&&Number(o.origTot)>0)?'<div style="margin-top:3px;font-size:8.5pt"><strong>'+(signed?'Original contract':'Original quote')+' '+rvTotal(o.origTot)+' → Revised '+rvTotal(o.revTot)+'</strong> <span style="color:#9a3412">('+rvMoney(Number(o.revTot)-Number(o.origTot))+')</span></div>':'';
   return '<div class="c-rv-wrap" style="display:flex;gap:8px;align-items:stretch;margin:4px 0 8px">'+
-    '<div class="c-rv-box" style="flex:1;min-width:0;background:#fff7ed;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 12px;font-size:8pt;color:#7c2d12">'+
+    '<div class="c-rv-box" style="flex:1;min-width:0;background:#fff7ed;border:1.5px solid #f0883e;border-radius:6px;padding:7px 12px;font-size:8pt;color:#7c2d12">'+
       head+'<div>'+sup+(extra?' '+extra:'')+'</div>'+body+money+
       '<div style="margin-top:3px">'+legend+'Renderings, floor plan and spacing pages reflect the revised building.</div>'+
     '</div>'+
-    '<div class="c-rv-init" style="flex:0 0 112px;border:1.5px solid #f59e0b;border-radius:6px;padding:7px 10px;font-size:7.5pt;color:#7c2d12;display:flex;flex-direction:column;justify-content:flex-end">'+
+    '<div class="c-rv-init" style="flex:0 0 112px;border:1.5px solid #f0883e;border-radius:6px;padding:7px 10px;font-size:7.5pt;color:#7c2d12;display:flex;flex-direction:column;justify-content:flex-end">'+
       '<div style="font-weight:800;letter-spacing:.3px">Customer initials:</div><div style="border-bottom:1.2px solid #7c2d12;height:26px;margin-top:4px"></div>'+
       '<div style="font-size:6.5pt;margin-top:3px">I accept the changes listed</div>'+
     '</div>'+
@@ -14040,7 +14058,7 @@ function rvBalance(total, deposit, paid){
 }
 function rvPayRowsHTML(o){
   var signed=!o.doc||o.doc.signed!==false, rows='', b=rvBalance(o.revTot, o.dep, o.paid);
-  rows+='<div class="c-tot-row" style="border-top:1.5px solid #f59e0b;margin-top:3px"><span class="l">'+(signed?'Original contract total':'Original quote total')+'</span><span class="v">'+rvTotal(o.origTot)+'</span></div>';
+  rows+='<div class="c-tot-row" style="border-top:1.5px solid #f0883e;margin-top:3px"><span class="l">'+(signed?'Original contract total':'Original quote total')+'</span><span class="v">'+rvTotal(o.origTot)+'</span></div>';
   rows+='<div class="c-tot-row"><span class="l">Changes</span><span class="v">'+rvMoney(Number(o.revTot)-Number(o.origTot))+'</span></div>';
   rows+='<div class="c-tot-row"><span class="l"><strong>Revised contract total</strong></span><span class="v"><strong>'+rvTotal(o.revTot)+'</strong></span></div>';
   if(b.paid>0) rows+='<div class="c-tot-row"><span class="l">Deposit already paid</span><span class="v" style="color:#15803d">−'+rvTotal(b.paid)+'</span></div>';
@@ -14068,7 +14086,7 @@ function rvRemovedRowsHTML(doc){
 function rvSummaryHTML(o){
   var doc=o.doc||{}, signed=doc.signed!==false;
   return '<div class="c-sec"><div class="c-sec-title">Change Summary'+(doc.agreementNo?' — '+rvAgreementTitle(doc):'')+'</div>'+
-    '<div style="border:1.5px solid #f59e0b;border-radius:6px;background:#fff7ed;padding:8px 12px;color:#7c2d12">'+
+    '<div style="border:1.5px solid #f0883e;border-radius:6px;background:#fff7ed;padding:8px 12px;color:#7c2d12">'+
       (doc.lines||[]).map(function(l){ return rvLineHTML(l,true); }).join('')+
       (doc.adjustment&&Math.abs(Number(doc.adjustment))>=0.005?'<div style="display:flex;gap:8px;font-size:8pt;color:#9a3412;padding:2px 0 0 18px"><span style="flex:1">'+_esc(doc.adjLabel||'Adjustment to final build price (after discount and tax)')+'</span><span>'+rvMoney(doc.adjustment)+'</span></div>':'')+
       '<div style="margin-top:6px;border-top:1px solid #fcd9a8;padding-top:5px;font-size:9pt"><strong>'+(signed?'Original contract':'Original quote')+' '+rvTotal(o.origTot)+' → Revised '+rvTotal(o.revTot)+'</strong> ('+rvMoney(Number(o.revTot)-Number(o.origTot))+')</div>'+
@@ -14855,7 +14873,7 @@ async function printContract(){
         // walls). The wall's label moves off the line onto the main-room side when
         // an opening sits under it.
         var pItems=(typeof collectElevItems==='function')?(collectElevItems().partition||[]):[];
-        var pStyle=function(t){ return t==='rollup'?{f:'#fef3c7',k:'#c4421e',c:'C1'}:t==='wtd'?{f:'#dbeafe',k:'#1d4ed8',c:'C3'}:t==='win'?{f:'#dcfce7',k:'#15803d',c:'C5'}:{f:'#f3f4f6',k:'#4b5563',c:'C7'}; };
+        var pStyle=function(t){ return t==='rollup'?{f:'#fff7ed',k:'#c4421e',c:'C1'}:t==='wtd'?{f:'#dbeafe',k:'#1d4ed8',c:'C3'}:t==='win'?{f:'#dcfce7',k:'#15803d',c:'C5'}:{f:'#f3f4f6',k:'#4b5563',c:'C7'}; };
         var lbl='STORAGE WALL — '+d+'′', lw=lbl.length*6+12, lx0=bx+bw/2-lw/2, lx1=bx+bw/2+lw/2, ly=py;
         pItems.forEach(function(it){ var a=bx+it.x*scale, b=a+it.w*scale; if(b>lx0 && a<lx1) ly=py+(sp.end==='front'?-14:14); });
         chip(bx+bw/2, ly, lbl, false);
@@ -14893,7 +14911,7 @@ async function printContract(){
     var rightFp = toFp(rightItems,'right',L);
 
     function styleFor(type){
-      if(type==='rollup') return {fill:'#fef3c7', stroke:'#c4421e', code:'C1'};
+      if(type==='rollup') return {fill:'#fff7ed', stroke:'#c4421e', code:'C1'};
       if(type==='wtd')    return {fill:'#dbeafe', stroke:'#1d4ed8', code:'C3'};
       if(type==='win')    return {fill:'#dcfce7', stroke:'#15803d', code:'C5'};
       return {fill:'#f3f4f6', stroke:'#4b5563', code:'C7'};
@@ -15080,7 +15098,7 @@ async function printContract(){
     '.pill{display:inline-block;padding:2px 8px;border-radius:9px;font-size:7pt;font-weight:900;letter-spacing:.4px}'+
     '.pill.ok{background:#dcfce7;color:#15803d;border:1px solid #86efac}'+
     '.pill.no{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}'+
-    '.pill.tbd{background:#fef3c7;color:#c4421e;border:1px solid #fcd34d}'+
+    '.pill.tbd{background:#fff7ed;color:#c4421e;border:1px solid #f0883e}'+
     '.c-flag-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;margin-top:6px}'+
     '.c-flag{display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:#1e293b;padding:3px 0;border-bottom:1px dotted #e2e8f0}'+
     '.c-flag:last-child,.c-flag:nth-last-child(2){border-bottom:none}'+
@@ -15134,7 +15152,7 @@ async function printContract(){
     // Project Documents & Permits — separate-invoice items (engineered plans + permitting)
     '.c-docs-wrap{margin-top:6px;break-inside:avoid;page-break-inside:avoid}'+
     '.c-docs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}'+
-    '.c-doc-box{background:#fef3c7;border:1.5px solid #c4421e;border-radius:5px;padding:6px 10px;font-size:7.5pt;color:#1e293b;line-height:1.35}'+
+    '.c-doc-box{background:#fff7ed;border:1.5px solid #c4421e;border-radius:5px;padding:6px 10px;font-size:7.5pt;color:#1e293b;line-height:1.35}'+
     '.c-doc-box .c-doc-title{font-size:7pt;color:#c4421e;font-weight:900;letter-spacing:.6px;text-transform:uppercase;margin-bottom:2px}'+
     '.c-doc-box .c-doc-amt{font-size:10pt;color:#111827;font-weight:900;margin-bottom:2px}'+
     '.c-doc-box .c-doc-note{color:#1e293b;font-weight:500}'+
@@ -15303,7 +15321,7 @@ async function printContract(){
     '<tbody>'+rowsHTML+'</tbody></table>'+(_rvLg.removed?'<div style="font-size:6.8pt;color:#64748b;margin-top:3px">Removed items are listed for reference — the Building Subtotal already reflects their removal.</div>':'')+
     '</div>'+
 
-    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #b45309;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#b45309;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">'+(_pickupOnly()?'Customer Pickup — No Delivery or Installation — Buyer Is Responsible for Transport and Assembly':'Delivered Only — No Installation Included — Buyer Is Responsible for Assembly')+'</div>':'')+
+    (_delivOnly()?'<div style="background:#fff7ed;border:2px solid #f0883e;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:800;color:#c2560f;font-size:9pt;letter-spacing:1px;text-transform:uppercase;text-align:center">'+(_pickupOnly()?'Customer Pickup — No Delivery or Installation — Buyer Is Responsible for Transport and Assembly':'Delivered Only — No Installation Included — Buyer Is Responsible for Assembly')+'</div>':'')+
     '<div class="c-sec c-pay-section">'+
     '<div class="c-sec-title">Payment Summary</div>'+
     '<div class="c-totals-wrap">'+
@@ -15398,7 +15416,7 @@ async function printContract(){
     '<div class="c-sec" style="margin-top:8px">'+
     '<div class="c-sec-title">Legends</div>'+
     '<div class="c-legends">'+
-      '<div class="c-legend"><span class="code" style="color:#c4421e;border-color:#c4421e;background:#fef3c7">C1</span> Garage Door</div>'+
+      '<div class="c-legend"><span class="code" style="color:#c4421e;border-color:#c4421e;background:#fff7ed">C1</span> Garage Door</div>'+
       '<div class="c-legend"><span class="code" style="color:#c4421e;border-color:#c4421e">C2</span> Garage Door Frameout</div>'+
       '<div class="c-legend"><span class="code" style="color:#1d4ed8;border-color:#1d4ed8;background:#dbeafe">C3</span> Walk-In Door</div>'+
       '<div class="c-legend"><span class="code" style="color:#1d4ed8;border-color:#1d4ed8">C4</span> Walk-In Door Frameout</div>'+
@@ -15938,7 +15956,9 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
   var isHalfClosed=origIsHalfClosed;
   // Auto-close: if doors/windows are placed on an "Open" or "Gable Only" face, render the WALL as Closed
   // (doors need a wall to mount in) — but the GABLE still respects user setting via origIsOpen/origIsGableOnly
-  if((isOpen||isGableOnly||isHalfClosed) && items && items.length>0){
+  // A FRAMED OPENING is framing, not a door: on its own it does not close the face (owner 10/14/26) — it is
+  // drawn as steel jambs + header on the open wall (_foSteelSVG), like the 3D.
+  if((isOpen||isGableOnly||isHalfClosed) && items && items.some(function(it){ return it.type!=='fo'; })){
     isOpen=false;
     isGableOnly=false;
     isHalfClosed=false;
@@ -15946,6 +15966,49 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
   // ── GCH FRONT SETBACK ────────────────────────────────────────────────────
   // For GCH front view, inset the wall horizontally to show it's set BACK behind the open carport extension
   var isGCHFrontInset=(gchFrontInfo && !isSide && !gchSplit);
+  // ── OPEN-WALL FRAMED OPENINGS (owner 10/14/26, display only) ─────────────────
+  // Where this face is DRAWN open (posts only, maybe a sheeted band hung from the
+  // eave), a framed opening is steel like the 3D: doubled jambs + a header, the legs
+  // in it cut away below the header, no trim except around a notch it cuts in the
+  // band. _foBandFt = that band's bottom (ft off the ground; the wall height when
+  // there is no band); null = the face is drawn sheeted (the trimmed box, as before).
+  var _foBandFt=(function(){
+    if(gchSplit||isGCHFrontInset) return null;
+    if(isHalfClosed) return wallH_ft-Math.min(6,wallH_ft*0.9);
+    if(isOpen||isGableOnly){
+      if(isSide&&sidePanelCfg&&sidePanelCfg.full) return null;
+      if(isSide&&sidePanelCfg&&sidePanelCfg.hasPanels) return wallH_ft-Math.min(sidePanelCfg.ft||0,wallH_ft*0.85);
+      return wallH_ft;
+    }
+    return null;
+  })();
+  var _foOpen=function(it){ return it.type==='fo'&&_foBandFt!=null; };
+  // Side-view leg at pp ft along the face: the top (ft) of an open floor-level framed opening it stands in, else null.
+  var _foCutTop=function(pp){ var t=null; (items||[]).forEach(function(it){ if(_foOpen(it)&&!((it.yo||0)>0.1)&&pp>=it.x-0.05&&pp<=it.x+it.w+0.05) t=Math.max(t||0,(it.yo||0)+it.h); }); return t; };
+  var _foSteelSVG=function(it,ix,foy2,fow,foh){
+    var o='', pw=Math.max(3,sc*0.28), yo=it.yo||0, topFt=yo+it.h, bandY=oy-_foBandFt*sc;
+    var notch=topFt>_foBandFt+0.01; // the opening reaches up into the sheeted band: the band is notched + trimmed there
+    if(notch){
+      var nh=bandY-foy2;
+      o+='<rect x="'+ix+'" y="'+foy2+'" width="'+fow+'" height="'+nh+'" fill="#0d1117"/>';
+      o+='<rect x="'+ix+'" y="'+foy2+'" width="'+fow+'" height="'+nh+'" fill="rgba(50,70,90,0.15)"/>';
+      o+='<path d="M'+ix+' '+bandY+'V'+foy2+'H'+(ix+fow)+'V'+bandY+'" fill="none" stroke="'+tC+'" stroke-width="2"/>';
+    }
+    // Doubled jambs each side, base rail up to the band (they run on behind it) or, in a notch, to the header.
+    var jTop=notch?(foy2-pw):bandY, xl=ix-2*pw-2, xr=ix+fow+2*pw+2;
+    [ix-pw-1, ix-2*pw-2, ix+fow+1, ix+fow+pw+2].forEach(function(jx){
+      if(oy-jTop>0.5) o+='<rect x="'+jx+'" y="'+jTop+'" width="'+pw+'" height="'+(oy-jTop)+'" fill="'+vtC+'"/>';
+    });
+    // Header across the opening top, tied into the nearest legs on a side view (5' OC posts as drawn).
+    var h0=xl, h1=xr;
+    if(isSide&&!notch){
+      var lp=Math.max(0,Math.floor((it.x-(2*pw+2)/sc)/5)*5), rp=Math.min(faceW,Math.ceil((it.x+it.w+(2*pw+2)/sc)/5)*5);
+      h0=Math.min(h0,ox+lp*sc); h1=Math.max(h1,ox+rp*sc+pw);
+    }
+    if(foy2-pw>oy-wallH+0.5) o+='<rect x="'+h0+'" y="'+(foy2-pw)+'" width="'+(h1-h0)+'" height="'+pw+'" fill="'+vtC+'"/>';
+    if(yo>0.1) o+='<rect x="'+xl+'" y="'+(oy-yo*sc)+'" width="'+(xr-xl)+'" height="'+pw+'" fill="'+vtC+'"/>'; // sill tube
+    return o;
+  };
   var wallOX=ox, wallSC=sc, wallW_px=faceW*sc;
   if(isGCHFrontInset){
     var insetRatio=0.85;
@@ -16265,6 +16328,9 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
       if(postPxH>0){
         var ocFt=5;
         for(var pp=0;pp<=w_ft+0.1;pp+=ocFt){
+          // A leg in an open framed opening is cut away below its header (the stub above it stays).
+          var _cut=_foCutTop(pp);
+          if(_cut!=null){ var _stubH=(oy-_cut*sc-postW)-postTopY; if(_stubH>0.5) s+='<rect x="'+(x+pp*sc)+'" y="'+postTopY+'" width="'+postW+'" height="'+_stubH+'" fill="'+vtC+'"/>'; continue; }
           s+='<rect x="'+(x+pp*sc)+'" y="'+postTopY+'" width="'+postW+'" height="'+postPxH+'" fill="'+vtC+'"/>';
         }
       }
@@ -16581,10 +16647,15 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
     if(it.type==='fo'){
       var foh=it.h*sc,foy2=(it.yo!==undefined?oy-it.yo*sc-foh:oy-foh),fow=it.w*wallSC;
       var twf=Math.max(2,Math.min(5,Math.round(fow*0.055)));
+      if(_foOpen(it)){
+        // On an open face: steel jambs + header (no box, no trim casing) — owner 10/14/26.
+        s+=_foSteelSVG(it,ix,foy2,fow,foh);
+      } else {
       // Background fill (dark translucent so the opening reads as a recessed cutout)
       s+='<rect x="'+ix+'" y="'+foy2+'" width="'+fow+'" height="'+foh+'" fill="'+(_qwDraw?QW_FO.box:'rgba(10,20,35,0.55)')+'"/>';
       // Trim casing around the opening
       s+='<rect x="'+(ix-twf)+'" y="'+(foy2-twf)+'" width="'+(fow+twf*2)+'" height="'+(foh+twf*2)+'" fill="none" stroke="'+tC+'" stroke-width="'+twf+'"/>';
+      }
       // Size label (e.g., "16'×12'") + "FRAMED OPENING" subtitle — reflects the
       // actual dimensions entered in the Custom Opening Size box.
       // Three tiers based on opening size:
