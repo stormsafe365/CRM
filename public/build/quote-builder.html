@@ -917,7 +917,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <tr><td class="pk">Walk-Through Doors</td><td class="pv" id="pwd">—</td></tr>
       <tr><td class="pk">Windows</td><td class="pv" id="pwn">—</td></tr>
       <tr><td class="pk">Side Frames (auto)</td><td class="pv" id="psf">—</td></tr>
-      <tr><td class="pk">Lap Siding (+10%)</td><td class="pv" id="plp">—</td></tr>
+      <tr><td class="pk" id="plp-k">Lap Siding (+10%)</td><td class="pv" id="plp">—</td></tr>
       <tr><td class="pk">26GA Sheeting Upgrade</td><td class="pv" id="psh">—</td></tr>
       <tr><td class="pk" id="pwi-k">Wainscot</td><td class="pv" id="pwi">—</td></tr>
       <tr><td class="pk">Storage Partition</td><td class="pv" id="paew">—</td></tr>
@@ -5577,14 +5577,25 @@ function vertEndUpcharge(w){
   if(w<widths[0]) return VERT_END[widths[0]];
   return VERT_END[widths[widths.length-1]];
 }
+// CCI lap siding (owner 10/15/26, tested on Sensei; audit F14-R10 10/14/26): CCI has no lap price of its own - lap siding costs
+// the same as upgrading the walls to VERTICAL. It is the vertical-upgrade formula (gVertUpgrade) on the closed walls, so:
+// walls already Vertical = $0 more; wide span (32'+, vertical standard) = $0; an open carport / no closed wall = $0;
+// CCI 17'+ tall (orientation-blind) = $0; horizontal closed walls = the vertical upgrade amount. (CA keeps its 10% of base.)
+function cciLapSiding(){ return (G('ws').value==='Vertical') ? 0 : gVertUpgrade(true); }
+function lapLabels(){
+  // the Lap Siding control / price panel wording follows the manufacturer's rule
+  var cci=(ACTIVE_MFR==='CCI'), sel=G('lap'), k=G('plp-k');
+  if(sel && sel.options[1]) sel.options[1].textContent=cci?'Yes — Lap Siding (priced as vertical walls)':'Yes — Horizontal Walls (+10%)';
+  if(k) k.textContent=cci?'Lap Siding (as vertical walls)':'Lap Siding (+10%)';
+}
 // Returns the vertical wall upgrade total for the current building configuration.
 // Only applies to standard (≤30') buildings since wide-span (32'+) is already vertical.
 // Charges per closed wall only.
-function gVertUpgrade(){
+function gVertUpgrade(asLap){
   var bt=G('btype').value;
   if(bt==='widespan') return 0;
   var ws=G('ws').value;
-  if(ws!=='Vertical') return 0;
+  if(ws!=='Vertical' && !asLap) return 0; // asLap (CCI lap siding): the same formula, as if the walls were vertical
   var w=parseInt(G('bw').value)||0, h=parseInt(G('bh').value)||6, l=parseInt(G('bl').value)||0;
   if(!w||!l) return 0;
   // CCI TALL (17'+): commercial-brochure closure pricing is orientation-blind —
@@ -9425,7 +9436,7 @@ function rc(){
   var rd=gRUD(), wd=gWTD(), wn=gWIN();
   var rud=rd.rud, wtd=wd.wtd, win=wn.win, sf=rd.sf+wd.sf+wn.sf;
   var l=parseInt(G('bl').value)||0;
-  var lapP=G('lap').value==='yes'?Math.round(base*0.10):0;
+  var lapP=G('lap').value==='yes'?(ACTIVE_MFR==='CCI'?cciLapSiding():Math.round(base*0.10)):0; // CCI: priced as vertical walls (owner 10/15/26)
   var bt3=G('btype').value;
   // 12GA framing upgrade
   var fuVal=G('framing-upgrade')?G('framing-upgrade').value:'14';
@@ -9666,7 +9677,7 @@ function rc(){
   G('pwd').textContent=wtd?fC(wtd):'—';
   G('pwn').textContent=win?fC(win):'—';
   G('psf').textContent=sf?fC(sf):'—';
-  G('plp').textContent=lapP?fC(lapP):'—';
+  G('plp').textContent=lapP?fC(lapP):((G('lap').value==='yes'&&ACTIVE_MFR==='CCI')?'included':'—'); lapLabels();
   G('pwi').textContent=wainP?fC(wainP):'—';
   var _pwk=G('pwi-k'); if(_pwk) _pwk.textContent = (wainP && wainscotPrintOpt()) ? 'Wainscot — Print Panel (+25%)' : 'Wainscot';
   var _wpn=G('wain-print-note'); if(_wpn) _wpn.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes'));
@@ -12951,7 +12962,8 @@ async function printQuote(){
     // fslean walls are priced by fsWalls() (in the Building Amount) — itemize them
     if(walls) rows+=row(fsWallsDesc(),null,null,walls);
   }
-  if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
+  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes') rows+=row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
+  else if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
   if(typeof adjPQ!=='undefined'&&adjPQ) rows+=row(gAdjLabel(),null,null,adjPQ);
   gHoldRows(holdPQ).forEach(function(hr){ rows+=row(hr.label,null,null,hr.amt); });
@@ -14616,7 +14628,8 @@ async function printContract(){
     // fslean walls are priced by fsWalls() (in the Building Subtotal) — itemize them
     if(walls) row(fsWallsDesc(),null,null,walls);
   }
-  if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
+  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes') row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
+  else if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
   if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
   gHoldRows(holdPC).forEach(function(hr){ row(hr.label,null,null,hr.amt); });
@@ -18393,6 +18406,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'carport-sides':{ commit:'10-9b', date:'10/12/26', text:'Carport: a closed side was charged twice (Each Side Closed + Side Panels) — every carport quote saved 8/26–10/12/26 with a closed side. Now charged once; carport sides are set only in 4B — Side Panels' },
     'side-frames-12-30':{ commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: no separate $150 side frame on an eave frame-out - the side opening price covers it (Dealer Handbook p17)" },
     'fo-book':     { commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: a custom garage-door frame-out on an eave with no typed price = Price Book 2 p2 'Side Openings - Without Garage Door' by width (was $0)" },
+    'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
   };
@@ -18550,6 +18564,12 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         if(String(a.act||'').indexOf('Framed Opening')===0 && /Eave Side$/.test(String(a['fo-loc']||''))) cnt+=parseInt(a['fo-sf'])||0;
       });
       if(cnt>0) out.push({ k:'sideFrames', label:'Side frames (as originally quoted)', amt:r2(cnt*(root._sf_dw||150)), rules:[w>30?'side-frames':'side-frames-12-30'] });
+    }
+    // 1-lap) CCI lap siding: saved at 10% of the base price before 10-15c; now priced as vertical walls (amt > 0: the saved price was higher)
+    if(mfr==='CCI' && f.lap==='yes' && typeof root.cciLapSiding==='function'){
+      var savedLap=null, sl=(src==='snapshot' && data.priced && data.priced.lines) ? data.priced.lines.lap : null;
+      if(sl!=null) savedLap=+sl; else if(rcl && rcl.base) savedLap=r2(rcl.base*0.10);
+      if(savedLap!=null && rcl && !rcl.manual && Math.abs(savedLap-(rcl.lapP||0))>=0.5) out.push({ k:'lapSiding', label:'Lap siding (as originally quoted)', amt:r2(savedLap-(rcl.lapP||0)), rules:['lap-vertical'] });
     }
     // 1a) Walk doors / windows on a gable end (or any non-eave wall) saved with a side frame: the program kept the
     //     eave's side frame when one was moved to a gable end (hidden, still charged) - never charged since 10-15b
