@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { loadCurrentQuote } from '../lib/layoutFromQuote'
+import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { statusLabel, sourceLabel, buildingTypeLabel, projectStageLabel, projectStageColor } from '../lib/constants'
 import StatusPill from '../components/StatusPill'
@@ -75,6 +76,9 @@ export default function ClientDetail() {
   const { user } = useAuth()
   const [client, setClient] = useState(null)
   const [latestQuote, setLatestQuote] = useState(null)
+  // { id, spec }: Building size/type from this lead's quote on file — fills the
+  // Project Spec blanks, same rule as the Leads list (owner 10/15/26). Display only.
+  const [quoteSpec, setQuoteSpec] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(false)
@@ -102,13 +106,20 @@ export default function ClientDetail() {
       const q = await loadCurrentQuote(supabase, id)
       if (!cancelled) setLatestQuote(q)
     }
+    let specRun = 0
+    async function loadSpec() {
+      const run = ++specRun
+      const specs = await loadQuoteSpecs(supabase, id) // null = quotes unreadable: keep the lead's own values
+      if (!cancelled && specs && run === specRun) setQuoteSpec({ id, spec: specs.get(id) || null })
+    }
     load()
     loadQuote()
+    loadSpec()
 
     const channel = supabase
       .channel(`client-${id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients', filter: `id=eq.${id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes', filter: `client_id=eq.${id}` }, () => loadQuote())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes', filter: `client_id=eq.${id}` }, () => { loadQuote(); loadSpec() })
       .subscribe()
 
     return () => {
@@ -216,6 +227,8 @@ export default function ClientDetail() {
   const repName = userLabel(users, client.primary_rep)
   const repInitial = repName && repName !== '—' ? repName.trim()[0].toUpperCase() : '?'
   const mfr = client.building_mfr || client.order_mfr || (latestQuote?.manufacturer ? (MFR_LABEL[latestQuote.manufacturer] || latestQuote.manufacturer) : '—')
+  // Building size/type: the lead's own, each blank filled from its quote on file.
+  const spec = leadBuildingSpec(client, quoteSpec?.id === id ? quoteSpec.spec : null)
   const stroke = (paths) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
 
   return (
@@ -255,8 +268,8 @@ export default function ClientDetail() {
         <div className="cp-block">
           <div className="cp-block-label">Project Spec</div>
           <div className="cp-spec">
-            <div className="cp-spec-row"><span>Building Type</span><span className="v teal">{client.building_type ? buildingTypeLabel(client.building_type) : '—'}</span></div>
-            <div className="cp-spec-row"><span>Building Size</span><span className="v num">{client.building_size || '—'}</span></div>
+            <div className="cp-spec-row"><span>Building Type</span><span className="v teal" title={fromQuoteTitle(spec.typeFrom)}>{spec.type ? buildingTypeLabel(spec.type) : '—'}</span></div>
+            <div className="cp-spec-row"><span>Building Size</span><span className="v num" title={fromQuoteTitle(spec.sizeFrom)}>{spec.size || '—'}</span></div>
             <div className="cp-spec-row"><span>Manufacturer</span><span className="v">{mfr}</span></div>
             <div className="cp-spec-row"><span>Foundation</span><span className="v">{client.order_foundation || '—'}</span></div>
             <div className="cp-spec-row"><span>Current Quote</span><span className="v teal num">{fmtMoney(latestQuote?.total_amount) ?? '—'}</span></div>

@@ -2,6 +2,8 @@
 // building size. Filter by status and by building type. Sort multiple ways.
 // Live-updates via Supabase realtime — if your partner adds/edits a
 // client, you see it without refreshing.
+// Building size/type: the lead's own, with blanks filled from the lead's quote
+// on file (lib/leadQuoteSpec.js, owner 10/15/26) — hover shows which quote.
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -11,6 +13,7 @@ import { useUsers, userLabel } from '../lib/useUsers'
 import { derivedProjectStage } from '../lib/projectStage'
 import { readState } from '../lib/ssfuEngine'
 import { usd } from '../lib/money'
+import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -67,6 +70,9 @@ export default function ClientsList() {
   const navigate = useNavigate()
   const { users } = useUsers()
   const [clients, setClients] = useState([])
+  // client_id -> Building size/type from the lead's quote on file (owner 10/15/26).
+  // Fills only the blanks a lead has — display only, never written to the lead.
+  const [quoteSpecs, setQuoteSpecs] = useState(() => new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -193,6 +199,15 @@ export default function ClientsList() {
   // Initial load + realtime subscription
   useEffect(() => {
     let cancelled = false
+    let specRun = 0
+
+    // The leads' quote building info. Runs beside the clients query and never
+    // holds it up; if the quotes can't be read the list shows what it always did.
+    async function loadSpecs() {
+      const run = ++specRun
+      const specs = await loadQuoteSpecs(supabase)
+      if (!cancelled && specs && run === specRun) setQuoteSpecs(specs)
+    }
 
     async function load() {
       const { data, error } = await supabase
@@ -210,12 +225,18 @@ export default function ClientsList() {
     }
 
     load()
+    loadSpecs()
 
     const channel = supabase
       .channel('clients-list')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'clients' },
-        () => load()
+        () => { load(); loadSpecs() }
+      )
+      // a quote saved / edited / starred / deleted can change a lead's building info
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'quotes' },
+        () => loadSpecs()
       )
       .subscribe()
 
@@ -224,6 +245,14 @@ export default function ClientsList() {
       supabase.removeChannel(channel)
     }
   }, [])
+
+  // What the Building column, drawer, build-type filter and size search use:
+  // the lead's own size + type, each blank filled from its quote on file.
+  const specOf = useMemo(() => {
+    const m = new Map()
+    for (const c of clients) m.set(c.id, leadBuildingSpec(c, quoteSpecs.get(c.id)))
+    return m
+  }, [clients, quoteSpecs])
 
   // Apply search + filters + sort in memory. For a few hundred clients
   // this is plenty fast; if the list ever grows huge we'd push this
@@ -241,7 +270,7 @@ export default function ClientsList() {
     }
 
     if (buildingTypeFilter !== 'all') {
-      result = result.filter(c => c.building_type === buildingTypeFilter)
+      result = result.filter(c => specOf.get(c.id)?.type === buildingTypeFilter)
     }
 
     if (search.trim()) {
@@ -251,11 +280,12 @@ export default function ClientsList() {
       // digits, so typing a name with a digit doesn't misroute to phone-land.
       const qDigits = q.replace(/\D/g, '')
       const phoneMatch = (p) => qDigits.length >= 4 && String(p || '').replace(/\D/g, '').includes(qDigits)
+      const sizeOf = (c) => String(specOf.get(c.id)?.size || '') // own size, else the quote's
       result = result.filter(c =>
         (c.name && c.name.toLowerCase().includes(q)) ||
         (c.phone && (c.phone.toLowerCase().includes(q) || phoneMatch(c.phone))) ||
         (c.email && c.email.toLowerCase().includes(q)) ||
-        (c.building_size && c.building_size.toLowerCase().includes(q))
+        sizeOf(c).toLowerCase().includes(q)
       )
     }
 
@@ -284,7 +314,7 @@ export default function ClientsList() {
       sorted.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     }
     return sorted
-  }, [repScoped, search, group, stageFilter, ssfu, buildingTypeFilter, sortBy])
+  }, [repScoped, search, group, stageFilter, ssfu, buildingTypeFilter, sortBy, specOf])
 
   return (
     <>
@@ -389,6 +419,7 @@ export default function ClientsList() {
                 const repName = userLabel(users, c.primary_rep)
                 const isOpen = expanded === c.id
                 const toggle = () => setExpanded(isOpen ? null : c.id)
+                const spec = specOf.get(c.id) || leadBuildingSpec(c)
                 return (
                   <Fragment key={c.id}>
                     <tr onClick={toggle} className={`lead-row row-enter${isOpen ? ' open' : ''}`} style={{ '--ri': Math.min(i, 14) }}>
@@ -403,10 +434,10 @@ export default function ClientsList() {
                       </td>
                       <td><StagePill status={c.status} /></td>
                       <td>
-                        {c.building_size || c.building_type ? (
+                        {spec.size || spec.type ? (
                           <>
-                            {c.building_size && <div className="num" style={{ color: 'var(--fg)' }}>{c.building_size}</div>}
-                            {c.building_type && <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }}>{buildingTypeLabel(c.building_type)}</div>}
+                            {spec.size && <div className="num" style={{ color: 'var(--fg)' }} title={fromQuoteTitle(spec.sizeFrom)}>{spec.size}</div>}
+                            {spec.type && <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }} title={fromQuoteTitle(spec.typeFrom)}>{buildingTypeLabel(spec.type)}</div>}
                           </>
                         ) : <span className="muted">—</span>}
                       </td>
@@ -433,7 +464,7 @@ export default function ClientsList() {
                       <tr className="lead-drawer-row">
                         <td colSpan={8}>
                           <LeadDrawer
-                            c={c} loc={loc}
+                            c={c} loc={loc} spec={spec}
                             quote={expandedQuote?.id === c.id ? expandedQuote.total : undefined}
                             onChangeStage={changeStage}
                             onOpenPortal={() => navigate(`/clients/${c.id}`)}
@@ -474,7 +505,8 @@ function FollowUpCell({ date }) {
 
 // Inline expand-for-detail drawer beneath a lead row: contact, project spec, an
 // inline stage changer, and a jump to the client portal.
-function LeadDrawer({ c, loc, quote, onChangeStage, onOpenPortal }) {
+// spec = the row's Building size/type (the lead's own, blanks filled from its quote).
+function LeadDrawer({ c, loc, spec, quote, onChangeStage, onOpenPortal }) {
   const money = (n) => usd(n) ?? '—'
   const ic = (d) => <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
   return (
@@ -492,8 +524,8 @@ function LeadDrawer({ c, loc, quote, onChangeStage, onOpenPortal }) {
         <div>
           <div className="lead-drawer-label">Project Spec</div>
           <div className="lead-spec">
-            <div className="lead-spec-row"><span>Building</span><span className="num" style={{ color: 'var(--fg)' }}>{c.building_size || '—'}</span></div>
-            <div className="lead-spec-row"><span>Type</span><span style={{ color: 'var(--cyan)' }}>{c.building_type ? buildingTypeLabel(c.building_type) : '—'}</span></div>
+            <div className="lead-spec-row"><span>Building</span><span className="num" style={{ color: 'var(--fg)' }} title={fromQuoteTitle(spec.sizeFrom)}>{spec.size || '—'}</span></div>
+            <div className="lead-spec-row"><span>Type</span><span style={{ color: 'var(--cyan)' }} title={fromQuoteTitle(spec.typeFrom)}>{spec.type ? buildingTypeLabel(spec.type) : '—'}</span></div>
             <div className="lead-spec-row"><span>Current quote</span><span className="num" style={{ color: 'var(--lime)' }}>{quote === undefined ? '…' : money(quote)}</span></div>
           </div>
         </div>
