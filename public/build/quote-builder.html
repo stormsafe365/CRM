@@ -13347,36 +13347,66 @@ function threeDPageHTML(imgs){
       (src?'<div style="width:100%;aspect-ratio:'+aspect+';overflow:hidden;background:#08121d"><img src="'+src+'" style="width:100%;height:100%;object-fit:cover;display:block"></div>':'')+
     '</div>';
   }
-  // Card sized to the image's own aspect (capture writes imgs[view+'Ar']) so
-  // the photo IS the card — no letterbox bands. Height-capped so the two pages
-  // always fit; a capped card narrows and centers instead of banding inside.
+  // PAGE-FILLING LAYOUT (owner 10/14/26: "too small ... like the gable views"). The quote body is laid out 900 px wide
+  // and printed scaled to Letter, so one printed page is 900*11/8.5 = 1164 px tall (the page-1 guard qpFit uses the same
+  // figure): each 3D page keeps under _PH with its header, caption, labels and gaps, and the cards share what is left by
+  // their real shape. Gables side by side, or stacked full width when that shows them bigger (wide buildings, lean-tos).
+  // Each picture is CROPPED to the building - the capture reports where the building is in it (imgs[view+'Box'],
+  // geometry projected with the capture camera) - plus a 4% margin, so the building fills its card instead of sitting
+  // small / off-centre in the frame. A 3D view without Box (older bundle) shows the whole picture.
+  var _PW=852, _PH=1120, _GAP=14, _LBL=30, _BRD=2, _HDR=42, _CAP=28, _PAD=48;
   function _arOf(k,fb){ var a=parseFloat(imgs[k+'Ar']); return (a&&isFinite(a)&&a>0)?a:fb; }
-  function _vcard(src,label,ar,capH,maxW){
-    var w=Math.min(maxW,Math.round(capH*ar));
-    return '<div style="width:'+w+'px;max-width:100%;margin:14px auto 0;background:#111d28;border-radius:6px;overflow:hidden;border:1px solid #243c50;page-break-inside:avoid;break-inside:avoid">'+
-      (label?'<div style="background:#1C2E3F;color:#fff;font-size:10pt;font-weight:800;letter-spacing:2px;text-align:center;padding:6px">'+label+'</div>':'')+
-      '<div style="width:100%;aspect-ratio:'+ar+';background:#08121d">'+
-        (src?'<img src="'+src+'" style="width:100%;height:100%;object-fit:cover;display:block">':'')+
+  function _crop(k,fb){
+    var ar=_arOf(k,fb), b=String(imgs[k+'Box']||'').split(',').map(parseFloat);
+    if(b.length!==4 || !b.every(isFinite) || !(b[2]>b[0]) || !(b[3]>b[1])) return { x:0, y:0, w:1, h:1, ar:ar };
+    var pad=0.04*Math.max((b[2]-b[0])*ar, b[3]-b[1]); // in picture-height units
+    var x0=Math.max(0,b[0]-pad/ar), x1=Math.min(1,b[2]+pad/ar), y0=Math.max(0,b[1]-pad), y1=Math.min(1,b[3]+pad);
+    return { x:x0, y:y0, w:x1-x0, h:y1-y0, ar:(x1-x0)*ar/(y1-y0) };
+  }
+  function _card(it,w){
+    w=Math.floor(w); var c=it.c, h=Math.floor(w/c.ar);
+    return '<div style="width:'+w+'px;max-width:100%;margin:'+_GAP+'px auto 0;background:#111d28;border-radius:6px;overflow:hidden;border:1px solid #243c50;page-break-inside:avoid;break-inside:avoid">'+
+      (it.label?'<div style="background:#1C2E3F;color:#fff;font-size:10pt;font-weight:800;letter-spacing:2px;text-align:center;padding:6px">'+it.label+'</div>':'')+
+      '<div style="width:100%;height:'+h+'px;position:relative;overflow:hidden;background:#08121d">'+
+        (it.src?'<img src="'+it.src+'" style="position:absolute;left:'+(-c.x/c.w*100).toFixed(3)+'%;top:'+(-c.y/c.h*100).toFixed(3)+'%;width:'+(100/c.w).toFixed(3)+'%;height:'+(100/c.h).toFixed(3)+'%;max-width:none;display:block">':'')+
       '</div>'+
     '</div>';
   }
+  // rows = [[item, item], [item]]: a row of n cards shares the width. Scale every card by the same factor so the page
+  // fits; returns { s, area } (area = total picture area, to pick the bigger layout).
+  function _fit(rows){
+    var imgH=0, fixed=_PAD+_HDR+_CAP, area=0;
+    rows.forEach(function(r){ var cw=(_PW-_GAP*(r.length-1))/r.length, rh=0, lab=0;
+      r.forEach(function(it){ rh=Math.max(rh, cw/it.c.ar); if(it.label) lab=_LBL; });
+      imgH+=rh; fixed+=_GAP+_BRD+lab; });
+    var s=Math.max(0.25, Math.min(1, (_PH-fixed)/imgH));
+    rows.forEach(function(r){ var cw=(_PW-_GAP*(r.length-1))/r.length*s; r.forEach(function(it){ area+=cw*cw/it.c.ar; }); });
+    return { s:s, area:area };
+  }
+  function _rows(rows){
+    var f=_fit(rows);
+    return rows.map(function(r){ var cw=(_PW-_GAP*(r.length-1))/r.length*f.s;
+      if(r.length===1) return _card(r[0],cw);
+      return '<div style="display:flex;justify-content:center;align-items:flex-start;gap:'+_GAP+'px">'+r.map(function(it){ return '<div>'+_card(it,cw)+'</div>'; }).join('')+'</div>';
+    }).join('');
+  }
   var _gAr=Math.min(2.4,Math.max(1,parseFloat(gAsp)||1.3));
   var _eAr=Math.min(3,Math.max(1.4,parseFloat(eAsp)||1.8));
+  // Capture 'right'/'left' keys are swapped vs the program's eave naming:
+  // RIGHT EAVE = imgs.left (shown on page 1), LEFT EAVE = imgs.right.
+  var _iso={ src:imgs.iso, label:null, c:_crop('iso',1.6) }, _rE={ src:imgs.left, label:'RIGHT EAVE SIDE', c:_crop('left',_eAr) };
+  var _fr={ src:imgs.front, label:'FRONT', c:_crop('front',_gAr) }, _bk={ src:imgs.back, label:'BACK', c:_crop('back',_gAr) };
+  var _lE={ src:imgs.right, label:'LEFT EAVE SIDE', c:_crop('right',_eAr) };
+  var _p2side=[[_fr,_bk],[_lE]], _p2stack=[[_fr],[_bk],[_lE]];
+  var _p2=(_fit(_p2stack).area>_fit(_p2side).area)?_p2stack:_p2side;
   var pg1 = page(
     hdr('3D Building Rendering')+
-    _vcard(imgs.iso,null,_arOf('iso',1.6),450,762)+
-    _vcard(imgs.left,'RIGHT EAVE SIDE',_arOf('left',_eAr),400,762)+
+    _rows([[_iso],[_rE]])+
     caption
   );
   var pg2 = page(
     hdr('Elevation Views')+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
-      '<div>'+_vcard(imgs.front,'FRONT',_arOf('front',_gAr),320,374)+'</div>'+
-      '<div>'+_vcard(imgs.back,'BACK',_arOf('back',_gAr),320,374)+'</div>'+
-    '</div>'+
-    // Capture 'right'/'left' keys are swapped vs the program's eave naming:
-    // RIGHT EAVE = imgs.left (shown on page 1), LEFT EAVE = imgs.right.
-    _vcard(imgs.right,'LEFT EAVE SIDE',_arOf('right',_eAr),400,762)+
+    _rows(_p2)+
     caption
   );
   return pg1 + pg2;
