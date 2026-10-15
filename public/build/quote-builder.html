@@ -4169,6 +4169,11 @@ function cciWideHeight(h, l){
 // unit past 52' (handbook p6, cciWideUnits; 60' = 28' + 32' = $2,280). 10/9/26 — it was the
 // CA Master Price Book series (360 … 840 to 40', then 1,560 / 1,680 / 1,800, flat past 52').
 var CCI_COM_12GA=[840,960,1080,1200,1320,1440,1560,1680,1800];
+// CCI 32'-60' wide LEAN-TO CONNECTION FEE - the same Price Book 2 p6 "OPTIONS" table: Connection Fee Per Lean-To 20' $300 ·
+// 24' $325 · 28' $350 · 32' $375 · 36' $400 · 40' $425 · 44' $450 · 48' $475 · 52' $500, per connected unit past 52' (handbook
+// p6, cciWideUnits) - CCI's own 7/24/26 correction: two 12x100 leans on a 40x100 main = $975 each = 48' + 52' (owner 10/15/26).
+// It was a $300 floor (CCI's 7/24 check mark on a 12'-WIDE main - Josh Fenwick 12x60 - which is the 12'-30' $100 + $25/5' rule).
+var CCI_COM_CONN=[300,325,350,375,400,425,450,475,500];
 function cciCom12GA(l){ return l ? cciWideUnitSum(l, CCI_COM_12GA) : 0; }
 // Helper: compute CCI 62-100 wide side close (returns BOTH sides combined; caller halves for per-side)
 // Lengths over 52' = connected units (cciWideUnits) — identical to the old
@@ -4620,6 +4625,15 @@ function cciPBRule(){ return ACTIVE_MFR==='CCI' && ((G('county')||{}).textConten
 // narrower (not wide span; a free-standing lean-to has its own fsAuto rule) needs 4' OC: locked with the Palm Beach lock
 // and its override (_fu14Override / _fu12Reapply). It was printed "Up to 170 MPH" at 5' OC with no 4' OC charge. Palm
 // Beach keeps its own rule (4' OC + 12 GA). Returns 'hw' / 'com' / ''.
+// CCI 26'-30' wide (triple wide) certified up to 170 MPH by PROPERTY TYPE (Commercial / Risk Cat 2 Residential - doPT
+// "Auto: Up to 170 MPH") needs 12-gauge framing (owner 10/15/26, audit F12): CCI's only 170 MPH route on a triple wide is the
+// bundled upgrade "Certified 12 Gauge and 170mph Wind Load" (Price Book 2 p3), priced as the p4 "12G 170mph" row ($410 20' ...
+// $890 40'); there is no 14-gauge 170 row (12'-24' has "14G 170mph 4' Centers", p2). It printed 170 MPH at 14 GA, $0. Joins
+// the hi-wind 12 GA lock in rc() (_req12) with the same override; hi-wind counties / Palm Beach keep their own rules.
+function cciTriple170Com(w, bt){
+  if(ACTIVE_MFR!=='CCI' || !(w>24 && w<=30) || bt==='widespan' || bt==='fslean') return false;
+  var pt=((G('pt')||{}).value)||''; return pt==='com'||pt==='rc2r';
+}
 function cci170OcRule(w, bt){
   if(ACTIVE_MFR!=='CCI' || !(w>0 && w<=24) || bt==='widespan' || bt==='fslean' || cciPBRule()) return '';
   var pt=((G('pt')||{}).value)||''; if(pt==='com'||pt==='rc2r') return 'com';
@@ -5284,6 +5298,7 @@ function connFeeFor(attachedSide, connLen){
     // CCI), two 100' leans → Sensei's $2,200 struck to $1,950 ($975 each).
     // $300 floor, edge-rate extrapolation past 100'. (Sensei's own chart —
     // 40'→$400 · 60'→$700 · 80'→$800 — over-charged and was dropped.)
+    if(bw<=60) return cciWideUnitSum(connLen, CCI_COM_CONN); // 32'-60' main: Price Book 2 p6, per connected unit past 52' (owner 10/15/26)
     return Math.max(300, Math.round(_ltsInterp(LTS_CONN, connLen)));
   }
   if(isGable){
@@ -9309,7 +9324,9 @@ function rc(){
   // than 24' REQUIRES 12-gauge framing (owner rule 9/23/26, Palm Beach etc.).
   // Auto-selected and locked — it's a CHARGED upgrade, priced as normal.
   var _fuF=G('framing-upgrade');
-  var _req12=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0) || cciPBRule(); // Palm Beach: every width (owner rule 10/9/26)
+  var _req12Hw=(ACTIVE_MFR==='CCI' && w>24 && typeof HW!=='undefined' && HW.indexOf(G('county').textContent)>=0);
+  var _req12Com=cciTriple170Com(w, G('btype').value) && !_req12Hw && !cciPBRule(); // triple wide Commercial / Risk Cat 2 only (10/15/26)
+  var _req12=_req12Hw || cciPBRule() || cciTriple170Com(w, G('btype').value); // Palm Beach: every width (owner rule 10/9/26)
   var _pbN=cciPBRule() && w>0 && w<=24; // Palm Beach 24' and narrower: the new rule's own notes (wider keeps the 9/23 hi-wind notes)
   // Override memory resets whenever the width class / county / mfr changes, so
   // a NEW hi-wind wide build always starts locked at 12 GA again.
@@ -9320,7 +9337,7 @@ function rc(){
   var _pbOcReq=_pbN && G('btype').value!=='widespan';
   if(_req12 && window._fu14Ovr && _fuF && _fuF.value==='12' && !(_pbOcReq && ((G('oc-spacing')||{}).value||'5oc')!=='4oc')){ window._fu14Ovr=false; if(window._plGrand) window._plGrand.fu14=false; }
   if(_fuF){
-    if(_req12 && !window._fu14Ovr){ _fuHold(_fuF,true); _fuF.title=cciPBRule()?"12-gauge + 4' OC required: Palm Beach County (CCI), every building size":"12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"; }
+    if(_req12 && !window._fu14Ovr){ _fuHold(_fuF,true); _fuF.title=cciPBRule()?"12-gauge + 4' OC required: Palm Beach County (CCI), every building size":(_req12Com?"12-gauge required: Commercial / Risk Cat 2 triple wide - CCI's 170 MPH route on 26'-30' is the 12G 170mph upgrade":"12-gauge required: hi-wind county (cert above 150 MPH) + wider than 24'"); }
     else { _fuHold(_fuF,false,!_req12); _fuF.disabled=false; _fuF.title=''; } // rule lifted (county / width / mfr): the rep's own pick comes back (audit PB-5/PB-6)
   }
   var _oc170N=cci170OcRule(w, G('btype').value); // 170 MPH on 24' and narrower: 4' OC required (10/14/26)
@@ -9331,14 +9348,14 @@ function rc(){
   var _fr12=G('framing-req-note');
   if(_fr12){
     if(_req12 && !window._fu14Ovr){
-      _fr12.innerHTML=_pbN?_pbNote('lock'):'12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
+      _fr12.innerHTML=_pbN?_pbNote('lock'):_req12Com?'12-Gauge framing REQUIRED &amp; auto-applied — Commercial / Risk Cat 2 on a triple wide (26&#39;&ndash;30&#39;): CCI&#39;s only 170 MPH route here is the &quot;Certified 12 Gauge and 170mph&quot; upgrade (Price Book 2 p3/p4; charged). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>':'12-Gauge framing REQUIRED &amp; auto-applied — this county certifies above 150 MPH and the building is wider than 24&#39; (charged upgrade). <a href="#" onclick="_fu14Override();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Override → use 14 GA anyway</a>';
       _fr12.classList.remove('hidden');
     } else if(_req12 && window._fu14Ovr && window._plGrand && window._plGrand.fu14){
       // Reopened quote sold before the 9/23/26 rule: kept as sold (not a rep override).
-      _fr12.innerHTML=_pbN?_pbNote('grand'):'GRANDFATHERED — sold as 14-gauge before the 9/23/26 rule (12 GA is now required on a hi-wind-county build wider than 24&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>';
+      _fr12.innerHTML=_pbN?_pbNote('grand'):_req12Com?'GRANDFATHERED — sold as 14-gauge before the 10/15/26 rule (a Commercial / Risk Cat 2 triple wide now requires 12 GA, CCI&#39;s 170 MPH route). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>':'GRANDFATHERED — sold as 14-gauge before the 9/23/26 rule (12 GA is now required on a hi-wind-county build wider than 24&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Apply 12 GA</a>';
       _fr12.classList.remove('hidden');
     } else if(_req12 && window._fu14Ovr){
-      _fr12.innerHTML=_pbN?_pbNote('ovr'):'⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
+      _fr12.innerHTML=_pbN?_pbNote('ovr'):_req12Com?'⚠ OVERRIDE ACTIVE — 14-gauge on a Commercial / Risk Cat 2 triple wide (12 GA is normally required: CCI&#39;s 170 MPH route on 26&#39;&ndash;30&#39;). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>':'⚠ OVERRIDE ACTIVE — 14-gauge on a hi-wind-county build wider than 24&#39; (12 GA is normally required here). <a href="#" onclick="_fu12Reapply();return false;" style="color:#b45309;text-decoration:underline;font-weight:800">Re-apply 12 GA</a>';
       _fr12.classList.remove('hidden');
     } else if(_oc170N){
       var _o170w=(_oc170N==='com')?'Commercial / Risk Cat 2 property: certified up to 170 MPH':'this county certifies up to 170 MPH';
@@ -9396,7 +9413,10 @@ function rc(){
     else if(!_pImpDoorLock && sel.dataset.preImp){ sel.value=sel.dataset.preImp; delete sel.dataset.preImp; }
   });
   // Lee County (incl. Lehigh Acres): no corrugated siding in residential zones -> lap siding.
-  var _pLapReq=_pCci && _pCo==='Lee', _pLapEl=G('lap');
+  // Orange County (owner 10/15/26): CCI memo 3/9/26 p3 "Lap Siding Required - Orange County (Certain Areas Only)"; CCI permitting
+  // sheet: R-1, R-1A, R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1 and R-T-2 zoning districts. Auto-applied
+  // like Lee; the rep overrides when the site is outside those districts.
+  var _pLapReq=_pCci && (_pCo==='Lee' || _pCo==='Orange'), _pLapEl=G('lap');
   if(_pLapEl){
     if(_pLapReq && !window._lapOvr){ if(!_pLapEl.disabled) window._lapPre=_pLapEl.value; _pLapEl.value='yes'; _pLapEl.disabled=true; }
     else if(_pLapEl.disabled){ _pLapEl.disabled=false; _pLapEl.value=window._lapPre||'no'; window._lapPre=null; }
@@ -9413,9 +9433,9 @@ function rc(){
     if(_pImpReq && !window._impOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+_pCo+' requires impact-rated components \u2014 windows are locked to Hi-Impact'+(_pImpDoor?' and walk doors to Hi-Wind Rated.':' (standard walk doors are accepted here, CCI memo 3/9/26).')+_pA("_permOvr(\'imp\',true)",'Override')+'</div>';
     else if(_pImpReq && _pGf.imp) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold with non-impact windows/doors before the 9/28/26 '+_pCo+' impact rule (kept as sold).'+_pA("_permOvr(\'imp\',false)",'Apply impact rule')+'</div>';
     else if(_pImpReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 non-impact windows/doors allowed in an impact county ('+_pCo+').'+_pA("_permOvr(\'imp\',false)",'Re-apply')+'</div>';
-    if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.'+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
-    else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the 9/28/26 Lee County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
-    else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in Lee County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
+    if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+(_pCo==='Orange'?'Orange County requires lap siding in certain residential zoning districts (R-1, R-1A, R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1, R-T-2 \u2014 CCI) \u2014 auto-applied. Override if the site is outside those districts.':'Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.')+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
+    else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the '+(_pCo==='Orange'?'10/15/26 Orange':'9/28/26 Lee')+' County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
+    else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in '+_pCo+' County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
     // Palm Beach County: why the framing is locked (owner rule 10/9/26) — the lock + override live in the framing note.
     if(_pCci && _pCo==='Palm Beach'){ var _pbOc=((parseInt(G('bw').value)||0)<=24 && G('btype').value!=='widespan');
       _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Palm Beach County: CCI requires 4\u2019 OC + 12-gauge framing on every building size (owner rule 10/9/26)'+(window._fu14Ovr?' \u2014 <b>override active</b> on this build.':' \u2014 framing locked to 12 GA'+(_pbOc?' / 4\u2019 OC':' (4\u2019 OC is standard at this width)')+'.')+'</div>'; }
@@ -11645,7 +11665,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -18406,6 +18426,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'carport-sides':{ commit:'10-9b', date:'10/12/26', text:'Carport: a closed side was charged twice (Each Side Closed + Side Panels) — every carport quote saved 8/26–10/12/26 with a closed side. Now charged once; carport sides are set only in 4B — Side Panels' },
     'side-frames-12-30':{ commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: no separate $150 side frame on an eave frame-out - the side opening price covers it (Dealer Handbook p17)" },
     'fo-book':     { commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: a custom garage-door frame-out on an eave with no typed price = Price Book 2 p2 'Side Openings - Without Garage Door' by width (was $0)" },
+    'lean-conn-3260': { commit:'10-15c', date:'10/15/26', text:"CCI 32'-60' wide main: lean-to connection fee = Price Book 2 p6 'Connection Fee Per Lean-To' ($300 at 20' to $500 at 52', per connected unit past 52'); it was a $300 floor" },
+    'tw-170-12ga': { commit:'10-15c', date:'10/15/26', text:"CCI 26'-30' wide, Commercial / Risk Cat 2 (certified up to 170 MPH): 12-gauge required - the 12G 170mph upgrade is CCI's only 170 MPH route on a triple wide (Price Book 2 p3/p4)", flag:'fu14' },
+    'orange-lap':  { commit:'10-15c', date:'10/15/26', text:'CCI Orange County: lap siding required in certain residential zoning districts (CCI memo 3/9/26; permitting sheet)', flag:'lap' },
     'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
@@ -18571,6 +18594,18 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       if(sl!=null) savedLap=+sl; else if(rcl && rcl.base) savedLap=r2(rcl.base*0.10);
       if(savedLap!=null && rcl && !rcl.manual && Math.abs(savedLap-(rcl.lapP||0))>=0.5) out.push({ k:'lapSiding', label:'Lap siding (as originally quoted)', amt:r2(savedLap-(rcl.lapP||0)), rules:['lap-vertical'] });
     }
+    // 1-conn) CCI 32'-60' main, eave lean-tos: the connection fee was a $300 floor before 10-15c (no conn3260 marker); now Price
+    //     Book 2 p6 per lean (amt < 0: the saved price was lower)
+    var _ov3=data.overrides||{}, _bw3=w%2?w+1:w;
+    if(mfr==='CCI' && _bw3>=32 && _bw3<=60 && !_ov3.conn3260 && typeof root.cciWideUnitSum==='function' && root.CCI_COM_CONN && root.LTS_CONN){
+      var cnD=0;
+      (data.leantos||[]).forEach(function(lt){
+        var ls=String(lt.lts||''), ll=parseInt(lt.ltl2)||0, lw=parseInt(lt.ltw)||0;
+        if(lt['lt-type']==='freestanding' || !lw || !ll || /Gable/.test(ls)) return;
+        cnD+=Math.max(300, Math.round(root._ltsInterp(root.LTS_CONN, ll))) - root.cciWideUnitSum(ll, root.CCI_COM_CONN);
+      });
+      if(cnD) out.push({ k:'leanConn', label:'Lean-to connection fees (as originally quoted)', amt:r2(cnD), rules:['lean-conn-3260'] });
+    }
     // 1a) Walk doors / windows on a gable end (or any non-eave wall) saved with a side frame: the program kept the
     //     eave's side frame when one was moved to a gable end (hidden, still charged) - never charged since 10-15b
     var gsf=0;
@@ -18679,13 +18714,15 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var oc170=!!(cci && typeof root.cci170OcRule==='function' && root.cci170OcRule(w, (($('btype')||{}).value)||''));
     return {
       co:co, w:w, cci:cci,
-      req12: cci && ((w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0) || co==='Palm Beach'),
+      hw12: cci && w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0,
+      com12: cci && typeof root.cciTriple170Com==='function' && root.cciTriple170Com(w, (($('btype')||{}).value)||''), // 10/15/26
+      req12: cci && ((w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0) || co==='Palm Beach' || (typeof root.cciTriple170Com==='function' && root.cciTriple170Com(w, (($('btype')||{}).value)||''))),
       req4oc: cci && w>0 && w<=24 && ((($('btype')||{}).value)||'')!=='widespan' && (co==='Palm Beach' || oc170),
       pbN: cci && co==='Palm Beach' && w<=24,
       oc170: oc170, // 10/14/26: 170 MPH on 24' and narrower needs 4' OC (root.cci170OcRule)
       imp: cci && (IMPACT_CO.indexOf(co)>=0 || IMPACT_WIN_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
       impDoors: cci && (IMPACT_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
-      lap: cci && co==='Lee',
+      lap: cci && (co==='Lee' || co==='Orange'), // Orange 10/15/26
       ns: cci && NOSVC_CO.indexOf(co)>=0
     };
   }
@@ -18724,6 +18761,10 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       // 170 MPH on 24' and narrower needs 4' OC (10/14/26): a save from before the rule (no oc170Rule marker) at 5' OC is
       // kept as sold (GRANDFATHERED), never silently re-priced.
       if(opts.lock && !ov.fu14 && c.oc170 && (f['oc-spacing']||'5oc')!=='4oc' && !ov.oc170Rule){ root._fu14Ovr=true; gf.fu14=true; }
+      // Triple wide Commercial / Risk Cat 2 = 12 GA (10/15/26): a save from before the rule (no com12Rule marker) at 14 GA is kept as sold.
+      if(opts.lock && !ov.fu14 && c.com12 && !c.hw12 && !c.pbN && (f['framing-upgrade']||'14')!=='12' && !ov.com12Rule){ root._fu14Ovr=true; gf.fu14=true; }
+      // Orange County lap siding (10/15/26): a save from before the rule (no orangeLap marker) without lap is kept as sold.
+      if(opts.lock && !ov.lap && c.lap && c.co==='Orange' && f.lap!=='yes' && !ov.orangeLap){ root._lapOvr=true; gf.lap=true; }
     } else if(opts.lock){
       // Older quotes: infer the flag wherever the saved build differs from what the
       // rule would force. Saved before the rule -> "Grandfathered", else a rep override.
@@ -18733,10 +18774,10 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       root._impOvr=!!(c.imp && savedNonImpact(data, c.impDoors));
       root._lapOvr=!!(c.lap && f.lap!=='yes');
       root._nsOvr=!!(c.ns && f['delivery-type']==='pickup');
-      var t12=(c.pbN||c.oc170)?Infinity:((c.co==='St. Lucie')?T_PERMIT:T_HW12); // Palm Beach / 170 MPH 4' OC: a pre-v3 save predates the 10-9b / 10-14d rule
+      var t12=(c.pbN||c.oc170||(c.com12&&!c.hw12))?Infinity:((c.co==='St. Lucie')?T_PERMIT:T_HW12); // Palm Beach / 170 MPH 4' OC / triple wide Commercial: a pre-v3 save predates the 10-9b / 10-14d / 10-15c rule
       gf.fu14=root._fu14Ovr && sT<t12;
       gf.imp=root._impOvr && sT<T_PERMIT;
-      gf.lap=root._lapOvr && sT<T_PERMIT;
+      gf.lap=root._lapOvr && sT<(c.co==='Orange'?Infinity:T_PERMIT); // Orange: the 10-15c rule
       gf.ns=false; // 'pickup' did not exist before the rule: always a rep choice
     } else {
       root._fu14Ovr=false; root._impOvr=false; root._lapOvr=false; root._nsOvr=false;
@@ -18977,7 +19018,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     // 3) Roof style was never saved before v3: pick the one that reproduces the saved price.
     var parts=S.src==='snapshot'?S.parts.slice():[];
-    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, wtds:data.wtds, windows:data.windows, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source, priced:pr, overrides:data.overrides}:data, rcl, S.src);
+    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, wtds:data.wtds, windows:data.windows, leantos:data.leantos, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source, priced:pr, overrides:data.overrides}:data, rcl, S.src);
     drift.forEach(function(d){ parts.push(d); });
     var attributed=0; parts.forEach(function(x){ attributed+=(+x.amt||0); });
     // A part priced after the 26GA line (ground anchors) moves the subtotal 1:1, but the
@@ -19102,7 +19143,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         eff={ sub:r2(r.sub-base.sub), total:r2(r.adjTot-base.adjTot) };
         setFlags(fl0); PL.reapplySaved(data); setThrState(th0); pass();
       }
-      var id=(k==='fu14' && ruleCtx().pbN)?'pb-framing':((k==='fu14' && ruleCtx().oc170)?'cci-170-4oc':FLAG_RULE[k]), R=PL.RULES[id];
+      var _rc=ruleCtx(), id=(k==='fu14' && _rc.pbN)?'pb-framing':((k==='fu14' && _rc.oc170)?'cci-170-4oc':((k==='fu14' && _rc.com12 && !_rc.hw12)?'tw-170-12ga':((k==='lap' && _rc.co==='Orange')?'orange-lap':FLAG_RULE[k]))), R=PL.RULES[id];
       var d=decisionFor(id);
       st.rules.push({ id:id, flag:k, commit:R.commit, date:R.date, text:R.text, kind:'input', grandfathered:(k==='ns')?((tms(data.savedAt)||0)<T_PERMIT):!!(root._plGrand&&root._plGrand[k]),
         effectSub:eff.sub, effectTotal:eff.total, decision:d?d.choice:null, reason:d?d.reason:null });
@@ -19128,7 +19169,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   PL.decide = function(ruleId, choice, reason){
     var st=PL.st; if(!st || !PL.on) return false;
     var k=null; for(var fk in FLAG_RULE) if(FLAG_RULE[fk]===ruleId) k=fk;
-    if(ruleId==='pb-framing' || ruleId==='cci-170-4oc') k='fu14';
+    if(ruleId==='pb-framing' || ruleId==='cci-170-4oc' || ruleId==='tw-170-12ga') k='fu14';
+    if(ruleId==='orange-lap') k='lap';
     if(!k) return false;
     if(choice==='keep'){
       reason=String(reason||'').replace(/^\s+|\s+$/g,'');
