@@ -4625,13 +4625,16 @@ function cciPBRule(){ return ACTIVE_MFR==='CCI' && ((G('county')||{}).textConten
 // narrower (not wide span; a free-standing lean-to has its own fsAuto rule) needs 4' OC: locked with the Palm Beach lock
 // and its override (_fu14Override / _fu12Reapply). It was printed "Up to 170 MPH" at 5' OC with no 4' OC charge. Palm
 // Beach keeps its own rule (4' OC + 12 GA). Returns 'hw' / 'com' / ''.
-// CCI 26'-30' wide (triple wide) certified up to 170 MPH by PROPERTY TYPE (Commercial / Risk Cat 2 Residential - doPT
+// CCI 26'-30' wide (triple wide, up to 16' tall) certified up to 170 MPH by PROPERTY TYPE (Commercial / Risk Cat 2 Residential - doPT
 // "Auto: Up to 170 MPH") needs 12-gauge framing (owner 10/15/26, audit F12): CCI's only 170 MPH route on a triple wide is the
 // bundled upgrade "Certified 12 Gauge and 170mph Wind Load" (Price Book 2 p3), priced as the p4 "12G 170mph" row ($410 20' ...
 // $890 40'); there is no 14-gauge 170 row (12'-24' has "14G 170mph 4' Centers", p2). It printed 170 MPH at 14 GA, $0. Joins
 // the hi-wind 12 GA lock in rc() (_req12) with the same override; hi-wind counties / Palm Beach keep their own rules.
 function cciTriple170Com(w, bt){
   if(ACTIVE_MFR!=='CCI' || !(w>24 && w<=30) || bt==='widespan' || bt==='fslean') return false;
+  // Price Book 2 p3 is "26' to 30' Wide - Up to 16' Height"; 17'+ uses CCI's commercial building (p5: certified 170 MPH with
+  // 14 gauge framing included, 12 gauge an upgrade) - not this rule (review 10/15/26).
+  if((parseInt((G('bh')||{}).value)||0)>16) return false;
   var pt=((G('pt')||{}).value)||''; return pt==='com'||pt==='rc2r';
 }
 function cci170OcRule(w, bt){
@@ -5596,7 +5599,29 @@ function vertEndUpcharge(w){
 // the same as upgrading the walls to VERTICAL. It is the vertical-upgrade formula (gVertUpgrade) on the closed walls, so:
 // walls already Vertical = $0 more; wide span (32'+, vertical standard) = $0; an open carport / no closed wall = $0;
 // CCI 17'+ tall (orientation-blind) = $0; horizontal closed walls = the vertical upgrade amount. (CA keeps its 10% of base.)
-function cciLapSiding(){ return (G('ws').value==='Vertical') ? 0 : gVertUpgrade(true); }
+function cciLapSiding(){
+  // The whole building as quoted vs the same building with Vertical walls (review 10/15/26): the main walls (gVertUpgrade) plus
+  // every other wall price that follows the wall style - CCI gable-only ends, end / storage partitions, lengthwise storage
+  // (gWalls / gAddEndWall) and lean-to walls (gLT). Wainscot is a separate product and stays out. A free-standing lean-to has
+  // its own Horizontal / Vertical choice (fs-orient: +$150 per end, +$240-$420 per side).
+  if(((G('btype')||{}).value||'')==='fslean'){
+    var fo=G('fs-orient'); if(!fo || fo.value==='vertical') return 0;
+    var fp=fo.value; fo.value='vertical'; var fv=fsWalls(); fo.value=fp; var fh=fsWalls(); // as quoted last: fsWalls' gate flag stays the build's
+    return Math.max(0, Math.round((fv-fh)*100)/100);
+  }
+  var e=G('ws'); if(!e || e.value==='Vertical') return 0;
+  var main=gVertUpgrade(true), p=e.value;
+  e.value='Vertical'; var vO=gWalls()+gAddEndWall()+gLT();
+  e.value=p; var hO=gWalls()+gAddEndWall()+gLT();
+  return Math.round((main+Math.max(0, vO-hO))*100)/100;
+}
+// Does the lap siding cover any wall? An open carport / open walls has nothing to side: no "Lap Siding (included)" row.
+function cciLapHasWalls(){
+  if(((G('btype')||{}).value||'')==='fslean') return (((G('fs-walls-mode')||{}).value)||'open')!=='open';
+  if(['wfg','wbg'].some(function(id){ return (((G(id)||{}).value)||'Open')!=='Open'; })) return true;
+  if(['wle','wre'].some(function(id){ return eaveVal(id)!=='Open'; })) return true;
+  return [].some.call(document.querySelectorAll('.lte.entry'), function(el){ var w=getLTWalls(el); return w.front!=='open' || w.back!=='open' || w.side!=='open'; });
+}
 function lapLabels(){
   // the Lap Siding control / price panel wording follows the manufacturer's rule
   var cci=(ACTIVE_MFR==='CCI'), sel=G('lap'), k=G('plp-k');
@@ -9697,7 +9722,7 @@ function rc(){
   G('pwd').textContent=wtd?fC(wtd):'—';
   G('pwn').textContent=win?fC(win):'—';
   G('psf').textContent=sf?fC(sf):'—';
-  G('plp').textContent=lapP?fC(lapP):((G('lap').value==='yes'&&ACTIVE_MFR==='CCI')?'included':'—'); lapLabels();
+  G('plp').textContent=lapP?fC(lapP):((G('lap').value==='yes'&&ACTIVE_MFR==='CCI'&&cciLapHasWalls())?'included':'—'); lapLabels();
   G('pwi').textContent=wainP?fC(wainP):'—';
   var _pwk=G('pwi-k'); if(_pwk) _pwk.textContent = (wainP && wainscotPrintOpt()) ? 'Wainscot — Print Panel (+25%)' : 'Wainscot';
   var _wpn=G('wain-print-note'); if(_wpn) _wpn.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes'));
@@ -11665,7 +11690,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -12982,7 +13007,7 @@ async function printQuote(){
     // fslean walls are priced by fsWalls() (in the Building Amount) — itemize them
     if(walls) rows+=row(fsWallsDesc(),null,null,walls);
   }
-  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes') rows+=row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
+  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes' && (lapP || cciLapHasWalls())) rows+=row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
   else if(lapP) rows+=row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) rows+=row('Wainscot',null,null,wainP);
   if(typeof adjPQ!=='undefined'&&adjPQ) rows+=row(gAdjLabel(),null,null,adjPQ);
@@ -14648,7 +14673,7 @@ async function printContract(){
     // fslean walls are priced by fsWalls() (in the Building Subtotal) — itemize them
     if(walls) row(fsWallsDesc(),null,null,walls);
   }
-  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes') row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
+  if(ACTIVE_MFR==='CCI'){ if(G('lap').value==='yes' && (lapP || cciLapHasWalls())) row('Lap Siding — Walls'+(lapP?'':' (included)'),null,null,lapP); }
   else if(lapP) row('Lap Siding — Horizontal Walls (+10%)',null,null,lapP);
   if(wainP) row('Wainscot',null,null,wainP);
   if(typeof adjPC!=='undefined'&&adjPC) row(gAdjLabel(),null,null,adjPC);
@@ -18591,13 +18616,13 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     // 1-lap) CCI lap siding: saved at 10% of the base price before 10-15c; now priced as vertical walls (amt > 0: the saved price was higher)
     if(mfr==='CCI' && f.lap==='yes' && typeof root.cciLapSiding==='function'){
       var savedLap=null, sl=(src==='snapshot' && data.priced && data.priced.lines) ? data.priced.lines.lap : null;
-      if(sl!=null) savedLap=+sl; else if(rcl && rcl.base) savedLap=r2(rcl.base*0.10);
-      if(savedLap!=null && rcl && !rcl.manual && Math.abs(savedLap-(rcl.lapP||0))>=0.5) out.push({ k:'lapSiding', label:'Lap siding (as originally quoted)', amt:r2(savedLap-(rcl.lapP||0)), rules:['lap-vertical'] });
+      if(sl!=null) savedLap=+sl; else if(rcl && rcl.base && !(data.overrides && data.overrides.lapVert)) savedLap=Math.round(rcl.base*0.10); // the old engine rounded to dollars
+      if(savedLap!=null && rcl && !rcl.manual && Math.abs(savedLap-(rcl.lapP||0))>=0.5) out.push({ k:'lapSiding', label:'Lap siding (as originally quoted)', amt:r2(savedLap-(rcl.lapP||0)), rules:['lap-vertical'], rsDep:(sl==null) }); // rsDep: re-read per roof-style candidate (cands)
     }
     // 1-conn) CCI 32'-60' main, eave lean-tos: the connection fee was a $300 floor before 10-15c (no conn3260 marker); now Price
     //     Book 2 p6 per lean (amt < 0: the saved price was lower)
     var _ov3=data.overrides||{}, _bw3=w%2?w+1:w;
-    if(mfr==='CCI' && _bw3>=32 && _bw3<=60 && !_ov3.conn3260 && typeof root.cciWideUnitSum==='function' && root.CCI_COM_CONN && root.LTS_CONN){
+    if(mfr==='CCI' && _bw3>=32 && _bw3<=60 && !_ov3.conn3260 && (!savedT || savedT>=T_LT_HANDBOOK) && typeof root.cciWideUnitSum==='function' && root.CCI_COM_CONN && root.LTS_CONN){
       var cnD=0;
       (data.leantos||[]).forEach(function(lt){
         var ls=String(lt.lts||''), ll=parseInt(lt.ltl2)||0, lw=parseInt(lt.ltw)||0;
@@ -19033,12 +19058,14 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var savedSU=f['sheeting-upgrade'], savedFA=!!f.fastenerAdd, hint=(S.src==='snapshot' && pr && pr.free)?pr.free:null;
     var prep=function(){ applySavedThr(data); };
     function cands(rs){
-      var list=[];
+      var list=[], lapAmt=null;
+      // CCI lap on a save with no price snapshot: the old 10% followed THIS roof style's base (10-15c review)
+      if(parts.some(function(x){ return x.rsDep; })){ var qL=pass()||{}; if(qL.base!=null){ lapAmt=r2(Math.round(qL.base*0.10)-(qL.lapP||0)); parts.forEach(function(x){ if(x.rsDep) x.amt=lapAmt; }); } }
       (S.subs||[S.sub]).forEach(function(sb){
         solveHolds(sb, prep).forEach(function(s){
           var bad=((savedSU==='standard' && s.sheetFree)?1:0)+((savedFA && s.fastenerFree)?1:0);
           var miss=hint?(((!!hint.sheet)!==s.sheetFree?1:0)+((!!hint.fastener)!==s.fastenerFree?1:0)):0;
-          list.push({ rs:rs, sub:sb, P0:r2(sb-s.h), hold:s.h, res:r2(s.h-attrFor(s.sheetPaid)), bad:bad, miss:miss, sheetFree:s.sheetFree, fastenerFree:s.fastenerFree });
+          list.push({ rs:rs, sub:sb, P0:r2(sb-s.h), hold:s.h, res:r2(s.h-attrFor(s.sheetPaid)), bad:bad, miss:miss, sheetFree:s.sheetFree, fastenerFree:s.fastenerFree, lapAmt:lapAmt });
         });
       });
       return list;
@@ -19072,6 +19099,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       }
       rsEl.value=best.rs;
     }
+    if(best && best.lapAmt!=null) parts.forEach(function(x){ if(x.rsDep) x.amt=best.lapAmt; }); // the chosen roof style's old lap
     S.sub=best.sub;
     finishLock(S, best.P0, parts, data, opts);
   };
