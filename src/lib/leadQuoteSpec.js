@@ -9,11 +9,11 @@
 // always wins; the quote only fills a blank. Size and type fill independently
 // (a lead can have its own size but no type).
 //
-// WHICH QUOTE: ONE quote — the one Open Layout uses: the starred quote, else the
-// newest (quote_date, then created_at) — never a deleted one and never a
-// superseded one (replaced by a revised order). The same pick as "Current quote"
-// on the lead page and in the Leads drawer (layoutFromQuote.js loadCurrentQuote),
-// so a size and its price always come from the same quote. Size and type both come
+// WHICH QUOTE: ONE quote — "Current quote" on the lead page and in the Leads
+// drawer (layoutFromQuote.js loadCurrentQuote): the starred quote, else the newest
+// (quote_date, then created_at) — never a deleted one and never a superseded one
+// (replaced by a revised order). Open Layout's starred-else-newest pick, minus
+// superseded quotes. So a size and its price always come from the same quote. Size and type both come
 // from that quote only: if it has no size (an uploaded PDF whose file name had
 // none) or no Property Type (a hand-typed or uploaded quote, or the program's
 // Property Type left on "— select —"), that blank stays a dash — an older quote
@@ -110,8 +110,10 @@ export function fromQuoteTitle(q) {
 // 019 — may not be applied) and the JSON paths; then without the star (newest
 // wins, as loadCurrentQuote does without the column); then without the JSON paths
 // (size only) — still with the star when it exists, so the picked quote stays the
-// lead page's Current Quote. Never throws; null = the quotes couldn't be read, and
-// the caller keeps showing the leads' own values.
+// lead page's Current Quote. Only a column / select the database doesn't know
+// moves on to the next set; any other failure (network, timeout) returns null
+// rather than a poorer answer. Never throws; null = the quotes couldn't be read,
+// and the caller keeps showing what it showed.
 const BASE_COLS = 'id, client_id, quote_number, quote_date, created_at, status, deleted_at, building_size'
 const TYPE_COLS = 'pt:payload_json->fields->>pt, agx:payload_json->fields->>agx'
 export const SPEC_COL_SETS = [
@@ -120,34 +122,41 @@ export const SPEC_COL_SETS = [
   `${BASE_COLS}, starred`,
   BASE_COLS,
 ]
-// Supabase caps one API read (1000 rows by default), so read in pages; a cut-off
-// list would silently drop older leads' quotes.
+// Supabase caps one API read (1000 rows by default), so read in pages until the
+// row count is reached — a cut-off list would silently drop older leads' quotes,
+// and the count still holds if the project's cap is ever set lower.
 export const SPEC_PAGE = 1000
 const MAX_PAGES = 50
 
 async function readAll(sb, cols, clientId) {
   const rows = []
   for (let page = 0, from = 0; page < MAX_PAGES; page++) {
-    let q = sb.from('quotes').select(cols)
+    let q = sb.from('quotes').select(cols, { count: 'exact' })
       .neq('status', 'superseded') // replaced by a revised order: never the lead's quote
     if (clientId) q = q.eq('client_id', clientId)
-    const { data, error } = await q.order('id', { ascending: true }).range(from, from + SPEC_PAGE - 1)
+    const { data, error, count } = await q.order('id', { ascending: true }).range(from, from + SPEC_PAGE - 1)
     if (error) return { error }
     const got = data || []
     rows.push(...got)
-    if (got.length < SPEC_PAGE) break
     from += got.length
+    if (!got.length || (count != null ? rows.length >= count : got.length < SPEC_PAGE)) break
   }
   return { rows }
 }
 
+// A column or JSON path this database doesn't have (42703 undefined column, 42883
+// no such operator, PGRST100 select parse error, PGRST204 column not in the schema
+// cache) — the only failures that move on to the next, lighter column set.
+const SCHEMA_CODES = new Set(['42703', '42883', 'PGRST100', 'PGRST204'])
+const schemaError = (e) => SCHEMA_CODES.has(String(e?.code || '')) || /column|schema cache|parse/i.test(String(e?.message || ''))
+
 /** Map(client_id -> quote spec) for every lead (or just clientId), or null when the quotes can't be read. */
 export async function loadQuoteSpecs(sb, clientId = null) {
   for (const cols of SPEC_COL_SETS) {
-    try {
-      const { rows, error } = await readAll(sb, cols, clientId)
-      if (!error) return specsByClient(rows)
-    } catch { /* try the next, lighter column set */ }
+    let res
+    try { res = await readAll(sb, cols, clientId) } catch { return null }
+    if (!res.error) return specsByClient(res.rows)
+    if (!schemaError(res.error)) return null
   }
   return null
 }

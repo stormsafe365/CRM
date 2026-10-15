@@ -201,6 +201,7 @@ export default function ClientsList() {
   useEffect(() => {
     let cancelled = false
     let specRun = 0
+    let specTimer = null
 
     // The leads' quote building info. Runs beside the clients query and never
     // holds it up; if the quotes can't be read the list shows what it always did.
@@ -209,6 +210,8 @@ export default function ClientsList() {
       const specs = await loadQuoteSpecs(supabase)
       if (!cancelled && specs && run === specRun) setQuoteSpecs(specs)
     }
+    // A save or revision changes several quote rows at once: one re-read per burst.
+    const loadSpecsSoon = () => { clearTimeout(specTimer); specTimer = setTimeout(loadSpecs, 400) }
 
     async function load() {
       const { data, error } = await supabase
@@ -232,18 +235,19 @@ export default function ClientsList() {
       .channel('clients-list')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'clients' },
-        () => { load(); loadSpecs() }
+        () => load()
       )
       // a quote saved / edited / starred / deleted can change a lead's building info
       // and the open drawer's Current quote
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'quotes' },
-        () => { loadSpecs(); setQuotesTick((t) => t + 1) }
+        () => { loadSpecsSoon(); setQuotesTick((t) => t + 1) }
       )
       .subscribe()
 
     return () => {
       cancelled = true
+      clearTimeout(specTimer)
       supabase.removeChannel(channel)
     }
   }, [])

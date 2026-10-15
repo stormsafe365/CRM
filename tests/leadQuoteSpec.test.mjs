@@ -185,7 +185,7 @@ function fakeSb(rows, { noStar = false, noJsonPath = false, fail = false, cap = 
     const call = { table, cols: '', eq: [], neq: [], range: null }
     calls.push(call)
     const qb = {
-      select(c) { call.cols = c; return qb }, eq(k, v) { call.eq.push([k, v]); return qb }, neq(k, v) { call.neq.push([k, v]); return qb },
+      select(c, o) { call.cols = c; call.count = o?.count; return qb }, eq(k, v) { call.eq.push([k, v]); return qb }, neq(k, v) { call.neq.push([k, v]); return qb },
       order() { return qb }, range(a, b) { call.range = [a, b]; return qb },
       then(res, rej) {
         if (fail) return Promise.resolve({ data: null, error: { message: 'network down' } }).then(res, rej)
@@ -193,6 +193,7 @@ function fakeSb(rows, { noStar = false, noJsonPath = false, fail = false, cap = 
         if (noJsonPath && call.cols.includes('->')) return Promise.resolve({ data: null, error: { message: 'failed to parse select parameter' } }).then(res, rej)
         let out = rows.filter((r) => call.eq.every(([k, v]) => r[k] === v) && call.neq.every(([k, v]) => r[k] !== v))
         out = out.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)))
+        const count = call.count === 'exact' ? out.length : null
         if (call.range) out = out.slice(call.range[0], Math.min(call.range[1] + 1, call.range[0] + cap))
         // the light select only returns the columns it asked for (pt/agx come from payload_json.fields)
         const keep = (r) => {
@@ -204,7 +205,7 @@ function fakeSb(rows, { noStar = false, noJsonPath = false, fail = false, cap = 
           }
           return o
         }
-        return Promise.resolve({ data: out.map(keep), error: null }).then(res, rej)
+        return Promise.resolve({ data: out.map(keep), error: null, count }).then(res, rej)
       },
     }
     return qb
@@ -256,8 +257,11 @@ test('loader: no starred column -> newest wins; no JSON paths -> size only; unre
   assert.equal(c.get('A').size, '20x30x10')
   assert.equal(c.get('A').type, null)
 
+  // a failure that is not a missing column (network, timeout) is null at once —
+  // never a poorer column set that would drop the star or the types
   const down = fakeSb(rows, { fail: true })
   assert.equal(await loadQuoteSpecs(down), null)
+  assert.equal(down.calls.length, 1)
   // a client that throws never escapes either
   assert.equal(await loadQuoteSpecs({ from() { throw new Error('boom') } }), null)
 })
@@ -281,4 +285,11 @@ test('loader: one lead only, and every page is read past the API row cap', async
   assert.equal(paged.calls.length, 2)
   assert.deepEqual(paged.calls.map((c) => c.range), [[0, SPEC_PAGE - 1], [SPEC_PAGE, 2 * SPEC_PAGE - 1]])
   assert.equal(all.get('LAST').size, '40x60x14')
+
+  // a project whose API cap is below SPEC_PAGE: the row count keeps it paging
+  const capped = fakeSb(many, { cap: 400 })
+  const all2 = await loadQuoteSpecs(capped)
+  assert.equal(capped.calls.length, 3)
+  assert.deepEqual(capped.calls.map((c) => c.range[0]), [0, 400, 800])
+  assert.equal(all2.get('LAST').size, '40x60x14')
 })
