@@ -6161,7 +6161,7 @@ function gWTD(){
     var qty=parseInt(el.querySelector('.wqt').value)||0;
     var wtdType=el.querySelector('.whi').value;
     t+=qty*(MFR().wtdPrices[wtdType]||window._wtd_std||400);
-    var sfEl=el.querySelector('.wsf');
+    var sfEl=isEaveSide((el.querySelector('.wloc')||{}).value)?el.querySelector('.wsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     sf+=sfEl?parseInt(sfEl.value)||0:0;
   }
   return {wtd:t, sf:sf*(window._sf_dw||150)};
@@ -6174,7 +6174,7 @@ function gWIN(){
     var qty=parseInt(el.querySelector('.nqt').value)||0;
     var winType=el.querySelector('.ntp').value;
     t+=qty*(MFR().winPrices[winType]||window._win_std||200);
-    var sfEl=el.querySelector('.nsf');
+    var sfEl=isEaveSide((el.querySelector('.nloc')||{}).value)?el.querySelector('.nsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     sf+=sfEl?parseInt(sfEl.value)||0:0;
   }
   return {win:t, sf:sf*(window._sf_dw||150)};
@@ -13020,7 +13020,7 @@ async function printQuote(){
     // For backward compat: prepend dimension prefix only if label doesn't already include "36×80"
     var _wRowLbl=(_wtypeLbl.indexOf('36')>=0)?_wtypeLbl+' Walk Through Door':'36" \xD7 80" Walk Through Door'+(wtdTypeP==='hi'?' (Hi-Impact)':'');
     rows+=row(_wRowLbl,qty,p,qty*p);
-    var sfEl=el.querySelector('.wsf');
+    var sfEl=isEaveSide((el.querySelector('.wloc')||{}).value)?el.querySelector('.wsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;rows+=row('Side Frame',sq,sfp,sq*sfp);}
   });
   // Windows
@@ -13028,7 +13028,7 @@ async function printQuote(){
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
     rows+=row(winRowLabel(winTypeP),qty,p,qty*p);
-    var sfEl=el.querySelector('.nsf');
+    var sfEl=isEaveSide((el.querySelector('.nloc')||{}).value)?el.querySelector('.nsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;rows+=row('Side Frame',sq,sfp,sq*sfp);}
   });
   // Insulation
@@ -14671,7 +14671,7 @@ async function printContract(){
     var _wtypeLbl=_wtypeDef?_wtypeDef.label:'36" \xD7 80" Walk Through Door';
     var _wRowLbl=(_wtypeLbl.indexOf('36')>=0)?_wtypeLbl+' Walk Through Door':'36" \xD7 80" Walk Through Door'+(wtdTypeP==='hi'?' (Hi-Impact)':'');
     row(_wRowLbl,qty,p,qty*p);
-    var sfEl=el.querySelector('.wsf');
+    var sfEl=isEaveSide((el.querySelector('.wloc')||{}).value)?el.querySelector('.wsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
   document.querySelectorAll('.ne').forEach(function(el){
@@ -14679,7 +14679,7 @@ async function printContract(){
     var qty=parseInt(el.querySelector('.nqt').value)||1;
     var winTypeP=el.querySelector('.ntp').value; var p=MFR().winPrices[winTypeP]||window._win_std||200;
     row(winRowLabel(winTypeP),qty,p,qty*p);
-    var sfEl=el.querySelector('.nsf');
+    var sfEl=isEaveSide((el.querySelector('.nloc')||{}).value)?el.querySelector('.nsf'):null; // side frames: eave walls only - never a gable end (owner 10/15/26)
     if(sfEl&&parseInt(sfEl.value)>0){var sq=parseInt(sfEl.value);var sfp=window._sf_dw||150;row('Side Frame',sq,sfp,sq*sfp);}
   });
   // Lean-tos — ported from printQuote so the contract itemizes EXACTLY what
@@ -17947,6 +17947,7 @@ function runTrussChecks(){
     var wsfEl = el.querySelector('.wsf');
     if(!loc || !isEaveSide(loc.value)){
       setTrussState(el, false, []);
+      if(wsfEl) wsfEl.value='0'; // not on an eave: never a side frame (moved from an eave to a gable end kept it - owner 10/15/26)
       return;
     }
     var qty = parseInt(el.querySelector('.wqt') ? el.querySelector('.wqt').value : 1) || 1;
@@ -17991,6 +17992,7 @@ function runTrussChecks(){
     var nsfEl = el.querySelector('.nsf');
     if(!loc || !isEaveSide(loc.value)){
       setTrussState(el, false, []);
+      if(nsfEl) nsfEl.value='0'; // not on an eave: never a side frame (moved from an eave to a gable end kept it - owner 10/15/26)
       return;
     }
     var qty = parseInt(el.querySelector('.nqt') ? el.querySelector('.nqt').value : 1) || 1;
@@ -18391,6 +18393,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'carport-sides':{ commit:'10-9b', date:'10/12/26', text:'Carport: a closed side was charged twice (Each Side Closed + Side Panels) — every carport quote saved 8/26–10/12/26 with a closed side. Now charged once; carport sides are set only in 4B — Side Panels' },
     'side-frames-12-30':{ commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: no separate $150 side frame on an eave frame-out - the side opening price covers it (Dealer Handbook p17)" },
     'fo-book':     { commit:'10-9b', date:'10/12/26', text:"CCI 12'-30' wide: a custom garage-door frame-out on an eave with no typed price = Price Book 2 p2 'Side Openings - Without Garage Door' by width (was $0)" },
+    'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
@@ -18548,6 +18551,12 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       });
       if(cnt>0) out.push({ k:'sideFrames', label:'Side frames (as originally quoted)', amt:r2(cnt*(root._sf_dw||150)), rules:[w>30?'side-frames':'side-frames-12-30'] });
     }
+    // 1a) Walk doors / windows on a gable end (or any non-eave wall) saved with a side frame: the program kept the
+    //     eave's side frame when one was moved to a gable end (hidden, still charged) - never charged since 10-15b
+    var gsf=0;
+    (data.wtds||[]).forEach(function(x){ if(!/Eave Side$/.test(String(x.wloc||''))) gsf+=parseInt(x.wsf)||0; });
+    (data.windows||[]).forEach(function(x){ if(!/Eave Side$/.test(String(x.nloc||''))) gsf+=parseInt(x.nsf)||0; });
+    if(gsf>0) out.push({ k:'gableSideFrames', label:'Side frames (as originally quoted)', amt:r2(gsf*(root._sf_dw||150)), rules:['gable-side-frames'] });
     // 1b) CCI 12'-30': a custom garage-door frame-out on an eave with no typed price was $0; now the book's side opening
     //     price by width (amt < 0: the saved price was lower)
     if(old1012 && w<=30 && rcl && !rcl.manual && typeof root.cciSideOpenNoDoor==='function'){
@@ -18764,8 +18773,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       });
     }
     cmpList('Roll-up door', data.doors, now.doors, ['rloc','rdtype','rsz','rqt','rch','rsl','rop','r45','rco']);
-    cmpList('Walk door', data.wtds, now.wtds, ['wloc','whi','wqt','wsf']);
-    cmpList('Window', data.windows, now.windows, ['nloc','ntp','nqt','nsf','nsill']);
+    cmpList('Walk door', data.wtds, now.wtds, ['wloc','whi','wqt','wsf'], function(k,x){ return k==='wsf' && !/Eave Side$/.test(String(x.wloc||'')); }); // gable side frame cleared (10-15b)
+    cmpList('Window', data.windows, now.windows, ['nloc','ntp','nqt','nsf','nsill'], function(k,x){ return k==='nsf' && !/Eave Side$/.test(String(x.nloc||'')); }); // gable side frame cleared (10-15b)
     cmpList('Framed opening / component', data.addcomps, now.addcomps, ['act','acq','acp','fo-cw','fo-ch','fo-unit','fo-sill','fo-sf','fo-loc'],
       function(k,x){ return k==='fo-sf' && cci; });                          // side frame included: > 30' since d4c8695, 12'-30' since 10/12/26
     var lta=data.leantos||[], ltb=now.leantos||[];
@@ -18948,7 +18957,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     // 3) Roof style was never saved before v3: pick the one that reproduces the saved price.
     var parts=S.src==='snapshot'?S.parts.slice():[];
-    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source, priced:pr, overrides:data.overrides}:data, rcl, S.src);
+    var drift=detectDrift(S.src==='snapshot'?{fields:f, addcomps:data.addcomps, wtds:data.wtds, windows:data.windows, savedAt:(S.src==='snapshot'?st.pricedAt:data.savedAt), source:data.source, priced:pr, overrides:data.overrides}:data, rcl, S.src);
     drift.forEach(function(d){ parts.push(d); });
     var attributed=0; parts.forEach(function(x){ attributed+=(+x.amt||0); });
     // A part priced after the 26GA line (ground anchors) moves the subtotal 1:1, but the
