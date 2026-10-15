@@ -9,13 +9,15 @@
 // always wins; the quote only fills a blank. Size and type fill independently
 // (a lead can have its own size but no type).
 //
-// WHICH QUOTE: the one Open Layout uses — the starred quote, else the newest
-// (quote_date, then created_at) — never a deleted one and never a superseded one
-// (replaced by a revised order), like the lead page's "Current Quote". If that
-// quote has no size (an uploaded PDF whose file name had none) or no Property
-// Type (a hand-typed or uploaded quote, or the program's Property Type left on
-// "— select —"), the next quote in the same order that has one fills that blank,
-// so an older builder quote still shows.
+// WHICH QUOTE: ONE quote — the one Open Layout uses: the starred quote, else the
+// newest (quote_date, then created_at) — never a deleted one and never a
+// superseded one (replaced by a revised order). The same pick as "Current quote"
+// on the lead page and in the Leads drawer (layoutFromQuote.js loadCurrentQuote),
+// so a size and its price always come from the same quote. Size and type both come
+// from that quote only: if it has no size (an uploaded PDF whose file name had
+// none) or no Property Type (a hand-typed or uploaded quote, or the program's
+// Property Type left on "— select —"), that blank stays a dash — an older quote
+// never fills it (it may be a building the client did not pick).
 //
 // WHERE THE QUOTE KEEPS THEM:
 //   size  quotes.building_size, shown as stored, like the lead's own value. The
@@ -50,14 +52,17 @@ export function quoteBuildingType(q) {
 const text = (v) => (v == null ? '' : String(v).trim())
 
 // ── one lead's quotes -> its quote building info ───────────────────────────
-/** { size, sizeQuote, type, typeQuote } from one lead's quotes (nulls when none gives it). */
+/**
+ * { quote, size, type } from one lead's quotes: quote = the lead's current quote
+ * (starred, else newest; never deleted / superseded), size + type = that quote's
+ * own (null when it has none). All null when the lead has no such quote.
+ */
 export function specFromQuotes(quotes) {
-  const list = sortStarredFirst((quotes || []).filter((q) => q && q.status !== 'superseded'))
-  const sizeQuote = list.find((q) => text(q.building_size)) || null
-  const typeQuote = list.find((q) => quoteBuildingType(q)) || null
+  const quote = sortStarredFirst((quotes || []).filter((q) => q && q.status !== 'superseded'))[0] || null
   return {
-    size: sizeQuote ? text(sizeQuote.building_size) : null, sizeQuote,
-    type: typeQuote ? quoteBuildingType(typeQuote) : null, typeQuote,
+    quote,
+    size: quote ? text(quote.building_size) || null : null,
+    type: quote ? quoteBuildingType(quote) : null,
   }
 }
 /** Quote rows for many leads (any order) -> Map(client_id -> spec), only leads whose quotes give something. */
@@ -88,8 +93,8 @@ export function leadBuildingSpec(client, spec) {
   return {
     size: ownSize ?? spec?.size ?? null,
     type: ownType ?? spec?.type ?? null,
-    sizeFrom: !ownSize && spec?.size ? spec.sizeQuote || null : null,
-    typeFrom: !ownType && spec?.type ? spec.typeQuote || null : null,
+    sizeFrom: !ownSize && spec?.size ? spec.quote || null : null,
+    typeFrom: !ownType && spec?.type ? spec.quote || null : null,
   }
 }
 /** Hover hint on a value that came from a quote: "From quote #SS-2026-12345". */
@@ -102,14 +107,17 @@ export function fromQuoteTitle(q) {
 // Never selects payload_json whole (it carries the 3D thumbnail, price history
 // and the full build) — only the two program fields, via PostgREST JSON paths.
 // Column sets are tried richest first: with the star (quotes.starred, migration
-// 019 — may not be applied), then without it (newest wins), then without the
-// JSON paths (size only). Never throws; null = the quotes couldn't be read, and
+// 019 — may not be applied) and the JSON paths; then without the star (newest
+// wins, as loadCurrentQuote does without the column); then without the JSON paths
+// (size only) — still with the star when it exists, so the picked quote stays the
+// lead page's Current Quote. Never throws; null = the quotes couldn't be read, and
 // the caller keeps showing the leads' own values.
 const BASE_COLS = 'id, client_id, quote_number, quote_date, created_at, status, deleted_at, building_size'
 const TYPE_COLS = 'pt:payload_json->fields->>pt, agx:payload_json->fields->>agx'
 export const SPEC_COL_SETS = [
   `${BASE_COLS}, starred, ${TYPE_COLS}`,
   `${BASE_COLS}, ${TYPE_COLS}`,
+  `${BASE_COLS}, starred`,
   BASE_COLS,
 ]
 // Supabase caps one API read (1000 rows by default), so read in pages; a cut-off

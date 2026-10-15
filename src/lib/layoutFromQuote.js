@@ -349,6 +349,12 @@ export function rawFromPayload(payload) {
 // The starred quote when the lead has one, else the latest (as before). If
 // quotes.starred doesn't exist yet (migration 019 not run) the first query
 // errors and the latest-quote query runs exactly as it always did.
+// The latest is never a quote in Trash (deleted_at) — the same pick as
+// sortStarredFirst, so Current Quote, Manufacturer and the Building size/type
+// filled from the quote (leadQuoteSpec.js) all describe ONE quote. If
+// quotes.deleted_at doesn't exist (017 not run) that filter errors and the
+// latest-quote query runs without it, as before.
+// Also the Leads drawer's "Current quote" (ClientsList.jsx).
 export const CURRENT_QUOTE_COLS = 'total_amount, manufacturer, quote_number, status'
 export async function loadCurrentQuote(sb, clientId) {
   try {
@@ -361,12 +367,19 @@ export async function loadCurrentQuote(sb, clientId) {
       if (s) return s
     }
   } catch { /* fall back to the latest quote */ }
-  const { data } = await sb.from('quotes')
-    .select(CURRENT_QUOTE_COLS)
-    .eq('client_id', clientId)
-    .neq('status', 'superseded') // replaced by a revised order: never the current quote
-    .order('quote_date', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .limit(1)
-  return (data ?? [])[0] ?? null
+  const latest = (liveOnly) => {
+    let q = sb.from('quotes')
+      .select(CURRENT_QUOTE_COLS)
+      .eq('client_id', clientId)
+      .neq('status', 'superseded') // replaced by a revised order: never the current quote
+    if (liveOnly) q = q.is('deleted_at', null) // in Trash: never the current quote
+    return q
+      .order('quote_date', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+  }
+  let res = await latest(true)
+  const m = String(res.error?.message || '')
+  if (res.error && (m.includes('deleted_at') || m.includes('column') || m.includes('schema cache'))) res = await latest(false)
+  return (res.data ?? [])[0] ?? null
 }

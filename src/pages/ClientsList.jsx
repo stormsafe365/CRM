@@ -2,8 +2,9 @@
 // building size. Filter by status and by building type. Sort multiple ways.
 // Live-updates via Supabase realtime — if your partner adds/edits a
 // client, you see it without refreshing.
-// Building size/type: the lead's own, with blanks filled from the lead's quote
-// on file (lib/leadQuoteSpec.js, owner 10/15/26) — hover shows which quote.
+// Building size/type: the lead's own, with blanks filled from the lead's current
+// quote on file (lib/leadQuoteSpec.js, owner 10/15/26) — hover shows which quote.
+// It is the same quote as the drawer's "Current quote" (loadCurrentQuote).
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -14,6 +15,7 @@ import { derivedProjectStage } from '../lib/projectStage'
 import { readState } from '../lib/ssfuEngine'
 import { usd } from '../lib/money'
 import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
+import { loadCurrentQuote } from '../lib/layoutFromQuote'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -114,24 +116,23 @@ export default function ClientsList() {
 
   // Expand-for-detail drawer — one open row at a time.
   const [expanded, setExpanded] = useState(null)
-  const [expandedQuote, setExpandedQuote] = useState(null) // { id, total } — the open row's latest quote
+  const [expandedQuote, setExpandedQuote] = useState(null) // { id, total } — the open row's current quote
+  // Bumped by every quotes realtime event, so an open drawer's total refreshes
+  // together with its Building size/type.
+  const [quotesTick, setQuotesTick] = useState(0)
   // Any filter change closes the open drawer.
   useEffect(() => { setExpanded(null) }, [group, repFilter, search, buildingTypeFilter, sortBy])
-  // Lazily fetch the open lead's latest (non-deleted) quote total for the drawer.
+  // Lazily fetch the open lead's current quote total for the drawer: the lead
+  // page's Current Quote (loadCurrentQuote — starred, else newest; never deleted
+  // or superseded), the same quote the Building size/type is filled from.
   useEffect(() => {
     if (!expanded) { setExpandedQuote(null); return }
     let cancelled = false
-    supabase.from('quotes')
-      .select('total_amount, deleted_at, quote_date, status')
-      .eq('client_id', expanded)
-      .order('quote_date', { ascending: false, nullsFirst: false })
-      .then(({ data }) => {
-        if (cancelled) return
-        const live = (data || []).filter(q => !q.deleted_at && q.status !== 'superseded') // replaced by a revised order: never the current quote
-        setExpandedQuote({ id: expanded, total: live[0]?.total_amount ?? null })
-      })
+    loadCurrentQuote(supabase, expanded)
+      .then((q) => { if (!cancelled) setExpandedQuote({ id: expanded, total: q?.total_amount ?? null }) })
+      .catch(() => { /* unreadable: the drawer keeps what it shows */ })
     return () => { cancelled = true }
-  }, [expanded])
+  }, [expanded, quotesTick])
 
   async function changeStage(client, status) {
     if (client.status === status) return
@@ -234,9 +235,10 @@ export default function ClientsList() {
         () => { load(); loadSpecs() }
       )
       // a quote saved / edited / starred / deleted can change a lead's building info
+      // and the open drawer's Current quote
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'quotes' },
-        () => loadSpecs()
+        () => { loadSpecs(); setQuotesTick((t) => t + 1) }
       )
       .subscribe()
 

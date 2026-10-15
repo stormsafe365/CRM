@@ -267,16 +267,26 @@ test('schedule offset names the same end as the quote spacing page, every wall',
   assert.equal(byWall.back[0].offset, 23)
 })
 
-function fakeSb(rows, { noStar = false } = {}) {
+function fakeSb(rows, { noStar = false, noDeleted = false } = {}) {
   return { from: () => {
-    const f = []; const nf = []; let cols = '*'; let lim = null; const ord = []
+    const f = []; const nf = []; const isf = []; let cols = '*'; let lim = null; const ord = []
     const q = {
       select(c) { cols = c; return q }, eq(k, v) { f.push([k, v]); return q }, neq(k, v) { nf.push([k, v]); return q },
-      order(k, o) { ord.push([k, o.ascending !== false]); return q }, limit(n) { lim = n; return q },
+      is(k, v) { isf.push([k, v]); return q },
+      // nulls: PostgREST's nullsFirst, else Postgres' default (first when descending)
+      order(k, o = {}) { ord.push([k, o.ascending !== false, o.nullsFirst ?? o.ascending === false]); return q }, limit(n) { lim = n; return q },
       then(res) {
         if (noStar && (cols.includes('starred') || f.some(([k]) => k === 'starred'))) return Promise.resolve({ data: null, error: { message: 'column quotes.starred does not exist' } }).then(res)
-        let out = rows.filter((r) => f.every(([k, v]) => r[k] === v) && nf.every(([k, v]) => r[k] !== v))
-        for (const [k, asc] of ord.slice().reverse()) out.sort((a, b) => (a[k] === b[k] ? 0 : ((a[k] < b[k]) === asc ? -1 : 1)))
+        if (noDeleted && (cols.includes('deleted_at') || isf.some(([k]) => k === 'deleted_at'))) return Promise.resolve({ data: null, error: { message: 'column quotes.deleted_at does not exist' } }).then(res)
+        let out = rows.filter((r) => f.every(([k, v]) => r[k] === v) && nf.every(([k, v]) => r[k] !== v) && isf.every(([k, v]) => (r[k] ?? null) === v))
+        for (const [k, asc, nullsFirst] of ord.slice().reverse()) {
+          out.sort((a, b) => {
+            const x = a[k] ?? null, y = b[k] ?? null
+            if (x === y) return 0
+            if (x === null || y === null) return (x === null) === nullsFirst ? -1 : 1
+            return (x < y) === asc ? -1 : 1
+          })
+        }
         if (lim) out = out.slice(0, lim)
         return Promise.resolve({ data: out, error: null }).then(res)
       },
@@ -304,4 +314,41 @@ test('lead summary Current Quote: a superseded (replaced) quote is skipped', asy
   assert.equal((await loadCurrentQuote(fakeSb([orig, dup]), 'c')).quote_number, 'DUP')
   assert.equal((await loadCurrentQuote(fakeSb([orig, dup], { noStar: true }), 'c')).quote_number, 'DUP')
   assert.equal((await loadCurrentQuote(fakeSb([orig, { ...dup, starred: true }]), 'c')).quote_number, 'DUP')
+})
+
+// Reviewer 10/15/26: with no star, a newest quote moved to Trash must not be the
+// Current Quote (its total + manufacturer sat beside the Building Size of the
+// older live quote). Without the deleted_at column (017 not run): as before.
+test('lead summary Current Quote: the latest is never a quote in Trash', async () => {
+  const old = { client_id: 'c', quote_number: 'OLD', quote_date: '2026-09-01', created_at: '1', total_amount: 100, status: 'sent', starred: false, deleted_at: null }
+  const trashed = { client_id: 'c', quote_number: 'TRASHED', quote_date: '2026-10-01', created_at: '2', total_amount: 200, status: 'sent', starred: false, deleted_at: '2026-10-02T00:00:00Z' }
+  assert.equal((await loadCurrentQuote(fakeSb([old, trashed]), 'c')).quote_number, 'OLD')
+  assert.equal((await loadCurrentQuote(fakeSb([old, trashed], { noStar: true }), 'c')).quote_number, 'OLD')
+  assert.equal(await loadCurrentQuote(fakeSb([trashed]), 'c'), null)
+  const noCol = [{ ...old, deleted_at: undefined }, { ...trashed, deleted_at: undefined }]
+  assert.equal((await loadCurrentQuote(fakeSb(noCol, { noStar: true, noDeleted: true }), 'c')).quote_number, 'TRASHED')
+})
+
+// One rule everywhere: the Leads list's Building size/type (leadQuoteSpec
+// specFromQuotes) and Current Quote (lead page + Leads drawer) pick the same quote.
+test('Current Quote and the Leads Building size come from the same quote', async () => {
+  const { specFromQuotes } = await import('../src/lib/leadQuoteSpec.js')
+  const base = { client_id: 'c', status: 'sent', starred: false, deleted_at: null }
+  const cases = [
+    // two quotes the same day, the starred one older: both pick the starred
+    [{ ...base, quote_number: 'A', quote_date: '2026-10-05', created_at: '2026-10-05T09:00:00Z', building_size: '30x40x12', total_amount: 18000, starred: true },
+     { ...base, quote_number: 'B', quote_date: '2026-10-05', created_at: '2026-10-05T15:00:00Z', building_size: '40x60x14', total_amount: 35000 }],
+    // same day, no star: the later created_at
+    [{ ...base, quote_number: 'A', quote_date: '2026-10-05', created_at: '2026-10-05T09:00:00Z', building_size: '30x40x12' },
+     { ...base, quote_number: 'B', quote_date: '2026-10-05', created_at: '2026-10-05T15:00:00Z', building_size: '40x60x14' }],
+    // newest in Trash, newer superseded, a dateless one: the older live dated quote
+    [{ ...base, quote_number: 'LIVE', quote_date: '2026-09-01', created_at: '1', building_size: '24x30x10' },
+     { ...base, quote_number: 'TRASH', quote_date: '2026-10-09', created_at: '3', building_size: '40x60x14', deleted_at: 'x' },
+     { ...base, quote_number: 'SUP', quote_date: '2026-10-08', created_at: '2', building_size: '30x50x14', status: 'superseded', starred: true },
+     { ...base, quote_number: 'NODATE', quote_date: null, created_at: '4', building_size: '12x21x6' }],
+  ]
+  for (const rows of cases) {
+    const cur = await loadCurrentQuote(fakeSb(rows), 'c')
+    assert.equal(specFromQuotes(rows).quote.quote_number, cur.quote_number)
+  }
 })

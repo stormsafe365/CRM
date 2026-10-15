@@ -54,7 +54,7 @@ test('the starred quote wins over a newer one', () => {
   const s = specFromQuotes(qs)
   assert.equal(s.size, '20x30x10')
   assert.equal(s.type, 'residential')
-  assert.equal(s.sizeQuote.id, 'old')
+  assert.equal(s.quote.id, 'old')
   // no star: the newest (quote_date, then created_at)
   const n = specFromQuotes(qs.map((x) => ({ ...x, starred: false })))
   assert.equal(n.size, '30x40x12')
@@ -74,7 +74,7 @@ test('deleted and superseded quotes are skipped, even when starred or newest', (
   ])
   assert.equal(s.size, '24x30x10')
   assert.equal(s.type, 'residential')
-  assert.equal(s.sizeQuote.id, 'ok')
+  assert.equal(s.quote.id, 'ok')
   // only deleted / superseded quotes -> nothing
   const none = specFromQuotes([q({ building_size: '30x40x12', pt: 'res', deleted_at: 'x' }), q({ building_size: '30x40x12', pt: 'res', status: 'superseded' })])
   assert.equal(none.size, null)
@@ -87,32 +87,43 @@ test('declined / expired / draft quotes still count (the building on file is sti
   }
 })
 
-test('size and type fill from the next quote down when the picked one lacks them', () => {
-  // newest = an uploaded PDF with no size in its name and no type; the older builder quote fills both
+test('size and type come only from the picked quote; an older quote never fills a blank', () => {
+  // newest = an uploaded PDF with no size in its name and no type: both stay blank,
+  // the older builder quote (maybe a building the client did not pick) is not shown
   const s = specFromQuotes([
     q({ id: 'pdf', quote_date: '2026-10-05', building_size: null, pt: null }),
-    q({ id: 'build', quote_date: '2026-09-20', building_size: '30x40x12', pt: 'ag', agx: 'yes' }),
+    q({ id: 'build', quote_date: '2026-09-20', building_size: '24x30x10', pt: 'com' }),
   ])
-  assert.equal(s.size, '30x40x12')
-  assert.equal(s.type, 'ag_exempt')
-  // a quote with no size still gives its type; the size comes from the next quote that has one
+  assert.equal(s.quote.id, 'pdf')
+  assert.equal(s.size, null)
+  assert.equal(s.type, null)
+  // reviewer's case: newest = a hand-typed quote with the size left blank -> no size,
+  // and never the size of one quote paired with the type of another
   const mixed = specFromQuotes([
-    q({ id: 'typed', quote_date: '2026-10-05', building_size: '  ', pt: 'com' }),
+    q({ id: 'typed', quote_date: '2026-10-10', building_size: '  ', pt: 'com' }),
     q({ id: 'sized', quote_date: '2026-09-01', building_size: '20x25x9', pt: 'res' }),
   ])
+  assert.equal(mixed.quote.id, 'typed')
   assert.equal(mixed.type, 'commercial')
-  assert.equal(mixed.typeQuote.id, 'typed')
-  assert.equal(mixed.size, '20x25x9')
-  assert.equal(mixed.sizeQuote.id, 'sized')
-  // program Property Type left on "— select —": no type, size still shows
-  const blankPt = specFromQuotes([q({ building_size: '18x21x7', pt: '' })])
+  assert.equal(mixed.size, null)
+  // the starred builder quote with Property Type left on "— select —": its size,
+  // no type — not the type of an older quote (maybe a different use)
+  const blankPt = specFromQuotes([
+    q({ id: 'star', quote_date: '2026-09-01', building_size: '18x21x7', pt: '', starred: true }),
+    q({ id: 'newer', quote_date: '2026-10-01', building_size: '40x60x14', pt: 'com' }),
+    q({ id: 'older', quote_date: '2026-08-01', building_size: '12x21x6', pt: 'res' }),
+  ])
+  assert.equal(blankPt.quote.id, 'star')
   assert.equal(blankPt.size, '18x21x7')
   assert.equal(blankPt.type, null)
+  // a lead with no size or type of its own shows exactly that quote's values
+  const shown = leadBuildingSpec({ building_size: null, building_type: null }, blankPt)
+  assert.deepEqual([shown.size, shown.type, shown.sizeFrom?.id, shown.typeFrom], ['18x21x7', null, 'star', null])
 })
 
 test('no quotes -> nothing', () => {
-  assert.deepEqual(specFromQuotes([]), { size: null, sizeQuote: null, type: null, typeQuote: null })
-  assert.deepEqual(specFromQuotes(null), { size: null, sizeQuote: null, type: null, typeQuote: null })
+  assert.deepEqual(specFromQuotes([]), { quote: null, size: null, type: null })
+  assert.deepEqual(specFromQuotes(null), { quote: null, size: null, type: null })
   assert.equal(specsByClient([]).size, 0)
 })
 
@@ -215,7 +226,7 @@ test('loader: one light query, never the whole payload_json; the star counts whe
   assert.deepEqual(sb.calls[0].neq, [['status', 'superseded']])
   assert.equal(m.get('A').size, '20x30x10') // starred, though older
   assert.equal(m.get('A').type, 'residential')
-  assert.equal(m.get('A').sizeQuote.quote_number, 'OLD')
+  assert.equal(m.get('A').quote.quote_number, 'OLD')
   assert.equal(m.get('B').type, 'ag_exempt')
 })
 
@@ -232,9 +243,18 @@ test('loader: no starred column -> newest wins; no JSON paths -> size only; unre
 
   const noPath = fakeSb(rows, { noStar: true, noJsonPath: true })
   const b = await loadQuoteSpecs(noPath)
-  assert.equal(noPath.calls.length, 3)
+  assert.equal(noPath.calls.length, 4)
   assert.equal(b.get('A').size, '30x40x12')
   assert.equal(b.get('A').type, null)
+
+  // JSON paths rejected but the star exists: size only, still the STARRED quote
+  // (the lead page's Current Quote), never the newest
+  const pathOnly = fakeSb(rows, { noJsonPath: true })
+  const c = await loadQuoteSpecs(pathOnly)
+  assert.equal(pathOnly.calls.length, 3)
+  assert.ok(/\bstarred\b/.test(pathOnly.calls[2].cols) && !pathOnly.calls[2].cols.includes('->'))
+  assert.equal(c.get('A').size, '20x30x10')
+  assert.equal(c.get('A').type, null)
 
   const down = fakeSb(rows, { fail: true })
   assert.equal(await loadQuoteSpecs(down), null)
