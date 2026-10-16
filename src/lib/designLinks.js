@@ -221,3 +221,44 @@ export function pickerList(base, remote, search, max = 30) {
   }
   return out.slice(0, max)
 }
+
+/** Customer Designs page views (owner 10/16/26: every design lands there, on a lead or not). */
+export const DESIGN_VIEWS = [
+  { key: 'new', label: 'New' },
+  { key: 'waiting', label: 'Not on a lead' },
+  { key: 'all', label: 'All' },
+  { key: 'removed', label: 'Removed' },
+]
+
+/** One view of the designs, newest first. { rows, missing, error } */
+export async function loadDesigns(sb, view = 'new', limit = 30) {
+  let req = sb.from('design_requests').select(LIST_COLS)
+  if (view === 'new') req = req.eq('status', 'new')
+  else if (view === 'waiting') req = req.is('client_id', null).neq('status', 'dismissed')
+  else if (view === 'removed') req = req.eq('status', 'dismissed')
+  else req = req.neq('status', 'dismissed')
+  const { data, error } = await req.order('created_at', { ascending: false }).limit(limit)
+  if (error) return { rows: [], missing: isMissingTable(error), error }
+  return { rows: data || [], missing: false }
+}
+
+/** How many are new, and how many are not on a lead (not removed). { fresh, waiting } (0 / 0 before migration 020) */
+export async function countDesigns(sb) {
+  const count = async (build) => {
+    const { count: n, error } = await build(sb.from('design_requests').select('id', { count: 'exact', head: true }))
+    return error ? 0 : n || 0
+  }
+  const [fresh, waiting] = await Promise.all([
+    count((q) => q.eq('status', 'new')),
+    count((q) => q.is('client_id', null).neq('status', 'dismissed')),
+  ])
+  return { fresh, waiting }
+}
+
+/** Lead names for the designs that are on a lead: Map id -> name. */
+export async function loadLeadNames(sb, ids) {
+  const list = [...new Set((ids || []).filter(Boolean))]
+  if (!list.length) return new Map()
+  const { data } = await sb.from('clients').select('id, name').in('id', list)
+  return new Map((data || []).map((c) => [c.id, c.name]))
+}

@@ -1,7 +1,7 @@
 // useDesignPings: a customer just sent a design from their design link (owner
 // 10/16/26) → a toast in the CRM, plus a desktop notification when the rep has
 // notifications on (the same permission as the follow-up reminders). Clicking
-// the notification opens the lead (or Leads, for a design not on a lead yet).
+// the notification opens the lead (or Customer Designs, for a design not on a lead yet).
 // Large rows can arrive trimmed over realtime, so the row is read back by id.
 // Subscribed once for the whole session (navigate lives in a ref: react-router
 // hands out a new navigate on every page change). At most one desktop
@@ -37,7 +37,7 @@ export function useDesignPings() {
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
           const note = new Notification('New customer design', { body: n > 1 ? `${n} designs came in from design links.` : `${who} sent a design from their design link.`, icon: '/logo.png' })
-          note.onclick = () => { window.focus(); navRef.current(n === 1 && r.client_id ? `/clients/${r.client_id}` : '/clients'); note.close() }
+          note.onclick = () => { window.focus(); navRef.current(n === 1 && r.client_id ? `/clients/${r.client_id}` : '/designs'); note.close() }
         }
       } catch { /* notifications are optional */ }
     }

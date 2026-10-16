@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
 import { useDesignPings } from '../lib/useDesignPings'
+import { useDesignCounts } from '../lib/useDesignCounts'
 import { isoToday } from '../lib/followups'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { mountCursorFx } from '../lib/uiFx'
@@ -22,6 +23,11 @@ const navItems = [
   {
     to: '/clients', label: 'Leads',
     icon: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  },
+  {
+    // every design a customer sends from a design link lands here (owner 10/16/26)
+    to: '/designs', label: 'Customer Designs',
+    icon: <><path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></>,
   },
   {
     to: '/projects', label: 'Projects',
@@ -83,6 +89,7 @@ export default function AppLayout({ children }) {
 
   // A customer sent a design from their design link (owner 10/16/26).
   useDesignPings()
+  const { fresh: newDesigns } = useDesignCounts()
 
   // Cursor ring/dot FX (matches the design mockup; auto-skips touch/reduced-motion).
   useEffect(() => { mountCursorFx() }, [])
@@ -170,6 +177,11 @@ export default function AppLayout({ children }) {
               {item.to === '/followups' && dueCount > 0 && (
                 <span className="badge-count" style={{ position: 'static', marginLeft: 'auto', border: 'none' }}>
                   {dueCount > 9 ? '9+' : dueCount}
+                </span>
+              )}
+              {item.to === '/designs' && newDesigns > 0 && (
+                <span className="badge-count" style={{ position: 'static', marginLeft: 'auto', border: 'none' }} title={`${newDesigns} new customer design${newDesigns === 1 ? '' : 's'}`}>
+                  {newDesigns > 9 ? '9+' : newDesigns}
                 </span>
               )}
             </NavLink>
