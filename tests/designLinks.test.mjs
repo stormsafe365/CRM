@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import {
   newToken, designLinkUrl, designLinkMessage, isMissingTable, createDesignLink, matchLeads, safeImage, designSummary,
   escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns, searchTerm, pickerList, attachDesign, sameSender,
-  sharedLinkMessage, sharedLabelOk, sharedFrom,
+  sharedLinkMessage, sharedLabelOk, sharedFrom, designImage,
 } from '../src/lib/designLinks.js'
 
 test('tokens: 24 URL-safe characters the database accepts, never repeating', () => {
@@ -200,4 +200,14 @@ test('createDesignLink: a shared link carries its kind, name and 2-year end; fri
   assert.ok(days > 729 && days < 731, String(days))
   const sbOld = { from: () => ({ insert: async () => ({ error: { code: 'PGRST204', message: "Could not find the 'kind' column of 'design_links' in the schema cache" } }) }) }
   await assert.rejects(createDesignLink(sbOld, { kind: 'shared', label: 'X' }), /021_design_links_shared/)
+})
+
+test('designImage: a picture loads once, only a real JPEG data URL', async () => {
+  let calls = 0
+  const sb = (image) => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => { calls++; return { data: { image }, error: null } } }) }) }) })
+  const good = 'data:image/jpeg;base64,QUJD'
+  assert.equal(await designImage(sb(good), 'id-1'), good)
+  assert.equal(await designImage(sb(good), 'id-1'), good)
+  assert.equal(calls, 1) // the second time comes from the cache
+  assert.equal(await designImage(sb('javascript:alert(1)'), 'id-2'), null)
 })

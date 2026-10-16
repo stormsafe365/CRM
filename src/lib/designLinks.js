@@ -110,7 +110,9 @@ export async function logDesignLink(sb, { clientId, userId, url }) {
   })
 }
 
-const LIST_COLS = 'id, created_at, link_token, client_id, name, phone, email, zip, notes, spec, image, status, design'
+// lists leave the picture out: it loads once per design when shown (designImage) - a reload
+// (another rep's change, Show more) never downloads every picture again
+const LIST_COLS = 'id, created_at, link_token, client_id, name, phone, email, zip, notes, spec, status, design'
 // + the link each design came from (kind / name) - migration 021; without it the plain list is used
 const LIST_WITH_LINK = `${LIST_COLS}, design_links(kind, label)`
 
@@ -308,11 +310,11 @@ export async function loadDesigns(sb, view = 'new', limit = 30) {
   return { rows: data || [], missing: false }
 }
 
-/** How many are new, and how many are not on a lead (not removed). { fresh, waiting } (0 / 0 before migration 020) */
+/** How many are new, and how many are not on a lead (not removed). { fresh, waiting } (null = could not count, e.g. before migration 020) */
 export async function countDesigns(sb) {
   const count = async (build) => {
     const { count: n, error } = await build(sb.from('design_requests').select('id', { count: 'exact', head: true }))
-    return error ? 0 : n || 0
+    return error ? null : n || 0
   }
   const [fresh, waiting] = await Promise.all([
     count((q) => q.eq('status', 'new')),
@@ -321,10 +323,22 @@ export async function countDesigns(sb) {
   return { fresh, waiting }
 }
 
-/** Lead names for the designs that are on a lead: Map id -> name. */
+/** The leads the designs are on: Map id -> { name, trashed } (trashed = the lead is in Trash; migration 017). */
 export async function loadLeadNames(sb, ids) {
   const list = [...new Set((ids || []).filter(Boolean))]
   if (!list.length) return new Map()
-  const { data } = await sb.from('clients').select('id, name').in('id', list)
-  return new Map((data || []).map((c) => [c.id, c.name]))
+  let r = await sb.from('clients').select('id, name, deleted_at').in('id', list)
+  if (r.error) r = await sb.from('clients').select('id, name').in('id', list)
+  return new Map((r.data || []).map((c) => [c.id, { name: c.name, trashed: !!c.deleted_at }]))
+}
+
+const imageCache = new Map() // design id -> picture (data URL) or null
+
+/** A design's picture, loaded once (cached for the session). */
+export async function designImage(sb, id) {
+  if (imageCache.has(id)) return imageCache.get(id)
+  const { data, error } = await sb.from('design_requests').select('image').eq('id', id).maybeSingle()
+  const img = error ? null : safeImage(data && data.image)
+  if (!error) imageCache.set(id, img)
+  return img
 }

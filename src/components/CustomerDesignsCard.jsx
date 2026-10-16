@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
-import { loadClientDesigns, markDesign, safeImage, designSummary, escHtml } from '../lib/designLinks'
+import { loadClientDesigns, markDesign, safeImage, designSummary, escHtml, designImage } from '../lib/designLinks'
 
 const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
 
@@ -33,7 +33,14 @@ export function DesignItem({ d, onChanged, actions = null }) {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [big, setBig] = useState(false)
-  const img = safeImage(d.image)
+  // the picture loads once per design (lists leave it out)
+  const [img, setImg] = useState(() => safeImage(d.image))
+  useEffect(() => {
+    if (d.image !== undefined) { setImg(safeImage(d.image)); return undefined }
+    let alive = true
+    designImage(supabase, d.id).then((x) => { if (alive) setImg(x) })
+    return () => { alive = false }
+  }, [d.id, d.image])
   const summary = designSummary(d.design)
   const fileBase = `design-${String(d.name || 'customer').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${String(d.created_at).slice(0, 10)}`
 

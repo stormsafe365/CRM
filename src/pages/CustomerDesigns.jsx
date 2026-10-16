@@ -18,6 +18,8 @@ import { DesignInboxRow } from '../components/DesignInbox'
 import DesignLinkModal from '../components/DesignLinkModal'
 
 const PAGE = 30
+// realtime-js returns the SAME channel for the same name: every effect run gets its own
+let chanSeq = 0
 const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
 const when = (iso) => { try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return '—' } }
 
@@ -93,7 +95,13 @@ export default function CustomerDesigns() {
       const r = await loadDesigns(supabase, view, limit)
       if (!alive || my !== runRef.current) return
       setMissing(!!r.missing)
-      setError(r.error && !r.missing ? (r.error.message || 'Could not load the designs.') : '')
+      if (r.error && !r.missing) {
+        // a failed reload keeps what is on screen; the banner says it did not refresh
+        setError(`Could not load the designs: ${r.error.message || 'try again'}.`)
+        setRows((prev) => prev ?? [])
+        return
+      }
+      setError('')
       setRows(r.rows)
       const n = await loadLeadNames(supabase, r.rows.map((d) => d.client_id))
       if (alive && my === runRef.current) setNames(n)
@@ -102,7 +110,7 @@ export default function CustomerDesigns() {
     // a burst of changes = one reload
     let t = null
     const soon = () => { clearTimeout(t); t = setTimeout(load, 500) }
-    const ch = supabase.channel(`designs-page-${view}`)
+    const ch = supabase.channel(`designs-page-${view}-${++chanSeq}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'design_requests' }, soon)
       .subscribe()
     window.addEventListener('ss:designs-updated', soon)
@@ -110,7 +118,7 @@ export default function CustomerDesigns() {
   }, [view, limit])
 
   const done = () => window.dispatchEvent(new CustomEvent('ss:designs-updated'))
-  const countFor = (k) => (k === 'new' ? fresh : k === 'waiting' ? waiting : null)
+  const countFor = (k) => (k === 'new' ? fresh : k === 'waiting' ? waiting : null) // null = no count shown
   const emptyText = {
     new: 'No new designs. When a customer taps "Send to my steel building rep", it shows up here.',
     waiting: 'Every design is on a lead.',
@@ -138,7 +146,8 @@ export default function CustomerDesigns() {
 
       <div className="list-tabs" style={{ marginBottom: 12 }}>
         {DESIGN_VIEWS.map((v) => (
-          <button key={v.key} type="button" className={`list-tab${view === v.key ? ' on' : ''}`} onClick={() => setParams(v.key === 'new' ? {} : { view: v.key })}>
+          <button key={v.key} type="button" className={`list-tab${view === v.key ? ' on' : ''}`} onClick={() => setParams(v.key === 'new' ? {} : { view: v.key })}
+            style={view === v.key ? { background: 'rgba(34,211,200,.12)', borderColor: 'rgba(34,211,200,.45)' } : undefined}>
             {v.label}
             {countFor(v.key) !== null ? <span className="list-tab-count">{countFor(v.key)}</span> : null}
           </button>
@@ -154,10 +163,10 @@ export default function CustomerDesigns() {
         ) : rows === null ? (
           <div className="muted" style={{ padding: 20 }}>Loading…</div>
         ) : rows.length === 0 ? (
-          <div className="list-empty">{emptyText}</div>
+          error ? null : <div className="list-empty">{emptyText}</div>
         ) : (
           <>
-            {rows.map((d) => <DesignInboxRow key={d.id} d={d} leadName={names.get(d.client_id)} onDone={done} />)}
+            {rows.map((d) => <DesignInboxRow key={d.id} d={d} lead={names.get(d.client_id)} onDone={done} />)}
             {rows.length >= limit ? (
               <div style={{ textAlign: 'center', marginTop: 14 }}>
                 <button type="button" className="btn-secondary" onClick={() => setLimit((n) => n + PAGE)}>Show more</button>

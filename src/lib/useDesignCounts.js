@@ -14,9 +14,12 @@ export function useDesignCounts() {
   useEffect(() => {
     let alive = true
     let t = null
+    let run = 0
     const load = async () => {
+      const my = ++run
       const c = await countDesigns(supabase)
-      if (alive) setCounts(c)
+      // an older answer never overwrites a newer one; a count that failed (null) keeps the last one
+      if (alive && my === run) setCounts((p) => ({ fresh: c.fresh ?? p.fresh, waiting: c.waiting ?? p.waiting }))
     }
     const soon = () => { clearTimeout(t); t = setTimeout(load, 500) }
     load()

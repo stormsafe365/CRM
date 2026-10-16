@@ -52,8 +52,9 @@ function AttachPicker({ design, onPick, onCancel, busy }) {
   )
 }
 
-/** d = a design_requests row; leadName = the lead's name when it is on a lead; onDone = reload the list. */
-export function DesignInboxRow({ d, leadName, onDone }) {
+/** d = a design_requests row; lead = { name, trashed } when it is on a lead; onDone = reload the list. */
+export function DesignInboxRow({ d, lead, onDone }) {
+  const leadName = lead && lead.name
   const { user } = useAuth()
   const navigate = useNavigate()
   const [attaching, setAttaching] = useState(false)
@@ -131,7 +132,7 @@ export function DesignInboxRow({ d, leadName, onDone }) {
   return (
     <div>
       <div style={{ ...MUTED, marginTop: 12, marginBottom: -6 }}>
-        {onLead ? <>On lead <b style={{ color: 'var(--fg, #e2e8f0)' }}>{leadName || '…'}</b></> : <span style={{ color: '#f0883e', fontWeight: 600 }}>Not on a lead yet</span>}
+        {onLead ? <>On lead <b style={{ color: 'var(--fg, #e2e8f0)' }}>{leadName || '…'}</b>{lead && lead.trashed ? <span style={{ color: '#f0883e' }}> (the lead is in Trash: restore it from Trash to work it)</span> : null}</> : <span style={{ color: '#f0883e', fontWeight: 600 }}>Not on a lead yet</span>}
         {sharedFrom(d) ? <> · From: <b style={{ color: 'var(--fg, #e2e8f0)' }}>{sharedFrom(d)}</b> (shared link)</> : null}
       </div>
       <DesignItem d={d} onChanged={onDone} actions={actions} />
