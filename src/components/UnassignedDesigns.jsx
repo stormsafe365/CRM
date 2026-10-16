@@ -126,6 +126,7 @@ function Row({ d, onDone }) {
 export default function UnassignedDesigns() {
   const [rows, setRows] = useState([]) // ids only, for the strip
   const [full, setFull] = useState(null) // full rows (pictures) once Review is open
+  const [fullErr, setFullErr] = useState('')
   const [open, setOpen] = useState(false)
   const openRef = useRef(false)
   const loadRef = useRef(null)
@@ -141,7 +142,7 @@ export default function UnassignedDesigns() {
       setRows(r.rows)
       if (openRef.current) {
         const f = await loadUnassignedDesigns(supabase)
-        if (alive && my === run) setFull(f.rows)
+        if (alive && my === run) { setFull(f.rows); setFullErr(f.error ? (f.error.message || 'Could not load the designs.') : '') }
       }
     }
     loadRef.current = load
@@ -182,6 +183,7 @@ export default function UnassignedDesigns() {
               </div>
               <button type="button" className="btn-secondary" style={{ padding: '4px 10px' }} aria-label="Close" onClick={() => setOpen(false)}>✕</button>
             </div>
+            {fullErr ? <div className="error-banner" style={{ marginTop: 10 }}>Could not load the designs: {fullErr}. Close this and try again.</div> : null}
             {full === null ? <div style={{ ...MUTED, padding: '12px 0' }}>Loading the designs…</div> : full.map((d) => <Row key={d.id} d={d} onDone={done} />)}
           </div>
         </div>,

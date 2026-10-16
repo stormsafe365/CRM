@@ -112,22 +112,41 @@ export async function attachDesign(sb, design, clientId, userId) {
     e.alreadyAttached = true
     throw e
   }
+  let more = 0
   if (design.link_token) {
     try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
+    // the same customer's other waiting sends from this link go with it (same phone / email / name;
+    // never a removed one, never someone else the link was forwarded to)
     try {
-      await sb.from('design_requests').update({ client_id: clientId }).eq('link_token', design.link_token).is('client_id', null)
+      const { data: sib } = await sb.from('design_requests').select('id, name, phone, email, status')
+        .eq('link_token', design.link_token).is('client_id', null).neq('status', 'dismissed')
+      const ids = (sib || []).filter((x) => x.id !== design.id && sameSender(x, design)).map((x) => x.id)
+      if (ids.length) {
+        const { data: moved } = await sb.from('design_requests').update({ client_id: clientId }).in('id', ids).is('client_id', null).select('id')
+        more = (moved || []).length
+      }
     } catch { /* the chosen design is attached; others can still be attached by hand */ }
   }
   await sb.from('activities').insert({
     client_id: clientId,
     type: 'note',
-    body: `Customer design attached to this lead, sent by "${design.name}". See Customer Designs.`,
+    body: `Customer design attached to this lead, sent by "${design.name}"${more ? ` (+${more} more from the same link)` : ''}. See Customer Designs.`,
     metadata: { kind: 'design_request', design_request_id: design.id },
     created_by: userId ?? null,
   })
 }
 
 const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10)
+
+/** Two sends from the same person: same 10-digit phone, same email, or the same name. */
+export function sameSender(a, b) {
+  const pa = digits(a.phone), pb = digits(b.phone)
+  if (pa.length === 10 && pa === pb) return true
+  const ea = String(a.email || '').trim().toLowerCase(), eb = String(b.email || '').trim().toLowerCase()
+  if (ea && ea === eb) return true
+  const na = String(a.name || '').trim().toLowerCase(), nb = String(b.name || '').trim().toLowerCase()
+  return !!na && na === nb
+}
 
 /** A search box value made safe for a PostgREST or() filter (letters, digits, space, @ . - _ ' only). */
 export const searchTerm = (q) => String(q || '').replace(/[^A-Za-z0-9 @._'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
@@ -139,15 +158,22 @@ export const searchTerm = (q) => String(q || '').replace(/[^A-Za-z0-9 @._'-]/g, 
  */
 export async function loadLeadsForPicker(sb, q = '') {
   const term = searchTerm(q)
+  // phones are stored as typed ("(561) 555-0147", "561-555-0147"): 7+ digits match with anything between them
+  const dg = term.replace(/\D/g, '')
+  const phonePat = dg.length >= 7 ? dg.split('').join('*') : term
   const run = (cols) => {
     let req = sb.from('clients').select(cols).order('updated_at', { ascending: false }).limit(term ? 60 : 1000)
-    if (term) req = req.or(`name.ilike."*${term}*",email.ilike."*${term}*",phone.ilike."*${term}*"`)
+    if (term) req = req.or(`name.ilike."*${term}*",email.ilike."*${term}*",phone.ilike."*${phonePat}*"`)
     return req
   }
   let r = await run('id, name, phone, email, status, updated_at, deleted_at')
   if (r.error && /deleted_at/i.test(r.error.message || '')) r = await run('id, name, phone, email, status, updated_at')
   if (r.error) throw r.error
-  return (r.data || []).filter((c) => !c.deleted_at)
+  // keep only real matches (the loose phone pattern can catch a few others)
+  const t = term.toLowerCase()
+  return (r.data || []).filter((c) => !c.deleted_at && (!term ||
+    String(c.name || '').toLowerCase().includes(t) || String(c.email || '').toLowerCase().includes(t) ||
+    (dg.length >= 3 && String(c.phone || '').replace(/\D/g, '').includes(dg))))
 }
 
 /** Leads that look like the sender (same phone or email, else same name). Leads in Trash never match. */

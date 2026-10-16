@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   newToken, designLinkUrl, designLinkMessage, isMissingTable, createDesignLink, matchLeads, safeImage, designSummary,
-  escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns, searchTerm, pickerList, attachDesign,
+  escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns, searchTerm, pickerList, attachDesign, sameSender,
 } from '../src/lib/designLinks.js'
 
 test('tokens: 24 URL-safe characters the database accepts, never repeating', () => {
@@ -117,6 +117,11 @@ test('pickerList: newest leads, or local + server matches, never Trash', () => {
 
 test('attachDesign: only an unassigned design moves; its link follows the lead; a race says so', async () => {
   const calls = []
+  const SIBS = [
+    { id: 'd1', name: 'Pat', phone: '', email: '' },
+    { id: 'd7', name: 'pat', phone: '', email: '' },          // same sender: moves
+    { id: 'd8', name: 'Someone Else', phone: '', email: '' }, // forwarded link: stays
+  ]
   const sb = (updated) => ({
     from: (t) => {
       const c = { t, ops: [] }
@@ -125,25 +130,41 @@ test('attachDesign: only an unassigned design moves; its link follows the lead; 
         update: (p) => { c.ops.push(['update', p]); return b },
         insert: async (p) => { c.ops.push(['insert', p]); return { error: null } },
         eq: (k, v) => { c.ops.push(['eq', k, v]); return b },
+        neq: (k, v) => { c.ops.push(['neq', k, v]); return b },
+        in: (k, v) => { c.ops.push(['in', k, v]); return b },
         is: (k, v) => { c.ops.push(['is', k, v]); return b },
-        select: async () => ({ data: updated, error: null }),
-        then: (res) => res({ error: null }),
+        select: (cols) => {
+          c.ops.push(['select', cols])
+          if (c.ops[0][0] === 'select') return b // a read: the siblings
+          return Promise.resolve({ data: c.ops.some((o) => o[0] === 'in') ? [{ id: 'd7' }] : updated, error: null })
+        },
+        then: (res) => res(c.ops[0][0] === 'select' ? { data: SIBS, error: null } : { error: null }),
       }
       return b
     },
   })
   await attachDesign(sb([{ id: 'd1' }]), { id: 'd1', name: 'Pat', link_token: 'TOKEN_abcdefghijklmnop' }, 'C2', 'U1')
   const upd = calls.find((c) => c.t === 'design_requests')
-  assert.deepEqual(upd.ops.filter((o) => o[0] !== 'update'), [['eq', 'id', 'd1'], ['is', 'client_id', null]])
+  assert.deepEqual(upd.ops.filter((o) => o[0] !== 'update' && o[0] !== 'select'), [['eq', 'id', 'd1'], ['is', 'client_id', null]])
   // the link follows the lead (also a link whose lead went to Trash)
   const link = calls.find((c) => c.t === 'design_links')
   assert.deepEqual(link.ops, [['update', { client_id: 'C2' }], ['eq', 'token', 'TOKEN_abcdefghijklmnop']])
-  // the customer's other waiting sends from the same link go with it
-  const sib = calls.filter((c) => c.t === 'design_requests')[1]
-  assert.deepEqual(sib.ops, [['update', { client_id: 'C2' }], ['eq', 'link_token', 'TOKEN_abcdefghijklmnop'], ['is', 'client_id', null]])
+  // the same customer's other waiting sends from that link go with it (never a removed one, never another sender)
+  const read = calls.filter((c) => c.t === 'design_requests')[1]
+  assert.deepEqual(read.ops.slice(1), [['eq', 'link_token', 'TOKEN_abcdefghijklmnop'], ['is', 'client_id', null], ['neq', 'status', 'dismissed']])
+  const move = calls.filter((c) => c.t === 'design_requests')[2]
+  assert.deepEqual(move.ops.slice(0, 3), [['update', { client_id: 'C2' }], ['in', 'id', ['d7']], ['is', 'client_id', null]])
   const act = calls.find((c) => c.t === 'activities')
-  assert.match(act.ops[0][1].body, /sent by "Pat"/)
+  assert.ok(act.ops[0][1].body.includes('sent by "Pat" (+1 more from the same link)'), act.ops[0][1].body)
   calls.length = 0
   await assert.rejects(attachDesign(sb([]), { id: 'd1', name: 'Pat' }, 'C3', 'U2'), (e) => e.alreadyAttached === true)
   assert.equal(calls.filter((c) => c.t === 'activities').length, 0) // nothing written for the race loser
+})
+
+test('sameSender: phone, email or name', () => {
+  assert.ok(sameSender({ phone: '(561) 555-0100' }, { phone: '561-555-0100' }))
+  assert.ok(sameSender({ email: 'A@B.co' }, { email: 'a@b.co' }))
+  assert.ok(sameSender({ name: 'Pat Sample' }, { name: ' pat sample ' }))
+  assert.ok(!sameSender({ name: 'Pat', phone: '5615550100' }, { name: 'Sam', phone: '7725550199' }))
+  assert.ok(!sameSender({}, {}))
 })
