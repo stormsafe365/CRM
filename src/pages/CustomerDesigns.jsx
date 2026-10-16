@@ -25,7 +25,7 @@ const when = (iso) => { try { return new Date(iso).toLocaleDateString([], { mont
 
 /** Shared links (contractors / Facebook): name, when made, how many designs, Copy link, Turn off / on. */
 function SharedLinks({ onNew, reloadKey }) {
-  const [state, setState] = useState({ links: null, missing: false })
+  const [state, setState] = useState({ links: null, missing: false, error: null })
   const load = async () => setState(await loadSharedLinks(supabase))
   useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reloadKey])
   async function copy(url) {
@@ -36,14 +36,16 @@ function SharedLinks({ onNew, reloadKey }) {
     if (off && !window.confirm(`Turn off the shared link "${l.label}"? Anyone who opens it after this sees that the link is not active.`)) return
     try { await setSharedLinkOff(supabase, l.token, off); load() } catch (e) { toast(escHtml(e.message || 'Could not change the link.')) }
   }
-  const { links, missing } = state
+  const { links, missing, error } = state
   return (
     <section className="tile" style={{ padding: '14px 18px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={MUTED}>One link for many people: give it to a concrete contractor, or post it on Facebook / Messenger. Every design from it lands here, marked with the link's name.</div>
         <button type="button" className="btn-primary" onClick={onNew}>New shared link</button>
       </div>
+      {error && !missing ? <div className="error-banner" style={{ marginTop: 10 }}>Could not load the shared links: {error.message || 'try again'}.</div> : null}
       {missing ? <div className="list-empty">{SHARED_MISSING_TEXT}</div>
+        : error && links && links.length === 0 ? null
         : links === null ? <div className="muted" style={{ padding: 16 }}>Loading…</div>
         : links.length === 0 ? <div className="list-empty">No shared links yet.</div>
         : (
@@ -56,7 +58,7 @@ function SharedLinks({ onNew, reloadKey }) {
                   <tr key={l.token}>
                     <td><b>{l.label}</b></td>
                     <td className="num">{when(l.created_at)}</td>
-                    <td className="num">{l.designs}</td>
+                    <td className="num">{l.designs ?? '—'}</td>
                     <td>{l.revoked_at ? 'Off' : expired ? 'Expired' : `On until ${when(l.expires_at)}`}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5, marginRight: 6 }} onClick={() => copy(l.url)} disabled={!!l.revoked_at || expired}>Copy link</button>
@@ -154,7 +156,7 @@ export default function CustomerDesigns() {
         ))}
       </div>
 
-      {error ? <div className="error-banner">{error}</div> : null}
+      {error && view !== 'shared' ? <div className="error-banner">{error}</div> : null}
 
       {view === 'shared' ? <SharedLinks reloadKey={sharedReload} onNew={() => setLinkOpen('shared')} /> : (
       <section className="tile" style={{ padding: '4px 18px 16px' }}>

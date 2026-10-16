@@ -161,6 +161,8 @@ test('attachDesign: only an unassigned design moves; its link follows the lead; 
   calls.length = 0
   await attachDesign(sb([{ id: 'd1' }]), { id: 'd1', name: 'Pat', link_token: 'TOKEN_abcdefghijklmnop', design_links: { kind: 'shared', label: 'ABC Concrete' } }, 'C2', 'U1')
   assert.equal(calls.filter((c) => c.t === 'design_links').length, 0)
+  // ... and other people's waiting designs from that shared link stay where they are
+  assert.equal(calls.filter((c) => c.t === 'design_requests').length, 1)
   calls.length = 0
   await assert.rejects(attachDesign(sb([]), { id: 'd1', name: 'Pat' }, 'C3', 'U2'), (e) => e.alreadyAttached === true)
   assert.equal(calls.filter((c) => c.t === 'activities').length, 0) // nothing written for the race loser

@@ -125,6 +125,7 @@ declare
   v_notes text := btrim(coalesce(p_notes, ''));
   v_req   uuid;
   v_client uuid;
+  v_shared boolean;
 begin
   if p_token is null or p_token !~ '^[A-Za-z0-9_-]{20,64}$' then
     raise exception 'link_invalid';
@@ -136,18 +137,35 @@ begin
   if l.expires_at < now() then
     raise exception 'link_expired';
   end if;
+  -- shared link (021: contractor / Facebook)? to_jsonb reads the column whether
+  -- or not 021 has been run, so 020 and 021 carry this same function.
+  v_shared := coalesce(to_jsonb(l) ->> 'kind', 'lead') = 'shared';
 
-  -- One send at a time (all links), so the counts below cannot be raced by
-  -- many sends at once. Sends are rare; the wait is milliseconds.
+  -- One send at a time (all links), so the counts below cannot be raced.
   perform pg_advisory_xact_lock(hashtext('stormsafe.submit_design'));
   select count(*) into n from design_requests
    where link_token = p_token and created_at > now() - interval '1 day';
-  if n >= 10 then
+  if n >= (case when v_shared then 50 else 10 end) then
     raise exception 'too_many';
   end if;
-  select count(*) into n from design_requests where link_token = p_token;
-  if n >= 30 then
-    raise exception 'link_full';
+  if v_shared then
+    -- a shared link: at most 500 sends in 30 days (it is passed around in public)
+    select count(*) into n from design_requests
+     where link_token = p_token and created_at > now() - interval '30 days';
+    if n >= 500 then
+      raise exception 'link_full';
+    end if;
+    -- all shared links together: at most 100 a day, so personal links always keep room
+    select count(*) into n from design_requests r join design_links k on k.token = r.link_token
+     where coalesce(to_jsonb(k) ->> 'kind', 'lead') = 'shared' and r.created_at > now() - interval '1 day';
+    if n >= 100 then
+      raise exception 'busy';
+    end if;
+  else
+    select count(*) into n from design_requests where link_token = p_token;
+    if n >= 30 then
+      raise exception 'link_full';
+    end if;
   end if;
   select count(*) into n from design_requests where created_at > now() - interval '1 day';
   if n >= 200 then
@@ -190,10 +208,10 @@ begin
     raise exception 'bad_image';
   end if;
 
-  -- A lead moved to Trash (clients.deleted_at, migration 017) does not swallow
-  -- the design: it waits under Leads > Customer designs instead. to_jsonb()
-  -- reads the column whether or not 017 has been run.
-  v_client := l.client_id;
+  -- A shared link never files a design on a lead by itself; a personal link
+  -- files it on its lead unless that lead went to Trash (clients.deleted_at,
+  -- migration 017 - to_jsonb reads it whether or not 017 has been run).
+  v_client := case when v_shared then null else l.client_id end;
   if v_client is not null and (select to_jsonb(c) ->> 'deleted_at' from clients c where c.id = v_client) is not null then
     v_client := null;
   end if;

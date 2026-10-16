@@ -6,8 +6,8 @@
 --     Designs page (not on a lead) until a rep attaches it or makes a lead;
 --   * it has a name (who shares it: "ABC Concrete", "Facebook Messenger"),
 --     shown with every design that came from it;
---   * higher limits than a personal link: 50 sends a day per shared link, no
---     lifetime cap (all links together still at most 200 a day).
+--   * its own limits: 50 sends a day and 500 in 30 days per shared link, and
+--     all shared links together at most 100 a day (all links: 200 a day).
 -- A personal link (kind 'lead', every link made before this) works exactly as
 -- before. Needs 020_design_links.sql first. Run once in the Supabase SQL
 -- editor; safe to re-run.
@@ -64,7 +64,9 @@ begin
   if l.expires_at < now() then
     raise exception 'link_expired';
   end if;
-  v_shared := l.kind = 'shared';
+  -- shared link (021: contractor / Facebook)? to_jsonb reads the column whether
+  -- or not 021 has been run, so 020 and 021 carry this same function.
+  v_shared := coalesce(to_jsonb(l) ->> 'kind', 'lead') = 'shared';
 
   -- One send at a time (all links), so the counts below cannot be raced.
   perform pg_advisory_xact_lock(hashtext('stormsafe.submit_design'));
@@ -73,7 +75,20 @@ begin
   if n >= (case when v_shared then 50 else 10 end) then
     raise exception 'too_many';
   end if;
-  if not v_shared then
+  if v_shared then
+    -- a shared link: at most 500 sends in 30 days (it is passed around in public)
+    select count(*) into n from design_requests
+     where link_token = p_token and created_at > now() - interval '30 days';
+    if n >= 500 then
+      raise exception 'link_full';
+    end if;
+    -- all shared links together: at most 100 a day, so personal links always keep room
+    select count(*) into n from design_requests r join design_links k on k.token = r.link_token
+     where coalesce(to_jsonb(k) ->> 'kind', 'lead') = 'shared' and r.created_at > now() - interval '1 day';
+    if n >= 100 then
+      raise exception 'busy';
+    end if;
+  else
     select count(*) into n from design_requests where link_token = p_token;
     if n >= 30 then
       raise exception 'link_full';
@@ -84,6 +99,8 @@ begin
     raise exception 'busy';
   end if;
 
+  -- No markup characters in a name: it can become a lead's name, which other
+  -- screens and the quote documents print.
   if length(v_name) < 1 or length(v_name) > 120 or v_name ~ '[<>"`]' then
     raise exception 'bad_name';
   end if;
@@ -103,6 +120,8 @@ begin
   if v_zip <> '' and v_zip !~ '^[0-9]{5}$' then
     raise exception 'too_long';
   end if;
+  -- No markup in the notes or the spec either (the page's spec never has < or >;
+  -- a rep may copy either into the quote program, which prints them).
   if v_notes ~ '[<>]' or coalesce(p_spec, '') ~ '[<>]' then
     raise exception 'bad_notes';
   end if;
@@ -117,7 +136,8 @@ begin
   end if;
 
   -- A shared link never files a design on a lead by itself; a personal link
-  -- files it on its lead unless that lead went to Trash.
+  -- files it on its lead unless that lead went to Trash (clients.deleted_at,
+  -- migration 017 - to_jsonb reads it whether or not 017 has been run).
   v_client := case when v_shared then null else l.client_id end;
   if v_client is not null and (select to_jsonb(c) ->> 'deleted_at' from clients c where c.id = v_client) is not null then
     v_client := null;
@@ -128,6 +148,7 @@ begin
           nullif(v_notes, ''), p_design, p_spec, p_image)
   returning id into v_req;
 
+  -- The lead's timeline shows it too (system entry, no user).
   if v_client is not null then
     insert into activities (client_id, type, body, metadata, created_by)
     values (v_client, 'note',

@@ -82,14 +82,19 @@ export const sharedLabelOk = (s) => { const t = String(s || '').trim(); return t
 export async function loadSharedLinks(sb) {
   const { data, error } = await sb.from('design_links').select('token, label, created_at, expires_at, revoked_at')
     .eq('kind', 'shared').order('created_at', { ascending: false }).limit(100)
-  if (error) return { links: [], missing: true, error }
-  const tokens = (data || []).map((l) => l.token)
-  const counts = new Map()
-  if (tokens.length) {
-    const { data: reqs } = await sb.from('design_requests').select('link_token').in('link_token', tokens)
-    for (const r of reqs || []) counts.set(r.link_token, (counts.get(r.link_token) || 0) + 1)
+  if (error) {
+    // only a database without the 021 columns means "run 021"; anything else is a plain error
+    const m = String(error.message || '')
+    const missing = error.code === '42703' || error.code === 'PGRST204' || /\b(kind|label)\b/i.test(m)
+    return { links: [], missing, error }
   }
-  return { links: (data || []).map((l) => ({ ...l, url: designLinkUrl(l.token), designs: counts.get(l.token) || 0 })), missing: false }
+  // how many designs came from each link: a count per link (never capped by a row limit;
+  // null = could not count, shown as a dash)
+  const counts = await Promise.all((data || []).map(async (l) => {
+    const { count, error: ce } = await sb.from('design_requests').select('id', { count: 'exact', head: true }).eq('link_token', l.token)
+    return ce ? null : count || 0
+  }))
+  return { links: (data || []).map((l, i) => ({ ...l, url: designLinkUrl(l.token), designs: counts[i] })), missing: false }
 }
 
 /** Turn a shared link off (its page then says the link is not active), or back on. */
@@ -169,20 +174,12 @@ export async function attachDesign(sb, design, clientId, userId) {
     throw e
   }
   let more = 0
-  if (design.link_token) {
-    // a SHARED link (contractor / Facebook) stays shared: it is never tied to one lead
-    let shared = design.design_links ? design.design_links.kind === 'shared' : false
-    if (!design.design_links) {
-      try {
-        const { data: lk, error: le } = await sb.from('design_links').select('kind').eq('token', design.link_token).maybeSingle()
-        shared = !le && !!lk && lk.kind === 'shared'
-      } catch { /* before 021 there are no shared links */ }
-    }
-    if (!shared) {
-      try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
-    }
-    // the same customer's other waiting sends from this link go with it (same phone / email / name;
-    // never a removed one, never someone else the link was forwarded to)
+  // a SHARED link (contractor / Facebook) stays shared: never tied to one lead, and its
+  // designs come from many people, so each one is attached on its own
+  if (design.link_token && !(await isSharedLink(sb, design))) {
+    try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
+    // the same customer's other waiting sends from this personal link go with it (same phone /
+    // email / name; never a removed one, never someone else the link was forwarded to)
     try {
       const { data: sib } = await sb.from('design_requests').select('id, name, phone, email, status')
         .eq('link_token', design.link_token).is('client_id', null).neq('status', 'dismissed')
@@ -200,6 +197,17 @@ export async function attachDesign(sb, design, clientId, userId) {
     metadata: { kind: 'design_request', design_request_id: design.id },
     created_by: userId ?? null,
   })
+}
+
+/** Did this design come from a shared link? (from the list's link info, else asked; false before 021) */
+async function isSharedLink(sb, design) {
+  if (design.design_links) return design.design_links.kind === 'shared'
+  try {
+    const { data, error } = await sb.from('design_links').select('kind').eq('token', design.link_token).maybeSingle()
+    return !error && !!data && data.kind === 'shared'
+  } catch {
+    return false
+  }
 }
 
 const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10)

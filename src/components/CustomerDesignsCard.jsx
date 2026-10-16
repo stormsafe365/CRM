@@ -35,12 +35,13 @@ export function DesignItem({ d, onChanged, actions = null }) {
   const [big, setBig] = useState(false)
   // the picture loads once per design (lists leave it out)
   const [img, setImg] = useState(() => safeImage(d.image))
+  // (a picture that failed to load is tried again on the next list reload: the row object changes)
   useEffect(() => {
     if (d.image !== undefined) { setImg(safeImage(d.image)); return undefined }
     let alive = true
-    designImage(supabase, d.id).then((x) => { if (alive) setImg(x) })
+    designImage(supabase, d.id).then((x) => { if (alive && x) setImg(x) })
     return () => { alive = false }
-  }, [d.id, d.image])
+  }, [d])
   const summary = designSummary(d.design)
   const fileBase = `design-${String(d.name || 'customer').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${String(d.created_at).slice(0, 10)}`
 
