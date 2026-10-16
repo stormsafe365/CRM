@@ -61,7 +61,9 @@ test('the trend: 6 weeks ending with the period, or months for long periods', ()
   assert.deepEqual([m[5].to, m[5].partial], ['2026-10-16', true])
   const lm = trendBuckets(periodFor('last_month', '2026-10-16')) // Sep 1 - 30 by week: the last week stops on the 30th
   assert.deepEqual([lm[5].from, lm[5].to], ['2026-09-28', '2026-09-30'])
-  assert.equal(trendBuckets(periodFor('last_12_months', '2026-10-16')).length, 12)
+  const y = trendBuckets(periodFor('last_12_months', '2026-10-16'))
+  assert.equal(y.length, 13) // Oct 17, 2025 - Oct 16, 2026 touches 13 months
+  assert.deepEqual([y[0].startsBefore, y[0].inPeriod, y[1].inPeriod, y[12].inPeriod, y[12].partial], [true, false, true, true, true])
 })
 
 test('who counts: stages, test names, real follow-ups', () => {
@@ -72,7 +74,8 @@ test('who counts: stages, test names, real follow-ups', () => {
   assert.equal(stageGroup('lost'), 'dead')
   assert.equal(stageGroup('weird'), 'other')
   for (const n of ['Test Lead', 'E2E Test Lead', 'jake-test', 'TEST', 'Test1', 'Angie test']) assert.equal(isTestName(n), true, n)
-  for (const n of ['Celeste Moore', 'Contest Winner', 'Attest LLC', 'Pat Sample', '']) assert.equal(isTestName(n), false, n)
+  for (const n of ['Celeste Moore', 'Contest Winner', 'Attest LLC', 'Pat Sample', '', 'John Testa', 'Mary Testerman', 'Tester Farms LLC']) assert.equal(isTestName(n), false, n)
+  for (const n of ['TestLead', 'test_lead']) assert.equal(isTestName(n), true, n)
   assert.equal(isRealTouch({ type: 'call', created_by: 'u1' }), true)
   assert.equal(isRealTouch({ type: 'note', created_by: 'u1', kind: 'design_request' }), false) // the design page's note
   assert.equal(isRealTouch({ type: 'note', created_by: null }), false) // automatic
@@ -149,7 +152,7 @@ test('this week, hand-counted', () => {
   assert.equal(r.main.soldValue, 72000)
   assert.equal(r.main.avgDeal, 36000)
   assert.equal(r.deals.find((x) => x.id === 'd').amountFrom, 'starred')
-  assert.equal(r.deals.find((x) => x.id === 'c').deposit, 5100)
+  assert.equal(r.deals.find((x) => x.id === 'c').depositAll, 5100)
   // deposits received this week: p1 only (p2 last week, p3 removed, p4 trashed lead)
   assert.equal(r.main.deposits, 5100)
   assert.equal(r.main.depositCount, 1)
@@ -233,4 +236,70 @@ test('a sold lead with no priced quote: counted as sold, amount unknown (not $0 
   assert.equal(r.main.soldNoAmount, 1)
   assert.equal(r.main.soldValue, 0)
   assert.equal(r.main.avgDeal, null)
+})
+
+// ── Review fixes (10/16/26) ──────────────────────────────────────────────────────────────
+const one = (clientsX, quotesX = [], extra = {}) => computePerformance({ clients: clientsX, quotes: quotesX, touches: [], statusChanges: [], users: U, payments: [], sampleIds: [], ...extra }, periodFor('this_week', TODAY), { today: TODAY, now: NOW })
+
+test('a sale amount: Deposit Paid / Revised beat a Verbal Accept; two sold quotes are flagged', () => {
+  const r = one([C('x', { status: 'ordered', order_date: '2026-10-14' })], [
+    Q('a1', 'x', { status: 'deposit_paid', total_amount: 20000, created_at: '2026-10-01T12:00:00Z' }),
+    Q('a2', 'x', { status: 'verbal_accept', total_amount: 31000, created_at: '2026-10-05T12:00:00Z' }),
+  ])
+  assert.equal(r.main.soldValue, 20000)
+  assert.deepEqual(r.checks.multiSold.map((x) => [x.id, x.count]), [['x', 2]])
+  assert.equal(r.deals[0].multiSold, true)
+})
+
+test('a sold quote with no price: amount unknown (never an old draft price), and listed', () => {
+  const r = one([C('x', { status: 'ordered', order_date: '2026-10-14' })], [
+    Q('d1', 'x', { status: 'draft', total_amount: 9999, created_at: '2026-10-01T12:00:00Z' }),
+    Q('s1', 'x', { status: 'deposit_paid', total_amount: null, created_at: '2026-10-05T12:00:00Z' }),
+  ])
+  assert.equal(r.main.soldNoAmount, 1)
+  assert.equal(r.main.soldValue, 0)
+  assert.deepEqual(r.checks.soldNoPrice.map((x) => x.from), ['sold-unpriced'])
+  assert.deepEqual(r.checks.soldFromOther, [])
+  const none = one([C('y', { status: 'ordered', order_date: '2026-10-14' })])
+  assert.deepEqual(none.checks.soldNoPrice.map((x) => x.from), [null])
+  assert.deepEqual(none.checks.soldFromOther, [])
+})
+
+test('Pending Deposit leads are open here and listed (the rest of the CRM shows them as Ordered)', () => {
+  const r = one([C('p', { status: 'deposit_pending' })])
+  assert.equal(r.main.sold, 0)
+  assert.equal(r.pipeline.find((s) => s.key === 'deposit_pending').count, 1)
+  assert.deepEqual(r.checks.depositPending.map((x) => x.id), ['p'])
+})
+
+test('deposits before tracking started show "n/a", not $0', () => {
+  const pay = [{ id: 'p', client_id: 'x', kind: 'deposit', amount: 100, received_on: '2026-10-15', created_at: '2026-10-15T15:00:00Z' }]
+  const r = one([C('x', { status: 'ordered', order_date: '2026-10-15' })], [], { payments: pay })
+  assert.equal(r.depositsSince, '2026-10-15')
+  assert.equal(r.main.deposits, 100)
+  assert.equal(r.trend[4].deposits, null) // the week of Oct 5: before tracking
+  const early = one([C('x', { status: 'ordered', order_date: '2026-10-15' })], [], { payments: [{ ...pay[0], received_on: '2026-10-06' }] })
+  assert.equal(early.depositsSince, '2026-10-06') // a deposit entered later but dated earlier counts
+  assert.equal(early.trend[4].deposits, 100)
+  const empty = one([C('x')], [], { payments: [] })
+  assert.equal(empty.main.deposits, 0) // tracking on, nothing yet this week
+  assert.equal(empty.trend[4].deposits, null)
+})
+
+test('backdated leads are followed-up but not timed (their wait is unknown)', () => {
+  const r = one([C('b', { first_contact_date: '2026-10-12', created_at: '2026-10-15T15:00:00Z' })], [], {
+    touches: [{ id: 't', client_id: 'b', type: 'call', created_by: 'u1', created_at: '2026-10-15T15:02:00Z' }],
+  })
+  assert.equal(r.handling.followed, 1)
+  assert.equal(r.handling.untimed, 1)
+  assert.equal(r.handling.medianHours, null)
+})
+
+test('"the five weeks before" only for weeks, over the same weekdays', () => {
+  assert.equal(computePerformance(data, periodFor('this_month', TODAY), { today: TODAY, now: NOW }).prevAvgLeads, null)
+  // this week = Mon-Fri: each earlier week counts Mon-Fri too; a lead on a Saturday is not counted
+  const r = one([C('sat', { created_at: '2026-10-10T15:00:00Z' }), C('fri', { created_at: '2026-10-09T15:00:00Z' })])
+  assert.equal(r.prevAvgLeads, 1 / 5)
+  const lw = computePerformance({ clients: [C('sat', { created_at: '2026-10-10T15:00:00Z' })], quotes: [], touches: [], statusChanges: [], users: U, payments: [], sampleIds: [] }, periodFor('last_week', TODAY), { today: TODAY, now: NOW })
+  assert.equal(lw.prevAvgLeads, 0)
 })

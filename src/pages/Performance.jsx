@@ -64,20 +64,29 @@ function LeadList({ items, max = 8, render }) {
 export function summaryLines(r) {
   const m = r.main
   const p = r.period
-  const when = p.key === 'this_week' ? 'so far this week' : p.key === 'last_week' ? 'last week' : `in ${p.label.toLowerCase()}`
+  const when = p.key === 'this_week' ? 'so far this week'
+    : p.key === 'last_week' ? 'last week'
+    : p.key === 'custom' ? `from ${p.range}`
+    : `in ${p.label.toLowerCase()}`
+  const avg = r.prevAvgLeads == null ? ''
+    : p.key === 'this_week' ? `; the same days of the five weeks before averaged ${r.prevAvgLeads.toFixed(1)}`
+    : `; the five weeks before averaged ${r.prevAvgLeads.toFixed(1)} a week`
   const out = []
-  out.push(`${m.leadsIn} new lead${m.leadsIn === 1 ? '' : 's'} came in ${when}${r.prevAvgLeads != null ? `; the five weeks before averaged ${r.prevAvgLeads.toFixed(1)} a week` : ''}.`)
+  out.push(`${m.leadsIn} new lead${m.leadsIn === 1 ? '' : 's'} came in ${when}${avg}.`)
   if (r.handling.leads) out.push(`${pctText(r.handling.followedPct)} were followed up by a rep (${r.handling.followed} of ${r.handling.leads})${r.handling.medianHours != null ? `, with a median of ${hoursText(r.handling.medianHours)} to the first follow-up` : ''}.`)
   out.push(`${m.customersQuoted} customer${m.customersQuoted === 1 ? ' was' : 's were'} quoted, worth ${money(m.quotedValue)} (quote totals, sales tax included).`)
   out.push(`${m.sold} building${m.sold === 1 ? ' was' : 's were'} marked Ordered, worth ${money(m.soldValue)}${m.soldNoAmount ? ` (${m.soldNoAmount} with no priced quote on file)` : ''}.`)
-  out.push(r.tracked ? `${money(m.deposits)} in deposits came in (${m.depositCount} deposit${m.depositCount === 1 ? '' : 's'}).` : 'Deposits are not tracked yet (the one-time database update adds them).')
+  out.push(!r.tracked ? 'Deposits are not tracked yet (the one-time database update adds them).'
+    : m.deposits == null ? `Deposits are counted from ${dayLabel(r.depositsSince, true)}, after this period.`
+    : `${money(m.deposits)} in deposits came in (${m.depositCount} deposit${m.depositCount === 1 ? '' : 's'}).`)
   out.push(`The open pipeline holds ${r.openTotal} lead${r.openTotal === 1 ? '' : 's'}; ${r.ages.d30} came in during the last 30 days.`)
   if (r.checks.noSource) out.push(`${r.checks.noSource} of this period's ${m.leadsIn} leads have no source entered.`)
   return out
 }
 
 export default function Performance() {
-  const admin = useIsAdmin()
+  const [accessTick, setAccessTick] = useState(0)
+  const admin = useIsAdmin(accessTick)
   const [params, setParams] = useSearchParams()
   const today = nyDay(Date.now())
   const key = PERIODS.some((x) => x.key === params.get('p')) ? params.get('p') : 'this_week'
@@ -114,29 +123,52 @@ export default function Performance() {
   async function printReport() {
     if (!result) return
     setPrinting(true)
+    const clean = (s) => String(s || '').replace(/[<>&]/g, '')
     try {
       const html = buildPerformanceHtml(result, { summary: summaryLines(result), sourceLabel })
       const name = `StormSafe Performance ${result.period.from} to ${result.period.to}.pdf`
       const api = typeof window !== 'undefined' ? window.electronAPI : null
-      if (api && typeof api.savePdf === 'function') await api.savePdf(html, name)
-      else {
+      if (api && typeof api.savePdf === 'function') {
+        const res = await api.savePdf(html, name) // { ok } / { ok:false, canceled } / { ok:false, error }
+        if (res && res.ok === false && !res.canceled) toast(`Could not save the report: ${clean(res.error)}`)
+      } else {
         const blob = await renderQuotePdf(html)
-        window.open(URL.createObjectURL(blob), '_blank')
+        const url = URL.createObjectURL(blob)
+        if (!window.open(url, '_blank')) {
+          // pop-up blocked: download it instead
+          const a = document.createElement('a')
+          a.href = url
+          a.download = name
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+        }
       }
     } catch (e) {
-      toast(`Could not make the report: ${String(e?.message || e).replace(/[<>&]/g, '')}`)
+      toast(`Could not make the report: ${clean(e?.message || e)}`)
     } finally {
       setPrinting(false)
     }
   }
 
   if (admin === null) return <div className="muted" style={{ padding: 24 }}>Loading…</div>
+  if (admin === 'error') {
+    return (
+      <div className="page-head"><div className="left">
+        <h1>Performance</h1>
+        <div className="sub">Could not check your access just now. <button type="button" className="btn-secondary" onClick={() => setAccessTick((n) => n + 1)}>Try again</button></div>
+      </div></div>
+    )
+  }
   if (!admin) {
     return (
       <div className="page-head"><div className="left">
         <div className="eyebrow-lime">Owner only</div>
         <h1>Performance</h1>
-        <div className="sub">This page is for the owner and Joshua. If that is you, the login needs to be made an admin first (ask Claude).</div>
+        <div className="sub">
+          This page is for the owner and Joshua. If that is you, the login needs to be made an admin first (ask Claude).{' '}
+          <button type="button" className="btn-secondary" onClick={() => setAccessTick((n) => n + 1)}>Check again</button>
+        </div>
       </div></div>
     )
   }
@@ -167,12 +199,7 @@ export default function Performance() {
           </button>
         ))}
       </div>
-      {key === 'custom' ? (
-        <div className="perf-custom">
-          <label>From <input type="date" value={period.from} max={today} onChange={(e) => e.target.value && setParams({ p: 'custom', from: e.target.value, to: period.to })} /></label>
-          <label>To <input type="date" value={period.to} max={today} onChange={(e) => e.target.value && setParams({ p: 'custom', from: period.from, to: e.target.value })} /></label>
-        </div>
-      ) : null}
+      {key === 'custom' ? <CustomDates period={period} today={today} onApply={(from, to) => setParams({ p: 'custom', from, to })} /> : null}
 
       {error ? <div className="error-banner">{error}{data ? ' The numbers below are from the last good read.' : ''}</div> : null}
       {!r ? (busy ? <div className="muted" style={{ padding: 20 }}>Reading the CRM…</div> : null) : (
@@ -187,7 +214,12 @@ export default function Performance() {
             <Kpi label="Quoted value" value={money(r.main.quotedValue)} sub="latest quote per customer, with tax" />
             <Kpi label="Buildings sold" value={r.main.sold} sub="marked Ordered (order date)" accent="lime" />
             <Kpi label="$ sold" value={money(r.main.soldValue)} sub={r.main.soldNoAmount ? `${r.main.soldNoAmount} sold with no priced quote` : 'quote totals, with tax'} accent="lime" />
-            <Kpi label="Deposits received" value={r.tracked ? money(r.main.deposits) : 'Not tracked yet'} sub={r.tracked ? `${r.main.depositCount} deposit${r.main.depositCount === 1 ? '' : 's'}` : 'needs the one-time update'} accent="amber" />
+            <Kpi
+              label="Deposits received"
+              value={!r.tracked ? 'Not tracked yet' : r.main.deposits == null ? 'n/a' : money(r.main.deposits)}
+              sub={!r.tracked ? 'needs the one-time update' : r.main.deposits == null ? `counted from ${dayLabel(r.depositsSince, true)}` : `${r.main.depositCount} deposit${r.main.depositCount === 1 ? '' : 's'} · counted from ${dayLabel(r.depositsSince)}`}
+              accent="amber"
+            />
             <Kpi label="Close rate" value={pctText(r.closeRate.pct)} sub={`${r.closeRate.ordered} of this period's ${r.closeRate.of} leads are Ordered now`} />
             <Kpi label="Average deal" value={money(r.main.avgDeal == null ? null : Math.round(r.main.avgDeal))} sub={`${r.main.lost} lead${r.main.lost === 1 ? '' : 's'} marked Dead this period`} />
           </div>
@@ -223,30 +255,52 @@ export default function Performance() {
                 <div><b className="num">{hoursText(r.handling.medianHours)}</b><span>median time to the first follow-up</span></div>
                 <div><b className="num">{pctText(r.handling.within24Pct)}</b><span>of those within 24 hours</span></div>
               </div>
+              {r.handling.untimed ? <div style={{ ...MUTED, marginTop: 8 }}>{r.handling.untimed} lead{r.handling.untimed === 1 ? ' was' : 's were'} entered after {r.handling.untimed === 1 ? 'its' : 'their'} first-contact day, so the wait cannot be timed (not in the median).</div> : null}
             </Panel>
           </div>
 
           <Panel title="Buildings sold this period" right={r.tracked ? null : 'deposits: not tracked yet'}>
             {r.deals.length === 0 ? <div className="ana-empty">No leads marked Ordered with an order date in this period.</div> : (
               <table className="ana-table">
-                <thead><tr><th>Lead</th><th>Rep</th><th>Order date</th><th>Amount</th><th>Deposit received</th></tr></thead>
+                <thead><tr><th>Lead</th><th>Rep</th><th>Order date</th><th>Amount</th><th>Deposits on file (all dates)</th></tr></thead>
                 <tbody>
                   {r.deals.map((d) => (
                     <tr key={d.id}>
                       <td><Link to={`/clients/${d.id}`}>{d.name}</Link></td>
                       <td>{d.rep}</td>
                       <td className="num">{d.orderDay ? dayLabel(d.orderDay, true) : '—'}</td>
-                      <td className="num" title={d.amountFrom === 'sold' ? 'the sold quote' : d.amountFrom === 'starred' ? 'no sold quote: the starred quote' : d.amountFrom === 'newest' ? 'no sold quote: the newest quote' : 'no priced quote'}>
-                        {money(d.amount)}{d.amountFrom && d.amountFrom !== 'sold' ? ' *' : ''}
+                      <td className="num" title={d.amountFrom === 'sold' ? 'the quote marked sold' : d.amountFrom === 'starred' ? 'no quote marked sold: the starred quote' : d.amountFrom === 'newest' ? 'no quote marked sold: the newest quote' : d.amountFrom === 'sold-unpriced' ? 'the quote marked sold has no price' : 'no priced quote'}>
+                        {money(d.amount)}{d.amountFrom === 'starred' || d.amountFrom === 'newest' ? ' *' : ''}{d.multiSold ? ' †' : ''}
                       </td>
-                      <td className="num">{r.tracked ? (d.deposit ? money(d.deposit) : '—') : 'n/a'}</td>
+                      <td className="num">{r.tracked ? (d.depositAll ? money(d.depositAll) : '—') : 'n/a'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-            {r.deals.some((d) => d.amountFrom && d.amountFrom !== 'sold') ? <div style={{ ...MUTED, marginTop: 8 }}>* No quote marked sold on that lead: the amount is its starred (or newest) quote.</div> : null}
+            {r.deals.some((d) => d.amountFrom === 'starred' || d.amountFrom === 'newest') ? <div style={{ ...MUTED, marginTop: 8 }}>* No quote marked sold on that lead: the amount is its starred (or newest) quote.</div> : null}
+            {r.deals.some((d) => d.multiSold) ? <div style={{ ...MUTED, marginTop: 4 }}>† More than one quote on that lead is marked sold: the amount is the newest Deposit Paid / Revised Order one.</div> : null}
           </Panel>
+
+          {r.tracked ? (
+            <Panel title="Deposits received this period" right={r.main.deposits == null ? `counted from ${dayLabel(r.depositsSince, true)}` : money(r.main.deposits)}>
+              {r.depositRows.length === 0 ? <div className="ana-empty">No deposits received in this period.</div> : (
+                <table className="ana-table">
+                  <thead><tr><th>Lead</th><th>Received</th><th>Paid by</th><th>Amount</th></tr></thead>
+                  <tbody>
+                    {r.depositRows.map((x) => (
+                      <tr key={x.id}>
+                        <td><Link to={`/clients/${x.clientId}`}>{x.name}</Link></td>
+                        <td className="num">{x.day ? dayLabel(x.day, true) : '—'}</td>
+                        <td>{x.method || '—'}</td>
+                        <td className="num">{money(x.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Panel>
+          ) : null}
 
           <Panel title="Open pipeline right now" right={`${r.openTotal} open lead${r.openTotal === 1 ? '' : 's'}`}>
             <div className="perf-bars">
@@ -271,15 +325,38 @@ export default function Performance() {
           <Panel title="How these are counted">
             <ul className="perf-notes">
               <li>Days are New York calendar days; weeks run Monday to Sunday. A lead counts on the day it came in (its first-contact date, else the day it was entered).</li>
-              <li>Sold = the lead was marked Ordered; it counts on its order date. The amount is the lead's quote marked sold (Deposit Paid / Revised Order / Verbal Accept), sales tax included.</li>
+              <li>Sold = the lead was marked Ordered; it counts on its order date. The amount is the lead's quote marked sold (Deposit Paid / Revised Order first, else Verbal Accept), sales tax included. "Pending Deposit" leads are not marked Ordered, so they count as open here.</li>
               <li>Quoted = a quote saved with a price (unfinished quotes with no price are not counted); quoted value uses each customer's latest quote in the period.</li>
-              <li>Deposits = the "Deposit received" entries on the order screen, by the day the money came in.</li>
+              <li>Deposits = the "Deposit received" entries on the order screen, by the day the money came in{r.tracked && r.depositsSince ? `, counted from ${dayLabel(r.depositsSince, true)} (when tracking started; earlier weeks show n/a)` : ''}.</li>
+              <li>The trend rows are whole weeks / months; the highlighted rows are inside the period.</li>
               <li>Left out: leads in the Trash, the sample leads, and leads with the word "test" in the name ({r.checks.testLeads.length} now). Reps with the same name on two logins are one person.</li>
               <li>A follow-up is a call, email, meeting or note a rep logged; automatic entries (stage changes, quote saves, design-link notes) are not. "No activity 14+ days" = open leads with no follow-up logged in 14 days.</li>
             </ul>
           </Panel>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * Custom From / To: typed into freely (a date box changes on every digit), applied with the button or
+ * Enter once both are whole dates; never swapped behind the person's back.
+ */
+function CustomDates({ period, today, onApply }) {
+  const [from, setFrom] = useState(period.from)
+  const [to, setTo] = useState(period.to)
+  useEffect(() => { setFrom(period.from); setTo(period.to) }, [period.from, period.to])
+  const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= '2000-01-01' && d <= today
+  const err = !ok(from) || !ok(to) ? 'Pick both dates (up to today).' : from > to ? '"From" is after "To".' : ''
+  const apply = () => { if (!err && (from !== period.from || to !== period.to)) onApply(from, to) }
+  const onKey = (e) => { if (e.key === 'Enter') apply() }
+  return (
+    <div className="perf-custom">
+      <label>From <input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} onKeyDown={onKey} /></label>
+      <label>To <input type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} onKeyDown={onKey} /></label>
+      <button type="button" className="btn-secondary" onClick={apply} disabled={!!err || (from === period.from && to === period.to)}>Show these dates</button>
+      {err ? <span style={{ color: 'var(--warning, #f0883e)' }}>{err}</span> : null}
     </div>
   )
 }
@@ -291,10 +368,13 @@ function TrendTable({ r }) {
       <thead><tr><th>{r.period.grain === 'week' ? 'Week' : 'Month'}</th><th>Leads in</th><th>Customers quoted</th><th>Quoted value</th><th>Sold</th><th>$ sold</th><th>Deposits</th></tr></thead>
       <tbody>
         {r.trend.map((b) => {
-          const cur = b.to >= r.period.from && b.from <= r.period.to && (b.from >= r.period.from || r.period.grain === 'month')
           return (
-            <tr key={b.from} className={cur ? 'perf-cur' : ''}>
-              <td>{b.label}{b.partial ? <span style={MUTED}> · to {dayLabel(b.upTo)}</span> : null}</td>
+            <tr key={b.from} className={b.inPeriod ? 'perf-cur' : ''}>
+              <td>
+                {b.label}
+                {b.partial ? <span style={MUTED}> · to {dayLabel(b.upTo)}</span> : null}
+                {b.startsBefore ? <span style={MUTED}> · the period starts {dayLabel(r.period.from)}</span> : null}
+              </td>
               <td className="num"><span className="perf-inline-bar" style={{ width: `${(b.leadsIn / max) * 48}px` }} />{b.leadsIn}</td>
               <td className="num">{b.customersQuoted}</td>
               <td className="num">{money(b.quotedValue)}</td>
@@ -355,6 +435,9 @@ function Checks({ r }) {
     c.orderedNoDate.length ? { k: 'od', text: `${c.orderedNoDate.length} lead${c.orderedNoDate.length === 1 ? ' is' : 's are'} marked Ordered with no order date, so not counted as sold anywhere. Open the lead → Edit Order → set the date:`, list: c.orderedNoDate } : null,
     c.soldQuoteNotOrdered.length ? { k: 'sq', text: `${c.soldQuoteNotOrdered.length} lead${c.soldQuoteNotOrdered.length === 1 ? ' has' : 's have'} a quote marked Deposit Paid / Revised Order but the lead is not marked Ordered (a missed order?):`, list: c.soldQuoteNotOrdered } : null,
     c.soldFromOther.length ? { k: 'sf', text: `${c.soldFromOther.length} building${c.soldFromOther.length === 1 ? '' : 's'} sold this period with no quote marked sold; the amount used is the starred or newest quote:`, list: c.soldFromOther } : null,
+    c.soldNoPrice.length ? { k: 'sn', text: `${c.soldNoPrice.length} building${c.soldNoPrice.length === 1 ? '' : 's'} sold this period with no priced quote on file (not in $ sold or Average deal):`, list: c.soldNoPrice } : null,
+    c.multiSold.length ? { k: 'ms', text: `${c.multiSold.length} sold lead${c.multiSold.length === 1 ? ' has' : 's have'} more than one quote marked sold; the amount used is the newest Deposit Paid / Revised Order one (two buildings, or an old quote to mark Superseded?):`, list: c.multiSold } : null,
+    c.depositPending.length ? { k: 'dp', text: `${c.depositPending.length} lead${c.depositPending.length === 1 ? ' is' : 's are'} at "Pending Deposit": shown as Ordered elsewhere in the CRM, counted here as open (not sold) until marked Ordered:`, list: c.depositPending } : null,
     c.unknownStatus.length ? { k: 'us', text: `${c.unknownStatus.length} lead${c.unknownStatus.length === 1 ? ' has' : 's have'} a stage this page does not know (not counted as open, sold or dead):`, list: c.unknownStatus, render: (x) => <span style={MUTED}> ({x.status})</span> } : null,
     c.dupes.length ? { k: 'du', text: `${c.dupes.length} possible duplicate lead${c.dupes.length === 1 ? '' : 's'} (same phone or email) among this period's leads:`, list: c.dupes.map((d) => ({ id: d.ids[1], name: `${d.names[0]} = ${d.names[1]}` })) } : null,
     c.unknownRep.length ? { k: 'ur', text: `${c.unknownRep.length} lead${c.unknownRep.length === 1 ? ' is' : 's are'} assigned to a login the CRM no longer knows (shown as "Unknown rep"):`, list: c.unknownRep } : null,

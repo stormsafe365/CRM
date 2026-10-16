@@ -96,7 +96,11 @@ export default function AppLayout({ children }) {
   // A customer sent a design from their design link (owner 10/16/26).
   useDesignPings()
   const { fresh: newDesigns } = useDesignCounts()
-  const isAdmin = useIsAdmin()
+  // admin-only menu items; checked again when the window comes back to the front (a login made admin
+  // while the app is open gets the item without a restart)
+  const [adminTick, setAdminTick] = useState(0)
+  useEffect(() => { const t = () => setAdminTick((n) => n + 1); window.addEventListener('focus', t); return () => window.removeEventListener('focus', t) }, [])
+  const isAdmin = useIsAdmin(adminTick)
 
   // Cursor ring/dot FX (matches the design mockup; auto-skips touch/reduced-motion).
   useEffect(() => { mountCursorFx() }, [])

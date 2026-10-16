@@ -126,9 +126,12 @@ export function trendBuckets(p, count = 6) {
       out.push({ from, to: addDays(from, 6), label: `Week of ${dayLabel(from)}` })
     }
   } else {
-    const months = Math.max(count, Math.ceil((p.days || 0) / 30.5))
+    // every month the period touches (Last 12 months = 13: the first one partly), at least `count`
+    const [fy, fm] = p.from.split('-').map(Number)
+    const [ty, tm] = p.to.split('-').map(Number)
+    const months = Math.max(count, (ty - fy) * 12 + (tm - fm) + 1)
     const lastFirst = firstOfMonth(p.to)
-    for (let i = Math.min(months, 12) - 1; i >= 0; i--) {
+    for (let i = Math.min(months, 13) - 1; i >= 0; i--) {
       const from = addMonths(lastFirst, -i)
       const [y, m] = from.split('-').map(Number)
       out.push({ from, to: endOfMonth(from), label: `${MONTHS[m - 1]} ${y}`, long: `${LONG_MONTHS[m - 1]} ${y}` })
@@ -136,6 +139,9 @@ export function trendBuckets(p, count = 6) {
   }
   const last = out[out.length - 1]
   if (last && last.to > p.to) Object.assign(last, { to: p.to, partial: true, upTo: p.to })
+  // inPeriod = wholly inside the period (these rows add up to the numbers above); startsBefore = the
+  // period begins part-way through this row
+  for (const b of out) Object.assign(b, { inPeriod: b.from >= p.from && b.to <= p.to, startsBefore: b.from < p.from && b.to >= p.from })
   return out
 }
 
@@ -160,11 +166,16 @@ export function stageGroup(status) {
 }
 export const openStageOf = (status) => OPEN_STAGES.find((s) => s.statuses.includes(status))?.key || null
 
-/** Owner 10/16/26: leave out leads whose name has the word "test" (Test Lead, E2E test, jake-test, Test1; not Celeste / Contest / Attest). */
-export const isTestName = (name) => /(^|[^a-z])test/i.test(String(name || ''))
+/**
+ * Owner 10/16/26: leave out leads whose name has the WORD "test" (Test Lead, E2E test, jake-test, Test1,
+ * TestLead, test_lead) - not names that merely contain it (Celeste, Contest, Attest, Testa, Testerman).
+ */
+export const isTestName = (name) => /(^|[^A-Za-z])[Tt][Ee][Ss][Tt](?![a-z])/.test(String(name || ''))
 export const SAMPLE_NOTE = 'SAMPLE — safe to delete' // db/seed_sample_data.sql
 /** Quote statuses that mean the customer bought (a sold quote's amount = the building's price). */
 export const SOLD_QUOTE_STATUSES = new Set(['deposit_paid', 'revised', 'verbal_accept'])
+/** The firm ones (a verbal accept is set by hand and is the weakest; it counts only when there is no firm one). */
+const FIRM_SOLD = new Set(['deposit_paid', 'revised'])
 /** A rep-logged follow-up (not the app's own entries: stage changes, quote saves, design notes). */
 export const TOUCH_TYPES = ['call', 'email', 'meeting', 'note']
 export const isRealTouch = (a) => !!a && TOUCH_TYPES.includes(a.type) && !!a.created_by && !a.kind
@@ -230,23 +241,48 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
   for (const a of touches) { if (!touchesOf.has(a.client_id)) touchesOf.set(a.client_id, []); touchesOf.get(a.client_id).push(a) }
   for (const list of touchesOf.values()) list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
 
-  // Deposits received (022)
+  // Every quote on a counted lead, priced or not (a sold quote with no price must not fall back to a draft)
+  const allQuotesOf = new Map()
+  for (const q of data.quotes || []) {
+    if (q.deleted_at || !byId.has(q.client_id) || q.status === 'superseded') continue
+    if (!allQuotesOf.has(q.client_id)) allQuotesOf.set(q.client_id, [])
+    allQuotesOf.get(q.client_id).push({ ...q, total: num(q.total_amount) })
+  }
+  for (const list of allQuotesOf.values()) list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+
+  // Deposits received (022). Counted from the day tracking started (the first deposit entered, or one
+  // dated earlier): before that, a week / month shows "n/a", never a made-up $0.
   const tracked = Array.isArray(data.payments)
   const deposits = tracked
     ? data.payments.filter((x) => !x.deleted_at && (x.kind || 'deposit') === 'deposit' && byId.has(x.client_id) && num(x.amount) != null).map((x) => ({ ...x, day: plainDay(x.received_on), amount: num(x.amount) }))
     : []
+  let depositsSince = null
+  if (tracked) {
+    for (const x of data.payments) {
+      for (const d of [nyDay(x.created_at), plainDay(x.received_on)]) if (d && (!depositsSince || d < depositsSince)) depositsSince = d
+    }
+    if (!depositsSince) depositsSince = today
+  }
+  const depositsKnown = (w) => tracked && !!depositsSince && w.to >= depositsSince
 
-  /** The building's price for a sold lead: its sold quote (newest), else its starred quote, else its newest priced quote. */
+  /**
+   * The building's price for a sold lead: its quote marked sold (Deposit Paid / Revised Order first,
+   * a Verbal Accept only when there is none; the newest), else its starred quote, else its newest
+   * priced quote. A sold quote with no price = amount unknown (never an old draft's price).
+   */
   const saleAmount = (c) => {
-    const list = (quotesOf.get(c.id) || []).filter((q) => q.status !== 'superseded')
+    const all = allQuotesOf.get(c.id) || []
     const pick = (xs) => xs[xs.length - 1] || null
-    const sold = pick(list.filter((q) => SOLD_QUOTE_STATUSES.has(q.status)))
-    if (sold) return { amount: sold.total, from: 'sold', quote: sold }
-    const starred = pick(list.filter((q) => q.starred))
-    if (starred) return { amount: starred.total, from: 'starred', quote: starred }
-    const newest = pick(list)
-    if (newest) return { amount: newest.total, from: 'newest', quote: newest }
-    return { amount: null, from: null, quote: null }
+    const firm = all.filter((q) => FIRM_SOLD.has(q.status))
+    const soldCount = all.filter((q) => SOLD_QUOTE_STATUSES.has(q.status)).length
+    const sold = pick(firm) || pick(all.filter((q) => SOLD_QUOTE_STATUSES.has(q.status)))
+    if (sold) return sold.total == null ? { amount: null, from: 'sold-unpriced', quote: sold, soldCount } : { amount: sold.total, from: 'sold', quote: sold, soldCount }
+    const priced = all.filter((q) => q.total != null)
+    const starred = pick(priced.filter((q) => q.starred))
+    if (starred) return { amount: starred.total, from: 'starred', quote: starred, soldCount }
+    const newest = pick(priced)
+    if (newest) return { amount: newest.total, from: 'newest', quote: newest, soldCount }
+    return { amount: null, from: null, quote: null, soldCount }
   }
 
   // One window of time (the period, or a trend column)
@@ -270,15 +306,18 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
       soldList: sold,
       soldValue: soldAmounts.reduce((s, v) => s + v, 0),
       soldNoAmount: sold.length - soldAmounts.length,
-      deposits: tracked ? dep.reduce((s, x) => s + x.amount, 0) : null,
-      depositCount: tracked ? dep.length : null,
+      deposits: depositsKnown(w) ? dep.reduce((s, x) => s + x.amount, 0) : null,
+      depositCount: depositsKnown(w) ? dep.length : null,
       depositList: dep,
     }
   }
 
   const main = windowStats(p)
-  const prevWeeks = p.grain === 'week'
-    ? Array.from({ length: 5 }, (_, i) => { const from = addDays(mondayOf(p.from), -7 * (i + 1)); return { from, to: addDays(from, 6) } })
+  // "N came in; the five weeks before averaged ..." - weeks only, and the same weekdays (this week so far
+  // is Monday to today: compared with Monday to the same weekday of each of the 5 weeks before)
+  const weekSpan = p.key === 'this_week' ? daysBetween(mondayOf(p.from), p.to) : 6
+  const prevWeeks = p.key === 'this_week' || p.key === 'last_week'
+    ? Array.from({ length: 5 }, (_, i) => { const from = addDays(mondayOf(p.from), -7 * (i + 1)); return { from, to: addDays(from, weekSpan) } })
     : []
   const prevAvgLeads = prevWeeks.length ? prevWeeks.reduce((s, w) => s + windowStats(w).leadsIn, 0) / prevWeeks.length : null
   const trend = trendBuckets(p).map((b) => {
@@ -286,19 +325,22 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
     return { ...b, leadsIn: s.leadsIn, customersQuoted: s.customersQuoted, quotedValue: s.quotedValue, sold: s.sold, soldValue: s.soldValue, deposits: s.deposits }
   })
 
-  // How the period's new leads were handled
+  // How the period's new leads were handled. The clock starts when the lead was entered; a lead
+  // entered days after its first-contact date (backdated) cannot be timed and is counted apart.
   const firstTouch = (c) => (touchesOf.get(c.id) || []).find((a) => String(a.created_at) >= String(c.created_at)) || null
   const hours = []
   let followed = 0
   let within24 = 0
+  let untimed = 0
   for (const c of main.leads) {
     const t = firstTouch(c)
     if (!t) continue
     followed++
+    if (c.inquiry && c.entered && c.inquiry < c.entered) { untimed++; continue }
     const h = (new Date(t.created_at).getTime() - new Date(c.created_at).getTime()) / 3600000
     if (Number.isFinite(h)) { hours.push(h); if (h <= 24) within24++ }
   }
-  const handling = { leads: main.leads.length, followed, followedPct: pct(followed, main.leads.length), medianHours: median(hours), within24, within24Pct: pct(within24, hours.length) }
+  const handling = { leads: main.leads.length, followed, followedPct: pct(followed, main.leads.length), medianHours: median(hours), within24, within24Pct: pct(within24, hours.length), timed: hours.length, untimed }
 
   // Close rate: of this period's new leads, how many are Ordered now
   const orderedNow = main.leads.filter((c) => c.group === 'ordered').length
@@ -361,8 +403,12 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
 
   // Numbers to check (each one can make a number above wrong)
   const orderedNoDate = clients.filter((c) => c.group === 'ordered' && !c.order_day)
-  const soldFromOther = main.soldList.filter((s) => s.sale.from !== 'sold')
-  const soldQuoteNotOrdered = clients.filter((c) => c.group !== 'ordered' && (quotesOf.get(c.id) || []).some((q) => q.status === 'deposit_paid' || q.status === 'revised'))
+  const soldFromOther = main.soldList.filter((s) => s.sale.from === 'starred' || s.sale.from === 'newest')
+  const soldNoPrice = main.soldList.filter((s) => s.sale.from == null || s.sale.from === 'sold-unpriced')
+  const multiSold = main.soldList.filter((s) => s.sale.soldCount > 1)
+  const soldQuoteNotOrdered = clients.filter((c) => c.group !== 'ordered' && (allQuotesOf.get(c.id) || []).some((q) => FIRM_SOLD.has(q.status)))
+  // "Pending Deposit" shows as Ordered elsewhere in the CRM; here it is open (not marked Ordered)
+  const depositPending = clients.filter((c) => c.status === 'deposit_pending')
   const unknownStatus = clients.filter((c) => c.group === 'other')
   const noSource = main.leads.filter((c) => !c.source)
   const dupes = []
@@ -382,6 +428,7 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
     period: p,
     generatedAt: now,
     tracked,
+    depositsSince,
     main: { leadsIn: main.leadsIn, customersQuoted: main.customersQuoted, quotesMade: main.quotesMade, revisions: main.revisions, quotedValue: main.quotedValue, sold: main.sold, soldValue: main.soldValue, soldNoAmount: main.soldNoAmount, deposits: main.deposits, depositCount: main.depositCount, avgDeal: main.sold - main.soldNoAmount ? main.soldValue / (main.sold - main.soldNoAmount) : null, lost: lostIds.size },
     prevAvgLeads,
     closeRate,
@@ -396,12 +443,17 @@ export function computePerformance(data, p, { today, now = Date.now() } = {}) {
     deals: main.soldList.map((s) => ({
       id: s.c.id, name: s.c.name, rep: nameOf(s.c.person), orderDay: s.c.order_day, amount: s.sale.amount, amountFrom: s.sale.from,
       quoteNumber: s.sale.quote?.quote_number || null,
-      deposit: deposits.filter((x) => x.client_id === s.c.id).reduce((t, x) => t + x.amount, 0),
+      // every deposit on file for the lead, any date (the period's deposits are listed in depositRows)
+      depositAll: deposits.filter((x) => x.client_id === s.c.id).reduce((t, x) => t + x.amount, 0),
+      multiSold: s.sale.soldCount > 1,
     })).sort((a, b) => String(a.orderDay).localeCompare(String(b.orderDay))),
     depositRows: main.depositList.map((x) => ({ id: x.id, clientId: x.client_id, name: byId.get(x.client_id)?.name, day: x.day, amount: x.amount, method: x.method || null })).sort((a, b) => String(a.day).localeCompare(String(b.day))),
     checks: {
       orderedNoDate: orderedNoDate.map((c) => ({ id: c.id, name: c.name })),
       soldFromOther: soldFromOther.map((s) => ({ id: s.c.id, name: s.c.name, from: s.sale.from })),
+      soldNoPrice: soldNoPrice.map((s) => ({ id: s.c.id, name: s.c.name, from: s.sale.from })),
+      multiSold: multiSold.map((s) => ({ id: s.c.id, name: s.c.name, count: s.sale.soldCount })),
+      depositPending: depositPending.map((c) => ({ id: c.id, name: c.name, ordered: !!c.order_day })),
       soldQuoteNotOrdered: soldQuoteNotOrdered.map((c) => ({ id: c.id, name: c.name, status: c.status })),
       unknownStatus: unknownStatus.map((c) => ({ id: c.id, name: c.name, status: c.status })),
       noSource: noSource.length,

@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseDepositAmount } from '../src/lib/payments.js'
-import { buildPerformanceHtml } from '../src/lib/perfReportHtml.js'
+import { buildPerformanceHtml, reportChecks } from '../src/lib/perfReportHtml.js'
 import { computePerformance, periodFor } from '../src/lib/perfStats.js'
 
 test('deposit amounts: what a rep types', () => {
@@ -43,4 +43,27 @@ test('before the deposit update the report says "Not tracked yet", never $0', ()
   const r = computePerformance({ ...data, payments: null }, periodFor('this_week', '2026-10-16'), { today: '2026-10-16' })
   const html = buildPerformanceHtml(r)
   assert.ok(html.includes('Not tracked yet'))
+})
+
+test('the report styles are its own (in the web CRM they sit next to the CRM styles)', () => {
+  const r = computePerformance(data, periodFor('this_week', '2026-10-16'), { today: '2026-10-16' })
+  const html = buildPerformanceHtml(r)
+  const css = html.slice(html.indexOf('<style>') + 7, html.indexOf('</style>'))
+  for (const line of css.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('@page'))) {
+    assert.ok(line.startsWith('.prdoc'), `unscoped rule: ${line.slice(0, 60)}`)
+  }
+  assert.ok(!/class="(tile|tiles|head|brand|title|bar|mini|summary|two)"/.test(html), 'no class names the CRM also uses')
+  assert.ok(html.includes('class="prdoc"'))
+})
+
+test('the report lists every check the page lists', () => {
+  const c = {
+    orderedNoDate: [{ id: 1, name: 'A' }], soldQuoteNotOrdered: [{ id: 2, name: 'B' }], soldFromOther: [{ id: 3, name: 'C' }], soldNoPrice: [{ id: 4, name: 'D' }],
+    multiSold: [{ id: 5, name: 'E' }], depositPending: [{ id: 6, name: 'F' }], unknownStatus: [{ id: 7, name: 'G', status: 'weird' }], unknownRep: [{ id: 8, name: 'H' }],
+    dupes: [{ ids: [1, 9], names: ['A', 'I'] }], testLeads: [{ id: 10, name: 'Test <x>' }],
+  }
+  const lines = reportChecks(c)
+  assert.equal(lines.length, 10)
+  assert.ok(lines.some((l) => l.includes('G (weird)')))
+  assert.ok(lines.some((l) => l.includes('Test &lt;x&gt;')))
 })

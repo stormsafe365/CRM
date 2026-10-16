@@ -63,7 +63,7 @@ export async function loadPerformance(sb) {
     readFirst(sb, 'quotes', [`${QUOTE_COLS}, deleted_at, starred`, `${QUOTE_COLS}, deleted_at`, `${QUOTE_COLS}, starred`, QUOTE_COLS]),
     readAll(sb, 'activities', 'id, client_id, type, created_by, created_at, kind:metadata->>kind', (q) => q.in('type', TOUCH_TYPES).not('created_by', 'is', null)),
     readAll(sb, 'activities', 'id, client_id, created_by, created_at, to:metadata->>to', (q) => q.eq('type', 'status_change').not('created_by', 'is', null)),
-    readAll(sb, 'payments', 'id, client_id, kind, amount, received_on, method, deleted_at'),
+    readAll(sb, 'payments', 'id, client_id, kind, amount, received_on, method, deleted_at, created_at'),
   ])
   if (users.error) return fail('the reps', users.error)
   if (clients.error) return fail('the leads', clients.error)

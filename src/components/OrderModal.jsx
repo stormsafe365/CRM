@@ -73,14 +73,17 @@ export default function OrderModal({ client, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const editing = client.status === 'ordered' || !!client.order_date
   // Deposit received (owner 10/16/26: tracked for the Performance page; table 022)
-  const [deps, setDeps] = useState(null) // null = loading · 'missing' = 022 not run · [] / rows
+  const [deps, setDeps] = useState(null) // null = loading · 'missing' = 022 not run · 'error' = could not read · rows
   const [depAmount, setDepAmount] = useState('')
-  const [depDate, setDepDate] = useState('') // '' = the order date
+  // a NEW order: the deposit is dated the order date unless changed; a deposit added to an existing
+  // order later needs its own date picked (it is never back-dated to the old order date by itself)
+  const [depDate, setDepDate] = useState('')
+  const depDefault = editing ? '' : orderDate
   const [depMethod, setDepMethod] = useState('')
   useEffect(() => {
     let alive = true
     supabase.from('payments').select('id, amount, received_on, method').eq('client_id', client.id).is('deleted_at', null).order('received_on', { ascending: true })
-      .then(({ data, error }) => { if (alive) setDeps(error ? (tableMissing(error) ? 'missing' : []) : data || []) })
+      .then(({ data, error }) => { if (alive) setDeps(error ? (tableMissing(error) ? 'missing' : 'error') : data || []) })
     return () => { alive = false }
   }, [client.id])
   async function removeDeposit(d) {
@@ -99,7 +102,10 @@ export default function OrderModal({ client, onClose, onSaved }) {
     if (!orderDate) { setErr('Pick an order date.'); return }
     const dep = depAmount.trim() ? parseDepositAmount(depAmount) : null
     if (depAmount.trim() && dep == null) { setErr('Deposit received: type the amount, e.g. 5100 or 5,100.50.'); return }
-    const depOn = depDate || orderDate
+    const depOn = depDate || depDefault
+    if (dep != null && !depOn) { setErr('Deposit received: pick the date the money came in.'); return }
+    if (dep != null && depOn > isoToday()) { setErr('Deposit received: the date is in the future.'); return }
+    if (saving) return
     setSaving(true); setErr('')
     const patch = {
       status: 'ordered',
@@ -124,16 +130,22 @@ export default function OrderModal({ client, onClose, onSaved }) {
         : error.message)
       return
     }
+    // the order is saved: the page behind shows it now (callers only refresh here; this dialog closes
+    // itself below, and stays open with the message if the deposit did not save)
     onSaved?.(patch)
     if (dep != null && Array.isArray(deps)) {
       const { data: row, error: e2 } = await supabase.from('payments')
         .insert({ client_id: client.id, kind: 'deposit', amount: dep, received_on: depOn, method: depMethod || null })
         .select('id, amount, received_on, method').single()
-      setSaving(false)
-      if (e2) { setErr(`The order is saved, but the deposit did not save: ${e2.message}. Try Save again.`); return }
+      if (e2) {
+        setSaving(false)
+        setErr(`The order is saved, but the deposit did not save: ${e2.message}. Press Save again to retry the deposit.`)
+        return
+      }
       setDeps((list) => [...(Array.isArray(list) ? list : []), row])
       setDepAmount('')
-    } else setSaving(false)
+    }
+    setSaving(false)
     onClose()
   }
 
@@ -217,6 +229,7 @@ export default function OrderModal({ client, onClose, onSaved }) {
             <span className="fum-label">Deposit received</span>
             {deps === null ? <div className="muted" style={{ fontSize: 12.5 }}>Loading deposits…</div>
               : deps === 'missing' ? <div className="muted" style={{ fontSize: 12.5 }}>Deposit tracking needs the one-time database update (022_payments.sql). The order still saves.</div>
+              : deps === 'error' ? <div className="fum-err">Could not load the deposits on file. Close and reopen this before adding one (so nothing is entered twice). The order still saves.</div>
               : (
                 <>
                   {deps.length > 0 && (
@@ -237,7 +250,7 @@ export default function OrderModal({ client, onClose, onSaved }) {
                     </label>
                     <label className="fum-field">
                       <span className="fum-label">Date received</span>
-                      <input type="date" value={depDate || orderDate} onChange={(e) => setDepDate(e.target.value)} />
+                      <input type="date" value={depDate || depDefault} max={isoToday()} onChange={(e) => setDepDate(e.target.value)} />
                     </label>
                     <label className="fum-field">
                       <span className="fum-label">Paid by</span>

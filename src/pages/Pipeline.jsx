@@ -143,7 +143,8 @@ export default function Pipeline() {
         <OrderModal
           client={orderClient}
           onClose={() => setOrderClient(null)}
-          onSaved={() => { setOrderClient(null); load() }}
+          // refresh only: the dialog closes itself once everything (order + deposit) saved
+          onSaved={() => load()}
         />
       )}
     </div>
