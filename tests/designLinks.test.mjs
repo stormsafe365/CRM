@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import {
   newToken, designLinkUrl, designLinkMessage, isMissingTable, createDesignLink, matchLeads, safeImage, designSummary,
   escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns, searchTerm, pickerList, attachDesign, sameSender,
+  sharedLinkMessage, sharedLabelOk, sharedFrom,
 } from '../src/lib/designLinks.js'
 
 test('tokens: 24 URL-safe characters the database accepts, never repeating', () => {
@@ -147,7 +148,7 @@ test('attachDesign: only an unassigned design moves; its link follows the lead; 
   const upd = calls.find((c) => c.t === 'design_requests')
   assert.deepEqual(upd.ops.filter((o) => o[0] !== 'update' && o[0] !== 'select'), [['eq', 'id', 'd1'], ['is', 'client_id', null]])
   // the link follows the lead (also a link whose lead went to Trash)
-  const link = calls.find((c) => c.t === 'design_links')
+  const link = calls.find((c) => c.t === 'design_links' && c.ops[0][0] === 'update')
   assert.deepEqual(link.ops, [['update', { client_id: 'C2' }], ['eq', 'token', 'TOKEN_abcdefghijklmnop']])
   // the same customer's other waiting sends from that link go with it (never a removed one, never another sender)
   const read = calls.filter((c) => c.t === 'design_requests')[1]
@@ -156,6 +157,10 @@ test('attachDesign: only an unassigned design moves; its link follows the lead; 
   assert.deepEqual(move.ops.slice(0, 3), [['update', { client_id: 'C2' }], ['in', 'id', ['d7']], ['is', 'client_id', null]])
   const act = calls.find((c) => c.t === 'activities')
   assert.ok(act.ops[0][1].body.includes('sent by "Pat" (+1 more from the same link)'), act.ops[0][1].body)
+  // a design from a SHARED link (contractor / Facebook): the link is never tied to the lead
+  calls.length = 0
+  await attachDesign(sb([{ id: 'd1' }]), { id: 'd1', name: 'Pat', link_token: 'TOKEN_abcdefghijklmnop', design_links: { kind: 'shared', label: 'ABC Concrete' } }, 'C2', 'U1')
+  assert.equal(calls.filter((c) => c.t === 'design_links').length, 0)
   calls.length = 0
   await assert.rejects(attachDesign(sb([]), { id: 'd1', name: 'Pat' }, 'C3', 'U2'), (e) => e.alreadyAttached === true)
   assert.equal(calls.filter((c) => c.t === 'activities').length, 0) // nothing written for the race loser
@@ -167,4 +172,32 @@ test('sameSender: phone, email or name', () => {
   assert.ok(sameSender({ name: 'Pat Sample' }, { name: ' pat sample ' }))
   assert.ok(!sameSender({ name: 'Pat', phone: '5615550100' }, { name: 'Sam', phone: '7725550199' }))
   assert.ok(!sameSender({}, {}))
+})
+
+test('shared links: the message, the name rule, "From:"', () => {
+  const m = sharedLinkMessage({ url: 'https://x/?t=1' })
+  assert.match(m, /Send to my steel building rep/)
+  assert.doesNotMatch(m, /crm/i)
+  assert.doesNotMatch(m, /^Hi /)
+  assert.ok(sharedLabelOk('ABC Concrete'))
+  assert.ok(sharedLabelOk("Mike's Concrete & Pavers"))
+  assert.ok(!sharedLabelOk(''))
+  assert.ok(!sharedLabelOk('<b>x</b>'))
+  assert.ok(!sharedLabelOk('x'.repeat(81)))
+  assert.equal(sharedFrom({ design_links: { kind: 'shared', label: 'Facebook Messenger' } }), 'Facebook Messenger')
+  assert.equal(sharedFrom({ design_links: { kind: 'lead', label: null } }), '')
+  assert.equal(sharedFrom({}), '')
+})
+
+test('createDesignLink: a shared link carries its kind, name and 2-year end; friendly error before 021', async () => {
+  const rows = []
+  const sb = { from: () => ({ insert: async (row) => { rows.push(row); return { error: null } } }) }
+  await createDesignLink(sb, { userId: 'U1', kind: 'shared', label: '  ABC Concrete ' })
+  assert.equal(rows[0].kind, 'shared')
+  assert.equal(rows[0].label, 'ABC Concrete')
+  assert.equal(rows[0].client_id, null)
+  const days = (new Date(rows[0].expires_at) - Date.now()) / 86400000
+  assert.ok(days > 729 && days < 731, String(days))
+  const sbOld = { from: () => ({ insert: async () => ({ error: { code: 'PGRST204', message: "Could not find the 'kind' column of 'design_links' in the schema cache" } }) }) }
+  await assert.rejects(createDesignLink(sbOld, { kind: 'shared', label: 'X' }), /021_design_links_shared/)
 })

@@ -43,16 +43,59 @@ export function isMissingTable(error) {
 
 export const MISSING_TABLE_TEXT = 'Design links need the one-time database update first (db/migrations/020_design_links.sql in the Supabase SQL editor).'
 
-/** Make a link for a lead (clientId null = not tied to a lead yet; the design shows under Leads › Customer designs). */
-export async function createDesignLink(sb, { clientId = null, userId = null, rand } = {}) {
+export const SHARED_MISSING_TEXT = 'Shared links need the one-time database update first (db/migrations/021_design_links_shared.sql in the Supabase SQL editor).'
+/** Days a shared link works (contractors / Facebook pass it around for a long time). */
+export const SHARED_LINK_DAYS = 730
+
+/**
+ * Make a link. kind 'lead': one person (clientId = their lead, or null = not a
+ * lead yet). kind 'shared' (owner 10/16/26): passed around by a concrete
+ * contractor / Facebook Messenger to many people - a name (label), never tied
+ * to a lead, 2 years (migration 021).
+ */
+export async function createDesignLink(sb, { clientId = null, userId = null, kind = 'lead', label = '', rand } = {}) {
   const token = newToken(rand)
-  const { error } = await sb.from('design_links').insert({ token, client_id: clientId, created_by: userId })
+  const shared = kind === 'shared'
+  const row = shared
+    ? { token, client_id: null, created_by: userId, kind: 'shared', label: String(label).trim().slice(0, 80), expires_at: new Date(Date.now() + SHARED_LINK_DAYS * 86400000).toISOString() }
+    : { token, client_id: clientId, created_by: userId }
+  const { error } = await sb.from('design_links').insert(row)
   if (error) {
-    const e = new Error(isMissingTable(error) ? MISSING_TABLE_TEXT : error.message || 'Could not make the link.')
-    e.missingTable = isMissingTable(error)
+    const m = String(error.message || '')
+    const sharedMissing = shared && (error.code === '42703' || /'?(kind|label)'? column|column .*(kind|label)/i.test(m))
+    const e = new Error(sharedMissing ? SHARED_MISSING_TEXT : isMissingTable(error) ? MISSING_TABLE_TEXT : m || 'Could not make the link.')
+    e.missingTable = !sharedMissing && isMissingTable(error)
     throw e
   }
   return { token, url: designLinkUrl(token) }
+}
+
+/** The text to post / send with a shared link (no name: it goes to many people). */
+export function sharedLinkMessage({ url }) {
+  return `Design your steel building in 3D: pick the size, walls, doors, windows and colors, then tap "Send to my steel building rep" and it comes straight to StormSafe Steel. No prices on it; we'll put your quote together from your design.\n\n${url}`
+}
+
+/** A shared link's name: letters, numbers and simple punctuation, 1-80 characters (same rule as the database). */
+export const sharedLabelOk = (s) => { const t = String(s || '').trim(); return t.length >= 1 && t.length <= 80 && !/[<>"`]/.test(t) }
+
+/** Shared links (newest first), with how many designs came from each. { links, missing } */
+export async function loadSharedLinks(sb) {
+  const { data, error } = await sb.from('design_links').select('token, label, created_at, expires_at, revoked_at')
+    .eq('kind', 'shared').order('created_at', { ascending: false }).limit(100)
+  if (error) return { links: [], missing: true, error }
+  const tokens = (data || []).map((l) => l.token)
+  const counts = new Map()
+  if (tokens.length) {
+    const { data: reqs } = await sb.from('design_requests').select('link_token').in('link_token', tokens)
+    for (const r of reqs || []) counts.set(r.link_token, (counts.get(r.link_token) || 0) + 1)
+  }
+  return { links: (data || []).map((l) => ({ ...l, url: designLinkUrl(l.token), designs: counts.get(l.token) || 0 })), missing: false }
+}
+
+/** Turn a shared link off (its page then says the link is not active), or back on. */
+export async function setSharedLinkOff(sb, token, off) {
+  const { error } = await sb.from('design_links').update({ revoked_at: off ? new Date().toISOString() : null }).eq('token', token).eq('kind', 'shared')
+  if (error) throw error
 }
 
 /** Timeline entry on the lead: who made the link (the customer's send adds its own entry). */
@@ -68,11 +111,22 @@ export async function logDesignLink(sb, { clientId, userId, url }) {
 }
 
 const LIST_COLS = 'id, created_at, link_token, client_id, name, phone, email, zip, notes, spec, image, status, design'
+// + the link each design came from (kind / name) - migration 021; without it the plain list is used
+const LIST_WITH_LINK = `${LIST_COLS}, design_links(kind, label)`
+
+/** A design list query with the link's kind / name when the database has them (021), else without. */
+async function listQuery(sb, build) {
+  let r = await build(sb.from('design_requests').select(LIST_WITH_LINK))
+  if (r.error && (r.error.code === '42703' || /(kind|label)/i.test(String(r.error.message || '')))) r = await build(sb.from('design_requests').select(LIST_COLS))
+  return r
+}
+
+/** "From ABC Concrete" for a design that came from a shared link, else ''. */
+export const sharedFrom = (d) => (d && d.design_links && d.design_links.kind === 'shared' ? String(d.design_links.label || 'a shared link') : '')
 
 /** A lead's received designs, newest first. { rows, missing } */
 export async function loadClientDesigns(sb, clientId) {
-  const { data, error } = await sb.from('design_requests').select(LIST_COLS)
-    .eq('client_id', clientId).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(10)
+  const { data, error } = await listQuery(sb, (q) => q.eq('client_id', clientId).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(10))
   if (error) return { rows: [], missing: isMissingTable(error), error }
   return { rows: data || [], missing: false }
 }
@@ -114,7 +168,17 @@ export async function attachDesign(sb, design, clientId, userId) {
   }
   let more = 0
   if (design.link_token) {
-    try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
+    // a SHARED link (contractor / Facebook) stays shared: it is never tied to one lead
+    let shared = design.design_links ? design.design_links.kind === 'shared' : false
+    if (!design.design_links) {
+      try {
+        const { data: lk, error: le } = await sb.from('design_links').select('kind').eq('token', design.link_token).maybeSingle()
+        shared = !le && !!lk && lk.kind === 'shared'
+      } catch { /* before 021 there are no shared links */ }
+    }
+    if (!shared) {
+      try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
+    }
     // the same customer's other waiting sends from this link go with it (same phone / email / name;
     // never a removed one, never someone else the link was forwarded to)
     try {
@@ -228,16 +292,18 @@ export const DESIGN_VIEWS = [
   { key: 'waiting', label: 'Not on a lead' },
   { key: 'all', label: 'All' },
   { key: 'removed', label: 'Removed' },
+  { key: 'shared', label: 'Shared links' },
 ]
 
 /** One view of the designs, newest first. { rows, missing, error } */
 export async function loadDesigns(sb, view = 'new', limit = 30) {
-  let req = sb.from('design_requests').select(LIST_COLS)
-  if (view === 'new') req = req.eq('status', 'new')
-  else if (view === 'waiting') req = req.is('client_id', null).neq('status', 'dismissed')
-  else if (view === 'removed') req = req.eq('status', 'dismissed')
-  else req = req.neq('status', 'dismissed')
-  const { data, error } = await req.order('created_at', { ascending: false }).limit(limit)
+  const { data, error } = await listQuery(sb, (req) => {
+    if (view === 'new') req = req.eq('status', 'new')
+    else if (view === 'waiting') req = req.is('client_id', null).neq('status', 'dismissed')
+    else if (view === 'removed') req = req.eq('status', 'dismissed')
+    else req = req.neq('status', 'dismissed')
+    return req.order('created_at', { ascending: false }).limit(limit)
+  })
   if (error) return { rows: [], missing: isMissingTable(error), error }
   return { rows: data || [], missing: false }
 }

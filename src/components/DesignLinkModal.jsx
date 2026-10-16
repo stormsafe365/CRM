@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { useUsers } from '../lib/useUsers'
 import { useLeadSearch } from '../lib/useLeadSearch'
 import { toast } from '../lib/uiFx'
-import { createDesignLink, designLinkMessage, logDesignLink } from '../lib/designLinks'
+import { createDesignLink, designLinkMessage, logDesignLink, sharedLinkMessage, sharedLabelOk, SHARED_LINK_DAYS } from '../lib/designLinks'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
@@ -42,11 +42,15 @@ async function copyText(text, what) {
   }
 }
 
-export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 }) {
+// shared: open straight on the shared-link step (contractor / Facebook - many people; owner 10/16/26).
+// onMade(link) is told when a link was made.
+export default function DesignLinkModal({ client = null, onClose, zIndex = 1300, shared: startShared = false, onMade }) {
   const { user } = useAuth()
   const { users } = useUsers()
   const [lead, setLead] = useState(client)          // the lead the link is for (null = pick / none)
-  const [picking, setPicking] = useState(!client)
+  const [picking, setPicking] = useState(!client && !startShared)
+  const [sharedMode, setSharedMode] = useState(!client && startShared) // a shared link (many people)
+  const [label, setLabel] = useState('')
   const [search, setSearch] = useState('')
   const [link, setLink] = useState(null)            // { token, url }
   const [msg, setMsg] = useState('')
@@ -63,16 +67,19 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
   // The message follows the lead / rep name (the user list may load after the
   // link) until the rep edits it.
   useEffect(() => {
-    if (link && !msgEdited) setMsg(designLinkMessage({ clientName: lead?.name, repName: repFirst, url: link.url }))
-  }, [link, lead, repFirst, msgEdited])
+    if (link && !msgEdited) setMsg(sharedMode ? sharedLinkMessage({ url: link.url }) : designLinkMessage({ clientName: lead?.name, repName: repFirst, url: link.url }))
+  }, [link, lead, repFirst, msgEdited, sharedMode])
 
-  async function make(forLead) {
+  async function make(forLead, sharedLabel) {
     if (madeRef.current) return
     madeRef.current = true
     setBusy(true); setErr('')
     try {
-      const l = await createDesignLink(supabase, { clientId: forLead?.id ?? null, userId: user?.id ?? null })
+      const l = sharedLabel
+        ? await createDesignLink(supabase, { userId: user?.id ?? null, kind: 'shared', label: sharedLabel })
+        : await createDesignLink(supabase, { clientId: forLead?.id ?? null, userId: user?.id ?? null })
       setLink(l)
+      try { onMade?.(l) } catch { /* the caller's refresh is best-effort */ }
       try { await logDesignLink(supabase, { clientId: forLead?.id, userId: user?.id, url: l.url }) } catch { /* timeline entry is best-effort */ }
     } catch (e) {
       madeRef.current = false
@@ -96,10 +103,12 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
   const head = (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
       <div>
-        <div style={{ fontSize: 16, fontWeight: 800 }}>Send design link</div>
+        <div style={{ fontSize: 16, fontWeight: 800 }}>{sharedMode ? 'Shared design link' : 'Send design link'}</div>
         <div style={MUTED}>
           {lead ? <>For <b style={{ color: 'var(--fg, #e2e8f0)' }}>{lead.name}</b>. </> : null}
-          The customer designs the building in 3D (no prices) and taps “Send to my steel building rep”.
+          {sharedMode
+            ? 'For a concrete contractor, a Facebook post or chat - one link for many people. Each person designs their building (no prices) and taps “Send to my steel building rep”; every design lands on Customer Designs.'
+            : 'The customer designs the building in 3D (no prices) and taps “Send to my steel building rep”.'}
           {lead ? ' It shows on this lead under Customer Designs.' : ''}
         </div>
       </div>
@@ -125,8 +134,26 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
             ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 12 }}>
-          <span style={MUTED}>Not a lead yet? The design will wait under Leads › Customer designs.</span>
+          <span style={MUTED}>One person who is not a lead yet? The design waits on Customer Designs.</span>
           <button type="button" className="btn-secondary" onClick={() => { setPicking(false); make(null) }}>No lead yet: make the link</button>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 10 }}>
+          <span style={MUTED}>A contractor or a Facebook post / chat - many people on one link?</span>
+          <button type="button" className="btn-secondary" onClick={() => { setPicking(false); setSharedMode(true) }}>Shared link</button>
+        </div>
+      </>
+    )
+  } else if (sharedMode && !link) {
+    const okName = sharedLabelOk(label)
+    body = (
+      <>
+        <label style={LBL} htmlFor="dl-label">Name it: who will share it?</label>
+        <input id="dl-label" style={FIELD} autoFocus maxLength={80} placeholder="e.g. ABC Concrete, Facebook Messenger" value={label} onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && okName && !busy) make(null, label.trim()) }} />
+        <div style={{ ...MUTED, marginTop: 6 }}>Every design from this link shows "From: {label.trim() || 'this name'}". The link works for {Math.round(SHARED_LINK_DAYS / 365)} years; turn it off any time under Customer Designs › Shared links.</div>
+        {label && !okName ? <div style={{ color: '#f0883e', fontSize: 12.5, marginTop: 6 }}>Please use letters, numbers and simple punctuation (up to 80).</div> : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn-primary" disabled={!okName || busy} onClick={() => make(null, label.trim())}>{busy ? 'Making the link…' : 'Make the shared link'}</button>
         </div>
       </>
     )
@@ -137,7 +164,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
     const email = lead?.email
     body = (
       <>
-        <label style={LBL} htmlFor="dl-url">Their link</label>
+        <label style={LBL} htmlFor="dl-url">{sharedMode ? `Shared link: ${label.trim()}` : 'Their link'}</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <input id="dl-url" style={{ ...FIELD, fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 12.5 }} readOnly value={link.url} onFocus={(e) => e.target.select()} />
           <button type="button" className="btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={() => copyText(link.url, 'Link')}>Copy link</button>
@@ -161,7 +188,9 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
         </div>
         <div style={{ ...MUTED, marginTop: 10 }}>
           {phone ? 'Text in RingCentral copies the message first: paste it into the text. ' : ''}
-          The link works for 120 days. Nothing is sent until you send it.
+          {sharedMode
+            ? `Give it to the contractor or post it. It works for ${Math.round(SHARED_LINK_DAYS / 365)} years; each design shows up on Customer Designs (not on a lead yet).`
+            : 'The link works for 120 days. Nothing is sent until you send it.'}
         </div>
       </>
     )

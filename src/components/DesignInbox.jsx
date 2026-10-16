@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
 import { isoToday } from '../lib/followups'
 import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
-import { attachDesign, markDesign, matchLeads, escHtml } from '../lib/designLinks'
+import { attachDesign, markDesign, matchLeads, escHtml, sharedFrom } from '../lib/designLinks'
 import { useLeadSearch } from '../lib/useLeadSearch'
 import { DesignItem } from './CustomerDesignsCard'
 
@@ -132,6 +132,7 @@ export function DesignInboxRow({ d, leadName, onDone }) {
     <div>
       <div style={{ ...MUTED, marginTop: 12, marginBottom: -6 }}>
         {onLead ? <>On lead <b style={{ color: 'var(--fg, #e2e8f0)' }}>{leadName || '…'}</b></> : <span style={{ color: '#f0883e', fontWeight: 600 }}>Not on a lead yet</span>}
+        {sharedFrom(d) ? <> · From: <b style={{ color: 'var(--fg, #e2e8f0)' }}>{sharedFrom(d)}</b> (shared link)</> : null}
       </div>
       <DesignItem d={d} onChanged={onDone} actions={actions} />
       {attaching ? <AttachPicker design={d} busy={busy} onPick={attachTo} onCancel={() => setAttaching(false)} /> : null}

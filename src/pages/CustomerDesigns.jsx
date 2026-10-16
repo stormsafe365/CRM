@@ -11,12 +11,64 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { DESIGN_VIEWS, loadDesigns, loadLeadNames, MISSING_TABLE_TEXT } from '../lib/designLinks'
+import { DESIGN_VIEWS, loadDesigns, loadLeadNames, MISSING_TABLE_TEXT, loadSharedLinks, setSharedLinkOff, SHARED_MISSING_TEXT, escHtml } from '../lib/designLinks'
+import { toast } from '../lib/uiFx'
 import { useDesignCounts } from '../lib/useDesignCounts'
 import { DesignInboxRow } from '../components/DesignInbox'
 import DesignLinkModal from '../components/DesignLinkModal'
 
 const PAGE = 30
+const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
+const when = (iso) => { try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return '—' } }
+
+/** Shared links (contractors / Facebook): name, when made, how many designs, Copy link, Turn off / on. */
+function SharedLinks({ onNew, reloadKey }) {
+  const [state, setState] = useState({ links: null, missing: false })
+  const load = async () => setState(await loadSharedLinks(supabase))
+  useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reloadKey])
+  async function copy(url) {
+    try { await navigator.clipboard.writeText(url); toast('Link copied', 'success') } catch { window.prompt('Copy the link:', url) }
+  }
+  async function toggle(l) {
+    const off = !l.revoked_at
+    if (off && !window.confirm(`Turn off the shared link "${l.label}"? Anyone who opens it after this sees that the link is not active.`)) return
+    try { await setSharedLinkOff(supabase, l.token, off); load() } catch (e) { toast(escHtml(e.message || 'Could not change the link.')) }
+  }
+  const { links, missing } = state
+  return (
+    <section className="tile" style={{ padding: '14px 18px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={MUTED}>One link for many people: give it to a concrete contractor, or post it on Facebook / Messenger. Every design from it lands here, marked with the link's name.</div>
+        <button type="button" className="btn-primary" onClick={onNew}>New shared link</button>
+      </div>
+      {missing ? <div className="list-empty">{SHARED_MISSING_TEXT}</div>
+        : links === null ? <div className="muted" style={{ padding: 16 }}>Loading…</div>
+        : links.length === 0 ? <div className="list-empty">No shared links yet.</div>
+        : (
+          <table className="dt" style={{ marginTop: 10 }}>
+            <thead><tr><th>Name</th><th>Made</th><th>Designs</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {links.map((l) => {
+                const expired = new Date(l.expires_at) < new Date()
+                return (
+                  <tr key={l.token}>
+                    <td><b>{l.label}</b></td>
+                    <td className="num">{when(l.created_at)}</td>
+                    <td className="num">{l.designs}</td>
+                    <td>{l.revoked_at ? 'Off' : expired ? 'Expired' : `On until ${when(l.expires_at)}`}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5, marginRight: 6 }} onClick={() => copy(l.url)} disabled={!!l.revoked_at || expired}>Copy link</button>
+                      <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => toggle(l)}>{l.revoked_at ? 'Turn on' : 'Turn off'}</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+    </section>
+  )
+}
 
 export default function CustomerDesigns() {
   const [params, setParams] = useSearchParams()
@@ -26,13 +78,15 @@ export default function CustomerDesigns() {
   const [limit, setLimit] = useState(PAGE)
   const [error, setError] = useState('')
   const [missing, setMissing] = useState(false)
-  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false) // false | 'any' | 'shared'
+  const [sharedReload, setSharedReload] = useState(0)
   const { fresh, waiting } = useDesignCounts()
   const runRef = useRef(0)
 
   useEffect(() => { setLimit(PAGE); setRows(null) }, [view])
 
   useEffect(() => {
+    if (view === 'shared') return undefined // the Shared links tab loads its own list
     let alive = true
     async function load() {
       const my = ++runRef.current
@@ -75,7 +129,7 @@ export default function CustomerDesigns() {
           </div>
         </div>
         <div className="right">
-          <button type="button" className="btn btn-primary" onClick={() => setLinkOpen(true)} title="Send someone a design link: pick a lead, or send it before they are a lead">
+          <button type="button" className="btn btn-primary" onClick={() => setLinkOpen('any')} title="Send someone a design link: pick a lead, one person who is not a lead yet, or a shared link for a contractor / Facebook">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             New design link
           </button>
@@ -93,6 +147,7 @@ export default function CustomerDesigns() {
 
       {error ? <div className="error-banner">{error}</div> : null}
 
+      {view === 'shared' ? <SharedLinks reloadKey={sharedReload} onNew={() => setLinkOpen('shared')} /> : (
       <section className="tile" style={{ padding: '4px 18px 16px' }}>
         {missing ? (
           <div className="list-empty">{MISSING_TABLE_TEXT}</div>
@@ -111,8 +166,9 @@ export default function CustomerDesigns() {
           </>
         )}
       </section>
+      )}
 
-      {linkOpen ? <DesignLinkModal onClose={() => setLinkOpen(false)} /> : null}
+      {linkOpen ? <DesignLinkModal shared={linkOpen === 'shared'} onMade={() => setSharedReload((n) => n + 1)} onClose={() => setLinkOpen(false)} /> : null}
     </>
   )
 }
