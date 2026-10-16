@@ -21,6 +21,8 @@ import ActivityProgress from '../components/ActivityProgress'
 import FollowUpsCard from '../components/FollowUpsCard'
 import OrderTimeline from '../components/OrderTimeline'
 import LeadTempSlider from '../components/LeadTempSlider'
+import DesignLinkModal from '../components/DesignLinkModal'
+import CustomerDesignsCard from '../components/CustomerDesignsCard'
 
 // "Click to text": open the RingCentral desktop app's SMS composer with the
 // number prefilled (rcapp:// is the scheme the RingCentral app registers).
@@ -85,6 +87,7 @@ export default function ClientDetail() {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [buildingQuote, setBuildingQuote] = useState(false) // "Build Quote" — shared by QuotesTab + Document Hub menu
   const [ordering, setOrdering] = useState(false) // "Mark as Ordered" → OrderModal
+  const [designLink, setDesignLink] = useState(false) // "Send design link" → DesignLinkModal (owner 10/16/26)
 
   useEffect(() => {
     let cancelled = false
@@ -263,6 +266,11 @@ export default function ClientDetail() {
           )}
           {addr && <div className="cp-crow">{stroke(<><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>)}<span>{addr}</span></div>}
           {client.source && <div className="cp-source">Lead Source · <b>{sourceLabel(client.source)}</b></div>}
+          <button type="button" className="btn-secondary cp-design-link" onClick={() => setDesignLink(true)}
+            title="Send this customer a link to design their building in 3D (no prices). What they send shows here under Customer Designs."
+            style={{ marginTop: 12, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {stroke(<><path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></>)}Send design link
+          </button>
         </div>
 
         <div className="cp-block">
@@ -367,6 +375,8 @@ export default function ClientDetail() {
 
         {client.status === 'ordered' && <OrderTimeline client={client} />}
 
+        <CustomerDesignsCard clientId={client.id} onSendLink={() => setDesignLink(true)} />
+
         <div className="row-2 quotes-docs">
           <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
             building={buildingQuote} setBuilding={setBuildingQuote} />
@@ -376,6 +386,8 @@ export default function ClientDetail() {
         {/* Notes live ONLY in the Activity & Progress card above (bottom Notes section removed per owner). */}
         <FollowUpsCard clientId={client.id} client={client} />
       </div>
+
+      {designLink && <DesignLinkModal client={client} onClose={() => setDesignLink(false)} />}
 
       {ordering && (
         <OrderModal client={client} onClose={() => setOrdering(false)} onSaved={(patch) => setClient(c => ({ ...c, ...patch }))} />

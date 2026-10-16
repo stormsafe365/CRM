@@ -16,6 +16,7 @@ import { readState } from '../lib/ssfuEngine'
 import { usd } from '../lib/money'
 import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
 import { loadCurrentQuote } from '../lib/layoutFromQuote'
+import UnassignedDesigns from '../components/UnassignedDesigns'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -345,6 +346,8 @@ export default function ClientsList() {
           </Link>
         </div>
       </div>
+
+      <UnassignedDesigns />
 
       {repTabs.length > 1 && (
         <div className="list-tabs" ref={repTabsRef} style={{ marginBottom: 10 }}>

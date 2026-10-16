@@ -10,8 +10,9 @@
 // new one on the spot (prefilled from whatever was typed into the builder's
 // own Client Information section).
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import SaveToLeadPicker from '../components/SaveToLeadPicker'
+import DesignLinkModal from '../components/DesignLinkModal'
 import QuoteStyleToggle from '../components/QuoteStyleToggle'
 import { toast } from '../lib/uiFx'
 
@@ -21,6 +22,15 @@ export default function BuildTool() {
   const buildSrc = useMemo(() => `/build/build.html?v=${Date.now()}`, [])
   const iframeRef = useRef(null)
   const [picker, setPicker] = useState(false)
+  const [designLink, setDesignLink] = useState(false)
+
+  // The program's SEND DESIGN LINK button (owner 10/16/26) calls window.__ssSendDesignLink.
+  // No lead here: the dialog asks which lead the link is for.
+  useEffect(() => {
+    const hook = () => setDesignLink(true)
+    window.__ssSendDesignLink = hook
+    return () => { if (window.__ssSendDesignLink === hook) delete window.__ssSendDesignLink }
+  }, [])
 
   // The QTEPRO program lives in build.html's LEFT-pane iframe (same-origin).
   function getProgramWindow() {
@@ -75,6 +85,7 @@ export default function BuildTool() {
           onClose={() => setPicker(false)}
         />
       )}
+      {designLink && <DesignLinkModal onClose={() => setDesignLink(false)} />}
     </div>
   )
 }

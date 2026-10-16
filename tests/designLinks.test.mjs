@@ -1,0 +1,97 @@
+// Unit tests for customer design links (src/lib/designLinks.js). Run: npm test
+//
+// Owner 10/16/26: send a lead a link to design their building in 3D (no prices);
+// "Send to my steel building rep" lands it on the lead in the CRM.
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  newToken, designLinkUrl, designLinkMessage, isMissingTable, createDesignLink, matchLeads, safeImage, designSummary,
+  escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns,
+} from '../src/lib/designLinks.js'
+
+test('tokens: 24 URL-safe characters the database accepts, never repeating', () => {
+  const seen = new Set()
+  for (let i = 0; i < 500; i++) {
+    const t = newToken()
+    assert.equal(t.length, 24)
+    assert.ok(TOKEN_RE.test(t), t)
+    assert.ok(/^[A-Za-z0-9_-]{20,64}$/.test(t)) // the check constraint in 020_design_links.sql
+    seen.add(t)
+  }
+  assert.equal(seen.size, 500)
+  // every byte value maps into the alphabet
+  assert.equal(newToken(() => new Uint8Array(18).fill(255)), '________________________')
+  assert.equal(newToken(() => new Uint8Array(18)), 'AAAAAAAAAAAAAAAAAAAAAAAA')
+})
+
+test('link + message: the page address, first names, no CRM wording', () => {
+  assert.equal(designLinkUrl('abc'), `${DESIGN_SITE}?t=abc`)
+  assert.ok(DESIGN_SITE.startsWith('https://'))
+  const m = designLinkMessage({ clientName: 'Jack Daouly', repName: 'Jenna Shiebler', url: 'https://x/?t=1' })
+  assert.match(m, /^Hi Jack, it's Jenna with StormSafe Steel\./)
+  assert.match(m, /Send to my steel building rep/)
+  assert.match(m, /https:\/\/x\/\?t=1$/)
+  assert.doesNotMatch(m, /crm/i)
+  assert.match(designLinkMessage({ clientName: '', repName: '', url: 'u' }), /^Hi, it's StormSafe Steel\./)
+})
+
+test('missing tables (migration 020 not run) are recognized', () => {
+  assert.ok(isMissingTable({ code: '42P01', message: 'relation "design_links" does not exist' }))
+  assert.ok(isMissingTable({ code: 'PGRST205', message: "Could not find the table 'public.design_links' in the schema cache" }))
+  assert.ok(!isMissingTable({ code: '23505', message: 'duplicate key' }))
+  assert.ok(!isMissingTable(null))
+})
+
+test('createDesignLink inserts the token for the lead and returns the URL; friendly error before 020', async () => {
+  const inserted = []
+  const sb = { from: (t) => ({ insert: async (row) => { inserted.push({ t, row }); return { error: null } } }) }
+  const l = await createDesignLink(sb, { clientId: 'C1', userId: 'U1' })
+  assert.equal(inserted[0].t, 'design_links')
+  assert.deepEqual(Object.keys(inserted[0].row).sort(), ['client_id', 'created_by', 'token'])
+  assert.equal(inserted[0].row.client_id, 'C1')
+  assert.equal(l.url, designLinkUrl(l.token))
+  const sbMissing = { from: () => ({ insert: async () => ({ error: { code: '42P01', message: 'relation "design_links" does not exist' } }) }) }
+  await assert.rejects(createDesignLink(sbMissing, {}), (e) => e.missingTable === true && /020_design_links/.test(e.message))
+})
+
+test('loadClientDesigns: rows, or missing before 020', async () => {
+  const chain = (result) => {
+    const c = { select: () => c, eq: () => c, neq: () => c, is: () => c, order: () => c, limit: async () => result }
+    return { from: () => c }
+  }
+  assert.deepEqual(await loadClientDesigns(chain({ data: [{ id: 1 }], error: null }), 'C1'), { rows: [{ id: 1 }], missing: false })
+  const r = await loadClientDesigns(chain({ data: null, error: { code: '42P01', message: 'relation "design_requests" does not exist' } }), 'C1')
+  assert.equal(r.missing, true)
+  assert.deepEqual(r.rows, [])
+})
+
+test('matchLeads: phone / email first, then name', () => {
+  const leads = [
+    { id: 'a', name: 'Jane Doe', phone: '', email: '' },
+    { id: 'b', name: 'Someone', phone: '+1 (561) 555-0100', email: '' },
+    { id: 'c', name: 'Other', phone: '', email: 'JANE@example.com' },
+    { id: 'd', name: 'Nobody', phone: '9999999999', email: 'x@y.z' },
+  ]
+  assert.deepEqual(matchLeads({ name: 'jane doe', phone: '561-555-0100', email: 'jane@example.com' }, leads).map((c) => c.id), ['b', 'c', 'a'])
+  assert.deepEqual(matchLeads({ name: 'Zed', phone: '', email: '' }, leads), [])
+})
+
+test('safeImage only lets a JPEG data URL into <img src>', () => {
+  assert.equal(safeImage('data:image/jpeg;base64,QUJD'), 'data:image/jpeg;base64,QUJD')
+  for (const bad of ['javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:text/html;base64,PGI+', 'https://evil/x.jpg', 'data:image/jpeg;base64,QU"onerror=1', null, 5]) {
+    assert.equal(safeImage(bad), null, String(bad))
+  }
+})
+
+test('designSummary: W × L × H from the saved design', () => {
+  assert.equal(designSummary({ design: { type: 'garage', width: 24, length: 30, height: 10, leanTos: [{}] } }), "Garage 24' × 30' × 10' (W × L × H) + 1 lean-to")
+  assert.equal(designSummary({ design: { type: 'combo', width: 20, length: 40, height: 12, leanTos: [] } }), "Garage + Carport 20' × 40' × 12' (W × L × H)")
+  assert.equal(designSummary({ design: { type: 'x', width: 'a' } }), 'Building')
+  assert.equal(designSummary(null), '')
+})
+
+test('escHtml keeps customer text out of the toast markup', () => {
+  assert.equal(escHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;')
+  assert.equal(escHtml(`Tom & "Jerry's"`), 'Tom &amp; &quot;Jerry&#39;s&quot;')
+})

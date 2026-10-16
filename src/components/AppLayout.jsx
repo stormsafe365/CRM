@@ -7,6 +7,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
+import { useDesignPings } from '../lib/useDesignPings'
 import { isoToday } from '../lib/followups'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { mountCursorFx } from '../lib/uiFx'
@@ -79,6 +80,9 @@ export default function AppLayout({ children }) {
 
   // Clock-triggered pings for follow-ups with a specific time set today.
   useTimedReminders(notifPerm === 'granted')
+
+  // A customer sent a design from their design link (owner 10/16/26).
+  useDesignPings()
 
   // Cursor ring/dot FX (matches the design mockup; auto-skips touch/reduced-motion).
   useEffect(() => { mountCursorFx() }, [])

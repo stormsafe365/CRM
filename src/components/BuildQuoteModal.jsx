@@ -33,6 +33,7 @@ import {
   REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
 } from '../lib/priceLockCrm'
 import UseAsRevisionModal from './UseAsRevisionModal'
+import DesignLinkModal from './DesignLinkModal'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
@@ -87,6 +88,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const askResolveRef = useRef(null)
   const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
+  const [designLink, setDesignLink] = useState(false) // the program's SEND DESIGN LINK → DesignLinkModal (owner 10/16/26)
   const uarOpenRef = useRef(() => {})
 
   const revisionRows = revisionChanges ? (revisionChanges.rows || revisionChanges) : null
@@ -638,6 +640,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // SEND DESIGN LINK (owner 10/16/26): the program's button (it replaced TEXT QUOTE
+  // TO CLIENT) calls window.__ssSendDesignLink; the CRM makes this lead's personal
+  // no-price design link. Opened without a lead, the dialog asks which lead first.
+  useEffect(() => {
+    const hook = () => setDesignLink(true)
+    window.__ssSendDesignLink = hook
+    return () => { if (window.__ssSendDesignLink === hook) delete window.__ssSendDesignLink }
+  }, [])
+
   // Manual: the rep typed the change lines (RevisionModal). Amounts typed as
   // list prices are subtotal dollars; "final" amounts are taken back through the
   // order's discount / tax so the revised total lands on them (the adjustment
@@ -875,6 +886,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
+      {designLink && <DesignLinkModal client={client?.id ? client : null} onClose={() => setDesignLink(false)} />}
       {uar && (
         <UseAsRevisionModal
           client={client}
