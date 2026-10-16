@@ -997,7 +997,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <button class="rbtn" type="button" onclick="resetAll()">RESET FORM</button>
     <button class="sbtn" type="button" onclick="useAsRevision()" style="background:#f0883e;color:#080f14" title="Turn this quote (changes already made) into the revised contract for a signed order">USE AS REVISION</button>
     <button class="sbtn" type="button" onclick="printRevisedLayout()" style="background:#f0883e;color:#080f14">REVISED LAYOUT</button>
-    <button class="sbtn" type="button" onclick="textQuote()">TEXT QUOTE TO CLIENT</button>
+    <button class="sbtn" type="button" onclick="sendDesignLink()" title="Send the client a personal link to design their building in 3D (no prices) - what they send comes back to their lead">SEND DESIGN LINK</button>
   </div>
 </div>
 
@@ -11762,6 +11762,18 @@ function saveQuote(){
   }, 600);
 
   toast('✓ Quote saved: '+filename, 'ok');
+}
+
+// SEND DESIGN LINK (owner 10/16/26; replaced TEXT QUOTE TO CLIENT, which was never used):
+// inside the CRM the CRM takes over (it offers window.__ssSendDesignLink) and makes
+// the client's personal no-price 3D design link; the design they send comes back
+// to their lead. Without the CRM (standalone 3D Builder / Quote Tool App) there is
+// no lead to send it to. textQuote() stays (nothing calls it from the page now).
+function sendDesignLink(){
+  var h=null;
+  try{ var w=window; for(var i=0;i<4&&w;i++){ if(typeof w.__ssSendDesignLink==='function'){ h=w.__ssSendDesignLink; break; } if(w.parent===w) break; w=w.parent; } }catch(e){ h=null; }
+  if(h){ try{ h(); return; }catch(e){ console.warn('CRM Send Design Link failed', e); } }
+  toast('Send Design Link works in the CRM: open this quote from the lead’s Quotes and click it there','err');
 }
 
 // USE AS REVISION (owner 10/6/26): this quote — a duplicate that already has the
