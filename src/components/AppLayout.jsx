@@ -9,6 +9,7 @@ import { useDueFollowups } from '../lib/useDueFollowups'
 import { useTimedReminders } from '../lib/useTimedReminders'
 import { useDesignPings } from '../lib/useDesignPings'
 import { useDesignCounts } from '../lib/useDesignCounts'
+import { useIsAdmin } from '../lib/useIsAdmin'
 import { isoToday } from '../lib/followups'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { mountCursorFx } from '../lib/uiFx'
@@ -62,6 +63,11 @@ const navItems = [
     icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
   },
   {
+    // owner + Joshua only (owner 10/16/26): how the business is actually doing, by week / month / 3 months
+    to: '/performance', label: 'Performance', adminOnly: true,
+    icon: <><path d="M3 3v18h18" /><path d="m7 15 4-4 3 3 6-6" /><path d="M17 8h3v3" /></>,
+  },
+  {
     to: '/trash', label: 'Trash',
     icon: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></>,
   },
@@ -90,6 +96,7 @@ export default function AppLayout({ children }) {
   // A customer sent a design from their design link (owner 10/16/26).
   useDesignPings()
   const { fresh: newDesigns } = useDesignCounts()
+  const isAdmin = useIsAdmin()
 
   // Cursor ring/dot FX (matches the design mockup; auto-skips touch/reduced-motion).
   useEffect(() => { mountCursorFx() }, [])
@@ -163,7 +170,7 @@ export default function AppLayout({ children }) {
         </Link>
 
         <nav className="nav">
-          {navItems.map(item => (
+          {navItems.filter(item => !item.adminOnly || isAdmin === true).map(item => (
             <NavLink
               key={item.to}
               to={item.to}

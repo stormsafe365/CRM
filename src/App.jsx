@@ -20,6 +20,7 @@ import LayoutTool from './pages/LayoutTool'
 import Trash from './pages/Trash'
 import Pipeline from './pages/Pipeline'
 import CustomerDesigns from './pages/CustomerDesigns'
+import Performance from './pages/Performance'
 import ComingSoon from './pages/ComingSoon'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/layout"    element={<Protected><LayoutTool /></Protected>} />
         <Route path="/trash"     element={<Protected><Trash /></Protected>} />
         <Route path="/designs"   element={<Protected><CustomerDesigns /></Protected>} />
+        <Route path="/performance" element={<Protected><Performance /></Protected>} />
         <Route path="/documents" element={<Protected><Documents /></Protected>} />
         {/* legacy: the old global Renderings gallery now lives inside Document Hub */}
         <Route path="/renderings" element={<Navigate to="/documents" replace />} />

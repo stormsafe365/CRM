@@ -5,9 +5,12 @@
 // lead to "ordered", clears the deposit, and stores the order. The calendar then
 // seeds the milestone chain (the rest spawns as each milestone is checked off).
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
+import { usd } from '../lib/money'
+import { parseDepositAmount, DEPOSIT_METHODS } from '../lib/payments'
+import { tableMissing } from '../lib/perfLoad'
 
 const MFRS = ['CCI', 'CA', 'SBS']
 // keys match the calendar engine's PLAN_TYPES
@@ -69,6 +72,23 @@ export default function OrderModal({ client, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const editing = client.status === 'ordered' || !!client.order_date
+  // Deposit received (owner 10/16/26: tracked for the Performance page; table 022)
+  const [deps, setDeps] = useState(null) // null = loading · 'missing' = 022 not run · [] / rows
+  const [depAmount, setDepAmount] = useState('')
+  const [depDate, setDepDate] = useState('') // '' = the order date
+  const [depMethod, setDepMethod] = useState('')
+  useEffect(() => {
+    let alive = true
+    supabase.from('payments').select('id, amount, received_on, method').eq('client_id', client.id).is('deleted_at', null).order('received_on', { ascending: true })
+      .then(({ data, error }) => { if (alive) setDeps(error ? (tableMissing(error) ? 'missing' : []) : data || []) })
+    return () => { alive = false }
+  }, [client.id])
+  async function removeDeposit(d) {
+    if (!window.confirm(`Remove the ${usd(d.amount)} deposit from ${d.received_on}?`)) return
+    const { error } = await supabase.from('payments').update({ deleted_at: new Date().toISOString() }).eq('id', d.id)
+    if (error) { setErr(`Could not remove the deposit: ${error.message}`); return }
+    setDeps((list) => (Array.isArray(list) ? list.filter((x) => x.id !== d.id) : list))
+  }
 
   const preview = useMemo(
     () => buildPreview(orderDate, plan, bucket, county.trim(), exempt, siteReady, foundation, exempt ? '' : permitting),
@@ -77,6 +97,9 @@ export default function OrderModal({ client, onClose, onSaved }) {
 
   async function save() {
     if (!orderDate) { setErr('Pick an order date.'); return }
+    const dep = depAmount.trim() ? parseDepositAmount(depAmount) : null
+    if (depAmount.trim() && dep == null) { setErr('Deposit received: type the amount, e.g. 5100 or 5,100.50.'); return }
+    const depOn = depDate || orderDate
     setSaving(true); setErr('')
     const patch = {
       status: 'ordered',
@@ -93,8 +116,8 @@ export default function OrderModal({ client, onClose, onSaved }) {
       county: county.trim() || client.county || null,
     }
     const { error } = await supabase.from('clients').update(patch).eq('id', client.id)
-    setSaving(false)
     if (error) {
+      setSaving(false)
       const m = (error.message || '').toLowerCase()
       setErr(m.includes('order_') || m.includes('schema cache') || m.includes('column')
         ? 'This needs the one-time database update (migrations 013–015) before it will save.'
@@ -102,6 +125,15 @@ export default function OrderModal({ client, onClose, onSaved }) {
       return
     }
     onSaved?.(patch)
+    if (dep != null && Array.isArray(deps)) {
+      const { data: row, error: e2 } = await supabase.from('payments')
+        .insert({ client_id: client.id, kind: 'deposit', amount: dep, received_on: depOn, method: depMethod || null })
+        .select('id, amount, received_on, method').single()
+      setSaving(false)
+      if (e2) { setErr(`The order is saved, but the deposit did not save: ${e2.message}. Try Save again.`); return }
+      setDeps((list) => [...(Array.isArray(list) ? list : []), row])
+      setDepAmount('')
+    } else setSaving(false)
     onClose()
   }
 
@@ -179,6 +211,44 @@ export default function OrderModal({ client, onClose, onSaved }) {
               <input type="checkbox" checked={siteReady} onChange={e => setSiteReady(e.target.checked)} />
               <span className="fum-label" style={{ margin: 0 }}>Site ready now — skip site-prep</span>
             </label>
+          </div>
+
+          <div className="fum-field">
+            <span className="fum-label">Deposit received</span>
+            {deps === null ? <div className="muted" style={{ fontSize: 12.5 }}>Loading deposits…</div>
+              : deps === 'missing' ? <div className="muted" style={{ fontSize: 12.5 }}>Deposit tracking needs the one-time database update (022_payments.sql). The order still saves.</div>
+              : (
+                <>
+                  {deps.length > 0 && (
+                    <div className="dep-list">
+                      {deps.map((d) => (
+                        <div className="dep-row" key={d.id}>
+                          <span className="num">{usd(d.amount)}</span>
+                          <span className="muted">received {d.received_on}{d.method ? ` · ${d.method}` : ''}</span>
+                          <button type="button" className="dep-x" onClick={() => removeDeposit(d)} aria-label={`Remove the ${usd(d.amount)} deposit`}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="fum-row3 dep-new">
+                    <label className="fum-field">
+                      <span className="fum-label">{deps.length ? 'Another deposit ($)' : 'Amount ($)'}</span>
+                      <input type="text" inputMode="decimal" value={depAmount} onChange={(e) => setDepAmount(e.target.value)} placeholder="e.g. 5100 (leave empty if none yet)" />
+                    </label>
+                    <label className="fum-field">
+                      <span className="fum-label">Date received</span>
+                      <input type="date" value={depDate || orderDate} onChange={(e) => setDepDate(e.target.value)} />
+                    </label>
+                    <label className="fum-field">
+                      <span className="fum-label">Paid by</span>
+                      <select value={depMethod} onChange={(e) => setDepMethod(e.target.value)}>
+                        <option value="">— Select —</option>
+                        {DEPOSIT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </>
+              )}
           </div>
 
           {preview.dated.length > 0 && (
