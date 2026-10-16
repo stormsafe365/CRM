@@ -77,9 +77,12 @@ export async function loadClientDesigns(sb, clientId) {
   return { rows: data || [], missing: false }
 }
 
-/** Designs sent from a link that is not tied to a lead, not dismissed. { rows, missing } */
-export async function loadUnassignedDesigns(sb) {
-  const { data, error } = await sb.from('design_requests').select(LIST_COLS)
+/**
+ * Designs sent from a link that is not tied to a lead, not dismissed. { rows, missing }
+ * light: ids only (the Leads page strip just counts them; the pictures load when Review opens).
+ */
+export async function loadUnassignedDesigns(sb, { light = false } = {}) {
+  const { data, error } = await sb.from('design_requests').select(light ? 'id' : LIST_COLS)
     .is('client_id', null).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(20)
   if (error) return { rows: [], missing: isMissingTable(error), error }
   return { rows: data || [], missing: false }
@@ -95,7 +98,9 @@ export async function markDesign(sb, id, patch, userId) {
  * Attach an unassigned design to a lead (+ the lead's timeline entry). Only a
  * design that is still unassigned moves (another rep may have just attached
  * it: then this throws "already attached" and writes nothing). The link it came
- * from is tied to the lead too, so that customer's next send lands on the lead.
+ * from is tied to the lead too (also a link whose lead went to Trash), so that
+ * customer's next send lands on the lead, and their other waiting sends from the
+ * same link go with it.
  */
 export async function attachDesign(sb, design, clientId, userId) {
   const { data, error } = await sb.from('design_requests')
@@ -108,7 +113,10 @@ export async function attachDesign(sb, design, clientId, userId) {
     throw e
   }
   if (design.link_token) {
-    try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token).is('client_id', null) } catch { /* the design itself is attached */ }
+    try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token) } catch { /* the design itself is attached */ }
+    try {
+      await sb.from('design_requests').update({ client_id: clientId }).eq('link_token', design.link_token).is('client_id', null)
+    } catch { /* the chosen design is attached; others can still be attached by hand */ }
   }
   await sb.from('activities').insert({
     client_id: clientId,
@@ -133,7 +141,7 @@ export async function loadLeadsForPicker(sb, q = '') {
   const term = searchTerm(q)
   const run = (cols) => {
     let req = sb.from('clients').select(cols).order('updated_at', { ascending: false }).limit(term ? 60 : 1000)
-    if (term) req = req.or(`name.ilike."*${term}*",email.ilike."*${term}*"`)
+    if (term) req = req.or(`name.ilike."*${term}*",email.ilike."*${term}*",phone.ilike."*${term}*"`)
     return req
   }
   let r = await run('id, name, phone, email, status, updated_at, deleted_at')

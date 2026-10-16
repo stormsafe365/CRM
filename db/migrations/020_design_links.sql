@@ -98,7 +98,7 @@ $$;
 -- Errors (raised as text, read by the design page's server function):
 --   link_invalid, link_expired, too_many (10 today on this link), link_full (30 on
 --   this link), busy (200 today, all links), bad_name, need_contact, bad_phone,
---   bad_email, too_long, bad_design, bad_image
+--   bad_email, bad_notes, too_long, bad_design, bad_image
 create or replace function submit_design(
   p_token text,
   p_name  text,
@@ -174,6 +174,11 @@ begin
   end if;
   if v_zip <> '' and v_zip !~ '^[0-9]{5}$' then
     raise exception 'too_long';
+  end if;
+  -- No markup in the notes or the spec either (the page's spec never has < or >;
+  -- a rep may copy either into the quote program, which prints them).
+  if v_notes ~ '[<>]' or coalesce(p_spec, '') ~ '[<>]' then
+    raise exception 'bad_notes';
   end if;
   if p_design is null or jsonb_typeof(p_design) <> 'object'
      or coalesce(p_design->>'schema', '') <> 'ss-web-design'

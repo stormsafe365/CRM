@@ -135,8 +135,12 @@ test('attachDesign: only an unassigned design moves; its link follows the lead; 
   await attachDesign(sb([{ id: 'd1' }]), { id: 'd1', name: 'Pat', link_token: 'TOKEN_abcdefghijklmnop' }, 'C2', 'U1')
   const upd = calls.find((c) => c.t === 'design_requests')
   assert.deepEqual(upd.ops.filter((o) => o[0] !== 'update'), [['eq', 'id', 'd1'], ['is', 'client_id', null]])
+  // the link follows the lead (also a link whose lead went to Trash)
   const link = calls.find((c) => c.t === 'design_links')
-  assert.deepEqual(link.ops, [['update', { client_id: 'C2' }], ['eq', 'token', 'TOKEN_abcdefghijklmnop'], ['is', 'client_id', null]])
+  assert.deepEqual(link.ops, [['update', { client_id: 'C2' }], ['eq', 'token', 'TOKEN_abcdefghijklmnop']])
+  // the customer's other waiting sends from the same link go with it
+  const sib = calls.filter((c) => c.t === 'design_requests')[1]
+  assert.deepEqual(sib.ops, [['update', { client_id: 'C2' }], ['eq', 'link_token', 'TOKEN_abcdefghijklmnop'], ['is', 'client_id', null]])
   const act = calls.find((c) => c.t === 'activities')
   assert.match(act.ops[0][1].body, /sent by "Pat"/)
   calls.length = 0

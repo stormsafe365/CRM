@@ -44,7 +44,8 @@ export function DesignItem({ d, onChanged, actions = null }) {
     } catch (e) { toast(escHtml(e.message || 'Could not update the design.')) }
   }
   async function copySpec() {
-    try { await navigator.clipboard.writeText(d.spec || ''); toast('Spec copied', 'success') } catch { window.prompt('Copy the spec:', d.spec || '') }
+    const text = String(d.spec || '').replace(/[<>]/g, '') // never markup into the program's boxes
+    try { await navigator.clipboard.writeText(text); toast('Spec copied', 'success') } catch { window.prompt('Copy the spec:', text) }
   }
 
   return (

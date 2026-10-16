@@ -4,7 +4,7 @@
 // with Attach to a lead (matching leads first: same phone / email / name),
 // Make a new lead, or Remove. Hidden when there are none (or before migration 020).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -73,6 +73,9 @@ function Row({ d, onDone }) {
     if (busy) return
     setBusy(true)
     try {
+      // still waiting? (another rep may have attached it a moment ago)
+      const { data: cur } = await supabase.from('design_requests').select('client_id').eq('id', d.id).maybeSingle()
+      if (cur && cur.client_id) { toast('This design was already attached to a lead (maybe by someone else just now).'); onDone(); setBusy(false); return }
       const dups = await findDuplicateClients({ email: d.email, phone: d.phone })
       if (dups.length && !window.confirm(`A lead with this phone or email already exists: ${dupSummary(dups)}.\n\nMake a NEW lead anyway? (Cancel, then use "Attach to a lead" to put the design on the existing one.)`)) { setBusy(false); return }
       const { data, error } = await supabase.from('clients').insert({
@@ -85,7 +88,16 @@ function Row({ d, onDone }) {
         first_contact_date: isoToday(),
       }).select().single()
       if (error) throw error
-      await attachDesign(supabase, d, data.id, user?.id)
+      try {
+        await attachDesign(supabase, d, data.id, user?.id)
+      } catch (e) {
+        if (!e.alreadyAttached) throw e
+        // lost the race after making the lead: the new lead is empty — move it to Trash (recoverable)
+        const { error: te } = await supabase.from('clients').update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null }).eq('id', data.id)
+        toast(te ? `Someone attached this design first. Please delete the empty lead "${escHtml(d.name)}" you just made.` : 'Someone attached this design first, so the new lead was moved to Trash.')
+        onDone()
+        return
+      }
       toast(`New lead made for ${escHtml(d.name)}, with the design`, 'success')
       onDone()
       navigate(`/clients/${data.id}`)
@@ -112,17 +124,27 @@ function Row({ d, onDone }) {
 }
 
 export default function UnassignedDesigns() {
-  const [rows, setRows] = useState([])
+  const [rows, setRows] = useState([]) // ids only, for the strip
+  const [full, setFull] = useState(null) // full rows (pictures) once Review is open
   const [open, setOpen] = useState(false)
+  const openRef = useRef(false)
+  const loadRef = useRef(null)
+  openRef.current = open
 
   useEffect(() => {
     let alive = true
     let run = 0
     async function load() {
       const my = ++run
-      const r = await loadUnassignedDesigns(supabase)
-      if (alive && my === run) setRows(r.rows)
+      const r = await loadUnassignedDesigns(supabase, { light: true })
+      if (!alive || my !== run) return
+      setRows(r.rows)
+      if (openRef.current) {
+        const f = await loadUnassignedDesigns(supabase)
+        if (alive && my === run) setFull(f.rows)
+      }
     }
+    loadRef.current = load
     load()
     // many changes close together (a burst of sends) = one reload
     let t = null
@@ -135,6 +157,8 @@ export default function UnassignedDesigns() {
   }, [])
 
   useEffect(() => { if (open && rows.length === 0) setOpen(false) }, [open, rows.length])
+  // Review opened: now load the full rows (with pictures)
+  useEffect(() => { if (open) { setFull(null); loadRef.current?.() } }, [open])
 
   if (!rows.length) return null
   const done = () => window.dispatchEvent(new CustomEvent('ss:designs-updated'))
@@ -158,7 +182,7 @@ export default function UnassignedDesigns() {
               </div>
               <button type="button" className="btn-secondary" style={{ padding: '4px 10px' }} aria-label="Close" onClick={() => setOpen(false)}>✕</button>
             </div>
-            {rows.map((d) => <Row key={d.id} d={d} onDone={done} />)}
+            {full === null ? <div style={{ ...MUTED, padding: '12px 0' }}>Loading the designs…</div> : full.map((d) => <Row key={d.id} d={d} onDone={done} />)}
           </div>
         </div>,
         document.body,
