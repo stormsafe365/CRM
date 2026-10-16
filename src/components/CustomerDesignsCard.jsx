@@ -65,13 +65,14 @@ export function DesignItem({ d, onChanged, actions = null }) {
         </div>
         {d.notes ? <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', fontSize: 13.5 }}>“{d.notes}”</div> : null}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setOpen((v) => !v)}>{open ? 'Hide spec' : 'Show full spec'}</button>
+          <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setOpen((v) => !v)}>{open ? 'Hide spec' : 'Show the spec'}</button>
           <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={copySpec}>Copy spec</button>
           {img ? <a className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5, textDecoration: 'none' }} href={img} download={`${fileBase}.jpg`}>Save picture</a> : null}
           {actions}
           {!actions && d.status === 'new' ? <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setStatus('seen')}>Mark reviewed</button> : null}
           {!actions ? <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setStatus('dismissed')} title="Hide this design from the lead">Remove</button> : null}
         </div>
+        {open ? <div style={{ ...MUTED, marginTop: 8 }}>As sent from the customer’s design page (check it against the picture before quoting).</div> : null}
         {open ? (
           <pre style={{ marginTop: 8, padding: 10, background: 'var(--inset, #0B1B32)', border: '1px solid var(--line, #294059)', borderRadius: 8, whiteSpace: 'pre-wrap', fontSize: 12.5, lineHeight: 1.45, maxHeight: 360, overflow: 'auto' }}>{d.spec || '(no spec)'}</pre>
         ) : null}
@@ -93,13 +94,15 @@ export default function CustomerDesignsCard({ clientId, onSendLink }) {
       if (alive && my === run) setRows(r.rows)
     }
     load()
+    // many changes close together = one reload
+    let t = null
+    const soon = () => { clearTimeout(t); t = setTimeout(load, 400) }
     const ch = supabase
       .channel(`designs-${clientId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'design_requests', filter: `client_id=eq.${clientId}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'design_requests', filter: `client_id=eq.${clientId}` }, soon)
       .subscribe()
-    const reload = () => load()
-    window.addEventListener('ss:designs-updated', reload)
-    return () => { alive = false; supabase.removeChannel(ch); window.removeEventListener('ss:designs-updated', reload) }
+    window.addEventListener('ss:designs-updated', soon)
+    return () => { alive = false; clearTimeout(t); supabase.removeChannel(ch); window.removeEventListener('ss:designs-updated', soon) }
   }, [clientId])
 
   if (!rows.length) return null

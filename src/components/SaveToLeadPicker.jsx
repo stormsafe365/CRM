@@ -17,6 +17,7 @@ import { isoToday } from '../lib/followups'
 import { harvestAndSaveQuote } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
 import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
+import { escHtml } from '../lib/designLinks'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box',
@@ -112,7 +113,7 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
               savingRef.current = false
               setSaved({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number })
               onSaved?.({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number, client: chosenExisting })
-              toast(res.pdfWarn || `Quote ${res.quote_number} saved to existing lead ${d.name}`, res.pdfWarn ? undefined : 'success')
+              toast(escHtml(res.pdfWarn || `Quote ${res.quote_number} saved to existing lead ${d.name}`), res.pdfWarn ? undefined : 'success') // toast() renders HTML: names are escaped
               return
             }
           }
@@ -154,10 +155,10 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
       savingRef.current = false
       setSaved({ clientId: target.id, clientName: target.name, quoteNumber: quote_number })
       onSaved?.({ clientId: target.id, clientName: target.name, quoteNumber: quote_number, client: target })
-      toast(pdfWarn || `Quote ${quote_number} saved to ${target.name}`, pdfWarn ? undefined : 'success')
+      toast(escHtml(pdfWarn || `Quote ${quote_number} saved to ${target.name}`), pdfWarn ? undefined : 'success')
     } catch (e) {
       setStatus(''); savingRef.current = false
-      toast(e.message || 'Could not save the quote.')
+      toast(escHtml(e.message || 'Could not save the quote.'))
     }
   }
 

@@ -28,7 +28,7 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || ''
 /** The text the rep sends with the link (editable in the dialog). */
 export function designLinkMessage({ clientName, repName, url }) {
   const hi = firstName(clientName) ? `Hi ${firstName(clientName)}` : 'Hi'
-  const me = firstName(repName) ? `it's ${firstName(repName)} with StormSafe Steel` : `it's StormSafe Steel`
+  const me = firstName(repName) ? `it's ${firstName(repName)} with StormSafe Steel` : `it's your rep at StormSafe Steel`
   return `${hi}, ${me}. Here's a link to design your building in 3D: pick the size, walls, doors, windows and colors, then tap "Send to my steel building rep" and it comes straight to me. No prices on it; I'll put your quote together from your design.\n\n${url}`
 }
 
@@ -67,12 +67,12 @@ export async function logDesignLink(sb, { clientId, userId, url }) {
   })
 }
 
-const LIST_COLS = 'id, created_at, client_id, name, phone, email, zip, notes, spec, image, status, design'
+const LIST_COLS = 'id, created_at, link_token, client_id, name, phone, email, zip, notes, spec, image, status, design'
 
 /** A lead's received designs, newest first. { rows, missing } */
 export async function loadClientDesigns(sb, clientId) {
   const { data, error } = await sb.from('design_requests').select(LIST_COLS)
-    .eq('client_id', clientId).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(25)
+    .eq('client_id', clientId).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(10)
   if (error) return { rows: [], missing: isMissingTable(error), error }
   return { rows: data || [], missing: false }
 }
@@ -80,7 +80,7 @@ export async function loadClientDesigns(sb, clientId) {
 /** Designs sent from a link that is not tied to a lead, not dismissed. { rows, missing } */
 export async function loadUnassignedDesigns(sb) {
   const { data, error } = await sb.from('design_requests').select(LIST_COLS)
-    .is('client_id', null).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(50)
+    .is('client_id', null).neq('status', 'dismissed').order('created_at', { ascending: false }).limit(20)
   if (error) return { rows: [], missing: isMissingTable(error), error }
   return { rows: data || [], missing: false }
 }
@@ -91,13 +91,29 @@ export async function markDesign(sb, id, patch, userId) {
   if (error) throw error
 }
 
-/** Attach an unassigned design to a lead (+ the lead's timeline entry). */
+/**
+ * Attach an unassigned design to a lead (+ the lead's timeline entry). Only a
+ * design that is still unassigned moves (another rep may have just attached
+ * it: then this throws "already attached" and writes nothing). The link it came
+ * from is tied to the lead too, so that customer's next send lands on the lead.
+ */
 export async function attachDesign(sb, design, clientId, userId) {
-  await markDesign(sb, design.id, { client_id: clientId, status: 'seen' }, userId)
+  const { data, error } = await sb.from('design_requests')
+    .update({ client_id: clientId, status: 'seen', handled_by: userId ?? null, handled_at: new Date().toISOString() })
+    .eq('id', design.id).is('client_id', null).select('id')
+  if (error) throw error
+  if (!data || !data.length) {
+    const e = new Error('This design was already attached to a lead (maybe by someone else just now).')
+    e.alreadyAttached = true
+    throw e
+  }
+  if (design.link_token) {
+    try { await sb.from('design_links').update({ client_id: clientId }).eq('token', design.link_token).is('client_id', null) } catch { /* the design itself is attached */ }
+  }
   await sb.from('activities').insert({
     client_id: clientId,
     type: 'note',
-    body: `Customer design attached to this lead (sent by ${design.name}). See Customer Designs.`,
+    body: `Customer design attached to this lead, sent by "${design.name}". See Customer Designs.`,
     metadata: { kind: 'design_request', design_request_id: design.id },
     created_by: userId ?? null,
   })
@@ -105,7 +121,28 @@ export async function attachDesign(sb, design, clientId, userId) {
 
 const digits = (s) => String(s || '').replace(/\D/g, '').slice(-10)
 
-/** Leads that look like the sender (same phone or email, else same name). */
+/** A search box value made safe for a PostgREST or() filter (letters, digits, space, @ . - _ ' only). */
+export const searchTerm = (q) => String(q || '').replace(/[^A-Za-z0-9 @._'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
+
+/**
+ * Leads for a picker, newest first, never the ones in Trash (deleted_at, migration
+ * 017 — read when the column exists). With a search term, the server searches
+ * name and email across ALL leads (not only the newest).
+ */
+export async function loadLeadsForPicker(sb, q = '') {
+  const term = searchTerm(q)
+  const run = (cols) => {
+    let req = sb.from('clients').select(cols).order('updated_at', { ascending: false }).limit(term ? 60 : 1000)
+    if (term) req = req.or(`name.ilike."*${term}*",email.ilike."*${term}*"`)
+    return req
+  }
+  let r = await run('id, name, phone, email, status, updated_at, deleted_at')
+  if (r.error && /deleted_at/i.test(r.error.message || '')) r = await run('id, name, phone, email, status, updated_at')
+  if (r.error) throw r.error
+  return (r.data || []).filter((c) => !c.deleted_at)
+}
+
+/** Leads that look like the sender (same phone or email, else same name). Leads in Trash never match. */
 export function matchLeads(design, leads) {
   const p = digits(design.phone), e = String(design.email || '').trim().toLowerCase(), n = String(design.name || '').trim().toLowerCase()
   const score = (c) => {
@@ -114,7 +151,7 @@ export function matchLeads(design, leads) {
     if (n && String(c.name || '').trim().toLowerCase() === n) return 1
     return 0
   }
-  return leads.map((c) => ({ c, s: score(c) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.c)
+  return leads.filter((c) => !c.deleted_at).map((c) => ({ c, s: score(c) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.c)
 }
 
 /** "data:image/jpeg;base64,…" only — never anything else in an <img src>. */
@@ -132,3 +169,21 @@ export function designSummary(d) {
 
 /** For toast() (it renders HTML): customer-typed text must never become markup. */
 export const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+/** The picker list: newest leads (no search), or the local name / email / phone-digit matches plus the server's matches. */
+export function pickerList(base, remote, search, max = 30) {
+  const q = String(search || '').trim().toLowerCase()
+  const qd = q.replace(/\D/g, '')
+  const list = (base || []).filter((c) => !c.deleted_at)
+  if (!q) return list.slice(0, max)
+  const hit = (c) => String(c.name || '').toLowerCase().includes(q) || String(c.email || '').toLowerCase().includes(q) ||
+    (qd.length >= 3 && String(c.phone || '').replace(/\D/g, '').includes(qd))
+  const seen = new Set()
+  const out = []
+  for (const c of [...list.filter(hit), ...(remote || []).filter((c) => !c.deleted_at)]) {
+    if (seen.has(c.id)) continue
+    seen.add(c.id)
+    out.push(c)
+  }
+  return out.slice(0, max)
+}

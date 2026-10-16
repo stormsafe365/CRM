@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   newToken, designLinkUrl, designLinkMessage, isMissingTable, createDesignLink, matchLeads, safeImage, designSummary,
-  escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns,
+  escHtml, TOKEN_RE, DESIGN_SITE, loadClientDesigns, searchTerm, pickerList, attachDesign,
 } from '../src/lib/designLinks.js'
 
 test('tokens: 24 URL-safe characters the database accepts, never repeating', () => {
@@ -33,7 +33,7 @@ test('link + message: the page address, first names, no CRM wording', () => {
   assert.match(m, /Send to my steel building rep/)
   assert.match(m, /https:\/\/x\/\?t=1$/)
   assert.doesNotMatch(m, /crm/i)
-  assert.match(designLinkMessage({ clientName: '', repName: '', url: 'u' }), /^Hi, it's StormSafe Steel\./)
+  assert.match(designLinkMessage({ clientName: '', repName: '', url: 'u' }), /^Hi, it's your rep at StormSafe Steel\./)
 })
 
 test('missing tables (migration 020 not run) are recognized', () => {
@@ -94,4 +94,52 @@ test('designSummary: W × L × H from the saved design', () => {
 test('escHtml keeps customer text out of the toast markup', () => {
   assert.equal(escHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;')
   assert.equal(escHtml(`Tom & "Jerry's"`), 'Tom &amp; &quot;Jerry&#39;s&quot;')
+})
+
+test('searchTerm: only characters that are safe in a PostgREST or() filter', () => {
+  assert.equal(searchTerm('  Jack (Daouly), "x"*  '), 'Jack Daouly x')
+  assert.equal(searchTerm("o'brien@x.com"), "o'brien@x.com")
+  assert.equal(searchTerm('a'.repeat(80)).length, 60)
+})
+
+test('pickerList: newest leads, or local + server matches, never Trash', () => {
+  const base = [
+    { id: '1', name: 'Jack Daouly', phone: '(239) 555-0100', email: '' },
+    { id: '2', name: 'Pat', phone: '', email: 'pat@example.com' },
+    { id: '3', name: 'Trashed Jack', phone: '', email: '', deleted_at: '2026-10-01' },
+  ]
+  assert.deepEqual(pickerList(base, [], '').map((c) => c.id), ['1', '2'])
+  assert.deepEqual(pickerList(base, [], 'jack').map((c) => c.id), ['1'])
+  assert.deepEqual(pickerList(base, [], '5550100').map((c) => c.id), ['1'])
+  // an older lead only the server found joins the list once
+  assert.deepEqual(pickerList(base, [{ id: '9', name: 'Jack Old' }, { id: '1', name: 'Jack Daouly' }], 'jack').map((c) => c.id), ['1', '9'])
+})
+
+test('attachDesign: only an unassigned design moves; its link follows the lead; a race says so', async () => {
+  const calls = []
+  const sb = (updated) => ({
+    from: (t) => {
+      const c = { t, ops: [] }
+      calls.push(c)
+      const b = {
+        update: (p) => { c.ops.push(['update', p]); return b },
+        insert: async (p) => { c.ops.push(['insert', p]); return { error: null } },
+        eq: (k, v) => { c.ops.push(['eq', k, v]); return b },
+        is: (k, v) => { c.ops.push(['is', k, v]); return b },
+        select: async () => ({ data: updated, error: null }),
+        then: (res) => res({ error: null }),
+      }
+      return b
+    },
+  })
+  await attachDesign(sb([{ id: 'd1' }]), { id: 'd1', name: 'Pat', link_token: 'TOKEN_abcdefghijklmnop' }, 'C2', 'U1')
+  const upd = calls.find((c) => c.t === 'design_requests')
+  assert.deepEqual(upd.ops.filter((o) => o[0] !== 'update'), [['eq', 'id', 'd1'], ['is', 'client_id', null]])
+  const link = calls.find((c) => c.t === 'design_links')
+  assert.deepEqual(link.ops, [['update', { client_id: 'C2' }], ['eq', 'token', 'TOKEN_abcdefghijklmnop'], ['is', 'client_id', null]])
+  const act = calls.find((c) => c.t === 'activities')
+  assert.match(act.ops[0][1].body, /sent by "Pat"/)
+  calls.length = 0
+  await assert.rejects(attachDesign(sb([]), { id: 'd1', name: 'Pat' }, 'C3', 'U2'), (e) => e.alreadyAttached === true)
+  assert.equal(calls.filter((c) => c.t === 'activities').length, 0) // nothing written for the race loser
 })

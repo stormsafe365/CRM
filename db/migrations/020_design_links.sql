@@ -10,8 +10,11 @@
 --   * The design page never talks to Supabase itself. Its own server function
 --     (Cloudflare Pages) calls submit_design() / design_link_status() below.
 --   * submit_design() only accepts a design for a link a rep created that is
---     not expired or revoked, checks every field's size and shape, and allows
---     at most 10 sends per link per day.
+--     not expired or revoked, checks every field's size and shape (a name can
+--     not hold < > " or a backtick; strict email shape; picture <= 900 KB),
+--     and allows at most 10 sends per link per day, 30 per link in all and
+--     200 a day across all links. Sends are taken one at a time, so the
+--     limits cannot be raced by many sends at once.
 --   * It never returns anything about the lead (only 'ok' or an error code).
 --
 -- Run once in the Supabase SQL editor. Safe to re-run.
@@ -48,6 +51,7 @@ create table if not exists design_requests (
 create index if not exists design_requests_client on design_requests (client_id, created_at desc);
 create index if not exists design_requests_status on design_requests (status, created_at desc);
 create index if not exists design_requests_link on design_requests (link_token, created_at desc);
+create index if not exists design_requests_created on design_requests (created_at desc);
 
 -- ── Access: signed-in CRM users only ───────────────────────────────────
 alter table design_links    enable row level security;
@@ -92,7 +96,8 @@ $$;
 
 -- ── The customer's send ────────────────────────────────────────────────
 -- Errors (raised as text, read by the design page's server function):
---   link_invalid, link_expired, too_many, bad_name, need_contact, bad_phone,
+--   link_invalid, link_expired, too_many (10 today on this link), link_full (30 on
+--   this link), busy (200 today, all links), bad_name, need_contact, bad_phone,
 --   bad_email, too_long, bad_design, bad_image
 create or replace function submit_design(
   p_token text,
@@ -119,6 +124,7 @@ declare
   v_zip   text := btrim(coalesce(p_zip, ''));
   v_notes text := btrim(coalesce(p_notes, ''));
   v_req   uuid;
+  v_client uuid;
 begin
   if p_token is null or p_token !~ '^[A-Za-z0-9_-]{20,64}$' then
     raise exception 'link_invalid';
@@ -131,13 +137,26 @@ begin
     raise exception 'link_expired';
   end if;
 
+  -- One send at a time (all links), so the counts below cannot be raced by
+  -- many sends at once. Sends are rare; the wait is milliseconds.
+  perform pg_advisory_xact_lock(hashtext('stormsafe.submit_design'));
   select count(*) into n from design_requests
    where link_token = p_token and created_at > now() - interval '1 day';
   if n >= 10 then
     raise exception 'too_many';
   end if;
+  select count(*) into n from design_requests where link_token = p_token;
+  if n >= 30 then
+    raise exception 'link_full';
+  end if;
+  select count(*) into n from design_requests where created_at > now() - interval '1 day';
+  if n >= 200 then
+    raise exception 'busy';
+  end if;
 
-  if length(v_name) < 1 or length(v_name) > 120 then
+  -- No markup characters in a name: it can become a lead's name, which other
+  -- screens and the quote documents print.
+  if length(v_name) < 1 or length(v_name) > 120 or v_name ~ '[<>"`]' then
     raise exception 'bad_name';
   end if;
   if v_phone = '' and v_email = '' then
@@ -147,7 +166,7 @@ begin
                         or length(regexp_replace(v_phone, '\D', '', 'g')) < 10) then
     raise exception 'bad_phone';
   end if;
-  if v_email <> '' and (length(v_email) > 160 or v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$') then
+  if v_email <> '' and (length(v_email) > 160 or v_email !~ '^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$') then
     raise exception 'bad_email';
   end if;
   if length(v_zip) > 10 or length(v_notes) > 2000 or length(coalesce(p_spec, '')) > 12000 then
@@ -161,21 +180,29 @@ begin
      or octet_length(p_design::text) > 262144 then
     raise exception 'bad_design';
   end if;
-  if p_image is not null and (length(p_image) > 1500000
+  if p_image is not null and (length(p_image) > 900000
      or p_image !~ '^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$') then
     raise exception 'bad_image';
   end if;
 
+  -- A lead moved to Trash (clients.deleted_at, migration 017) does not swallow
+  -- the design: it waits under Leads > Customer designs instead. to_jsonb()
+  -- reads the column whether or not 017 has been run.
+  v_client := l.client_id;
+  if v_client is not null and (select to_jsonb(c) ->> 'deleted_at' from clients c where c.id = v_client) is not null then
+    v_client := null;
+  end if;
+
   insert into design_requests (link_token, client_id, name, phone, email, zip, notes, design, spec, image)
-  values (p_token, l.client_id, v_name, nullif(v_phone, ''), nullif(v_email, ''), nullif(v_zip, ''),
+  values (p_token, v_client, v_name, nullif(v_phone, ''), nullif(v_email, ''), nullif(v_zip, ''),
           nullif(v_notes, ''), p_design, p_spec, p_image)
   returning id into v_req;
 
   -- The lead's timeline shows it too (system entry, no user).
-  if l.client_id is not null then
+  if v_client is not null then
     insert into activities (client_id, type, body, metadata, created_by)
-    values (l.client_id, 'note',
-            'Customer design received from the design link (sent by ' || v_name || '). See Customer Designs.',
+    values (v_client, 'note',
+            'Customer design received from the design link, sent by "' || v_name || '". See Customer Designs.',
             jsonb_build_object('kind', 'design_request', 'design_request_id', v_req),
             null);
   end if;

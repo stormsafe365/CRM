@@ -9,11 +9,12 @@
 // lead first; "No lead yet" makes a link whose design shows under Leads ›
 // Customer designs, where it can be attached to a lead.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { useUsers, userLabel } from '../lib/useUsers'
+import { useUsers } from '../lib/useUsers'
+import { useLeadSearch } from '../lib/useLeadSearch'
 import { toast } from '../lib/uiFx'
 import { createDesignLink, designLinkMessage, logDesignLink } from '../lib/designLinks'
 
@@ -46,15 +47,24 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
   const { users } = useUsers()
   const [lead, setLead] = useState(client)          // the lead the link is for (null = pick / none)
   const [picking, setPicking] = useState(!client)
-  const [leads, setLeads] = useState(null)
   const [search, setSearch] = useState('')
   const [link, setLink] = useState(null)            // { token, url }
   const [msg, setMsg] = useState('')
+  const [msgEdited, setMsgEdited] = useState(false)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const madeRef = useRef(false)
+  const { leads, list: shown, err: leadsErr } = useLeadSearch(picking, search)
 
-  const repName = userLabel(users, user?.id)
+  // The customer reads this: the rep's DISPLAY name only (never an email or
+  // "Unknown rep"); without one the message just says StormSafe Steel.
+  const repFirst = users.find((u) => u.id === user?.id)?.display_name || ''
+
+  // The message follows the lead / rep name (the user list may load after the
+  // link) until the rep edits it.
+  useEffect(() => {
+    if (link && !msgEdited) setMsg(designLinkMessage({ clientName: lead?.name, repName: repFirst, url: link.url }))
+  }, [link, lead, repFirst, msgEdited])
 
   async function make(forLead) {
     if (madeRef.current) return
@@ -63,7 +73,6 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
     try {
       const l = await createDesignLink(supabase, { clientId: forLead?.id ?? null, userId: user?.id ?? null })
       setLink(l)
-      setMsg(designLinkMessage({ clientName: forLead?.name, repName: repName !== '—' ? repName : '', url: l.url }))
       try { await logDesignLink(supabase, { clientId: forLead?.id, userId: user?.id, url: l.url }) } catch { /* timeline entry is best-effort */ }
     } catch (e) {
       madeRef.current = false
@@ -78,31 +87,6 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
     if (client?.id) make(client)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // No lead: load the list to pick from.
-  useEffect(() => {
-    if (!picking) return
-    let alive = true
-    ;(async () => {
-      const { data, error } = await supabase.from('clients')
-        .select('id, name, phone, email, status, updated_at')
-        .order('updated_at', { ascending: false }).limit(400)
-      if (!alive) return
-      if (error) { setErr(error.message); setLeads([]) } else setLeads(data || [])
-    })()
-    return () => { alive = false }
-  }, [picking])
-
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const qd = q.replace(/\D/g, '')
-    const list = leads || []
-    if (!q) return list.slice(0, 30)
-    return list.filter((c) =>
-      String(c.name || '').toLowerCase().includes(q) ||
-      String(c.email || '').toLowerCase().includes(q) ||
-      (qd.length >= 3 && String(c.phone || '').replace(/\D/g, '').includes(qd))).slice(0, 30)
-  }, [leads, search])
 
   function choose(c) {
     setLead(c); setPicking(false)
@@ -159,7 +143,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
           <button type="button" className="btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={() => copyText(link.url, 'Link')}>Copy link</button>
         </div>
         <label style={LBL} htmlFor="dl-msg">Message (edit it if you like)</label>
-        <textarea id="dl-msg" style={{ ...FIELD, minHeight: 130, resize: 'vertical', lineHeight: 1.45 }} value={msg} onChange={(e) => setMsg(e.target.value)} />
+        <textarea id="dl-msg" style={{ ...FIELD, minHeight: 130, resize: 'vertical', lineHeight: 1.45 }} value={msg} onChange={(e) => { setMsgEdited(true); setMsg(e.target.value) }} />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <button type="button" className="btn-secondary" onClick={() => copyText(msg, 'Message')}>Copy message</button>
           {phone ? (
@@ -189,7 +173,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300 
       onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}>
       <div style={{ width: 'min(600px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 64px)', overflow: 'auto', background: 'var(--card, #0D1929)', border: '1px solid var(--line, #294059)', borderRadius: 14, padding: 18, boxShadow: '0 18px 60px rgba(0,0,0,.5)' }}>
         {head}
-        {err ? <div className="error-banner" style={{ marginTop: 12 }}>{err}</div> : null}
+        {err || leadsErr ? <div className="error-banner" style={{ marginTop: 12 }}>{err || leadsErr}</div> : null}
         {body}
       </div>
     </div>,

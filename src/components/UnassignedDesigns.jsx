@@ -14,6 +14,7 @@ import { isoToday } from '../lib/followups'
 import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
 import { loadUnassignedDesigns, attachDesign, markDesign, matchLeads, escHtml } from '../lib/designLinks'
 import { DesignItem } from './CustomerDesignsCard'
+import { useLeadSearch } from '../lib/useLeadSearch'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
@@ -22,34 +23,23 @@ const FIELD = {
 const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
 const SMALL = { padding: '4px 10px', fontSize: 12.5 }
 
-function AttachPicker({ design, onPick, onCancel }) {
-  const [leads, setLeads] = useState(null)
+function AttachPicker({ design, onPick, onCancel, busy }) {
   const [q, setQ] = useState('')
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      const { data } = await supabase.from('clients').select('id, name, phone, email, updated_at').order('updated_at', { ascending: false }).limit(1000)
-      if (alive) setLeads(data || [])
-    })()
-    return () => { alive = false }
-  }, [])
+  // newest 1,000 leads (never Trash) + the server's name / email matches when typing
+  const { leads, list: found, err } = useLeadSearch(true, q)
+  const matches = useMemo(() => matchLeads(design, leads || []), [design, leads])
   const list = useMemo(() => {
-    const all = leads || []
-    const s = q.trim().toLowerCase(), sd = s.replace(/\D/g, '')
-    if (s) {
-      return all.filter((c) => String(c.name || '').toLowerCase().includes(s) || String(c.email || '').toLowerCase().includes(s) ||
-        (sd.length >= 3 && String(c.phone || '').replace(/\D/g, '').includes(sd))).slice(0, 25)
-    }
-    const m = matchLeads(design, all)
-    return [...m, ...all.filter((c) => !m.includes(c))].slice(0, 25)
-  }, [leads, q, design])
-  const matched = useMemo(() => new Set(matchLeads(design, leads || []).map((c) => c.id)), [design, leads])
+    if (q.trim()) return found
+    return [...matches, ...(leads || []).filter((c) => !matches.includes(c))].slice(0, 25)
+  }, [q, found, matches, leads])
+  const matched = useMemo(() => new Set(matches.map((c) => c.id)), [matches])
   return (
     <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--line, #294059)', borderRadius: 8 }}>
       <input style={FIELD} autoFocus placeholder="Search leads: name, phone or email" value={q} onChange={(e) => setQ(e.target.value)} />
+      {err ? <div className="error-banner" style={{ marginTop: 6 }}>{err}</div> : null}
       <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 6 }}>
         {leads === null ? <div style={MUTED}>Loading leads…</div> : list.map((c) => (
-          <button key={c.id} type="button" onClick={() => onPick(c)}
+          <button key={c.id} type="button" disabled={busy} onClick={() => { if (!busy) onPick(c) }}
             style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 10, padding: '7px 8px', background: 'none', border: 0, borderBottom: '1px solid var(--line, #294059)', color: 'var(--fg, #e2e8f0)', textAlign: 'left', cursor: 'pointer' }}>
             <span><b style={{ fontWeight: 600 }}>{c.name || '—'}</b>{matched.has(c.id) ? <span style={{ color: '#22d3c8', marginLeft: 8, fontSize: 12 }}>matches</span> : null}</span>
             <span style={MUTED}>{c.phone || c.email || ''}</span>
@@ -68,12 +58,16 @@ function Row({ d, onDone }) {
   const [busy, setBusy] = useState(false)
 
   async function attachTo(c) {
+    if (busy) return
     setBusy(true)
     try {
       await attachDesign(supabase, d, c.id, user?.id)
       toast(`Design attached to ${escHtml(c.name || 'the lead')}`, 'success')
       onDone()
-    } catch (e) { toast(escHtml(e.message || 'Could not attach the design.')) } finally { setBusy(false) }
+    } catch (e) {
+      toast(escHtml(e.message || 'Could not attach the design.'))
+      if (e.alreadyAttached) onDone() // someone else attached it: refresh the list
+    } finally { setBusy(false) }
   }
   async function newLead() {
     if (busy) return
@@ -112,7 +106,7 @@ function Row({ d, onDone }) {
   return (
     <div>
       <DesignItem d={d} onChanged={onDone} actions={actions} />
-      {attaching ? <AttachPicker design={d} onPick={attachTo} onCancel={() => setAttaching(false)} /> : null}
+      {attaching ? <AttachPicker design={d} busy={busy} onPick={attachTo} onCancel={() => setAttaching(false)} /> : null}
     </div>
   )
 }
@@ -130,12 +124,14 @@ export default function UnassignedDesigns() {
       if (alive && my === run) setRows(r.rows)
     }
     load()
+    // many changes close together (a burst of sends) = one reload
+    let t = null
+    const soon = () => { clearTimeout(t); t = setTimeout(load, 500) }
     const ch = supabase.channel('designs-unassigned')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'design_requests' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'design_requests' }, soon)
       .subscribe()
-    const reload = () => load()
-    window.addEventListener('ss:designs-updated', reload)
-    return () => { alive = false; supabase.removeChannel(ch); window.removeEventListener('ss:designs-updated', reload) }
+    window.addEventListener('ss:designs-updated', soon)
+    return () => { alive = false; clearTimeout(t); supabase.removeChannel(ch); window.removeEventListener('ss:designs-updated', soon) }
   }, [])
 
   useEffect(() => { if (open && rows.length === 0) setOpen(false) }, [open, rows.length])
