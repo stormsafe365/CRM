@@ -20345,5 +20345,181 @@ window.__s5={refresh:refresh,setMode:setMode,state:S,linePrice:linePrice,describ
 })();
 </script>
 <!-- ═════════ END SECTION 5 ═════════ -->
+<!-- ═════════ LEAN-TO CARDS, TIDIED (owner 10/19/26) ═════════
+     "we need to adjust and make our lean-to section wayyyy easier ... not organized, its messy & very cramped".
+     New layout only, and only how the lean-to card LOOKS: inside an open lean-to the fields are grouped under
+     Size / Walls / Storage room / Doors & windows; the orange rep notes fold into one "Rep notes (n)" button
+     (red problems stay in view); each lean-to door / window is a one-line row that opens to edit, one at a time,
+     and adding one folds the others. Every program field stays exactly where it was in the page (same entry,
+     same classes), so pricing, saving, the PDF and the 3D read them as before; nothing here prices anything. -->
+<style id="s5lt-css">
+.s5lt-h,.s5lt-notes,.s5lt-acch{display:none}
+body.s5-new .s5-card.s5-open>.s5lt-h{display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--wlt,#a78bfa);margin:6px 0 -4px!important;padding-top:10px;border-top:1px solid var(--bd)}
+body.s5-new .s5-card.s5-open>.s5lt-h[data-k="size"]{border-top:0;padding-top:2px}
+body.s5-new .s5-card.s5-open>.s5lt-h[hidden]{display:none}
+/* rep notes: one button under the header; the orange notes show only when it is open (red problems always show) */
+body.s5-new .s5-card.s5-open>.s5lt-notes{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:rgba(240,136,62,.07);border:1px solid rgba(240,136,62,.35);border-radius:6px;padding:7px 10px;color:#f5caa9;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+body.s5-new .s5-card.s5-open>.s5lt-notes[hidden]{display:none}
+body.s5-new .s5-card.s5-open>.s5lt-notes .s5lt-nb{color:var(--sb);font-weight:500}
+body.s5-new .s5-card.s5lt:not(.s5lt-notes-open) .lt-sensei-note,
+body.s5-new .s5-card.s5lt:not(.s5lt-notes-open) .lt-stor-note:not([data-s5=bad]),
+body.s5-new .s5-card.s5lt:not(.s5lt-notes-open) .lt-conn-note[data-s5=warn],
+body.s5-new .s5-card.s5lt:not(.s5lt-notes-open) .s5lt-sqft,
+body.s5-new .s5-card.s5lt:not(.s5lt-notes-open) .lt-acc-warn{display:none!important}
+body.s5-new .s5-card .s5lt-sqft{color:var(--sb)!important;background:transparent!important;border-left:3px solid var(--bv)!important}
+/* lean-to doors & windows: a one-line row each; tap to open (one at a time) */
+body.s5-new .s5-card .lt-acc-e:not(.s5lt-acc-open){display:flex!important;align-items:center;gap:8px;padding:4px 6px 4px 4px!important;margin-bottom:6px!important}
+body.s5-new .s5-card .lt-acc-e:not(.s5lt-acc-open)>:not(.s5lt-acch):not(.rm){display:none!important}
+body.s5-new .s5-card .lt-acc-e:not(.s5lt-acc-open)>.rm{position:static!important;flex:none}
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open{border-color:var(--wlt,#a78bfa)!important}
+/* an open lean-to door / window: its fields two per line (owner 10/19/26: "less condensed") */
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;align-items:end}
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open>*{grid-column:1/-1;min-width:0}
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open>.row{grid-column:auto}
+body.s5-new .s5-card .lt-acc-e>.s5lt-acch{display:flex;align-items:center;gap:10px;flex:1;min-width:0;background:transparent;border:0;color:var(--tx);text-align:left;padding:6px 6px;cursor:pointer;border-radius:5px;font:inherit}
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open>.s5lt-acch{width:100%;margin:-4px 0 6px;padding:4px 48px 8px 0;border-bottom:1px solid var(--bd);border-radius:0}
+body.s5-new .s5-card .s5lt-acct{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+body.s5-new .s5-card .s5lt-acct b{font-size:14px;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.s5-new .s5-card .s5lt-acct span{font-size:12px;color:var(--sb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.s5-new .s5-card .s5lt-acct .s5lt-bad{color:#f8cfcf}
+body.s5-new .s5-card .s5lt-chev{flex:none;color:var(--sb);font-size:18px;line-height:1;transition:transform .15s}
+body.s5-new .s5-card .lt-acc-e.s5lt-acc-open .s5lt-chev{transform:rotate(90deg)}
+/* the whole panel a little roomier (owner 10/19/26: "less condensed") */
+body.s5-new .s5-cards{gap:12px}
+body.s5-new .s5-card.s5-open{gap:14px;padding:0 16px 16px}
+body.s5-new .s5-card.s5-open>.s5-ch{margin:0 -16px!important}
+@media(prefers-reduced-motion:reduce){body.s5-new .s5-card .s5lt-chev{transition:none}}
+</style>
+<script id="s5lt-js">
+(function(){
+'use strict';
+if(window.__s5lt) return; window.__s5lt=true;
+var D=document;
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function optText(sel){ var o=sel&&sel.options&&sel.options[sel.selectedIndex]; return o?o.text:''; }
+function stripPrice(t){ return String(t||'').replace(/\s+[—-]\s+\$[\d,.]+.*$/,'').replace(/\s*\(\+\$[\d,.]+[^)]*\)\s*$/,'').trim(); }
+function shown(el){ return !!el && !el.classList.contains('hidden') && el.style.display!=='none' && !!el.textContent.trim(); }
+function rowOf(el,sel){ var f=el.querySelector(sel); return f?f.closest('.row'):null; }
+function kids(el){ return Array.prototype.slice.call(el.children); }
+
+/* ---------- one lean-to card ---------- */
+var SIZE=['.lt-type','.ltw','.ltl2','.ltoff','.lth','.lt-tall-h','.ltp'];
+function heading(el,key,text){
+  var h=el.querySelector(':scope > .s5lt-h[data-k="'+key+'"]');
+  if(!h){ h=D.createElement('div'); h.className='s5lt-h'; h.dataset.k=key; h.textContent=text; el.appendChild(h); }
+  return h;
+}
+function setOrder(n,o){ if(n&&n.style.order!==String(o)) n.style.order=String(o); }
+function tidyLT(el){
+  el.classList.add('s5lt');
+  // the plain "priced per sq ft" note right after the connection note (it has no class of its own)
+  var cn=el.querySelector(':scope > .lt-conn-note');
+  var sq=cn&&cn.nextElementSibling;
+  if(sq&&sq.classList.contains('enote')&&!sq.className.replace(/\b(enote|s5lt-sqft)\b/g,'').trim()&&/priced per sq/i.test(sq.textContent)) sq.classList.add('s5lt-sqft');
+  // headings + the order things show in (visual only: the open card is a grid, so the program's own order is untouched)
+  var hS=heading(el,'size','Size'), hW=heading(el,'walls','Walls'), hT=heading(el,'storage','Storage room');
+  var nb=el.querySelector(':scope > .s5lt-notes');
+  if(!nb){ nb=D.createElement('button'); nb.type='button'; nb.className='s5lt-notes'; el.appendChild(nb); }
+  kids(el).forEach(function(c){
+    if(c.classList.contains('s5-ch')) setOrder(c,-20);
+    else if(c===nb) setOrder(c,-12);
+    else if(c.classList.contains('truss-warn')||c.classList.contains('ovl-warn')||c.classList.contains('lt-price-note')) setOrder(c,-10);
+    else if(c===hS) setOrder(c,1);
+  });
+  SIZE.forEach(function(s){ setOrder(rowOf(el,s),2); });
+  setOrder(el.querySelector(':scope > .lt-wrap-badge-row'),2);
+  setOrder(cn,3);
+  setOrder(hW,4);
+  setOrder(rowOf(el,'.lt-wm'),5);
+  setOrder(el.querySelector(':scope > .lt-custom-rows'),6);
+  var sb=el.querySelector(':scope > .lt-stor-block');
+  setOrder(hT,7); setOrder(sb,8);
+  hT.hidden=!sb||sb.style.display==='none';
+  setOrder(el.querySelector(':scope > .lt-acc-section'),9);
+  setOrder(el.querySelector(':scope > .lt-sensei-note'),11);
+  setOrder(sq&&sq.classList.contains('s5lt-sqft')?sq:null,12);
+  // rep notes: count the orange ones that are showing; red problems are not folded away
+  var notes=[el.querySelector('.lt-sensei-note'),el.querySelector('.lt-stor-note:not([data-s5=bad])'),el.querySelector('.lt-conn-note[data-s5=warn]')]
+    .concat(Array.prototype.slice.call(el.querySelectorAll('.lt-acc-warn')));
+  var n=notes.filter(shown).length;
+  var open=el.classList.contains('s5lt-notes-open');
+  var html=n?('<span>⚠ Rep notes ('+n+') <span class="s5lt-nb">· not printed</span></span><span class="s5lt-nb">'+(open?'Hide':'Show')+'</span>'):'';
+  if(nb.__h!==html){ nb.innerHTML=html; nb.__h=html; }
+  nb.hidden=!n;
+  nb.setAttribute('aria-expanded',open?'true':'false');
+  // its doors & windows
+  Array.prototype.forEach.call(el.querySelectorAll('.lt-acc-e'),function(a){ tidyAcc(a); });
+}
+
+/* ---------- one lean-to door / window: a one-line row ---------- */
+var TYPE={rollup:'Roll-up door',wtd:'Walk door',win:'Window',frameout:'Framed opening'};
+function accLine(a){
+  var t=(a.querySelector('.lt-acc-type')||{}).value||'rollup';
+  var size='';
+  if(t==='rollup'){ var rs=a.querySelector('.lt-acc-size'); size=rs&&rs.value?stripPrice(optText(rs)):''; }
+  else if(t==='wtd') size=stripPrice(optText(a.querySelector('.lt-acc-wtd-hi')));
+  else if(t==='win') size=stripPrice(optText(a.querySelector('.lt-acc-win-hi')));
+  else { var w=a.querySelector('.lt-acc-fo-w'), h=a.querySelector('.lt-acc-fo-h'); if(w&&h) size=w.value+'′ × '+h.value+'′'; }
+  var q=parseInt((a.querySelector('.lt-acc-qty')||{}).value,10)||1;
+  var title=(q>1?q+' × ':'')+(size?size+' ':'')+TYPE[t].toLowerCase();
+  title=title.charAt(0).toUpperCase()+title.slice(1);
+  var sub=[];
+  if(!size&&t!=='frameout') sub.push('no size picked');
+  var loc=a.querySelector('.lt-acc-loc'); if(loc) sub.push(stripPrice(optText(loc)));
+  if(t==='rollup'){ var c=a.querySelector('.lt-acc-color'); var cr=c&&c.closest('.row'); if(c&&(!cr||cr.style.display!=='none')) sub.push(stripPrice(optText(c))); }
+  var bad=['.lt-acc-pwarn','.lt-acc-fitwarn',':scope > .ovl-warn'].some(function(s){ return shown(a.querySelector(s)); });
+  return { title:title, sub:sub.filter(Boolean).join(' · '), bad:bad };
+}
+function tidyAcc(a){
+  var h=a.querySelector(':scope > .s5lt-acch');
+  if(!h){
+    h=D.createElement('button'); h.type='button'; h.className='s5lt-acch';
+    h.innerHTML='<span class="s5lt-acct"><b></b><span></span></span><span class="s5lt-chev" aria-hidden="true">›</span>';
+    a.insertBefore(h,a.firstChild);
+  }
+  var L=accLine(a);
+  var b=h.querySelector('b'), s=h.querySelector('.s5lt-acct span');
+  if(b.textContent!==L.title) b.textContent=L.title;
+  var sh=(L.bad?'<span class="s5lt-bad">⚠ check this one</span> · ':'')+esc(L.sub);
+  if(s.__h!==sh){ s.innerHTML=sh; s.__h=sh; }
+  h.setAttribute('aria-expanded',a.classList.contains('s5lt-acc-open')?'true':'false');
+}
+function openAcc(a,open){
+  var lt=a.closest('.lte');
+  if(open&&lt) Array.prototype.forEach.call(lt.querySelectorAll('.lt-acc-e'),function(o){ if(o!==a){ o.classList.remove('s5lt-acc-open'); tidyAcc(o); } });
+  a.classList.toggle('s5lt-acc-open',open);
+  tidyAcc(a);
+}
+
+/* ---------- passes ---------- */
+var timer=0;
+function pass(){ timer=0; Array.prototype.forEach.call(D.querySelectorAll('#ltl > .lte.entry'),tidyLT); }
+function sched(){ if(!timer) timer=setTimeout(pass,0); }
+
+// a new lean-to door / window opens and the others in that lean-to fold (like adding a card)
+if(typeof window.addLTAcc==='function'){
+  var _add=window.addLTAcc;
+  window.addLTAcc=function(entry){
+    var r=_add.apply(this,arguments);
+    try{ var list=entry&&entry.querySelectorAll('.lt-acc-e'), a=list&&list[list.length-1]; if(a){ tidyAcc(a); openAcc(a,true); } }catch(e){}
+    sched();
+    return r;
+  };
+}
+if(typeof window.rc==='function'){ var _rc=window.rc; window.rc=function(){ var r=_rc.apply(this,arguments); sched(); return r; }; }
+D.addEventListener('click',function(e){
+  var t=e.target; if(!t||!t.closest) return;
+  var nb=t.closest('.s5lt-notes');
+  if(nb){ var card=nb.closest('.lte'); if(card){ card.classList.toggle('s5lt-notes-open'); tidyLT(card); } return; }
+  var h=t.closest('.s5lt-acch');
+  if(h){ var a=h.closest('.lt-acc-e'); if(a) openAcc(a,!a.classList.contains('s5lt-acc-open')); }
+});
+var ltl=D.getElementById('ltl');
+if(ltl) new MutationObserver(sched).observe(ltl,{childList:true,subtree:true});
+sched();
+window.__s5lt={pass:pass,accLine:accLine};
+})();
+</script>
+<!-- ═════════ END LEAN-TO CARDS ═════════ -->
 </body>
 </html>
