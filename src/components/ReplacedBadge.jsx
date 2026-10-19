@@ -4,7 +4,7 @@
 // Also the REVISED tag of the older Revision Order flow (orange, owner rule:
 // no amber / yellow — warnings use #f0883e).
 
-import { contractSentOf, fmtShortDate } from '../lib/contractDocs'
+import { contractSentOf, executedOf, fmtShortDate, signedDayConfirmed, signedOnOf } from '../lib/contractDocs'
 // the card's balance on a revised order (money already paid credited — contractDocs.revisedBalance)
 export { cardBalanceOf } from '../lib/contractDocs'
 
@@ -14,11 +14,28 @@ const BASE = { borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 80
 
 // "contract sent 10/06/2026" — a generated contract (payload_json.contractSent).
 // A small muted tag, not a status: the quote's status stays whatever the rep set.
+// A quote marked SIGNED (Documents › Contracts › Mark as signed, owner 10/19/26) shows
+// "✓ signed 09/24/2026" instead; orange "signed · date?" while the day is only the day a
+// stamp was made (set the real one in Documents › Contracts).
 export function ContractSentTag({ quote: q, style = {} }) {
+  if (executedOf(q)) return <SignedTag quote={q} style={style} />
   const cs = contractSentOf(q)
   if (!cs) return null
   const d = fmtShortDate(cs.at)
   return <span className="contract-sent-tag" title={cs.number ? `Contract ${cs.number} generated` : 'Contract generated'} style={{ color: '#8b95a3', fontSize: 11, fontWeight: 600, marginLeft: 8, whiteSpace: 'nowrap', ...style }}>contract sent{d ? ` ${d}` : ''}</span>
+}
+
+export function SignedTag({ quote: q, style = {} }) {
+  const day = signedOnOf(q)
+  if (!day) return null
+  const ok = signedDayConfirmed(q)
+  return (
+    <span
+      className="signed-tag"
+      title={ok ? `Customer signed ${fmtShortDate(day)} (Documents › Contracts)` : `Marked signed on ${fmtShortDate(day)} — the day the customer really signed is not set yet. Set it in Documents › Contracts.`}
+      style={{ color: ok ? '#34d399' : '#f0883e', fontSize: 11, fontWeight: 700, marginLeft: 8, whiteSpace: 'nowrap', ...style }}
+    >{ok ? `✓ signed ${fmtShortDate(day)}` : 'signed · date?'}</span>
+  )
 }
 
 export function replacedByNumber(q) {

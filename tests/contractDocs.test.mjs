@@ -189,17 +189,26 @@ function fakeSb(rows, { noStar = false } = {}) {
 test('markExecuted: deposit paid (never a step back), executed date, star; no star column → skipped', async () => {
   const rows = [{ id: 'a', client_id: 'c', quote_number: 'SS-1', status: 'sent', starred: false, payload_json: { contractSent: { at: 'x' } } }, { id: 'b', client_id: 'c', status: 'draft', starred: true, payload_json: {} }]
   const sb = fakeSb(rows)
-  const r = await markExecuted(sb, 'a', { file: 'SS-1-contract.pdf', at: '2026-10-06T12:00:00Z' })
+  // the rep typed the day the customer signed (Doc Hub › Mark as signed, owner 10/19/26)
+  const r = await markExecuted(sb, 'a', { file: 'SS-1-contract.pdf', signedOn: '2026-09-24' })
   assert.equal(r.status, 'deposit_paid'); assert.equal(r.changed, true); assert.equal(r.starred, true)
   assert.equal(rows[0].status, 'deposit_paid'); assert.equal(rows[0].starred, true); assert.equal(rows[1].starred, false)
-  assert.deepEqual(rows[0].payload_json, { contractSent: { at: 'x' }, executed: { at: '2026-10-06T12:00:00Z', file: 'SS-1-contract.pdf' } })
-  assert.equal(executedToast(r, 'Sent'), 'Quote #SS-1 marked Deposit Paid · executed 10/06/2026 · ★ starred')
+  const ex = rows[0].payload_json.executed
+  assert.deepEqual({ ...ex, markedAt: 'm' }, { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, markedAt: 'm', file: 'SS-1-contract.pdf' })
+  assert.deepEqual(rows[0].payload_json.contractSent, { at: 'x' })
+  assert.equal(executedToast(r, 'Sent'), 'Quote #SS-1 marked Deposit Paid · signed 09/24/2026 · ★ starred')
+  // an Executed Copy clicked again later never moves the signed day
+  const again = await markExecuted(sb, 'a', { file: 'SS-1-executed-deposit-paid.pdf' })
+  assert.equal(again.at, '2026-09-24'); assert.equal(again.confirmed, true)
+  assert.equal(rows[0].payload_json.executed.file, 'SS-1-executed-deposit-paid.pdf')
   const rows2 = [{ id: 'a', client_id: 'c', quote_number: 'SS-2', status: 'revised', payload_json: {} }]
   const sb2 = fakeSb(rows2, { noStar: true })
+  // a click time passed in = that local day, NOT confirmed as the signing day
   const r2 = await markExecuted(sb2, 'a', { at: '2026-10-06T12:00:00Z' })
   assert.equal(r2.status, 'revised'); assert.equal(r2.changed, false); assert.equal(r2.starred, false)
+  assert.equal(r2.at, '2026-10-06'); assert.equal(r2.confirmed, false)
   assert.equal(sb2.writes.length, 1) // no star writes without the column
-  assert.equal(executedToast(r2, 'Revised Order'), 'Quote #SS-2 kept as Revised Order (already further along) · executed 10/06/2026')
+  assert.equal(executedToast(r2, 'Revised Order'), 'Quote #SS-2 kept as Revised Order (already further along) · signed date not set yet (set it in Documents › Contracts)')
 })
 
 test('approval sheet revision label: same "Rev n" scheme, none for an unrevised quote', async () => {
