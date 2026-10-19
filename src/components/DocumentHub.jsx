@@ -2,22 +2,36 @@
 // (private bucket, namespaced by client + category) and open via short-lived
 // signed URLs. Styled to the design's Document Hub — 6 category cards that
 // filter a combined file table; upload targets the active category.
+//
+// Contracts, SORTED (owner 10/19/26, Peter Mawn: "he doesnt have 19 contracts ... its a rats nest and
+// there is no way to mark the contract thats signed"): every Generate Contract / Executed Copy /
+// revision adds a file, so the Contracts tab is no longer a flat list —
+//   SIGNED          one card per agreement: the original and each revision the customer signed, the
+//                   day he signed (typed by the rep), the signed copy, the DEPOSIT PAID copy, and a
+//                   ▾ menu: See the signed copy · Make a revision · Change the signed date · …
+//   NOT SIGNED YET  contracts we generated, one row per contract number (older copies folded)
+//   UPLOADS TO SORT files with no contract number that are not linked to a signed order
+// "Mark as signed…" (MarkSignedModal) replaces the old stamp icon; uploading a contract asks right
+// away whether it is the signed copy. Nothing is renamed, moved or deleted by the sorting
+// (lib/contractDocs organizeContracts); the trash can still deletes a file.
 
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadClientDoc, uploadClientDocBlob, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
 import { stampExecutedPdf } from '../lib/stampExecuted'
 import { supabase } from '../lib/supabase'
 import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
-import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
+import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
-import { restoreAfterRevisionDeleted, executedToast, markExecuted, matchContractQuote } from '../lib/contractDocs'
-import { quoteStatusLabel } from '../lib/constants'
+import MarkSignedModal, { quoteLine } from './MarkSignedModal'
+import {
+  clearSignedMark, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
+} from '../lib/contractDocs'
+import { isBuilderPayload } from '../lib/priceLockCrm'
 
 const SECTIONS = [
   { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
-  { key: 'contract',    label: 'Contracts',   accept: 'application/pdf',         hint: 'PDF' },
+  { key: 'contract',    label: 'Contracts',   accept: 'application/pdf,image/*', hint: 'PDF, scan or photo' },
   { key: 'rendering',   label: 'Renderings',  accept: 'image/*,application/pdf', hint: 'Image or PDF' },
   { key: 'layout',      label: 'Layout',      accept: 'application/pdf,image/*', hint: 'Signed sheet' },
   { key: 'revisions',   label: 'Revisions',   accept: 'application/pdf,image/*', hint: 'PDF or image' },
@@ -35,9 +49,9 @@ const ICONS = {
   additional:  ic(<><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z" /><path d="M12 11v5M9.5 13.5h5" /></>),
 }
 const EYE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
-// Stamp icon (badge + check) for "Stamp Executed — Deposit Paid"
-const STAMP = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="10" r="6" /><path d="m9.5 10 2 2 3.5-3.5" /><path d="M7 20h10M8.5 16l-1 4M15.5 16l1 4" /></svg>
 const TRASH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+const CHEV = <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
 
 // 6A category accents (rotating palette; All Files uses the brand teal) + short chip labels.
 const CAT_ACCENT = { all: '#22c4bf', quote: '#61d89e', contract: '#ff9351', rendering: '#9da9dd', layout: '#ffeb99', revisions: '#22c4bf', additional: '#61d89e' }
@@ -55,46 +69,74 @@ const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) }
   catch { return '—' }
 }
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const labelOfPath = (p) => String(p || '').split('/').pop().replace(/^\d+-/, '')
 
 export default function DocumentHub({ clientId, clientName, client, onBuildQuote }) {
   const { user } = useAuth()
   const [filesByCat, setFilesByCat] = useState({})
+  const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [active, setActive] = useState('all')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [layoutOpen, setLayoutOpen] = useState(false)
-  const [stamping, setStamping] = useState(null) // path of the file being stamped
-  const [pickFor, setPickFor] = useState(null) // { label, candidates, why, resolve } — which quote an executed contract belongs to
+  const [markFor, setMarkFor] = useState(null) // { file, presetQuoteId, justUploaded } — Mark as signed
+  const [dateFor, setDateFor] = useState(null) // quote id — change the signed date
+  const [open, setOpen] = useState(() => new Set()) // folded groups the rep opened
+  const [stamping, setStamping] = useState(null)
   const inputRef = useRef(null)
   const uploadCat = useRef('quote')
+  const attachFor = useRef(null) // "Attach the signed copy" of this quote id
   const [docExpanded, setDocExpanded] = useState(false)
   const selectCat = (key) => { setActive(key); setDocExpanded(false) }
+  const toggle = (k) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
 
+  async function loadQuotes() {
+    try {
+      const { data, error } = await supabase.from('quotes').select('*').eq('client_id', clientId)
+      if (error) throw error
+      setQuotes((data || []).filter((q) => q && !q.deleted_at))
+    } catch (e) { console.warn('Doc Hub: quotes not read', e) }
+  }
   async function refresh() {
     try {
       const entries = await Promise.all(SECTIONS.map(async s => [s.key, await listClientDocs(clientId, s.key)]))
       setFilesByCat(Object.fromEntries(entries))
       setError('')
     } catch (e) { setError(e.message) } finally { setLoading(false) }
+    loadQuotes()
   }
 
   useEffect(() => { setLoading(true); refresh() /* eslint-disable-next-line */ }, [clientId])
 
   // Storage has no realtime — refresh when a quote/contract PDF is saved to this
-  // lead from the builder (BuildQuoteModal dispatches ss:docs-updated).
+  // lead from the builder (BuildQuoteModal dispatches ss:docs-updated). The
+  // lead's quotes (signed marks) do: their own channel.
   useEffect(() => {
     const onDocs = (e) => { if (!e.detail || e.detail.clientId === clientId) refresh() }
     window.addEventListener('ss:docs-updated', onDocs)
-    return () => window.removeEventListener('ss:docs-updated', onDocs)
+    const channel = supabase
+      .channel(`dochub-quotes-${clientId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes', filter: `client_id=eq.${clientId}` }, () => loadQuotes())
+      .subscribe()
+    return () => { window.removeEventListener('ss:docs-updated', onDocs); supabase.removeChannel(channel) }
     /* eslint-disable-next-line */
   }, [clientId])
 
+  const org = useMemo(() => organizeContracts(filesByCat.contract || [], quotes), [filesByCat.contract, quotes])
+  // files a signed order points at: deleting one asks twice
+  const signedPaths = useMemo(() => {
+    const m = new Map()
+    for (const s of org.signed) {
+      if (s.signedFile) m.set(s.signedFile.path, `the signed copy of ${quoteLine(s.quote)}`)
+      if (s.stampedFile) m.set(s.stampedFile.path, `the DEPOSIT PAID copy of ${quoteLine(s.quote)}`)
+    }
+    return m
+  }, [org])
+
   const counts = Object.fromEntries(SECTIONS.map(s => [s.key, (filesByCat[s.key] || []).length]))
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  const rows = (active === 'all'
-    ? SECTIONS.flatMap(s => (filesByCat[s.key] || []).map(f => ({ ...f, cat: s.key })))
-    : (filesByCat[active] || []).map(f => ({ ...f, cat: active })))
 
   function triggerUpload(cat) {
     uploadCat.current = cat
@@ -103,6 +145,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   }
   async function onPick(e) {
     const file = e.target.files?.[0]
+    const attachTo = attachFor.current
+    attachFor.current = null
     if (!file) return
     setBusy(true); setError('')
     try {
@@ -126,6 +170,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         promoteToWorking(clientId, user?.id).catch(() => {})
       }
       await refresh()
+      // a contract upload: is it what the customer signed? (owner 10/19/26)
+      if (cat === 'contract') { setActive('contract'); setMarkFor({ file: { path, label: labelOfPath(path) }, presetQuoteId: attachTo, justUploaded: true }) }
     }
     catch (err) { setError(err.message) }
     finally { setBusy(false); if (inputRef.current) inputRef.current.value = '' }
@@ -133,58 +179,10 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   async function onView(path) {
     try { window.open(await getDocSignedUrl(path), '_blank') } catch (e) { setError(e.message) }
   }
-  // Stamp a SIGNED contract (DocuSign download / scan / photo) with the logo +
-  // DEPOSIT PAID watermark and save it alongside as the fully executed copy /
-  // bill of sale. Signatures are untouched — the stamp overlays the file as-is.
-  async function onStampExecuted(f) {
-    if (stamping) return
-    setStamping(f.path)
-    try {
-      const url = await getDocSignedUrl(f.path)
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Could not download the file to stamp.')
-      const contentType = res.headers.get('content-type') || (f.label.match(/\.(png|jpe?g)$/i) ? 'image/jpeg' : 'application/pdf')
-      const bytes = new Uint8Array(await res.arrayBuffer())
-      const blob = await stampExecutedPdf(bytes, contentType)
-      const base = f.label.replace(/\.[^.]+$/, '')
-      await uploadClientDocBlob(clientId, 'contract', blob, `${base}-EXECUTED-deposit-paid.pdf`, 'application/pdf')
-      await refresh()
-      toast('Executed copy created — saved under Contracts', 'success')
-      await markExecutedQuote(f)
-    } catch (e) {
-      setError('Could not stamp this file: ' + (e.message || e))
-    } finally {
-      setStamping(null)
-    }
-  }
-
-  // The quote that signed contract belongs to → Deposit Paid (never a step back:
-  // a status already further along stays), the executed date on payload_json.executed,
-  // and the star (Open Layout's quote; skipped without the starred column).
-  // Contract file ↔ quote by number (lib/contractDocs); otherwise the rep picks.
-  async function markExecutedQuote(f) {
-    let quotes = []
-    try {
-      const { data, error } = await supabase.from('quotes').select('*').eq('client_id', clientId)
-      if (error) throw error
-      quotes = (data || []).filter((q) => q && !q.deleted_at)
-    } catch (e) { toast('The quote could not be read to mark it Deposit Paid — set its status by hand. (' + (e.message || e) + ')'); return }
-    const m = matchContractQuote(f.label, quotes)
-    let q = m.quote
-    if (!q) {
-      if (!m.candidates.length) { toast('No quote on this lead to mark Deposit Paid.'); return }
-      q = await new Promise((resolve) => setPickFor({ label: f.label, candidates: m.candidates, why: m.how, resolve }))
-      setPickFor(null)
-      if (!q) { toast('No quote was marked — set the status by hand if needed.'); return }
-    }
-    // shared with the builder's Executed Copy (lib/contractDocs markExecuted)
-    try {
-      const res = await markExecuted(supabase, q.id, { file: f.label })
-      toast(executedToast(res, quoteStatusLabel(q.status)), 'success')
-    } catch (e) { toast(`Quote #${q.quote_number || ''} could not be marked Deposit Paid: ${e.message || e}`) }
-  }
 
   async function onDelete(path) {
+    const linked = signedPaths.get(path)
+    if (linked && !window.confirm(`This is ${linked}. Delete it anyway? The order stays marked signed.`)) return
     if (!window.confirm('Delete this file? This cannot be undone.')) return
     try {
       await deleteDoc(path)
@@ -203,19 +201,169 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     } catch (e) { setError(e.message) }
   }
 
-  // Category card → popover menu (View all / Upload / [Build new quote]).
-  function openCatMenu(e, key) {
-    const sec = SECTIONS.find(s => s.key === key)
-    const items = [
-      { id: 'view', label: `View all ${sec.label.toLowerCase()}`, icon: MENU_ICON.eye, onClick: () => setActive(key) },
-      { id: 'upload', label: `Upload ${labelSingular(key).toLowerCase()}`, icon: MENU_ICON.upload, onClick: () => triggerUpload(key) },
-    ]
-    if (key === 'quote' && onBuildQuote) items.push({ id: 'build', label: 'Build new quote', icon: MENU_ICON.pencil, onClick: onBuildQuote })
-    openMenu(e.currentTarget, `${sec.label} · ${counts[key]} files`, items)
+  // The signed order's DEPOSIT PAID copy, made later from its signed copy.
+  async function makeStamped(s) {
+    if (stamping || !s.signedFile) return
+    setStamping(s.quote.id)
+    try {
+      const res = await fetch(await getDocSignedUrl(s.signedFile.path))
+      if (!res.ok) throw new Error('Could not download the signed copy.')
+      const ct = res.headers.get('content-type') || (/\.(png|jpe?g)$/i.test(s.signedFile.label) ? 'image/jpeg' : 'application/pdf')
+      const blob = await stampExecutedPdf(new Uint8Array(await res.arrayBuffer()), ct)
+      const stampedPath = await uploadClientDocBlob(clientId, 'contract', blob, `${s.signedFile.label.replace(/\.[^.]+$/, '')}-EXECUTED-deposit-paid.pdf`, 'application/pdf')
+      await markExecuted(supabase, s.quote.id, { stampedPath })
+      toast('DEPOSIT PAID copy made — saved under Contracts', 'success')
+      await refresh()
+    } catch (e) { setError('Could not make the DEPOSIT PAID copy: ' + (e.message || e)) }
+    finally { setStamping(null) }
+  }
+
+  function signedMenu(e, s, latest) {
+    const q = s.quote
+    const items = []
+    if (s.signedFile) items.push({ id: 'see', label: 'See the signed copy', onClick: () => onView(s.signedFile.path) })
+    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => { attachFor.current = q.id; triggerUpload('contract') } })
+    if (s.stampedFile) items.push({ id: 'stamped', label: 'See the DEPOSIT PAID copy', onClick: () => onView(s.stampedFile.path) })
+    else if (s.signedFile) items.push({ id: 'stamp', label: 'Make the DEPOSIT PAID copy', onClick: () => makeStamped(s) })
+    if (latest) {
+      items.push({ sep: true })
+      items.push({
+        id: 'rev', label: 'Make a revision of this signed version',
+        onClick: () => {
+          if (!isBuilderPayload(q.payload_json)) { toast('This order was added by hand — there is no build to revise. Build it in the 3D quote builder first.'); return }
+          window.dispatchEvent(new CustomEvent('ss:make-revision', { detail: { clientId, quoteId: q.id } }))
+        },
+      })
+    }
+    items.push({ sep: true })
+    items.push({ id: 'date', label: s.confirmed ? 'Change the signed date…' : 'Set the date he signed…', onClick: () => setDateFor(q.id) })
+    items.push({
+      id: 'unmark', label: 'Not signed — take the mark off', cls: 'danger',
+      onClick: async () => {
+        if (!window.confirm(`Take the signed mark off ${quoteLine(q)}? The files stay; the quote's status is not changed (set it on the quote card if needed).`)) return
+        try { await clearSignedMark(supabase, q.id); toast(`${esc(quoteLine(q))} is no longer marked signed`, 'success'); loadQuotes() }
+        catch (err) { setError(err.message || String(err)) }
+      },
+    })
+    openMenu(e.currentTarget, esc(quoteLine(q)), items.map((it) => (it.sep ? it : { ...it, label: esc(it.label) })))
   }
 
   const activeAccent = CAT_ACCENT[active] || '#14A6A0'
-  const visibleRows = docExpanded ? rows : rows.slice(0, 4)
+
+  // one file row (the table's 4 columns); `more` = folded older copies of the same file
+  function FileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false }) {
+    const acc = CAT_ACCENT[cat] || '#14A6A0'
+    const canMark = cat === 'contract' && !signedPaths.has(f.path)
+    return (
+      <div className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>
+        <span className="doc-name" role="button" onClick={() => onView(f.path)} title={f.label}>
+          <span className="doc-name-ic">{ICONS[cat]}</span>
+          <span className="doc-name-txt">{f.label}{note && <span className="doc-note">{note}</span>}</span>
+          {more > 0 && (
+            <button type="button" className="doc-more" onClick={(e) => { e.stopPropagation(); toggle(gkey) }} title="Older copies of the same file">
+              {open.has(gkey) ? 'hide' : `+${more} older ${more === 1 ? 'copy' : 'copies'}`}
+            </button>
+          )}
+        </span>
+        <span>{signed ? <span className="doc-chip doc-chip-signed">Signed</span> : <span className="doc-chip">{CHIP_LABEL[cat] || labelSingular(cat)}</span>}</span>
+        <span className="doc-date num">{fmtDate(f.createdAt)}</span>
+        <span className="doc-acts">
+          {canMark && <button type="button" className="doc-mark" title="Mark as signed — this is what the customer signed" onClick={() => setMarkFor({ file: f, presetQuoteId: null, justUploaded: false })}>{CHECK}</button>}
+          <button type="button" title="View" onClick={() => onView(f.path)}>{EYE}</button>
+          <button type="button" title="Delete" className="del" onClick={() => onDelete(f.path)}>{TRASH}</button>
+        </span>
+      </div>
+    )
+  }
+  const groupRows = (groups, cat) => groups.flatMap((g) => {
+    const k = `${cat}:${g.latest.label.toLowerCase()}`
+    return [
+      <FileRow key={g.latest.path} f={g.latest} cat={cat} more={g.older.length} gkey={k} signed={signedPaths.has(g.latest.path)} />,
+      ...(open.has(k) ? g.older.map((f) => <FileRow key={f.path} f={f} cat={cat} sub signed={signedPaths.has(f.path)} />) : []),
+    ]
+  })
+
+  // ── the Contracts tab, sorted ──
+  function ContractsView() {
+    const hasSigned = org.agreements.length > 0
+    const unsignedOpen = !hasSigned || open.has('contract:unsigned')
+    const nUnsigned = org.unsigned.reduce((n, g) => n + 1 + g.older.length, 0)
+    if (!(filesByCat.contract || []).length && !hasSigned) return <div className="doc-empty">No contracts yet. Generate one from a quote, or upload the signed copy.</div>
+    return (
+      <div className="ctr">
+        <div className="ctr-h"><span className="ctr-h-dot ok" />Signed {hasSigned ? `· ${org.signed.length}` : ''}</div>
+        {!hasSigned && <p className="ctr-empty">Nothing is marked signed yet. Upload the signed contract (DocuSign download, scan or photo) and mark it — or tap ✓ on the one he signed below.</p>}
+        {org.agreements.map((a) => (
+          <div key={a.agreement} className="ctr-agr">
+            <div className="ctr-agr-h">Agreement <b>{a.agreement}</b></div>
+            {a.entries.map((s) => {
+              const latest = s === a.latest
+              const gk = `contract:gen:${s.quote.id}`
+              return (
+                <div key={s.quote.id} className={`ctr-sig${latest ? ' now' : ''}`}>
+                  <div className="ctr-sig-top">
+                    <span className="ctr-sig-ic">{CHECK}</span>
+                    <span className="ctr-sig-main">
+                      <b>{s.role}</b>
+                      <span className="ctr-sig-sub">#{s.quote.quote_number || '—'} · {s.confirmed
+                        ? <>signed <b className="ctr-day">{fmtShortDate(s.signedOn)}</b></>
+                        : <button type="button" className="ctr-setday" onClick={() => setDateFor(s.quote.id)}>set the date he signed ✎</button>}
+                        {latest ? <span className="ctr-now">the order now</span> : <span className="ctr-old">replaced by a later revision</span>}
+                      </span>
+                    </span>
+                    <button type="button" className="ctr-menu" data-menu-anchor onClick={(e) => signedMenu(e, s, latest)}>Actions {CHEV}</button>
+                  </div>
+                  <div className="ctr-files">
+                    {s.signedFile
+                      ? <FileRow f={s.signedFile} cat="contract" signed note="signed copy" />
+                      : <div className="ctr-missing">No signed copy attached. <button type="button" onClick={() => { attachFor.current = s.quote.id; triggerUpload('contract') }}>Attach it</button></div>}
+                    {s.stampedFile && <FileRow f={s.stampedFile} cat="contract" signed note="DEPOSIT PAID copy" />}
+                    {stamping === s.quote.id && <div className="ctr-missing">Making the DEPOSIT PAID copy…</div>}
+                    {s.generated.length > 0 && (
+                      <button type="button" className="ctr-fold" onClick={() => toggle(gk)}>
+                        {open.has(gk) ? 'Hide' : 'Show'} the {s.generated.length} {s.generated.length === 1 ? 'copy' : 'copies'} we generated for this number
+                      </button>
+                    )}
+                    {open.has(gk) && s.generated.map((f) => <FileRow key={f.path} f={f} cat="contract" sub note="generated" />)}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+
+        {org.unsigned.length > 0 && (
+          <>
+            <button type="button" className="ctr-h ctr-h-btn" onClick={() => toggle('contract:unsigned')} disabled={!hasSigned}>
+              <span className="ctr-h-dot" />Not signed · contracts we generated · {nUnsigned} {nUnsigned === 1 ? 'file' : 'files'}
+              {hasSigned && <span className={`ctr-chev${unsignedOpen ? ' flip' : ''}`}>{CHEV}</span>}
+            </button>
+            {unsignedOpen && org.unsigned.map((g) => {
+              const k = `contract:num:${g.number.toLowerCase()}`
+              const note = g.quote ? `${quoteLine(g.quote)}${g.old ? ' · replaced' : ''}` : 'no quote has this number'
+              return [
+                <FileRow key={g.latest.path} f={g.latest} cat="contract" note={note} more={g.older.length} gkey={k} />,
+                ...(open.has(k) ? g.older.map((f) => <FileRow key={f.path} f={f} cat="contract" sub />) : []),
+              ]
+            })}
+          </>
+        )}
+
+        {org.uploads.length > 0 && (
+          <>
+            <div className="ctr-h"><span className="ctr-h-dot warn" />Uploads to sort · tap ✓ if it is what the customer signed</div>
+            {org.uploads.map((f) => <FileRow key={f.path} f={f} cat="contract" />)}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // the flat views (All Files / one category): same-named copies folded under the newest
+  const flatGroups = active === 'all'
+    ? SECTIONS.flatMap((s) => groupByLabel(filesByCat[s.key] || []).map((g) => ({ ...g, cat: s.key })))
+    : groupByLabel(filesByCat[active] || []).map((g) => ({ ...g, cat: active }))
+  const visibleGroups = docExpanded ? flatGroups : flatGroups.slice(0, 6)
 
   return (
     <section className="doc-hub" style={accentVars(activeAccent)}>
@@ -229,7 +377,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         </button>
         <button className="doc-hub-cta" onClick={() => triggerUpload(active === 'all' ? 'quote' : active)}>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5M12 3v12" /></svg>
-          {busy ? 'Uploading…' : 'Upload'}
+          {busy ? 'Uploading…' : active === 'contract' ? 'Upload signed copy' : 'Upload'}
         </button>
       </div>
 
@@ -244,7 +392,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         {SECTIONS.map(s => (
           <button key={s.key} className={`cat-card${active === s.key ? ' on' : ''}`} style={accentVars(CAT_ACCENT[s.key])} onClick={() => selectCat(s.key)}>
             <span className="cat-bar" /><span className="cat-tile">{ICONS[s.key]}</span>
-            <span className="cat-nm">{s.label}</span><span className="cat-ct num">{counts[s.key]} files</span>
+            <span className="cat-nm">{s.label}</span>
+            <span className="cat-ct num">{s.key === 'contract' && org.signed.length ? `${org.signed.length} signed · ${counts[s.key]} files` : `${counts[s.key]} files`}</span>
           </button>
         ))}
       </div>
@@ -254,36 +403,22 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       {/* File list */}
       {loading ? (
         <div className="muted" style={{ padding: 24 }}>Loading…</div>
-      ) : rows.length === 0 ? (
+      ) : active === 'contract' ? (
+        <div className="doc-list"><ContractsView /></div>
+      ) : flatGroups.length === 0 ? (
         <div className="doc-empty">No files in {active === 'all' ? 'this lead' : labelSingular(active).toLowerCase()} yet.</div>
       ) : (
         <div className="doc-list" key={`${active}-${docExpanded}`}>
           <div className="doc-list-head"><span>File Name</span><span>Category</span><span>Date</span><span className="r">Actions</span></div>
-          {visibleRows.map(f => {
-            const acc = CAT_ACCENT[f.cat] || '#14A6A0'
-            return (
-              <div key={f.path} className="doc-row" style={accentVars(acc)}>
-                <span className="doc-name" role="button" onClick={() => onView(f.path)}><span className="doc-name-ic">{ICONS[f.cat]}</span>{f.label}</span>
-                <span><span className="doc-chip">{CHIP_LABEL[f.cat] || labelSingular(f.cat)}</span></span>
-                <span className="doc-date num">{fmtDate(f.createdAt)}</span>
-                <span className="doc-acts">
-                  {f.cat === 'contract' && !/-EXECUTED-/i.test(f.label) && (
-                    <button
-                      title="Stamp Executed — Deposit Paid (watermarks THIS file, signatures included, as the bill of sale)"
-                      style={{ color: '#3fbf7f' }}
-                      disabled={stamping === f.path}
-                      onClick={() => onStampExecuted(f)}
-                    >{stamping === f.path ? '…' : STAMP}</button>
-                  )}
-                  <button title="View" onClick={() => onView(f.path)}>{EYE}</button>
-                  <button title="Delete" className="del" onClick={() => onDelete(f.path)}>{TRASH}</button>
-                </span>
-              </div>
-            )
-          })}
-          {rows.length > 4 && (
+          {active === 'all' && org.signed.length > 0 && (
+            <button type="button" className="ctr-jump" onClick={() => selectCat('contract')}>
+              {CHECK} {org.signed.length === 1 ? 'Signed contract' : `${org.signed.length} signed contracts`} — see them under Contracts
+            </button>
+          )}
+          {groupRows(visibleGroups, null).length === 0 ? null : visibleGroups.flatMap((g) => groupRows([g], g.cat))}
+          {flatGroups.length > 6 && (
             <button className="doc-showall" onClick={() => setDocExpanded(v => !v)}>
-              {docExpanded ? 'Show less' : `Show all ${rows.length}`}
+              {docExpanded ? 'Show less' : `Show all ${flatGroups.length}`}
               <svg className={docExpanded ? 'flip' : ''} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
             </button>
           )}
@@ -296,38 +431,19 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         <span className="num">Updated {fmtDate(new Date().toISOString())}</span>
       </div>
 
-      {pickFor && <ExecutedQuotePicker {...pickFor} />}
+      {markFor && (
+        <MarkSignedModal
+          mode="mark" clientId={clientId} file={markFor.file} quotes={quotes} presetQuoteId={markFor.presetQuoteId} justUploaded={markFor.justUploaded}
+          onClose={() => setMarkFor(null)} onDone={() => { setMarkFor(null); refresh() }}
+        />
+      )}
+      {dateFor && (
+        <MarkSignedModal
+          mode="date" clientId={clientId} quotes={quotes} presetQuoteId={dateFor}
+          onClose={() => setDateFor(null)} onDone={() => { setDateFor(null); loadQuotes() }}
+        />
+      )}
       {layoutOpen && <LayoutSheetModal client={client || { id: clientId, name: clientName }} onSaved={refresh} onClose={() => setLayoutOpen(false)} />}
     </section>
   )
 }
-
-// Which quote does this executed contract belong to? (the file name did not say)
-function ExecutedQuotePicker({ label, candidates, why, resolve }) {
-  const [id, setId] = useState(candidates.length === 1 ? candidates[0].id : '')
-  const pick = candidates.find((q) => q.id === id) || null
-  return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="Which quote was signed?" style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(4,9,16,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 'min(520px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 64px)', overflow: 'auto', background: 'var(--card, #0D1929)', border: '1px solid var(--line, #294059)', borderRadius: 14, padding: 18 }}>
-        <h2 style={{ margin: '2px 0 4px', fontSize: 16 }}>Which quote was signed?</h2>
-        <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'var(--fg-3, #8598AC)' }}>“{label}” — {why}. The quote you pick is marked Deposit Paid (unless it is already further along) and starred.</p>
-        <div role="radiogroup" style={{ display: 'grid', gap: 6 }}>
-          {candidates.map((q) => (
-            <label key={q.id} style={{ display: 'flex', gap: 10, alignItems: 'center', border: `1px solid ${q.id === id ? 'var(--accent, #22d3c8)' : 'var(--line, #294059)'}`, borderRadius: 10, padding: '8px 10px', cursor: 'pointer' }}>
-              <input type="radio" name="exec-quote" checked={q.id === id} onChange={() => setId(q.id)} />
-              <span style={{ flex: 1 }}><b>#{q.quote_number || '—'}</b> <span style={{ color: 'var(--fg-3, #8598AC)', fontSize: 12 }}>{q.building_size || ''} · {quoteStatusLabel(q.status)}</span></span>
-              <b style={{ fontVariantNumeric: 'tabular-nums' }}>{q.total_amount != null ? '$' + Number(q.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</b>
-            </label>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-          <button className="btn-secondary" onClick={() => resolve(null)}>Skip</button>
-          <button className="btn-primary" disabled={!pick} onClick={() => resolve(pick)} style={{ fontWeight: 800 }}>Mark Deposit Paid</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
-const ACTIVE_CAT = { borderColor: 'rgba(9,214,220,0.5)', boxShadow: '0 0 0 1px rgba(9,214,220,0.25)' }

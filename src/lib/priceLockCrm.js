@@ -195,7 +195,13 @@ const TITLES = {
 }
 export function writeCheck({ kind, saved, next, lock, status, reason = '' }) {
   const [title, okLabel] = TITLES[kind] || TITLES.save
-  if (!saved) return { confirm: false, changed: false, title, okLabel, lines: [], notes: [] }
+  // Generate Contract can be just a look (owner 10/19/26: "i might just be doing it to see how it looks not to
+  // send"): it always asks, and offers Just preview (prints it, saves nothing, tags nothing).
+  const alt = kind === 'contract' ? { value: 'preview', label: 'Just preview (don’t save)', title: 'Opens the contract to look at or print. Nothing is saved to Documents and the quote is not tagged.' } : null
+  if (!saved) {
+    if (kind === 'contract') return { confirm: true, changed: false, title: 'Generate contract?', okLabel, lines: [], notes: ['Generate contract saves the PDF to Documents › Contracts (under “Not signed”) and tags the quote “contract sent”.', 'Just looking? Use Just preview — nothing is saved.'], alt }
+    return { confirm: false, changed: false, title, okLabel, lines: [], notes: [] }
+  }
   const differ = totalsDiffer(saved, next)
   const notHolding = !!(lock && lock.requested && (lock.choice === 'today' || !lock.ok || (lock.issues || []).length))
   const { target, honored } = lockTarget({ saved, lock })
@@ -220,12 +226,12 @@ export function writeCheck({ kind, saved, next, lock, status, reason = '' }) {
   else if (!lock && differ) notes.push("This builder repriced the quote with today's rules; the saved price is not held.")
   if (isSold(status) && differ && kind !== 'revision' && !(honored && !totalsDiffer(target, next))) notes.push('This is a sold order: the customer must re-sign for a new price.')
   if (kind === 'save') notes.push('The previous price and quote PDF stay in this quote’s history.')
-  if (kind === 'contract') notes.push('A new contract PDF is added to Documents › Contracts. Earlier contracts are kept.')
-  if (kind === 'exec') notes.push('The executed copy is added to Documents › Contracts. Earlier copies are kept.')
+  if (kind === 'contract') notes.push('Generate contract saves a new PDF to Documents › Contracts (under “Not signed” until you mark the signed one) and tags the quote “contract sent”. Just looking? Use Just preview — nothing is saved.')
+  if (kind === 'exec') notes.push('The executed copy is added to Documents › Contracts, and the quote is marked signed (Deposit Paid unless already further along). The signed date already set is kept; if none is set yet, set the day the customer really signed in Documents › Contracts.')
   if (kind === 'revision') notes.push('Saves the Revision Order and the Revised Contract, and updates this quote’s card to the revised price. The previous price stays in the quote’s history.')
   const signedPrice = honored && next && !totalsDiffer(target, next) && kind !== 'revision'
   return {
-    confirm, changed: differ, okLabel, lines, notes,
+    confirm, changed: differ, okLabel, lines, notes, alt,
     title: signedPrice ? `${okLabel} at the signed-contract price?` : (differ || kind === 'revision' ? title : okLabel + '?'),
   }
 }

@@ -38,7 +38,7 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  agreementRootOf, agreementSignedOnDb, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
   paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
@@ -132,7 +132,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     const r = askResolveRef.current
     askResolveRef.current = null
     setAsk(null)
-    if (r) r(!!yes)
+    if (r) r(yes === 'preview' ? 'preview' : !!yes)
   }
 
   async function saveToLead() {
@@ -197,7 +197,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     if (!go) return
     setBlocked(null)
     if (b.kind === 'exec') await saveExecutedThenPrint(pg, { confirmed: true })
-    else if (b.kind === 'contract') await saveContractThenPrint(pg, { confirmed: true })
+    else if (b.kind === 'contract') await saveContractThenPrint(pg, { confirmed: true, preview: go === 'preview' })
     else { revAppliedRef.current = true; applyRevisionChanges(pg, revisionRows) }
   }
 
@@ -443,7 +443,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // makes the change rows add up to the order's net change.
       const adj = curTot ? revisionReconcile(rows, net) : 0
       if (adj) rows.push({ desc: REVISION_ADJ_LABEL, kind: 'Modify', amount: adj })
-      rvDoc = revisionDocFor({ original: cur, lines: rv.rows || [], revNo: rv.revNo || '1', originalTotal: orig, depositPaid: origDep, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo: agreementRootOf(cur) })
+      let agrDay = null
+      try { agrDay = await agreementSignedOnDb(supabase, cur) } catch { /* the quote's own day */ }
+      rvDoc = revisionDocFor({ original: cur, lines: rv.rows || [], revNo: rv.revNo || '1', originalTotal: orig, depositPaid: origDep, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo: agreementRootOf(cur), agreementSignedDate: agrDay })
       const html = buildRevisionHtml({
         client,
         quote: cur,
@@ -518,15 +520,20 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // prints window._ctNo / window._rvDoc (read once at the start of each print).
   // A generated contract tags the quote "contract sent" (payload_json.contractSent
   // — a marker, never a status change).
-  async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null } = {}) {
+  // Just preview (owner 10/19/26: "i might just be doing it to see how it looks not to send"): the
+  // contract opens to look at / print; nothing is saved to Documents and the quote is not tagged.
+  async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null, preview = false } = {}) {
     if (!pg) return
-    if (!confirmed && client?.id && !(await confirmWrite('contract'))) { setStatus(''); return }
+    let go = true
+    if (!confirmed && client?.id) go = await confirmWrite('contract')
+    if (!go) { setStatus(''); return }
+    const justLook = preview || go === 'preview'
     const cur = quoteRef.current || initialQuote || null
     const ctNo = number || contractNumberFor(cur)
     try { pg._ctNo = ctNo || null; pg._rvDoc = rvDoc || null } catch { /* ignore */ }
     try {
       try {
-        if (client?.id) {
+        if (client?.id && !justLook) {
           setStatus('Saving contract…')
           const html = await captureContractHtml(pg)
           if (html && html.length > 3000) {
@@ -574,14 +581,15 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           if (html && html.length > 3000) {
             const blob = await renderQuotePdf(html)
             const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
-            await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-executed-deposit-paid.pdf`, 'application/pdf')
+            const stampedPath = await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-executed-deposit-paid.pdf`, 'application/pdf')
             try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
             toast(`Executed copy saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
             // same effect as the Doc Hub stamp: Deposit Paid (never a step back), executed date, star
             const curQ = quoteRef.current || initialQuote || null
             if (curQ?.id) {
               try {
-                const res = await markExecuted(supabase, curQ.id, { file: `${contractFileBase(num)}-executed-deposit-paid.pdf` })
+                // the signed day already set is KEPT (never moved to today); none yet = today, not confirmed
+                const res = await markExecuted(supabase, curQ.id, { file: `${contractFileBase(num)}-executed-deposit-paid.pdf`, stampedPath })
                 if (quoteRef.current && quoteRef.current.id === curQ.id) quoteRef.current = { ...quoteRef.current, status: res.status, payload_json: { ...(quoteRef.current.payload_json || {}), executed: res.payload_json.executed }, ...(res.starred ? { starred: true } : {}) }
                 toast(executedToast(res, quoteStatusLabel(curQ.status)), 'success')
               } catch (e) { toast(`Quote #${escHtml(curQ.quote_number || '')} could not be marked Deposit Paid: ${escHtml(e.message || e)}`) }
@@ -804,7 +812,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       //    deposit shown as paid, additional deposit due, new balance).
       try { pg._rvForce = true } catch { /* ignore */ }
       // what changed, line by line, for the REVISED CONTRACT box / row tags / payment path
-      const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo })
+      let agrDay = null
+      try { agrDay = await agreementSignedOnDb(supabase, original) } catch { /* the quote's own day */ }
+      const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo, agreementSignedDate: agrDay })
       try { await saveContractThenPrint(pg, { confirmed: true, number: ctNo, rvDoc }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
       toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.${redoneN ? ` Revision ${escHtml(revNo)} redone: ${redoneN} unsigned revision${redoneN === 1 ? '' : 's'} retired.` : ''}`, 'success')
     } catch (e) {

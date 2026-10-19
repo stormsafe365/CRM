@@ -4077,6 +4077,87 @@ a.brand { text-decoration: none; color: inherit; }
 .doc-hub-foot { display: flex; justify-content: space-between; padding: 12px 24px; background: var(--bg-2);
   border-top: 1px solid var(--line-soft); font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--fg-3); }
 @media (max-width: 520px) { .doc-list-head, .doc-row { grid-template-columns: 1fr 84px 56px; } .doc-list-head span:nth-child(3), .doc-row .doc-date { display: none; } }
+/* ===== Document Hub › Contracts, sorted (owner 10/19/26: signed / not signed / uploads) ===== */
+.doc-list-head, .doc-row { grid-template-columns: 1fr 104px 110px 88px; }
+.doc-name-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-note { margin-left: 8px; font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+.doc-more { flex: none; margin-left: 4px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3);
+  border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.doc-more:hover { color: var(--cyan-dim); border-color: var(--cyan-dim); }
+.doc-row-sub { opacity: .78; padding-left: 40px; }
+.doc-chip-signed { color: #34d399 !important; background: rgba(52,211,153,.10) !important; border-color: rgba(52,211,153,.45) !important; }
+.doc-acts button.doc-mark { color: #34d399; }
+.doc-acts button.doc-mark:hover { color: #34d399; background: rgba(52,211,153,.12); }
+.ctr { padding: 6px 0 4px; }
+.ctr-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 14px 18px 8px; border: 0; background: transparent; text-align: left;
+  font-family: var(--font-head); text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700; color: var(--fg-2); }
+.ctr-h-btn { cursor: pointer; border-top: 1px solid var(--line-soft); }
+.ctr-h-btn:hover:not(:disabled) { color: var(--cyan-dim); }
+.ctr-h-btn:disabled { cursor: default; }
+.ctr-h-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-4); flex: none; }
+.ctr-h-dot.ok { background: #34d399; }
+.ctr-h-dot.warn { background: #f0883e; }
+.ctr-chev { margin-left: auto; display: inline-flex; transition: transform .2s var(--ease); }
+.ctr-chev.flip { transform: rotate(180deg); }
+.ctr-empty { margin: 0 18px 10px; font-size: 13px; color: var(--fg-3); line-height: 1.5; }
+.ctr-agr { margin: 4px 12px 12px; border: 1px solid rgba(52,211,153,.32); border-radius: 10px; background: rgba(52,211,153,.04); overflow: hidden; }
+.ctr-agr-h { padding: 9px 14px; font-size: 12px; letter-spacing: .04em; color: var(--fg-3); border-bottom: 1px solid var(--line-soft); }
+.ctr-agr-h b { color: var(--fg); font-weight: 700; }
+.ctr-sig { border-bottom: 1px solid var(--line-soft); }
+.ctr-sig:last-child { border-bottom: 0; }
+.ctr-sig:not(.now) { opacity: .82; }
+.ctr-sig-top { display: flex; align-items: center; gap: 10px; padding: 11px 14px 6px; }
+.ctr-sig-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; background: rgba(52,211,153,.16); color: #34d399; }
+.ctr-sig-ic svg { width: 13px; height: 13px; }
+.ctr-sig-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ctr-sig-main > b { font-size: 15px; color: var(--fg); }
+.ctr-sig-sub { font-size: 12.5px; color: var(--fg-3); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.ctr-day { color: #34d399; font-weight: 700; }
+.ctr-setday { border: 1px solid rgba(240,136,62,.55); background: rgba(240,136,62,.10); color: #f0883e; border-radius: 6px;
+  padding: 1px 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ctr-setday:hover { background: rgba(240,136,62,.18); }
+.ctr-now { color: var(--cyan-dim); font-weight: 700; }
+.ctr-old { color: var(--fg-4); }
+.ctr-menu { flex: none; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--fg-2);
+  border-radius: 6px; padding: 6px 10px; font-family: var(--font-head); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; font-weight: 600; cursor: pointer; }
+.ctr-menu:hover { border-color: var(--cyan-dim); color: var(--fg); }
+.ctr-files .doc-row { padding-top: 8px; padding-bottom: 8px; border-bottom: 0; }
+.ctr-missing { padding: 4px 18px 10px 50px; font-size: 12.5px; color: #f0883e; }
+.ctr-missing button { border: 0; background: transparent; color: var(--cyan-dim); font-weight: 700; cursor: pointer; padding: 0 2px; text-decoration: underline; }
+.ctr-fold { display: block; margin: 0 0 8px 50px; border: 0; background: transparent; color: var(--fg-3); font-size: 12px; cursor: pointer; padding: 2px 0; }
+.ctr-fold:hover { color: var(--cyan-dim); }
+.ctr-jump { display: flex; align-items: center; gap: 8px; width: calc(100% - 24px); margin: 10px 12px 4px; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid rgba(52,211,153,.4); background: rgba(52,211,153,.06); color: #34d399; font-size: 13px; font-weight: 700; cursor: pointer; text-align: left; }
+.ctr-jump svg { width: 14px; height: 14px; }
+.ctr-jump:hover { background: rgba(52,211,153,.12); }
+@media (max-width: 520px) {
+  .doc-list-head, .doc-row { grid-template-columns: 1fr 84px 88px; }
+  .doc-note { display: none; }
+  .ctr-sig-top { flex-wrap: wrap; }
+}
+/* Mark as signed (MarkSignedModal) */
+.msign-scrim { position: fixed; inset: 0; z-index: 1300; background: rgba(4,9,16,.62); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; }
+.msign { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; background: var(--card, #0D1929);
+  border: 1px solid var(--line, #294059); border-radius: 14px; padding: 18px 18px 16px; color: var(--fg, #e2e8f0); box-shadow: 0 18px 60px rgba(0,0,0,.5); }
+.msign h2 { margin: 2px 0 4px; font-size: 17px; }
+.msign-file { margin: 0 0 10px; font-size: 12.5px; color: var(--fg-3, #8598AC); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msign-q { margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: #a3e635; }
+.msign-list { display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+.msign-opt { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line, #294059); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.msign-opt.on { border-color: #a3e635; box-shadow: 0 0 0 1px rgba(163,230,53,.35); }
+.msign-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.msign-opt-main b { font-size: 13.5px; }
+.msign-opt-sub { font-size: 12px; color: var(--fg-3, #8598AC); }
+.msign-amt { font-variant-numeric: tabular-nums; font-size: 13px; }
+.msign-date { width: 100%; max-width: 220px; background: var(--inset, #0B1B32); color: var(--fg, #e2e8f0); border: 1px solid var(--line-2, #294059);
+  border-radius: 8px; padding: 8px 10px; font-size: 15px; color-scheme: dark; }
+.msign-help { margin: 6px 0 0; font-size: 12px; color: var(--fg-3, #8598AC); line-height: 1.45; }
+.msign-chk { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 13px; color: var(--fg-2, #A6B7C8); cursor: pointer; }
+.msign-chk input { margin-top: 2px; }
+.msign-warn { margin: 10px 0 0; font-size: 12.5px; color: #f0883e; }
+.msign-err { margin: 10px 0 0; font-size: 12.5px; color: var(--danger, #FF5C5C); }
+.msign-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+
 
 /* ===== Client portal — 2-column lead detail ===== */
 .cp { display: flex; height: 100%; min-height: 0; }

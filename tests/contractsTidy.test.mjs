@@ -228,3 +228,18 @@ test('mark as signed through markExecuted: the file path and the typed day are k
   const ex = rows[0].payload_json.executed
   assert.equal(ex.filePath, 'c/contract/1-FINAL.pdf'); assert.equal(ex.stampedPath, 'c/contract/2-FINAL-EXECUTED-deposit-paid.pdf'); assert.equal(ex.signedOn, '2026-10-02')
 })
+
+test('Generate Contract always offers Just preview (nothing saved); other writes do not', async () => {
+  const { writeCheck } = await import('../src/lib/priceLockCrm.js')
+  const saved = { total: 1000, deposit: 170, balance: 830 }
+  const c = writeCheck({ kind: 'contract', saved, next: saved })
+  assert.equal(c.confirm, true)
+  assert.equal(c.alt.value, 'preview')
+  assert.ok(c.notes.some((n) => /Just preview/.test(n)))
+  // a quote with no saved price yet still asks (so a quick look never saves a file)
+  const n = writeCheck({ kind: 'contract', saved: null, next: saved })
+  assert.equal(n.confirm, true); assert.equal(n.alt.value, 'preview'); assert.equal(n.lines.length, 0)
+  for (const kind of ['save', 'exec', 'revision', 'apply']) assert.equal(writeCheck({ kind, saved, next: saved }).alt, null, kind)
+  assert.equal(writeCheck({ kind: 'save', saved: null, next: saved }).confirm, false)
+  assert.ok(writeCheck({ kind: 'exec', saved, next: saved }).notes.some((n2) => /signed date already set is kept/.test(n2)))
+})

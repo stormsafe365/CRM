@@ -11,7 +11,7 @@ import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
-import { nextRevNo, restoreAfterRevisionDeleted } from '../lib/contractDocs'
+import { nextRevNo, restoreAfterRevisionDeleted, withLiveExecuted } from '../lib/contractDocs'
 import { escHtml } from '../lib/designLinks'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
@@ -110,7 +110,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   // over (stripForDuplicate), its card shows no total until it is saved, and it
   // opens in the builder at today's pricing.
   // Manually-added quotes (no build to reprice) copy their typed totals as before.
-  async function handleDuplicate(quote) {
+  async function handleDuplicate(quote, { forRevision = false } = {}) {
     const now = new Date()
     const { id, created_at, updated_at, deleted_at, deleted_by, ...rest } = quote
     const quote_number = `SS-${now.getFullYear()}-${String(Date.now()).slice(-5)}`
@@ -134,11 +134,30 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
     const { data, error } = await supabase.from('quotes').insert(copy).select().single()
     if (error) { setError(error.message); return }
     if (builder && data && data.payload_json?.fields) {
-      toast(`Copy ${quote_number} created — opening it at today's pricing. Save to Lead to keep its price.`, 'success')
+      toast(forRevision
+        ? `Copy ${escHtml(quote_number)} of the signed #${escHtml(quote.quote_number || '')} — make the changes, then click USE AS REVISION (orange button). #${escHtml(quote.quote_number || '')} is already picked.`
+        : `Copy ${quote_number} created — opening it at today's pricing. Save to Lead to keep its price.`, 'success')
       setEditQuote(data)
       setBuilding(true)
     }
   }
+
+  // Documents › Contracts › "Make a revision of this signed version" (owner 10/19/26): a copy of THAT
+  // signed quote opens in the builder; Use as Revision preselects it (payload_json.duplicatedFrom).
+  const quotesRef = useRef([])
+  quotesRef.current = quotes
+  useEffect(() => {
+    const onRev = (e) => {
+      const d = e.detail || {}
+      if (d.clientId !== clientId) return
+      const q = quotesRef.current.find((x) => x.id === d.quoteId)
+      if (!q) { toast('That quote is not on this lead any more.'); return }
+      handleDuplicate(q, { forRevision: true })
+    }
+    window.addEventListener('ss:make-revision', onRev)
+    return () => window.removeEventListener('ss:make-revision', onRev)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId])
 
   // Star / unstar a quote (one per lead). Optimistic: the list updates at once;
   // the DB unstars the lead's other quotes first, then stars this one (the
@@ -193,6 +212,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   // builderSave's planQuoteFields).
   async function handleBuildUpdate(original, payload) {
     const { quote_number, quote_date, ...rest } = payload
+    // the signed mark (payload_json.executed) is set / changed in Documents › Contracts while the
+    // builder may be open: the database wins, never the payload the builder opened with (10/19/26)
+    if (rest.payload_json) rest.payload_json = await withLiveExecuted(supabase, original.id, rest.payload_json)
     const { error } = await supabase
       .from('quotes')
       .update({ ...guardBuilderUpdate(original, rest), quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
