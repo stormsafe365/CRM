@@ -633,7 +633,8 @@ export function organizeContracts(files, quotes) {
   const free = (pred) => all.find((f) => !used.has(f.path) && pred(f)) || null
 
   // a mark knows its contract number (marks since 10/19/26); older ones take the quote's
-  const markRev = (q) => { const ex = executedOf(q); return ex && str(ex.number) ? Number(revOf(ex.number)) || 0 : revNoOf(q) }
+  // (a mark's number without a "Rev n" on a revision never demotes it to "Original contract")
+  const markRev = (q) => { const ex = executedOf(q); return ex && revOf(str(ex.number)) ? Number(revOf(ex.number)) || 0 : (Number(q.payload_json?.revisionOf?.rev_no) || 0) }
   const signed = live.filter((q) => executedOf(q)).map((q) => ({
     quote: q,
     number: signedNumberOf(q),
@@ -759,7 +760,55 @@ export function pdfNameFor(html, name) {
   const n = str(name)
   if (!/StormSafe Steel CONTRACT/.test(n)) return n
   const h = String(html || '')
-  if (/REVISED CONTRACT/.test(h)) return n.replace('StormSafe Steel CONTRACT', 'StormSafe Steel Revised Contract')
+  // an executed copy of a revised order is still the executed copy
   if (/letter-spacing:8px[^>]*>DEPOSIT PAID</.test(h)) return n.replace('StormSafe Steel CONTRACT', 'StormSafe Steel Executed Contract')
+  if (/REVISED CONTRACT/.test(h)) return n.replace('StormSafe Steel CONTRACT', 'StormSafe Steel Revised Contract')
   return n
+}
+
+// ── The signed paper's number reaches the revisions already made on it (review 10/19/26) ─────────
+// Peter Mawn: Rev 1 was made before SS-2026-02861 was typed on the original, so its link still said
+// SS-2026-68012. Walking DOWN the chain from the root: every live revision's revisionOf.agreement_number
+// (+ contract_number "<n> Rev k", + its contractSent.number unless that revision is marked signed — what
+// the customer signed keeps its number) and the root's revisedBy / revisions[] links. Returns the ids changed.
+export async function propagateAgreementNumber(sb, rootId, number) {
+  const n = stripRev(number)
+  if (!rootId || !n) return []
+  const { data: r0, error: e0 } = await sb.from('quotes').select('id, client_id').eq('id', rootId).single()
+  if (e0) throw e0
+  const root = Array.isArray(r0) ? r0[0] : r0
+  if (!root || !root.client_id) return []
+  const { data: all, error: e1 } = await sb.from('quotes').select('id, status, payload_json, deleted_at').eq('client_id', root.client_id)
+  if (e1) throw e1
+  const rows = (all || []).filter((q) => q && !q.deleted_at)
+  const changed = []
+  const relink = (links) => (Array.isArray(links) ? links.map((l) => (l && l.contract_number && revOf(l.contract_number) ? { ...l, contract_number: `${n} ${revisionLabel(revOf(l.contract_number))}` } : l)) : links)
+  const visit = async (parentId, seen) => {
+    for (const q of rows.filter((x) => x.payload_json?.revisionOf?.id === parentId)) {
+      if (seen.has(q.id)) continue
+      seen.add(q.id)
+      const p = { ...(q.payload_json || {}) }
+      const rv = { ...p.revisionOf, agreement_number: n, contract_number: `${n} ${revisionLabel(rv0(p))}` }
+      p.revisionOf = rv
+      if (!(p.executed && p.executed.at) && p.contractSent && revOf(p.contractSent.number)) p.contractSent = { ...p.contractSent, number: `${n} ${revisionLabel(revOf(p.contractSent.number))}` }
+      if (p.revisedBy) p.revisedBy = relink([p.revisedBy])[0]
+      if (p.revisions) p.revisions = relink(p.revisions)
+      const { error } = await sb.from('quotes').update({ payload_json: p }).eq('id', q.id)
+      if (error) throw error
+      changed.push(q.id)
+      await visit(q.id, seen)
+    }
+  }
+  const rv0 = (p) => str(p.revisionOf && p.revisionOf.rev_no) || '1'
+  await visit(rootId, new Set([rootId]))
+  // the root's own links name the revised contracts
+  const rootRow = rows.find((q) => q.id === rootId)
+  if (rootRow && rootRow.payload_json && (rootRow.payload_json.revisedBy || rootRow.payload_json.revisions)) {
+    const p = { ...rootRow.payload_json }
+    if (p.revisedBy) p.revisedBy = relink([p.revisedBy])[0]
+    if (p.revisions) p.revisions = relink(p.revisions)
+    const { error } = await sb.from('quotes').update({ payload_json: p }).eq('id', rootId)
+    if (error) throw error
+  }
+  return changed
 }

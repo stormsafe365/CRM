@@ -24,9 +24,9 @@ import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 import MarkSignedModal, { quoteLine } from './MarkSignedModal'
 import {
-  clearSignedMark, contractRoleOf, currentOrderQuote, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
+  clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
 } from '../lib/contractDocs'
-import { isBuilderPayload } from '../lib/priceLockCrm'
+import { isBuilderPayload, isSold } from '../lib/priceLockCrm'
 import { quoteStatusLabel } from '../lib/constants'
 
 const SECTIONS = [
@@ -136,8 +136,12 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       if (s.signedFile) m.set(s.signedFile.path, `the signed copy of ${quoteLine(s.quote)}`)
       if (s.stampedFile) m.set(s.stampedFile.path, `the DEPOSIT PAID copy of ${quoteLine(s.quote)}`)
     }
+    // a signed / sold / replaced order's own quote PDF: deleting it would delete that quote card too
+    for (const q of quotes) if (q.pdf_snapshot_url && (executedOf(q) || isSold(q.status) || q.status === 'superseded')) m.set(q.pdf_snapshot_url, `the quote PDF of ${quoteLine(q)} (deleting it removes that quote from the lead)`)
     return m
-  }, [org])
+  }, [org, quotes])
+  // quote cards a file stands for (a quote PDF): the confirm says they go too
+  const quoteOfPath = (p) => quotes.find((q) => q.pdf_snapshot_url === p) || null
 
   const allFiles = useMemo(() => SECTIONS.flatMap((s) => (filesByCat[s.key] || []).map((f) => ({ ...f, cat: s.key }))), [filesByCat])
   const counts = Object.fromEntries(SECTIONS.map(s => [s.key, (filesByCat[s.key] || []).length]))
@@ -155,8 +159,10 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       const file = curQuote.pdf_snapshot_url ? allFiles.find((f) => f.path === curQuote.pdf_snapshot_url) || null : null
       rows.push({ kind: 'quote', key: 'quote:' + curQuote.id, q: curQuote, file })
     }
-    const revs = (filesByCat.revisions || [])
-    if (revs.length) rows.push({ kind: 'revision', key: 'rev:' + revs[0].path, file: revs[0] })
+    // the current order's own Revision Order (a retired revision's never counts as current)
+    const ro = String(curQuote?.payload_json?.revisionOf?.revision_order || '')
+    const rf = ro ? (filesByCat.revisions || []).find((f) => f.label.toLowerCase().startsWith(ro.toLowerCase())) : null
+    if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
     return rows
   }, [org, curQuote, allFiles, filesByCat.revisions])
   const shownPaths = useMemo(() => {
@@ -228,8 +234,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   }
   async function onDelete(path) {
     const linked = signedPaths.get(path)
-    if (linked && !window.confirm(`This is ${linked}. Delete it anyway? The order stays marked signed.`)) return
-    if (!window.confirm('Delete this file? This cannot be undone.')) return
+    if (linked && !window.confirm(`This is ${linked}. Delete it anyway?`)) return
+    const qq = quoteOfPath(path)
+    if (!window.confirm(qq ? `Delete this file? It is the quote PDF of #${qq.quote_number || '—'}: that quote goes to Trash with it. This cannot be undone.` : 'Delete this file? This cannot be undone.')) return
     try { await deleteOne(path); setSel((s) => { const n = new Set(s); n.delete(path); return n }); await refresh() }
     catch (e) { setError(e.message) }
   }
@@ -238,8 +245,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const picked = [...sel].filter((p) => allFiles.some((f) => f.path === p))
     const skip = picked.filter((p) => signedPaths.has(p))
     const go = picked.filter((p) => !signedPaths.has(p))
-    if (!go.length) { toast(skip.length ? 'Those files belong to a signed order — untick them or delete them one at a time.' : 'Nothing ticked.'); return }
-    const msg = `Delete ${go.length} ${go.length === 1 ? 'file' : 'files'}? This cannot be undone.${skip.length ? ` (${skip.length} ticked ${skip.length === 1 ? 'file belongs' : 'files belong'} to a signed order and will be left alone.)` : ''}`
+    if (!go.length) { toast(skip.length ? 'Those files belong to a signed or sold order — delete them one at a time if you really mean it.' : 'Nothing ticked.'); return }
+    const qrows = go.map(quoteOfPath).filter(Boolean)
+    const msg = `Delete ${go.length} ${go.length === 1 ? 'file' : 'files'}? This cannot be undone.${qrows.length ? ` ${qrows.length === 1 ? 'One is a quote PDF: quote' : `${qrows.length} are quote PDFs: quotes`} ${qrows.map((q) => '#' + (q.quote_number || '—')).join(', ')} ${qrows.length === 1 ? 'goes' : 'go'} to Trash with ${qrows.length === 1 ? 'it' : 'them'}.` : ''}${skip.length ? ` (${skip.length} ticked ${skip.length === 1 ? 'file belongs' : 'files belong'} to a signed or sold order and will be left alone.)` : ''}`
     if (!window.confirm(msg)) return
     setBulkBusy(true); setError('')
     let done = 0
@@ -540,8 +548,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       </div>
       <label className="dh-search">
         {SEARCH}
-        <input type="search" value={query} placeholder="Search files by name, kind or date…" onChange={(e) => setQuery(e.target.value)} />
-        {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear the search">✕</button>}
+        <input type="search" value={query} placeholder="Search files by name, kind or date…" onChange={(e) => { setQuery(e.target.value); setSel(new Set()) }} />
+        {query && <button type="button" onClick={() => { setQuery(''); setSel(new Set()) }} aria-label="Clear the search">✕</button>}
       </label>
       <div className="dh-chips">
         {chips.map((c) => (

@@ -31,8 +31,7 @@ import { supabase } from '../lib/supabase'
 import { quoteStatusLabel } from '../lib/constants'
 import {
   autoDocGate, fmtMoney, isSold, lockBanner, mergeSaved, readLockState, readScreenTotals, restoreOptionsFor,
-  REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck,
-} from '../lib/priceLockCrm'
+  REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck, totalsDiffer } from '../lib/priceLockCrm'
 import UseAsRevisionModal from './UseAsRevisionModal'
 import DesignLinkModal from './DesignLinkModal'
 import RevisionModal from './RevisionModal'
@@ -67,7 +66,12 @@ function priceLockDisabled() {
   try { return window.localStorage.getItem('ss_price_lock') === 'off' } catch { return false }
 }
 
-export default function BuildQuoteModal({ client, initialQuote, onSave, onClose, autoContract = false, autoExec = false, revisionChanges = null }) {
+export default function BuildQuoteModal({ client: clientProp, initialQuote, onSave, onClose, autoContract = false, autoExec = false, revisionChanges = null }) {
+  // the lead: the prop, or the one picked in Save to Lead (SaveToLeadPicker) — review 10/19/26: a quote saved
+  // through the picker then got a made-up contract number and no Save to Doc Hub
+  const [clientState, setClientState] = useState(clientProp)
+  useEffect(() => { if (clientProp) setClientState(clientProp) }, [clientProp])
+  const client = clientState
   // When reopening a saved builder quote, its full state lives in payload_json.
   const restoreData = initialQuote?.payload_json?.fields ? initialQuote.payload_json : null
   const iframeRef = useRef(null)
@@ -163,6 +167,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // a NEW quote: its saved row is the quote in hand from now on — Generate Contract carries ITS number and
       // a second Save updates it (10/19/26: contracts printed right after a first save carried made-up numbers)
       else if (saved) quoteRef.current = saved
+      setPendingContract(null) // a contract generated before this save no longer matches
       setStatus('')
       savingRef.current = false
       refreshBanner()
@@ -331,6 +336,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // components; change building size. Anything it can't apply is reported so
   // the rep does that one by hand. Placement stays with the rep — drag it.
   function applyRevisionChanges(pg, changes) {
+    setPendingContract(null)
     if (!pg) return
     const d = pg.document
     const set = (el, v) => { if (!el) return false; el.value = v; el.dispatchEvent(new pg.Event('change', { bubbles: true })); return true }
@@ -428,6 +434,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       }
     } catch { /* older builder: no gate */ }
     if (!(await confirmWrite('revision'))) return
+    setPendingContract(null) // the revised contract is the revision's own save
     const rv = revisionChanges
     const cur = quoteRef.current || initialQuote || {}
     // The Revised Contract: "<agreement> Rev <n>" + what changed (the typed rows), handed to the program.
@@ -550,18 +557,29 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       } catch (e) { console.warn('contract-sent tag not saved', e) }
     }
   }
+  // true only when the contract really reached the Doc Hub
   async function savePendingContract() {
     const p = pendingContract
-    if (!p || status) return
+    if (!p) return false
+    if (status) { toast('Wait for the current save to finish, then try again.'); return false }
+    // the build or the saved price moved since it was generated: never file a contract at the wrong price
+    const pg = getProgramWindow()
+    const screen = pg ? readScreenTotals(pg) : null
+    const saved = savedTotalsOf(quoteRef.current)
+    if (p.totals && ((screen && totalsDiffer(p.totals, screen)) || (saved && totalsDiffer(p.totals, saved)))) {
+      setPendingContract(null)
+      toast('The quote changed since this contract was generated — generate it again. Nothing was saved.')
+      return false
+    }
     setStatus('Saving contract…')
-    try { await saveContractToHub(p); setPendingContract(null) }
-    catch (e) { toast('The contract could not be saved to the Doc Hub: ' + escHtml(e.message || e)) }
+    try { await saveContractToHub(p); setPendingContract(null); return true }
+    catch (e) { toast('The contract could not be saved to the Doc Hub: ' + escHtml(e.message || e)); return false }
     finally { setStatus('') }
   }
   // Done with a generated contract still unsaved: ask (OK = save it, Cancel = leave it out)
-  function closeBuilder() {
+  async function closeBuilder() {
     if (pendingContract && window.confirm(`Contract ${pendingContract.num} was generated but not saved to the Doc Hub. OK = save it there first, Cancel = close without saving it.`)) {
-      savePendingContract().then(() => onClose())
+      if (await savePendingContract()) onClose() // otherwise the builder stays open with the bar (the toast says why)
       return
     }
     onClose()
@@ -581,7 +599,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           if (html && html.length > 3000) {
             const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
             if (autoSave) await saveContractToHub({ html, num, quoteId: cur?.id || null })
-            else if (cur?.id) setPendingContract({ html, num, quoteId: cur.id })
+            else if (cur?.id) setPendingContract({ html, num, quoteId: cur.id, totals: readScreenTotals(pg) })
             else toast('Preview only — Save to Lead first; Save to Doc Hub then keeps the contract on the lead.')
           }
         }
@@ -724,6 +742,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     const pg = getProgramWindow()
     if (!pg || savingRef.current) return
     savingRef.current = true // before any await: a double click never starts two runs
+    setPendingContract(null) // the revised contract is the revision's own save
     const { original } = r
     // A revised contract of a SIGNED order prints "…to Agreement X, signed <day>": that day must be the one
     // the customer really signed (never a stamp-click day — Peter Mawn's "October 13"). Not known yet →
@@ -988,7 +1007,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           getProgramWindow={getProgramWindow}
           getBuildWin={() => iframeRef.current?.contentWindow}
           onClose={() => setPicker(false)}
-          onSaved={({ clientName }) => setSavedTo(clientName)}
+          onSaved={({ clientName, client: c, saved }) => { setSavedTo(clientName); if (c && c.id) setClientState(c); if (saved && saved.id) quoteRef.current = saved; setPendingContract(null) }}
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}

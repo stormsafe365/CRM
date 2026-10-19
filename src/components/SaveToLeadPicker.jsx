@@ -109,15 +109,15 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
                     .select()
                     .single()
                   if (error) throw error
-                  return Array.isArray(data) ? data[0] : data
                   promoteToWorking(d.id, user?.id).catch(() => {})
+                  return Array.isArray(data) ? data[0] : data
                 },
                 setStatus,
               })
               setStatus('')
               savingRef.current = false
               setSaved({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number })
-              onSaved?.({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number, client: chosenExisting })
+              onSaved?.({ clientId: d.id, clientName: d.name, quoteNumber: res.quote_number, client: chosenExisting, saved: res.saved || null })
               toast(escHtml(res.pdfWarn || `Quote ${res.quote_number} saved to existing lead ${d.name}`), res.pdfWarn ? undefined : 'success') // toast() renders HTML: names are escaped
               return
             }
@@ -143,7 +143,7 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
       if (!target?.id) { toast('Pick a lead (or create one) first.'); setStatus(''); savingRef.current = false; return }
 
       setStatus('Reading quote…')
-      const { quote_number, pdfWarn } = await harvestAndSaveQuote({
+      const { quote_number, pdfWarn, saved } = await harvestAndSaveQuote({
         pg,
         buildWin: getBuildWin ? getBuildWin() : null,
         client: target,
@@ -154,15 +154,15 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
             .select()
             .single()
           if (error) throw error
-          return Array.isArray(data) ? data[0] : data
           promoteToWorking(target.id, user?.id).catch(() => {})
+          return Array.isArray(data) ? data[0] : data
         },
         setStatus,
       })
       setStatus('')
       savingRef.current = false
       setSaved({ clientId: target.id, clientName: target.name, quoteNumber: quote_number })
-      onSaved?.({ clientId: target.id, clientName: target.name, quoteNumber: quote_number, client: target })
+      onSaved?.({ clientId: target.id, clientName: target.name, quoteNumber: quote_number, client: target, saved: saved || null })
       toast(escHtml(pdfWarn || `Quote ${quote_number} saved to ${target.name}`), pdfWarn ? undefined : 'success')
     } catch (e) {
       setStatus(''); savingRef.current = false

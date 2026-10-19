@@ -7,6 +7,8 @@
 //                along, the star, the signed day + number the revised contracts print.
 //   mode 'date': change the signed day / contract number of a quote already marked signed (createMark:
 //                a quote never marked gets a mark with just that day + number).
+// The number on the paper: a root's number reaches the revisions already made on it
+// (propagateAgreementNumber); a revision's number must carry its own "Rev n".
 // Nothing is deleted or renamed; the DEPOSIT PAID copy is a NEW file beside the signed one.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -15,8 +17,8 @@ import { supabase } from '../lib/supabase'
 import { getDocSignedUrl, uploadClientDocBlob } from '../lib/storage'
 import { stampExecutedPdf } from '../lib/stampExecuted'
 import {
-  agreementRootOf, cleanContractNumber, cleanDay, contractNumberFor, contractRoleOf, executedOf, parseContractLabel, stripRev, executedToast, fmtShortDate, isStampedCopy, localDay, markExecuted,
-  setSignedDay, signedDayConfirmed, signedNumberOf, signedOnOf, signedPickList,
+  agreementRootOf, cleanContractNumber, cleanDay, contractNumberFor, contractRoleOf, executedOf, parseContractLabel, revOf, stripRev, executedToast, fmtShortDate, isStampedCopy, localDay, markExecuted,
+  propagateAgreementNumber, revisionLabel, setSignedDay, signedDayConfirmed, signedNumberOf, signedOnOf, signedPickList,
 } from '../lib/contractDocs'
 import { quoteStatusLabel } from '../lib/constants'
 import { toast } from '../lib/uiFx'
@@ -30,13 +32,15 @@ export function quoteLine(q) {
   const agr = agreementRootOf(q)
   return `#${q.quote_number || '—'} · ${role}${role !== 'Original contract' && agr ? ` of ${agr}` : ''}`
 }
+/** this quote's own revision number (0 = an original) */
+const revNoOfQuote = (q) => Number(q?.payload_json?.revisionOf?.rev_no) || Number(revOf(q?.payload_json?.contractSent?.number)) || 0
 
-/** The contract number to offer: the file's own when it is this agreement's, else the mark's, else the quote's. */
+/** The contract number to offer, as a real number or '' (an unparseable quote number starts the box empty). */
 function numberFor(q, file, createNumber) {
-  if (!q) return createNumber || ''
+  if (!q) return cleanContractNumber(createNumber) || ''
   const pn = file ? parseContractLabel(file.label) : null
   if (pn && stripRev(pn.number) === agreementRootOf(q)) return pn.number
-  return signedNumberOf(q) || contractNumberFor(q) || createNumber || ''
+  return cleanContractNumber(signedNumberOf(q) || contractNumberFor(q) || createNumber) || ''
 }
 
 export default function MarkSignedModal({ mode = 'mark', clientId, file = null, quotes = [], presetQuoteId = null, justUploaded = false, createMark = false, createNumber = null, intro = null, onClose, onDone }) {
@@ -45,7 +49,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
   const q = list.find((x) => x.id === qid) || (presetQuoteId ? quotes.find((x) => x.id === presetQuoteId) : null) || null
   const startDay = (x) => (x && executedOf(x) && signedDayConfirmed(x) ? signedOnOf(x) : '')
   const [day, setDay] = useState(startDay(q))
-  const [num, setNum] = useState(() => (mode === 'date' && createNumber ? createNumber : numberFor(q, file, createNumber)))
+  const [num, setNum] = useState(() => (mode === 'date' && createNumber ? (cleanContractNumber(createNumber) || '') : numberFor(q, file, createNumber)))
   const stampedAlready = !!(q && executedOf(q)?.stampedPath)
   const fileIsStamped = !!(file && isStampedCopy(file.label))
   const [stamp, setStamp] = useState(mode === 'mark' && !fileIsStamped && !stampedAlready)
@@ -70,9 +74,13 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
 
   const d = cleanDay(day)
   const future = d && d > today
-  const cn = cleanContractNumber(num)
+  const qRev = revNoOfQuote(q)
+  // the typed number, as it will be stored: a revision's number carries ITS "Rev n"
+  const typed = cleanContractNumber(num)
+  const cn = typed && qRev && !revOf(typed) ? `${typed} ${revisionLabel(qRev)}` : typed
   const numTyped = String(num || '').trim() !== ''
-  const numBad = numTyped && !cn
+  const numBad = numTyped && !typed
+  const revMismatch = !!(typed && ((qRev && revOf(typed) && Number(revOf(typed)) !== qRev) || (!qRev && revOf(typed))))
   const replacesFile = mode === 'mark' && q && executedOf(q)?.filePath && file && executedOf(q).filePath !== file.path && !fileIsStamped
   // a confirmed signed day / number about to change (the same quote row signed again, or a typo fixed)
   const oldDay = q && executedOf(q) && signedDayConfirmed(q) ? signedOnOf(q) : null
@@ -82,14 +90,21 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
   // the number on the paper differs from the number this quote's contract was generated under
   const genNum = q ? contractNumberFor(q) : null
   const otherNum = !!(cn && genNum && cn !== genNum && !(oldNum && cn === oldNum))
-  const ready = !!q && !!d && !future && !numBad && !busy
+  const ready = !!q && !!d && !future && !numBad && !revMismatch && !busy
 
   async function save() {
-    if (!ready) { setErr(!q ? 'Pick which order this is.' : !d ? 'Pick the date the customer signed.' : future ? 'That date is in the future.' : numBad ? 'The contract number looks wrong — it reads like SS-2026-00000 (or SS-2026-00000 Rev 1).' : ''); return }
+    if (!ready) {
+      setErr(!q ? 'Pick which order this is.' : !d ? 'Pick the date the customer signed.' : future ? 'That date is in the future.'
+        : numBad ? 'The contract number looks wrong — it reads like SS-2026-00000 (or SS-2026-00000 Rev 1).'
+        : revMismatch ? (qRev ? `This order is Revision ${qRev}: the number must end in Rev ${qRev} (or leave the Rev off and it is added).` : 'This is the original contract: its number has no "Rev".') : '')
+      return
+    }
     setBusy(true); setErr('')
     try {
+      const isRoot = !qRev && !q.payload_json?.revisionOf
       if (mode === 'date') {
         await setSignedDay(supabase, q.id, d, { create: createMark, number: createNumber, setNumber: cn || null })
+        if (cn && isRoot && cn !== oldNum) { try { await propagateAgreementNumber(supabase, q.id, cn) } catch (e) { console.warn('agreement number not passed down', e) } }
         toast(`#${esc(q.quote_number || '')} · signed ${fmtShortDate(d)}${cn ? ' · contract ' + esc(cn) : ''}`, 'success')
         onDone?.({ quoteId: q.id, day: d, number: cn || null })
         return
@@ -110,6 +125,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
       if (!fileIsStamped) { opts.filePath = file.path; opts.file = file.label }
       if (stampedPath) opts.stampedPath = stampedPath
       const r = await markExecuted(supabase, q.id, opts)
+      if (number && isRoot && number !== genNum) { try { await propagateAgreementNumber(supabase, q.id, number) } catch (e) { console.warn('agreement number not passed down', e) } }
       toast(esc(executedToast(r, quoteStatusLabel(q.status))), 'success')
       onDone?.({ quoteId: q.id })
     } catch (e) {
@@ -155,9 +171,10 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
         <p className="msign-help">The date on the signed contract (not today, unless he signed today).</p>
 
         <div className="msign-q">Contract # on the signed paper</div>
-        <input type="text" className="msign-num" value={num} placeholder="SS-2026-00000" spellCheck={false} onChange={(e) => setNum(e.target.value)} />
-        <p className="msign-help">As printed on the contract he signed. Revised contracts say “Revision 1 to Agreement {cn ? stripRev(cn) : '…'}, signed {d ? fmtShortDate(d) : 'MM/DD/YYYY'}”.</p>
-        {otherNum && <p className="msign-note">This order's contract was generated as {genNum}; the paper says {cn}. That's fine — the revised contracts will use {cn}.</p>}
+        <input type="text" className="msign-num" value={num} placeholder={qRev ? `SS-2026-00000 Rev ${qRev}` : 'SS-2026-00000'} spellCheck={false} onChange={(e) => setNum(e.target.value)} />
+        <p className="msign-help">As printed on the contract he signed.{qRev ? ` This order is Revision ${qRev}, so it ends in Rev ${qRev}.` : ''} Revised contracts say “Revision 1 to Agreement {cn ? stripRev(cn) : '…'}, signed {d ? fmtShortDate(d) : 'MM/DD/YYYY'}”.</p>
+        {otherNum && !revMismatch && <p className="msign-note">This order's contract was generated as {genNum}; the paper says {cn}. That's fine — the revised contracts {qRev ? 'of this agreement' : ''} will use {stripRev(cn)}.</p>}
+        {revMismatch && <p className="msign-err">{qRev ? `This order is Revision ${qRev}: the number must end in Rev ${qRev}.` : 'This is the original contract: its number has no "Rev".'}</p>}
 
         {mode === 'mark' && !fileIsStamped && (
           <label className="msign-chk">

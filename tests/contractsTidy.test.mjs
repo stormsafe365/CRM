@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agreementSignedDay, agreementSignedDayDb, signedContractOf, cleanContractNumber, agreementRootOf, contractNumberFor, revisedContractNumber, currentOrderQuote, pdfNameFor, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
+  agreementSignedDay, agreementSignedDayDb, signedContractOf, cleanContractNumber, agreementRootOf, contractNumberFor, revisedContractNumber, currentOrderQuote, pdfNameFor, propagateAgreementNumber, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
   organizeContracts, revisionDocFor, setSignedDay, signedDayConfirmed, signedInfoOf, signedOnOf, signedPickList, withLiveExecuted,
 } from '../src/lib/contractDocs.js'
 
@@ -445,4 +445,54 @@ test('the current order + PDF file names (owner 10/19/26)', () => {
   assert.equal(pdfNameFor('<div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>', ct), 'Peter Mawn-StormSafe Steel Executed Contract (10.19).pdf')
   assert.equal(pdfNameFor('<strong>REVISED CONTRACT</strong>', qte), qte)
   assert.equal(pdfNameFor('', ''), '')
+})
+
+// a fake quotes table that answers list AND single reads (propagateAgreementNumber walks a lead's quotes)
+function listSb(rows) {
+  return {
+    from: () => {
+      const st = { f: [], p: null, single: false }
+      const api = {
+        select() { return api }, single() { st.single = true; return api },
+        eq(k, v) { st.f.push((r) => r[k] === v); return api },
+        update(p) { st.p = p; return api },
+        then(res) {
+          const m = rows.filter((r) => st.f.every((fn) => fn(r)))
+          if (st.p) { m.forEach((r) => Object.assign(r, JSON.parse(JSON.stringify(st.p)))); return Promise.resolve({ error: null }).then(res) }
+          const out = JSON.parse(JSON.stringify(m))
+          return Promise.resolve({ data: st.single ? out[0] || null : out, error: null }).then(res)
+        },
+      }
+      return api
+    },
+  }
+}
+
+test('review 10/19/26 (hub): the paper number reaches earlier revisions; a Rev-less mark never demotes a revision; executed copy names', async () => {
+  // Peter: Rev 1 made before 02861 was typed on the original
+  const o = { id: 'o', client_id: 'c', quote_number: 'SS-2026-68012', status: 'superseded', payload_json: { contractSent: { at: 'x', number: 'SS-2026-68012' }, revisedBy: { id: 'r1', contract_number: 'SS-2026-68012 Rev 1', rev_no: '1' }, revisions: [{ id: 'r1', contract_number: 'SS-2026-68012 Rev 1', rev_no: '1' }] } }
+  const r1 = { id: 'r1', client_id: 'c', quote_number: 'SS-2026-53353', status: 'deposit_paid', payload_json: { revisionOf: { id: 'o', quote_number: 'SS-2026-68012', agreement_number: 'SS-2026-68012', contract_number: 'SS-2026-68012 Rev 1', rev_no: '1' }, contractSent: { at: 'x', number: 'SS-2026-68012 Rev 1' } } }
+  const r2 = { id: 'r2', client_id: 'c', quote_number: 'SS-2026-60000', status: 'deposit_paid', payload_json: { revisionOf: { id: 'r1', quote_number: 'SS-2026-53353', agreement_number: 'SS-2026-68012', contract_number: 'SS-2026-68012 Rev 2', rev_no: '2' }, contractSent: { at: 'x', number: 'SS-2026-68012 Rev 2' }, executed: { at: '2026-10-05', signedOn: '2026-10-05', confirmed: true, number: 'SS-2026-68012 Rev 2' } } }
+  const other = { id: 'x', client_id: 'c', quote_number: 'SS-2026-1', status: 'draft', payload_json: {} }
+  const rows = [o, r1, r2, other]
+  const changed = await propagateAgreementNumber(listSb(rows), 'o', 'SS-2026-02861')
+  assert.deepEqual(changed.sort(), ['r1', 'r2'])
+  assert.equal(r1.payload_json.revisionOf.agreement_number, 'SS-2026-02861')
+  assert.equal(r1.payload_json.revisionOf.contract_number, 'SS-2026-02861 Rev 1')
+  assert.equal(r1.payload_json.contractSent.number, 'SS-2026-02861 Rev 1') // not signed: reprints carry the paper's number
+  assert.equal(r2.payload_json.revisionOf.agreement_number, 'SS-2026-02861')
+  assert.equal(r2.payload_json.contractSent.number, 'SS-2026-68012 Rev 2') // the customer signed Rev 2 under that number: kept
+  assert.equal(o.payload_json.revisedBy.contract_number, 'SS-2026-02861 Rev 1')
+  assert.equal(o.payload_json.revisions[0].contract_number, 'SS-2026-02861 Rev 1')
+  assert.deepEqual(other.payload_json, {})
+  assert.equal(agreementRootOf(r1), 'SS-2026-02861')
+  assert.equal(revisedContractNumber(r1, '2'), 'SS-2026-02861 Rev 2')
+  assert.deepEqual(await propagateAgreementNumber(listSb(rows), 'nope', 'SS-2026-02861'), [])
+  // a revision whose mark carries the agreement number without "Rev n" stays Revision n
+  const rr = { id: 'rr', quote_number: 'SS-2026-2', status: 'deposit_paid', payload_json: { revisionOf: { id: 'o', agreement_number: 'SS-2026-02861', rev_no: '1' }, executed: { at: '2026-10-02', signedOn: '2026-10-02', confirmed: true, number: 'SS-2026-02861' } } }
+  const out = organizeContracts([], [rr])
+  assert.equal(out.signed[0].role, 'Revision 1')
+  // an executed copy of a revised order is still the executed copy
+  const both = '<strong>REVISED CONTRACT</strong><div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>'
+  assert.equal(pdfNameFor(both, 'P-StormSafe Steel CONTRACT (10.19).pdf'), 'P-StormSafe Steel Executed Contract (10.19).pdf')
 })
