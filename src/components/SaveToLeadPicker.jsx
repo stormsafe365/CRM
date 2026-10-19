@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { isoToday } from '../lib/followups'
 import { harvestAndSaveQuote } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
-import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
+import { findDuplicateClients, dupSummary, othersOnly, othersText } from '../lib/dupCheck'
 import { escHtml } from '../lib/designLinks'
 
 const FIELD = {
@@ -87,7 +87,9 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
         // Duplicate guard: if a lead already exists with this email/phone,
         // offer to attach the quote to it instead of minting a twin.
         try {
-          const dups = await findDuplicateClients({ email: form.email, phone: form.phone })
+          const found = await findDuplicateClients({ email: form.email, phone: form.phone })
+          if (othersOnly(found) && !window.confirm(othersText(found))) { savingRef.current = false; return }
+          const dups = found.filter((d) => d.mine !== false)
           if (dups.length) {
             const useExisting = window.confirm(
               `A lead already exists with this contact info:\n${dupSummary(dups)}\n\nOK = save the quote to that existing lead\nCancel = create a new (duplicate) lead anyway`,

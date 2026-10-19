@@ -11,6 +11,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { BUILDING_TYPES, buildingTypeLabel, sourceLabel, projectStageLabel } from '../lib/constants'
 import { useUsers, userLabel } from '../lib/useUsers'
+import { useIsAdmin } from '../lib/useIsAdmin'
 import { derivedProjectStage } from '../lib/projectStage'
 import { readState } from '../lib/ssfuEngine'
 import { usd } from '../lib/money'
@@ -72,6 +73,8 @@ function initialsOf(name) {
 export default function ClientsList() {
   const navigate = useNavigate()
   const { users } = useUsers()
+  // the other reps' tabs are for admins; a rep only has her own leads (owner 10/18/26)
+  const isAdmin = useIsAdmin()
   const [clients, setClients] = useState([])
   // client_id -> Building size/type from the lead's quote on file (owner 10/15/26).
   // Fills only the blanks a lead has — display only, never written to the lead.
@@ -349,7 +352,7 @@ export default function ClientsList() {
 
       <UnassignedDesigns />
 
-      {repTabs.length > 1 && (
+      {repTabs.length > 1 && isAdmin === true && (
         <div className="list-tabs" ref={repTabsRef} style={{ marginBottom: 10 }}>
           {repInd.ready && (
             <span className="list-tab-ind" style={{ transform: `translateX(${repInd.left}px)`, width: repInd.width }} />

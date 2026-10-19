@@ -13,6 +13,8 @@ import { renderQuotePdf } from '../lib/builderSave'
 import { LEAD_SOURCES } from '../lib/constants'
 import { usd } from '../lib/money'
 import { useIsAdmin } from '../lib/useIsAdmin'
+import { useAuth } from '../context/AuthContext'
+import { peopleOf } from '../lib/perfStats'
 import { toast } from '../lib/uiFx'
 
 const sourceLabel = (v) => (v ? LEAD_SOURCES.find((s) => s.value === v)?.label || v : 'Not recorded')
@@ -87,6 +89,9 @@ export function summaryLines(r) {
 export default function Performance() {
   const [accessTick, setAccessTick] = useState(0)
   const admin = useIsAdmin(accessTick)
+  // a sales rep (not an admin): her own numbers - the database only returns her leads (migration 023)
+  const repView = admin === false
+  const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const today = nyDay(Date.now())
   const key = PERIODS.some((x) => x.key === params.get('p')) ? params.get('p') : 'this_week'
@@ -99,7 +104,7 @@ export default function Performance() {
   const [printing, setPrinting] = useState(false)
 
   useEffect(() => {
-    if (admin !== true) return undefined
+    if (admin !== true && admin !== false) return undefined
     let alive = true
     setBusy(true)
     loadPerformance(supabase).then((r) => {
@@ -113,7 +118,13 @@ export default function Performance() {
     return () => { alive = false }
   }, [admin, reload])
 
-  const result = useMemo(() => (data ? computePerformance(data, period, { today, now: loadedAt || Date.now() }) : null), [data, period, today, loadedAt])
+  const full = useMemo(() => (data ? computePerformance(data, period, { today, now: loadedAt || Date.now() }) : null), [data, period, today, loadedAt])
+  // a rep sees only her own row (her leads' numbers; a follow-up someone else logged on her lead is not hers)
+  const result = useMemo(() => {
+    if (!full || !repView) return full
+    const me = data ? peopleOf(data.users).personOfUser.get(user?.id) : null
+    return { ...full, reps: full.reps.filter((x) => x.key === me) }
+  }, [full, repView, data, user])
 
   const setPeriod = (k) => {
     if (k === 'custom') setParams({ p: 'custom', from: period.from, to: period.to })
@@ -126,7 +137,7 @@ export default function Performance() {
     const clean = (s) => String(s || '').replace(/[<>&]/g, '')
     try {
       const html = buildPerformanceHtml(result, { summary: summaryLines(result), sourceLabel })
-      const name = `StormSafe Performance ${result.period.from} to ${result.period.to}.pdf`
+      const name = `StormSafe ${repView ? 'My stats' : 'Performance'} ${result.period.from} to ${result.period.to}.pdf`
       const api = typeof window !== 'undefined' ? window.electronAPI : null
       if (api && typeof api.savePdf === 'function') {
         const res = await api.savePdf(html, name) // { ok } / { ok:false, canceled } / { ok:false, error }
@@ -160,26 +171,14 @@ export default function Performance() {
       </div></div>
     )
   }
-  if (!admin) {
-    return (
-      <div className="page-head"><div className="left">
-        <div className="eyebrow-lime">Owner only</div>
-        <h1>Performance</h1>
-        <div className="sub">
-          This page is for the owner and Joshua. If that is you, the login needs to be made an admin first (ask Claude).{' '}
-          <button type="button" className="btn-secondary" onClick={() => setAccessTick((n) => n + 1)}>Check again</button>
-        </div>
-      </div></div>
-    )
-  }
 
   const r = result
   return (
     <div className="perf">
       <div className="page-head">
         <div className="left">
-          <div className="eyebrow-lime">Owner + Joshua only</div>
-          <h1>Performance</h1>
+          <div className="eyebrow-lime">{repView ? 'Your leads only' : 'Owner + Joshua only'}</div>
+          <h1>{repView ? 'My stats' : 'Performance'}</h1>
           <div className="sub">
             {period.label} · {period.range}{period.toDate ? ' (to date)' : ''}
             {loadedAt ? <> · numbers as of {new Date(loadedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</> : null}
@@ -228,8 +227,8 @@ export default function Performance() {
             <TrendTable r={r} />
           </Panel>
 
-          <Panel title="By sales rep" right="the lead's rep · open leads and quiet leads are as of now">
-            <RepTable r={r} />
+          <Panel title={repView ? 'Your numbers' : 'By sales rep'} right={repView ? 'leads where you are the main rep · as of now' : "the lead's rep · open leads and quiet leads are as of now"}>
+            <RepTable r={r} solo={repView} />
           </Panel>
 
           <div className="ana-grid perf-grid">
@@ -389,7 +388,7 @@ function TrendTable({ r }) {
   )
 }
 
-function RepTable({ r }) {
+function RepTable({ r, solo = false }) {
   return (
     <div className="perf-scroll">
       <table className="ana-table">
@@ -411,7 +410,7 @@ function RepTable({ r }) {
               <td className="num" style={x.quiet ? { color: 'var(--danger, #f87171)' } : undefined}>{x.quiet}</td>
             </tr>
           ))}
-          <tr className="perf-total">
+          {solo ? null : <tr className="perf-total">
             <td>Total</td>
             <td className="num">{r.totals.openNow}</td>
             <td className="num">{r.totals.newLeads}</td>
@@ -422,7 +421,7 @@ function RepTable({ r }) {
             <td className="num">{money(r.totals.soldValue)}</td>
             <td className="num">{r.tracked ? money(r.totals.deposits) : 'n/a'}</td>
             <td className="num">{r.totals.quiet}</td>
-          </tr>
+          </tr>}
         </tbody>
       </table>
     </div>

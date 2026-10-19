@@ -7,11 +7,14 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { deleteQuotePdf } from '../lib/storage'
 import { usd } from '../lib/money'
+import { useIsAdmin } from '../lib/useIsAdmin'
 
 const money = (n) => usd(n) ?? '—'
 const when = (iso) => { try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return '—' } }
 
 export default function Trash() {
+  // restoring / erasing is for admins (owner 10/18/26); a rep has no Trash menu item
+  const isAdmin = useIsAdmin()
   const [leads, setLeads] = useState([])
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -55,6 +58,16 @@ export default function Trash() {
   }
 
   const total = leads.length + quotes.length
+
+  if (isAdmin === false) {
+    return (
+      <div className="page-head"><div className="left">
+        <div className="eyebrow-lime">Recovery</div>
+        <h1>Trash</h1>
+        <div className="sub">Deleting and restoring leads is done by an admin. Ask your manager.</div>
+      </div></div>
+    )
+  }
 
   return (
     <>

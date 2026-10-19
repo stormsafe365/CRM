@@ -1,7 +1,7 @@
-// useIsAdmin: is the signed-in login an admin (users.role = 'admin')? The Performance page is for the
-// owner and Joshua only (owner 10/16/26); their two logins are made admins with one line of SQL in
-// the Supabase SQL editor. Reps do not see the menu item or the page.
-// This hides the screen; it is not a lock on the data (every signed-in login can read the CRM's rows).
+// useIsAdmin: is the signed-in login an admin (users.role = 'admin')? Admins (the owner and Joshua) see
+// the whole business; a sales rep (owner 10/18/26: Lauren) gets "My stats", no Trash, no Delete Lead,
+// and cannot change who a lead is assigned to. This only shapes the screens: the LOCK on the data is
+// migration 023 (row security), which gives a rep only her own leads whatever the app asks for.
 //
 // true / false / null (still checking) / 'error' (could not check - the page says so, never "not admin").
 // Only a YES is remembered: a login made admin after the app opened gets the page on the next check

@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react'
 import { CLIENT_STATUSES, LEAD_SOURCES, BUILDING_TYPES, PROJECT_STAGES } from '../lib/constants'
 import { useUsers } from '../lib/useUsers'
+import { useIsAdmin } from '../lib/useIsAdmin'
 
 // Rep option label: name plus email, so two accounts with the same display
 // name (e.g. a duplicate "Jenna" login) are tell-apart-able in the dropdown.
@@ -65,6 +66,8 @@ const splitName = (full) => {
 
 export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 'Save' }) {
   const { users } = useUsers()
+  // who a lead belongs to is set by an admin; a rep sees it but cannot change it (the database refuses too)
+  const repsLocked = useIsAdmin() !== true
   const [form, setForm] = useState(() => {
     const base = { ...EMPTY, ...(initial ?? {}) }
     const { first, last } = splitName(base.name)
@@ -309,7 +312,7 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
 
       <FormSection title="Assignment & Follow-Up">
         <Field label="Primary Rep *">
-          <select value={form.primary_rep ?? ''} onChange={e => update('primary_rep', e.target.value)} required>
+          <select value={form.primary_rep ?? ''} onChange={e => update('primary_rep', e.target.value)} required disabled={repsLocked} title={repsLocked ? 'Only an admin can change who a lead is assigned to' : undefined}>
             <option value="">— Select —</option>
             {users.map(u => (
               <option key={u.id} value={u.id}>{repOptionLabel(u)}</option>
@@ -317,7 +320,7 @@ export default function ClientForm({ initial, onSubmit, onCancel, submitLabel = 
           </select>
         </Field>
         <Field label="Secondary Rep">
-          <select value={form.secondary_rep ?? ''} onChange={e => update('secondary_rep', e.target.value)}>
+          <select value={form.secondary_rep ?? ''} onChange={e => update('secondary_rep', e.target.value)} disabled={repsLocked} title={repsLocked ? 'Only an admin can change who a lead is assigned to' : undefined}>
             <option value="">— None —</option>
             {users.map(u => (
               <option key={u.id} value={u.id}>{repOptionLabel(u)}</option>

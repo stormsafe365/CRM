@@ -33,6 +33,7 @@ function rcTextHref(phone) {
   return 'rcapp://r/sms?type=new&number=' + encodeURIComponent('+' + d)
 }
 import { useAuth } from '../context/AuthContext'
+import { useIsAdmin } from '../lib/useIsAdmin'
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
 
@@ -76,6 +77,7 @@ export default function ClientDetail() {
   const navigate = useNavigate()
   const { users } = useUsers()
   const { user } = useAuth()
+  const isAdmin = useIsAdmin()
   const [client, setClient] = useState(null)
   const [latestQuote, setLatestQuote] = useState(null)
   // { id, spec }: Building size/type from this lead's quote on file — fills the
@@ -336,7 +338,8 @@ export default function ClientDetail() {
           )}
         </div>
 
-        <button className="cp-delete" onClick={() => setConfirmingDelete(true)}>Delete Lead</button>
+        {/* deleting a lead is for admins (owner 10/18/26); the database refuses it for a rep too */}
+        {isAdmin === true ? <button className="cp-delete" onClick={() => setConfirmingDelete(true)}>Delete Lead</button> : null}
       </aside>
 
       {/* ===================== RIGHT: Work area ===================== */}

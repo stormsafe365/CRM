@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
 import { isoToday } from '../lib/followups'
-import { findDuplicateClients, dupSummary } from '../lib/dupCheck'
+import { findDuplicateClients, dupSummary, othersOnly, othersText } from '../lib/dupCheck'
 import { attachDesign, markDesign, matchLeads, escHtml, sharedFrom } from '../lib/designLinks'
 import { useLeadSearch } from '../lib/useLeadSearch'
 import { DesignItem } from './CustomerDesignsCard'
@@ -81,7 +81,8 @@ export function DesignInboxRow({ d, lead, onDone }) {
       const { data: cur } = await supabase.from('design_requests').select('client_id').eq('id', d.id).maybeSingle()
       if (cur && cur.client_id) { toast('This design was already attached to a lead (maybe by someone else just now).'); onDone(); setBusy(false); return }
       const dups = await findDuplicateClients({ email: d.email, phone: d.phone })
-      if (dups.length && !window.confirm(`A lead with this phone or email already exists: ${dupSummary(dups)}.\n\nMake a NEW lead anyway? (Cancel, then use "Attach to a lead" to put the design on the existing one.)`)) { setBusy(false); return }
+      if (othersOnly(dups) && !window.confirm(othersText(dups))) { setBusy(false); return }
+      if (dups.some((x) => x.mine !== false) && !window.confirm(`A lead with this phone or email already exists: ${dupSummary(dups)}.\n\nMake a NEW lead anyway? (Cancel, then use "Attach to a lead" to put the design on the existing one.)`)) { setBusy(false); return }
       const { data, error } = await supabase.from('clients').insert({
         name: d.name,
         phone: d.phone || null,

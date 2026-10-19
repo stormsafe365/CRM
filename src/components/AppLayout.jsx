@@ -63,12 +63,13 @@ const navItems = [
     icon: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></>,
   },
   {
-    // owner + Joshua only (owner 10/16/26): how the business is actually doing, by week / month / 3 months
-    to: '/performance', label: 'Performance', adminOnly: true,
+    // admins: the whole business (owner 10/16/26); a rep: "My stats" - her own leads only (owner 10/18/26)
+    to: '/performance', label: 'Performance', repLabel: 'My stats',
     icon: <><path d="M3 3v18h18" /><path d="m7 15 4-4 3 3 6-6" /><path d="M17 8h3v3" /></>,
   },
   {
-    to: '/trash', label: 'Trash',
+    // deleting / restoring leads is for admins (owner 10/18/26: a rep cannot delete leads)
+    to: '/trash', label: 'Trash', adminOnly: true,
     icon: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></>,
   },
 ]
@@ -184,7 +185,7 @@ export default function AppLayout({ children }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
                 {item.icon}
               </svg>
-              {item.label}
+              {isAdmin === false && item.repLabel ? item.repLabel : item.label}
               {item.to === '/followups' && dueCount > 0 && (
                 <span className="badge-count" style={{ position: 'static', marginLeft: 'auto', border: 'none' }}>
                   {dueCount > 9 ? '9+' : dueCount}
@@ -205,7 +206,7 @@ export default function AppLayout({ children }) {
             <div className="avatar md">{initials}</div>
             <div className="user-meta">
               <div className="nm">{displayName}</div>
-              <div className="rl">Sales Rep</div>
+              <div className="rl">{isAdmin === true ? 'Admin' : 'Sales Rep'}</div>
             </div>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6B7E92" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
           </button>
