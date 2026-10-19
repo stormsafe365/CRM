@@ -274,6 +274,11 @@ export function revisionChain(q, quotes) {
 export function agreementRootQuote(q, quotes) { const { chain } = revisionChain(q, quotes); return chain[chain.length - 1] }
 // a contract the customer SIGNED (a verbal accept is not one)
 const SIGNED_STATUS = ['deposit_paid', 'revised']
+/** Was q a SIGNED contract (marked, or Deposit Paid / Revised)? Recorded on a revision's link
+ *  (revisionOf.signed_contract) — revisionOf.signed also counts a verbal accept (isSold). */
+export function signedContractOf(q) { return !!executedOf(q) || SIGNED_STATUS.includes(q?.status) }
+// did the base of `link` sign? (links before 10/19/26 only have `signed`, which counts a verbal accept too)
+const linkBaseSigned = (rv) => (rv && rv.signed_contract !== undefined ? rv.signed_contract === true : rv?.signed === true)
 /**
  * The day the AGREEMENT was signed ("REVISION 2 to Agreement SS-…, signed September 24, 2026").
  * The agreement = the first contract the customer signed in the chain: the root, unless the root was
@@ -288,10 +293,11 @@ export function agreementSignedDay(q, quotes) {
   const down = chain.slice().reverse() // root → q
   const wasSigned = (k) => {
     const n = down[k]
-    return !!executedOf(n) || SIGNED_STATUS.includes(n?.status) || (n?.status === 'superseded' && down[k + 1]?.payload_json?.revisionOf?.signed === true)
+    return signedContractOf(n) || (n?.status === 'superseded' && linkBaseSigned(down[k + 1]?.payload_json?.revisionOf))
   }
+  // step down past a base the customer never signed (unsigned, or only verbally accepted)
   let i = 0
-  while (i < down.length - 1 && !wasSigned(i) && down[i + 1]?.payload_json?.revisionOf?.signed === false) i++
+  while (i < down.length - 1 && !wasSigned(i) && down[i + 1]?.payload_json?.revisionOf && !linkBaseSigned(down[i + 1].payload_json.revisionOf)) i++
   const node = down[i] || q
   const isRoot = i === 0
   const ex = executedOf(node)
@@ -451,7 +457,9 @@ export function cardBalanceOf(q) {
 const stampAtOf = (p) => (p ? (p.stampAt || (DAY_RE.test(str(p.at)) ? null : str(p.at) || null)) : null)
 export function nextExecuted(prev, { signedOn = null, at = null, file, filePath, stampedPath, number, keepStamped = false } = {}, now = new Date()) {
   const p = prev && prev.at ? prev : null
-  if (keepStamped && p && p.stampedPath) stampedPath = undefined
+  // keep only the stamp of the CUSTOMER's signed pages (a signed copy is linked, or it is the Doc Hub's
+  // "-EXECUTED-deposit-paid.pdf"); the builder's own earlier copy is replaced by its newer one
+  if (keepStamped && p && p.stampedPath && (p.filePath || /-EXECUTED-deposit-paid\.pdf$/.test(str(p.stampedPath)))) stampedPath = undefined
   let day = cleanDay(signedOn) || cleanDay(at)
   let confirmed = !!day
   // a click time passed in (ISO) = that LOCAL day, not confirmed as the signing day

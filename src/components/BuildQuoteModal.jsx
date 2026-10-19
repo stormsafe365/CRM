@@ -39,7 +39,7 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, signedContractOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
   paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
@@ -779,7 +779,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         revisionOf: {
           id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit, paid_before: paid, paid_total: r2(Math.max(paid, money.deposit)),
           revised_total: money.total, revision_order: num, rev_no: revNo, mode: r.mode, at,
-          agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig,
+          agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig, signed_contract: signedContractOf(original),
         },
       }
       await onSave(upd)
@@ -789,10 +789,18 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       //    to this one; its card shows "Replaced by #<this quote>". It is no longer
       //    an active order (not sold, not open), so nothing counts it twice.
       const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at, contract_number: ctNo, rev_no: revNo }
-      const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
+      // the original's payload as it is NOW in the database (a signed day typed a moment ago — "When did he
+      // sign?" — or a mark set in Documents while this window was open must not be written over; review 10/19/26)
+      let livePayload = original.payload_json || {}
+      try {
+        const { data: lv } = await supabase.from('quotes').select('payload_json').eq('id', original.id).single()
+        const lr = Array.isArray(lv) ? lv[0] : lv
+        if (lr && lr.payload_json && typeof lr.payload_json === 'object') livePayload = lr.payload_json
+      } catch { /* the window's copy */ }
+      const prev = Array.isArray(livePayload.revisions) ? livePayload.revisions : []
       // a redo (owner 10/19/26): the unsigned revision(s) it replaces are flagged, so their number is reused
       const redoIds = (r.redo?.ids || []).filter((id) => id && id !== cur.id)
-      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...revisionsAfterRedo(prev, [...(r.redo?.ids || []), ...(r.redo?.dropped || [])]), link] }
+      const origPayload = { ...livePayload, revisedBy: link, revisions: [...revisionsAfterRedo(prev, [...(r.redo?.ids || []), ...(r.redo?.dropped || [])]), link] }
       let origMark = 'superseded'
       try {
         const { error } = await supabase.from('quotes').update({ status: 'superseded', payload_json: origPayload }).eq('id', original.id)

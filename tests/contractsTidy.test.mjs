@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agreementSignedDay, agreementSignedDayDb, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
+  agreementSignedDay, agreementSignedDayDb, signedContractOf, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
   organizeContracts, revisionDocFor, setSignedDay, signedDayConfirmed, signedInfoOf, signedOnOf, signedPickList, withLiveExecuted,
 } from '../src/lib/contractDocs.js'
 
@@ -323,8 +323,8 @@ test('second review 10/19/26: file names, the kept DEPOSIT PAID copy, the kept s
   assert.equal(parseContractLabel('SS-2026-68012_Revision_1_signed.pdf').number, 'SS-2026-68012 Rev 1')
   assert.equal(parseContractLabel('SS-2026-68012_Revised_contract.pdf').number, 'SS-2026-68012')
   // the builder's Executed Copy never replaces the customer's signed DEPOSIT PAID copy
-  const prev = { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, stampedPath: 'c/signed-EXECUTED.pdf' }
-  assert.equal(nextExecuted(prev, { stampedPath: 'c/generated-executed.pdf', keepStamped: true }).stampedPath, 'c/signed-EXECUTED.pdf')
+  const prev = { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, stampedPath: 'c/signed-EXECUTED-deposit-paid.pdf' }
+  assert.equal(nextExecuted(prev, { stampedPath: 'c/generated-executed.pdf', keepStamped: true }).stampedPath, 'c/signed-EXECUTED-deposit-paid.pdf')
   assert.equal(nextExecuted({ at: '2026-09-24', confirmed: true }, { stampedPath: 'c/gen.pdf', keepStamped: true }).stampedPath, 'c/gen.pdf')
   // typing the day on an older by-name stamp keeps which same-named file it was
   const q = { id: 'q', quote_number: 'SS-2026-00144', status: 'deposit_paid', payload_json: { executed: { at: '2026-09-24T16:01:00Z', file: 'SS-2026-00144-contract.pdf' } } }
@@ -332,4 +332,25 @@ test('second review 10/19/26: file names, the kept DEPOSIT PAID copy, the kept s
   q.payload_json.executed = nextExecuted(q.payload_json.executed, { signedOn: '2026-09-24' }, new Date('2026-10-20T12:00:00Z'))
   assert.equal(q.payload_json.executed.stampAt, '2026-09-24T16:01:00Z')
   assert.equal(organizeContracts(files, [q]).signed[0].signedFile.createdAt, '2026-09-24T16:00:00Z')
+})
+
+test('third review 10/19/26: a verbal accept is never the signed agreement; the builder\'s own copy is replaced', () => {
+  // root V was only verbally accepted, revised (link: signed true by isSold, signed_contract false), Rev 1 signed
+  const V = { id: 'v', quote_number: 'SS-2026-30000', status: 'superseded', payload_json: {} }
+  const r1 = { id: 'r1', quote_number: 'SS-2026-30001', status: 'deposit_paid', payload_json: { revisionOf: { id: 'v', quote_number: 'SS-2026-30000', agreement_number: 'SS-2026-30000', rev_no: '1', signed: true, signed_contract: false } } }
+  const a = agreementSignedDay(r1, [V, r1])
+  assert.equal(a.node.id, 'r1'); assert.equal(a.needsDay, true); assert.equal(a.number, 'SS-2026-30000 Rev 1')
+  // a link made before 10/19/26 (no signed_contract) still reads `signed`
+  const r1old = { ...r1, payload_json: { revisionOf: { ...r1.payload_json.revisionOf, signed_contract: undefined } } }
+  assert.equal(agreementSignedDay(r1old, [V, r1old]).node.id, 'v')
+  // signedContractOf: marked or Deposit Paid / Revised — not a verbal accept
+  assert.equal(signedContractOf({ status: 'verbal_accept', payload_json: {} }), false)
+  assert.equal(signedContractOf({ status: 'deposit_paid', payload_json: {} }), true)
+  assert.equal(signedContractOf({ status: 'sent', payload_json: { executed: { at: '2026-09-24' } } }), true)
+  // the builder's Executed Copy clicked again replaces ITS earlier copy (no signed copy linked)
+  const gen = { at: '2026-09-24', confirmed: true, stampedPath: 'c/1-SS-1-executed-deposit-paid.pdf' }
+  assert.equal(nextExecuted(gen, { stampedPath: 'c/2-SS-1-executed-deposit-paid.pdf', keepStamped: true }).stampedPath, 'c/2-SS-1-executed-deposit-paid.pdf')
+  // …but never the stamp of the customer's signed pages
+  const cust = { at: '2026-09-24', confirmed: true, filePath: 'c/signed.pdf', stampedPath: 'c/1-SS-1-executed-deposit-paid.pdf' }
+  assert.equal(nextExecuted(cust, { stampedPath: 'c/2-x.pdf', keepStamped: true }).stampedPath, 'c/1-SS-1-executed-deposit-paid.pdf')
 })
