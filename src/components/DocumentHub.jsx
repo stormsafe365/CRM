@@ -1,19 +1,18 @@
 // DocumentHub: per-client file repository. Files live in Supabase Storage
 // (private bucket, namespaced by client + category) and open via short-lived
-// signed URLs. Styled to the design's Document Hub — 6 category cards that
-// filter a combined file table; upload targets the active category.
+// signed URLs.
 //
-// Contracts, SORTED (owner 10/19/26, Peter Mawn: "he doesnt have 19 contracts ... its a rats nest and
-// there is no way to mark the contract thats signed"): every Generate Contract / Executed Copy /
-// revision adds a file, so the Contracts tab is no longer a flat list —
-//   SIGNED          one card per agreement: the original and each revision the customer signed, the
-//                   day he signed (typed by the rep), the signed copy, the DEPOSIT PAID copy, and a
-//                   ▾ menu: See the signed copy · Make a revision · Change the signed date · …
-//   NOT SIGNED YET  contracts we generated, one row per contract number (older copies folded)
-//   UPLOADS TO SORT files with no contract number that are not linked to a signed order
-// "Mark as signed…" (MarkSignedModal) replaces the old stamp icon; uploading a contract asks right
-// away whether it is the signed copy. Nothing is renamed, moved or deleted by the sorting
-// (lib/contractDocs organizeContracts); the trash can still deletes a file.
+// CURRENT / HISTORY (owner 10/19/26: "right now its a MESSSSSS"; ideas from a ChatGPT guide she sent):
+//   top       three counts (Signed · Current · History), a search box, a chip per kind of file
+//   CURRENT   the signed agreement (its latest signed version), the order as it stands (the current
+//             quote's PDF) and the latest Revision Order — what matters now
+//   HISTORY   every other file, folded by kind, same-named copies folded under the newest, with
+//             tick-boxes: tick the junk drafts and delete them in one go (asked once, never silently;
+//             files a signed order points at are skipped)
+// Contracts, SORTED (owner 10/19/26, Peter Mawn): the Contracts chip shows Signed / Not signed /
+// Uploads to sort (lib/contractDocs organizeContracts); "Mark as signed" (MarkSignedModal) records the
+// day and the contract number on the paper; uploading a contract asks right away whether it is the
+// signed copy. Nothing is renamed, moved or deleted by the sorting.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadClientDoc, uploadClientDocBlob, listClientDocs, getDocSignedUrl, deleteDoc } from '../lib/storage'
@@ -25,17 +24,18 @@ import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 import MarkSignedModal, { quoteLine } from './MarkSignedModal'
 import {
-  clearSignedMark, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
+  clearSignedMark, contractRoleOf, currentOrderQuote, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
 } from '../lib/contractDocs'
 import { isBuilderPayload } from '../lib/priceLockCrm'
+import { quoteStatusLabel } from '../lib/constants'
 
 const SECTIONS = [
   { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
   { key: 'contract',    label: 'Contracts',   accept: 'application/pdf,image/*', hint: 'PDF, scan or photo' },
+  { key: 'revisions',   label: 'Revisions',   accept: 'application/pdf,image/*', hint: 'PDF or image' },
   { key: 'rendering',   label: 'Renderings',  accept: 'image/*,application/pdf', hint: 'Image or PDF' },
   { key: 'layout',      label: 'Layout',      accept: 'application/pdf,image/*', hint: 'Signed sheet' },
-  { key: 'revisions',   label: 'Revisions',   accept: 'application/pdf,image/*', hint: 'PDF or image' },
-  { key: 'additional',  label: 'Additional',  accept: '',                        hint: 'Any file' },
+  { key: 'additional',  label: 'Other',       accept: '',                        hint: 'Any file' },
 ]
 
 const ic = (paths) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
@@ -52,10 +52,11 @@ const EYE = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWid
 const TRASH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 const CHECK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
 const CHEV = <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+const SEARCH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
 
-// 6A category accents (rotating palette; All Files uses the brand teal) + short chip labels.
+// category accents (rotating palette; All uses the brand teal) + short chip labels.
 const CAT_ACCENT = { all: '#22c4bf', quote: '#61d89e', contract: '#ff9351', rendering: '#9da9dd', layout: '#ffeb99', revisions: '#22c4bf', additional: '#61d89e' }
-const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Extra' }
+const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Other' }
 const hexRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})` }
 const accentVars = (accent) => ({
   '--accent': accent, '--ring': hexRgba(accent, 0.40), '--soft': hexRgba(accent, 0.20),
@@ -82,15 +83,18 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [error, setError] = useState('')
   const [layoutOpen, setLayoutOpen] = useState(false)
   const [markFor, setMarkFor] = useState(null) // { file, presetQuoteId, justUploaded } — Mark as signed
-  const [dateFor, setDateFor] = useState(null) // quote id — change the signed date
+  const [dateFor, setDateFor] = useState(null) // quote id — change the signed date / contract number
   const [open, setOpen] = useState(() => new Set()) // folded groups the rep opened
   const [stamping, setStamping] = useState(null)
+  const [query, setQuery] = useState('')
+  const [sel, setSel] = useState(() => new Set()) // ticked files (bulk delete)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const inputRef = useRef(null)
   const uploadCat = useRef('quote')
   const attachFor = useRef(null) // "Attach the signed copy" of this quote id
-  const [docExpanded, setDocExpanded] = useState(false)
-  const selectCat = (key) => { setActive(key); setDocExpanded(false) }
+  const selectCat = (key) => { setActive(key); setSel(new Set()) }
   const toggle = (k) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const tick = (p, on) => setSel((s) => { const n = new Set(s); if (on) n.add(p); else n.delete(p); return n })
 
   async function loadQuotes() {
     try {
@@ -112,7 +116,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
 
   // Storage has no realtime — refresh when a quote/contract PDF is saved to this
   // lead from the builder (BuildQuoteModal dispatches ss:docs-updated). The
-  // lead's quotes (signed marks) do: their own channel.
+  // lead's quotes (signed marks, the star) do: their own channel.
   useEffect(() => {
     const onDocs = (e) => { if (!e.detail || e.detail.clientId === clientId) refresh() }
     window.addEventListener('ss:docs-updated', onDocs)
@@ -125,7 +129,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   }, [clientId])
 
   const org = useMemo(() => organizeContracts(filesByCat.contract || [], quotes), [filesByCat.contract, quotes])
-  // files a signed order points at: deleting one asks twice
+  // files a signed order points at: deleting one asks twice, bulk delete skips them
   const signedPaths = useMemo(() => {
     const m = new Map()
     for (const s of org.signed) {
@@ -135,8 +139,37 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     return m
   }, [org])
 
+  const allFiles = useMemo(() => SECTIONS.flatMap((s) => (filesByCat[s.key] || []).map((f) => ({ ...f, cat: s.key }))), [filesByCat])
   const counts = Object.fromEntries(SECTIONS.map(s => [s.key, (filesByCat[s.key] || []).length]))
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
+  const total = allFiles.length
+
+  // ── CURRENT: the signed agreement, the order as it stands, the latest revision order ──
+  const curQuote = useMemo(() => currentOrderQuote(quotes), [quotes])
+  const current = useMemo(() => {
+    const rows = []
+    for (const a of org.agreements) {
+      const s = a.latest
+      rows.push({ kind: 'signed', key: 'signed:' + s.quote.id, s, file: s.signedFile || s.stampedFile || null })
+    }
+    if (curQuote) {
+      const file = curQuote.pdf_snapshot_url ? allFiles.find((f) => f.path === curQuote.pdf_snapshot_url) || null : null
+      rows.push({ kind: 'quote', key: 'quote:' + curQuote.id, q: curQuote, file })
+    }
+    const revs = (filesByCat.revisions || [])
+    if (revs.length) rows.push({ kind: 'revision', key: 'rev:' + revs[0].path, file: revs[0] })
+    return rows
+  }, [org, curQuote, allFiles, filesByCat.revisions])
+  const shownPaths = useMemo(() => {
+    const s = new Set()
+    for (const r of current) { if (r.file) s.add(r.file.path); if (r.s) { if (r.s.signedFile) s.add(r.s.signedFile.path); if (r.s.stampedFile) s.add(r.s.stampedFile.path) } }
+    return s
+  }, [current])
+  const history = useMemo(() => allFiles.filter((f) => !shownPaths.has(f.path)), [allFiles, shownPaths])
+  const histOpen = open.has('history') || current.length === 0
+
+  // ── search (any view): name, kind, date ──
+  const q = query.trim().toLowerCase()
+  const matches = (f) => !q || `${f.label} ${CHIP_LABEL[f.cat] || ''} ${fmtDate(f.createdAt)} ${f.cat}`.toLowerCase().includes(q)
 
   function triggerUpload(cat, attachTo = null) {
     uploadCat.current = cat
@@ -181,25 +214,41 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     try { window.open(await getDocSignedUrl(path), '_blank') } catch (e) { setError(e.message) }
   }
 
+  // delete one file + mirror it on the quote row that points at it (a quote PDF)
+  async function deleteOne(path) {
+    await deleteDoc(path)
+    try {
+      const { data: gone } = await supabase.from('quotes')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+        .eq('client_id', clientId).eq('pdf_snapshot_url', path)
+        .select('id')
+      // a deleted revision gives the order it replaced back its place (owner 10/19/26)
+      for (const g of gone || []) { try { await restoreAfterRevisionDeleted(supabase, g.id) } catch (e) { console.warn('order not restored', e) } }
+    } catch { /* the file is deleted regardless */ }
+  }
   async function onDelete(path) {
     const linked = signedPaths.get(path)
     if (linked && !window.confirm(`This is ${linked}. Delete it anyway? The order stays marked signed.`)) return
     if (!window.confirm('Delete this file? This cannot be undone.')) return
+    try { await deleteOne(path); setSel((s) => { const n = new Set(s); n.delete(path); return n }); await refresh() }
+    catch (e) { setError(e.message) }
+  }
+  // tick the junk, delete it in one go — asked once; files a signed order points at are left alone
+  async function deleteTicked() {
+    const picked = [...sel].filter((p) => allFiles.some((f) => f.path === p))
+    const skip = picked.filter((p) => signedPaths.has(p))
+    const go = picked.filter((p) => !signedPaths.has(p))
+    if (!go.length) { toast(skip.length ? 'Those files belong to a signed order — untick them or delete them one at a time.' : 'Nothing ticked.'); return }
+    const msg = `Delete ${go.length} ${go.length === 1 ? 'file' : 'files'}? This cannot be undone.${skip.length ? ` (${skip.length} ticked ${skip.length === 1 ? 'file belongs' : 'files belong'} to a signed order and will be left alone.)` : ''}`
+    if (!window.confirm(msg)) return
+    setBulkBusy(true); setError('')
+    let done = 0
     try {
-      await deleteDoc(path)
-      // Mirror: if a quote is backed by this exact PDF, soft-delete that quote too
-      // so the Quotes box updates in lockstep (its realtime picks up the change).
-      // No-op for non-quote files (contracts/renderings) — no row points at them.
-      try {
-        const { data: gone } = await supabase.from('quotes')
-          .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
-          .eq('client_id', clientId).eq('pdf_snapshot_url', path)
-          .select('id')
-        // a deleted revision gives the order it replaced back its place (owner 10/19/26)
-        for (const g of gone || []) { try { await restoreAfterRevisionDeleted(supabase, g.id) } catch (e) { console.warn('order not restored', e) } }
-      } catch { /* the file is deleted regardless */ }
-      await refresh()
-    } catch (e) { setError(e.message) }
+      for (const p of go) { try { await deleteOne(p); done++ } catch (e) { console.warn('not deleted', p, e) } }
+      toast(`${done} ${done === 1 ? 'file' : 'files'} deleted${done < go.length ? ` · ${go.length - done} could not be` : ''}`, done === go.length ? 'success' : undefined)
+    } finally {
+      setBulkBusy(false); setSel(new Set()); await refresh()
+    }
   }
 
   // The signed order's DEPOSIT PAID copy, made later from its signed copy.
@@ -237,7 +286,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       })
     }
     items.push({ sep: true })
-    items.push({ id: 'date', label: s.confirmed ? 'Change the signed date…' : 'Set the date he signed…', onClick: () => setDateFor(q.id) })
+    items.push({ id: 'date', label: s.confirmed ? 'Change the signed date / contract #…' : 'Set the date he signed…', onClick: () => setDateFor(q.id) })
     items.push({
       id: 'unmark', label: 'Not signed — take the mark off', cls: 'danger',
       onClick: async () => {
@@ -256,16 +305,16 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const rq = by && quotes.find((x) => x.id === by.id)
     return rq ? quoteLine(rq).replace(/ of SS-[\d-]+$/, '') : `#${(by && by.quote_number) || '—'}`
   }
-
   const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : 'Signed copy') : null }
 
-  // one file row (the table's 4 columns); `more` = folded older copies of the same file
-  function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null }) {
+  // one file row (the table's 4 columns); `more` = folded older copies of the same file; `pick` = a tick-box
+  function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null, pick = false }) {
     const acc = CAT_ACCENT[cat] || '#14A6A0'
     const canMark = cat === 'contract' && !signedPaths.has(f.path)
     return (
       <div key={f.path} className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>
         <span className="doc-name" role="button" onClick={() => onView(f.path)} title={f.label}>
+          {pick && <input type="checkbox" className="doc-sel" checked={sel.has(f.path)} onClick={(e) => e.stopPropagation()} onChange={(e) => tick(f.path, e.target.checked)} aria-label={`Tick ${f.label}`} />}
           <span className="doc-name-ic">{ICONS[cat]}</span>
           <span className="doc-name-txt">{f.label}{note && <span className="doc-note">{note}</span>}</span>
           {more > 0 && (
@@ -284,15 +333,25 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       </div>
     )
   }
-  const groupRows = (groups, cat) => groups.flatMap((g) => {
+  // a list of files of one kind: same-named copies folded under the newest; tick-boxes
+  const foldedRows = (files, cat, pick = true) => groupByLabel(files).flatMap((g) => {
     const k = `${cat}:${g.latest.label.toLowerCase()}`
     return [
-      fileRow({ f: g.latest, cat: cat, more: g.older.length, gkey: k, signed: signedPaths.has(g.latest.path), chip: chipOf(g.latest.path) }),
-      ...(open.has(k) ? g.older.map((f) => fileRow({ f: f, cat: cat, sub: true, signed: signedPaths.has(f.path) })) : []),
+      fileRow({ f: g.latest, cat, more: g.older.length, gkey: k, signed: signedPaths.has(g.latest.path), chip: chipOf(g.latest.path), pick }),
+      ...(open.has(k) ? g.older.map((f) => fileRow({ f, cat, sub: true, signed: signedPaths.has(f.path), chip: chipOf(f.path), pick })) : []),
     ]
   })
+  const bulkBar = () => (sel.size > 0 ? (
+    <div className="dh-bulk">
+      <span><b>{sel.size}</b> ticked</span>
+      <span className="sp" />
+      <button type="button" onClick={() => setSel(new Set())} disabled={bulkBusy}>Clear</button>
+      <button type="button" className="del" onClick={deleteTicked} disabled={bulkBusy}>{bulkBusy ? 'Deleting…' : `Delete ${sel.size}`}</button>
+    </div>
+  ) : null)
+  const listHead = <div className="doc-list-head"><span>File Name</span><span>Kind</span><span>Date</span><span className="r">Actions</span></div>
 
-  // ── the Contracts tab, sorted ──
+  // ── the Contracts chip: Signed / Not signed / Uploads to sort ──
   function contractsView() {
     const hasSigned = org.agreements.length > 0
     const unsignedOpen = !hasSigned || open.has('contract:unsigned')
@@ -314,7 +373,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
                     <span className="ctr-sig-ic">{CHECK}</span>
                     <span className="ctr-sig-main">
                       <b>{s.role}</b>
-                      <span className="ctr-sig-sub">#{s.quote.quote_number || '—'} · {s.confirmed
+                      <span className="ctr-sig-sub">{s.number && s.number !== s.quote.quote_number ? <>contract <b>{s.number}</b> · </> : null}#{s.quote.quote_number || '—'} · {s.confirmed
                         ? <>signed <b className="ctr-day">{fmtShortDate(s.signedOn)}</b></>
                         : <button type="button" className="ctr-setday" onClick={() => setDateFor(s.quote.id)}>set the date he signed ✎</button>}
                         {latest && s.current && <span className="ctr-now">the order now</span>}
@@ -326,16 +385,16 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
                   </div>
                   <div className="ctr-files">
                     {s.signedFile
-                      ? fileRow({ f: s.signedFile, cat: "contract", signed: true, chip: "Signed copy" })
+                      ? fileRow({ f: s.signedFile, cat: 'contract', signed: true, chip: 'Signed copy' })
                       : <div className="ctr-missing">No signed copy attached. <button type="button" onClick={() => triggerUpload('contract', s.quote.id)}>Attach it</button></div>}
-                    {s.stampedFile && fileRow({ f: s.stampedFile, cat: "contract", signed: true, chip: "Deposit paid" })}
+                    {s.stampedFile && fileRow({ f: s.stampedFile, cat: 'contract', signed: true, chip: 'Deposit paid' })}
                     {stamping === s.quote.id && <div className="ctr-missing">Making the DEPOSIT PAID copy…</div>}
                     {s.generated.length > 0 && (
                       <button type="button" className="ctr-fold" onClick={() => toggle(gk)}>
                         {open.has(gk) ? 'Hide' : 'Show'} the {s.generated.length} {s.generated.length === 1 ? 'copy' : 'copies'} we generated for this number
                       </button>
                     )}
-                    {open.has(gk) && s.generated.map((f) => fileRow({ f: f, cat: "contract", sub: true, chip: "Generated" }))}
+                    {open.has(gk) && s.generated.map((f) => fileRow({ f, cat: 'contract', sub: true, chip: 'Generated', pick: true }))}
                   </div>
                 </div>
               )
@@ -353,8 +412,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
               const k = `contract:num:${g.number.toLowerCase()}`
               const note = g.quote ? `${quoteLine(g.quote)}${g.old ? ' · replaced' : ''}` : 'no quote has this number'
               return [
-                fileRow({ f: g.latest, cat: "contract", note: note, more: g.older.length, gkey: k }),
-                ...(open.has(k) ? g.older.map((f) => fileRow({ f: f, cat: "contract", sub: true })) : []),
+                fileRow({ f: g.latest, cat: 'contract', note, more: g.older.length, gkey: k, pick: true }),
+                ...(open.has(k) ? g.older.map((f) => fileRow({ f, cat: 'contract', sub: true, pick: true })) : []),
               ]
             })}
           </>
@@ -363,19 +422,98 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         {org.uploads.length > 0 && (
           <>
             <div className="ctr-h"><span className="ctr-h-dot warn" />Uploads to sort · tap ✓ if it is what the customer signed</div>
-            {org.uploads.map((f) => fileRow({ f: f, cat: "contract" }))}
+            {org.uploads.map((f) => fileRow({ f, cat: 'contract', pick: true }))}
           </>
         )}
+        {bulkBar()}
       </div>
     )
   }
 
-  // the flat views (All Files / one category): same-named copies folded under the newest
-  const flatGroups = active === 'all'
-    ? SECTIONS.flatMap((s) => groupByLabel(filesByCat[s.key] || []).map((g) => ({ ...g, cat: s.key })))
-    : groupByLabel(filesByCat[active] || []).map((g) => ({ ...g, cat: active }))
-  const visibleGroups = docExpanded ? flatGroups : flatGroups.slice(0, 6)
+  // ── CURRENT rows ──
+  function currentRow(r) {
+    if (r.kind === 'signed') {
+      const s = r.s
+      const sub = [s.number ? `contract ${s.number}` : null, `#${s.quote.quote_number || '—'}`, s.confirmed ? null : 'date not set'].filter(Boolean).join(' · ')
+      return (
+        <div key={r.key} className={`dh-cur-row${s.confirmed ? ' ok' : ' warn'}`}>
+          <span className="dh-cur-ic">{CHECK}</span>
+          <span className="dh-cur-main">
+            <b>Signed agreement · {s.role}{s.current ? '' : ' · replaced, not re-signed yet'}</b>
+            <span>{s.confirmed ? <>signed <em>{fmtShortDate(s.signedOn)}</em> · </> : null}{sub}</span>
+          </span>
+          <span className="dh-cur-chip">{s.confirmed ? 'Signed' : 'Date?'}</span>
+          <span className="dh-cur-acts">
+            {r.file && <button type="button" onClick={() => onView(r.file.path)}>See it</button>}
+            <button type="button" onClick={() => selectCat('contract')}>Contracts</button>
+          </span>
+        </div>
+      )
+    }
+    if (r.kind === 'quote') {
+      const qq = r.q
+      const role = contractRoleOf(qq)
+      return (
+        <div key={r.key} className="dh-cur-row now">
+          <span className="dh-cur-ic">{ICONS.quote}</span>
+          <span className="dh-cur-main">
+            <b>The order as it stands · #{qq.quote_number || '—'}{role !== 'Original contract' ? ` · ${role}` : ''}</b>
+            <span>{[qq.building_size, quoteStatusLabel(qq.status), qq.quote_date ? fmtShortDate(qq.quote_date) : null, qq.total_amount != null ? '$' + Number(qq.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null].filter(Boolean).join(' · ')}</span>
+          </span>
+          <span className="dh-cur-chip">Current</span>
+          <span className="dh-cur-acts">
+            {r.file ? <button type="button" onClick={() => onView(r.file.path)}>Quote PDF</button> : <button type="button" onClick={() => selectCat('quote')}>Quotes</button>}
+          </span>
+        </div>
+      )
+    }
+    return (
+      <div key={r.key} className="dh-cur-row">
+        <span className="dh-cur-ic">{ICONS.revisions}</span>
+        <span className="dh-cur-main"><b>Latest revision order</b><span>{r.file.label} · {fmtDate(r.file.createdAt)}</span></span>
+        <span className="dh-cur-chip" style={{ color: 'var(--fg-3)', border: '1px solid var(--line-2)' }}>Revision</span>
+        <span className="dh-cur-acts"><button type="button" onClick={() => onView(r.file.path)}>See it</button></span>
+      </div>
+    )
+  }
 
+  // ── the All chip: search results, or CURRENT + HISTORY ──
+  function allView() {
+    if (q) {
+      const hits = allFiles.filter(matches)
+      if (!hits.length) return <div className="doc-empty">Nothing matches “{query.trim()}”.</div>
+      return <>{listHead}{SECTIONS.flatMap((s) => { const fs = hits.filter((f) => f.cat === s.key); return fs.length ? [<div key={'h:' + s.key} className="dh-cat-h">{s.label} · {fs.length}</div>, ...foldedRows(fs, s.key)] : [] })}{bulkBar()}</>
+    }
+    if (!total && !org.signed.length) return <div className="doc-empty">No files on this lead yet.</div>
+    return (
+      <>
+        <div className="dh-sec"><span className="ctr-h-dot ok" />Current <span className="n">· {current.length}</span></div>
+        {current.length === 0
+          ? <p className="dh-empty-cur">No signed agreement yet and no current quote. Build a quote, or upload the signed contract and mark it.</p>
+          : <div className="dh-cur">{current.map(currentRow)}</div>}
+        <button type="button" className="dh-sec btn" onClick={() => toggle('history')}>
+          <span className="ctr-h-dot" />History <span className="n">· {history.length} {history.length === 1 ? 'file' : 'files'} · earlier quotes, contracts we generated, older copies</span>
+          <span className={`chev${histOpen ? ' flip' : ''}`}>{CHEV}</span>
+        </button>
+        {histOpen && history.length > 0 && (
+          <>
+            {listHead}
+            {SECTIONS.flatMap((s) => { const fs = history.filter((f) => f.cat === s.key); return fs.length ? [<div key={'h:' + s.key} className="dh-cat-h">{s.label} · {fs.length}</div>, ...foldedRows(fs, s.key)] : [] })}
+            {bulkBar()}
+          </>
+        )}
+        {histOpen && history.length === 0 && <div className="doc-empty">Nothing in history.</div>}
+      </>
+    )
+  }
+  // ── one kind of file ──
+  function catView(cat) {
+    const fs = (filesByCat[cat] || []).map((f) => ({ ...f, cat })).filter(matches)
+    if (!fs.length) return <div className="doc-empty">{q ? `Nothing matches “${query.trim()}”.` : `No ${SECTIONS.find((s) => s.key === cat)?.label.toLowerCase() || 'files'} yet.`}</div>
+    return <>{listHead}{foldedRows(fs, cat)}{bulkBar()}</>
+  }
+
+  const chips = [{ key: 'all', label: 'All', n: total }, ...SECTIONS.map((s) => ({ key: s.key, label: s.label, n: counts[s.key] }))]
   return (
     <section className="doc-hub" style={accentVars(activeAccent)}>
       {/* Header bar */}
@@ -394,17 +532,21 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
 
       <input ref={inputRef} type="file" onChange={onPick} hidden />
 
-      {/* Category grid — 6A centered cards with a per-category accent bar */}
-      <div className="doc-cats-6a">
-        <button className={`cat-card${active === 'all' ? ' on' : ''}`} style={accentVars(CAT_ACCENT.all)} onClick={() => selectCat('all')}>
-          <span className="cat-bar" /><span className="cat-tile">{ICONS.all}</span>
-          <span className="cat-nm">All Files</span><span className="cat-ct num">{total} files</span>
-        </button>
-        {SECTIONS.map(s => (
-          <button key={s.key} className={`cat-card${active === s.key ? ' on' : ''}`} style={accentVars(CAT_ACCENT[s.key])} onClick={() => selectCat(s.key)}>
-            <span className="cat-bar" /><span className="cat-tile">{ICONS[s.key]}</span>
-            <span className="cat-nm">{s.label}</span>
-            <span className="cat-ct num">{s.key === 'contract' && org.signed.length ? `${org.signed.length} signed · ${counts[s.key]} files` : `${counts[s.key]} files`}</span>
+      {/* counts · search · chips */}
+      <div className="dh-stats">
+        <div className="dh-stat ok"><b>{org.signed.length}</b><span>Signed</span></div>
+        <div className="dh-stat now"><b>{current.length}</b><span>Current</span></div>
+        <div className="dh-stat"><b>{history.length}</b><span>History</span></div>
+      </div>
+      <label className="dh-search">
+        {SEARCH}
+        <input type="search" value={query} placeholder="Search files by name, kind or date…" onChange={(e) => setQuery(e.target.value)} />
+        {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear the search">✕</button>}
+      </label>
+      <div className="dh-chips">
+        {chips.map((c) => (
+          <button key={c.key} type="button" className={`dh-chip${active === c.key ? ' on' : ''}`} onClick={() => selectCat(c.key)}>
+            {c.label}<span className="n">{c.key === 'contract' && org.signed.length ? `${org.signed.length}✓ · ${c.n}` : c.n}</span>
           </button>
         ))}
       </div>
@@ -414,26 +556,12 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       {/* File list */}
       {loading ? (
         <div className="muted" style={{ padding: 24 }}>Loading…</div>
-      ) : active === 'contract' ? (
+      ) : active === 'contract' && !q ? (
         <div className="doc-list">{contractsView()}</div>
-      ) : flatGroups.length === 0 ? (
-        <div className="doc-empty">No files in {active === 'all' ? 'this lead' : labelSingular(active).toLowerCase()} yet.</div>
+      ) : active === 'all' ? (
+        <div className="doc-list">{allView()}</div>
       ) : (
-        <div className="doc-list" key={`${active}-${docExpanded}`}>
-          <div className="doc-list-head"><span>File Name</span><span>Category</span><span>Date</span><span className="r">Actions</span></div>
-          {active === 'all' && org.signed.length > 0 && (
-            <button type="button" className="ctr-jump" onClick={() => selectCat('contract')}>
-              {CHECK} {org.signed.length === 1 ? 'Signed contract' : `${org.signed.length} signed contracts`} — see them under Contracts
-            </button>
-          )}
-          {visibleGroups.flatMap((g) => groupRows([g], g.cat))}
-          {flatGroups.length > 6 && (
-            <button className="doc-showall" onClick={() => setDocExpanded(v => !v)}>
-              {docExpanded ? 'Show less' : `Show all ${flatGroups.length}`}
-              <svg className={docExpanded ? 'flip' : ''} viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-            </button>
-          )}
-        </div>
+        <div className="doc-list">{catView(active)}</div>
       )}
 
       {/* Footer */}

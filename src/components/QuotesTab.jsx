@@ -86,13 +86,16 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   }, [clientId])
 
   async function handleCreate(payload) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .insert({ ...payload, client_id: clientId, created_by: user.id })
+      .select()
+      .single()
     if (error) throw error
     // A saved quote = the lead has been quoted → Working Leads (forward-only).
     promoteToWorking(clientId, user?.id).catch(() => {})
     setAdding(false)
+    return Array.isArray(data) ? data[0] : data
   }
 
   // Save from the embedded quote builder. Reuses the same insert path; on
@@ -378,7 +381,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           autoContract={autoContract}
           autoExec={autoExec}
           revisionChanges={revisionChanges}
-          onSave={editQuote ? (payload) => handleBuildUpdate(editQuote, payload) : handleCreate}
+          onSave={(payload, cur) => ((editQuote || cur?.id) ? handleBuildUpdate(editQuote || cur, payload) : handleCreate(payload))}
           onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false); setRevisionChanges(null) }}
         />
       )}

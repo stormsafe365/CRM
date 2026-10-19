@@ -158,11 +158,11 @@ export async function harvestAndSaveQuote({ pg, buildWin, client, initialQuote =
     payload_json: { ...payload_json, quote_number },
   }
   setStatus('Saving…')
-  await onSave(payload)
+  const saved = await onSave(payload, initialQuote || null)
   // The previous quote PDF is KEPT (it used to be deleted here): it is the
   // frozen record of what the customer was quoted before this save. Its path
   // is in payload_json.price_history.
   // Tell the Document Hub (Storage has no realtime) a new quote file landed.
   try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
-  return { quote_number, pdfWarn, payload }
+  return { quote_number, pdfWarn, payload, saved: saved && typeof saved === 'object' && saved.id ? saved : null }
 }

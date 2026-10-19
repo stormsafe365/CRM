@@ -103,10 +103,13 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
                 buildWin: getBuildWin ? getBuildWin() : null,
                 client: chosenExisting,
                 onSave: async (payload) => {
-                  const { error } = await supabase
+                  const { data, error } = await supabase
                     .from('quotes')
                     .insert({ ...payload, client_id: d.id, created_by: user?.id ?? null })
+                    .select()
+                    .single()
                   if (error) throw error
+                  return Array.isArray(data) ? data[0] : data
                   promoteToWorking(d.id, user?.id).catch(() => {})
                 },
                 setStatus,
@@ -145,10 +148,13 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
         buildWin: getBuildWin ? getBuildWin() : null,
         client: target,
         onSave: async (payload) => {
-          const { error } = await supabase
+          const { data, error } = await supabase
             .from('quotes')
             .insert({ ...payload, client_id: target.id, created_by: user?.id ?? null })
+            .select()
+            .single()
           if (error) throw error
+          return Array.isArray(data) ? data[0] : data
           promoteToWorking(target.id, user?.id).catch(() => {})
         },
         setStatus,

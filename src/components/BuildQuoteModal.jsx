@@ -39,7 +39,7 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, signedContractOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, pdfNameFor, signedContractOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
   paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
@@ -85,6 +85,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const revAppliedRef = useRef(false)
   const [banner, setBanner] = useState(null)       // saved-vs-today bar (lib/priceLockCrm lockBanner)
   const [blocked, setBlocked] = useState(null)     // {kind, reason}: an automatic document that did not run
+  const [pendingContract, setPendingContract] = useState(null) // { html, num, quoteId }: a contract generated to LOOK at, not saved yet
   const [ask, setAsk] = useState(null)             // the confirm dialog's writeCheck()
   const askResolveRef = useRef(null)
   const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
@@ -150,7 +151,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     try {
       // Shared harvest+save flow (lib/builderSave) — also used by the
       // standalone 3D Builder tab's Save to Lead.
-      const { quote_number, pdfWarn, payload } = await harvestAndSaveQuote({
+      const { quote_number, pdfWarn, payload, saved } = await harvestAndSaveQuote({
         pg,
         buildWin: iframeRef.current?.contentWindow,
         client,
@@ -159,6 +160,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         setStatus,
       })
       if (quoteRef.current) quoteRef.current = mergeSaved(quoteRef.current, payload)
+      // a NEW quote: its saved row is the quote in hand from now on — Generate Contract carries ITS number and
+      // a second Save updates it (10/19/26: contracts printed right after a first save carried made-up numbers)
+      else if (saved) quoteRef.current = saved
       setStatus('')
       savingRef.current = false
       refreshBanner()
@@ -199,7 +203,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     if (!go) return
     setBlocked(null)
     if (b.kind === 'exec') await saveExecutedThenPrint(pg, { confirmed: true })
-    else if (b.kind === 'contract') await saveContractThenPrint(pg, { confirmed: true, preview: go === 'preview' })
+    else if (b.kind === 'contract') await saveContractThenPrint(pg, { confirmed: true })
     else { revAppliedRef.current = true; applyRevisionChanges(pg, revisionRows) }
   }
 
@@ -530,32 +534,55 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // — a marker, never a status change).
   // Just preview (owner 10/19/26: "i might just be doing it to see how it looks not to send"): the
   // contract opens to look at / print; nothing is saved to Documents and the quote is not tagged.
-  async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null, preview = false } = {}) {
+  // Generate Contract is LOOK-FIRST (owner 10/19/26: "i sometimes click generate contract & then notice an issue
+  // but it saves the contract regardless ... there should be a button ... that asks save to doc hub"): the
+  // contract opens to look at; the bar then offers Save to Doc Hub. A revised contract (rvDoc) is the
+  // revision's own save and goes straight to Documents, as before.
+  async function saveContractToHub({ html, num, quoteId }) {
+    const blob = await renderQuotePdf(html)
+    await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-contract.pdf`, 'application/pdf')
+    try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
+    toast(`Contract ${escHtml(num)} saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
+    if (quoteId) {
+      try {
+        const merged = await markQuote(supabase, quoteId, { contractSent: { at: new Date().toISOString(), number: num } })
+        if (merged && quoteRef.current && quoteRef.current.id === quoteId) quoteRef.current = { ...quoteRef.current, payload_json: merged }
+      } catch (e) { console.warn('contract-sent tag not saved', e) }
+    }
+  }
+  async function savePendingContract() {
+    const p = pendingContract
+    if (!p || status) return
+    setStatus('Saving contract…')
+    try { await saveContractToHub(p); setPendingContract(null) }
+    catch (e) { toast('The contract could not be saved to the Doc Hub: ' + escHtml(e.message || e)) }
+    finally { setStatus('') }
+  }
+  // Done with a generated contract still unsaved: ask (OK = save it, Cancel = leave it out)
+  function closeBuilder() {
+    if (pendingContract && window.confirm(`Contract ${pendingContract.num} was generated but not saved to the Doc Hub. OK = save it there first, Cancel = close without saving it.`)) {
+      savePendingContract().then(() => onClose())
+      return
+    }
+    onClose()
+  }
+  async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null } = {}) {
     if (!pg) return
-    let go = true
-    if (!confirmed && client?.id) go = await confirmWrite('contract')
-    if (!go) { setStatus(''); return }
-    const justLook = preview || go === 'preview'
+    if (!confirmed && client?.id && !(await confirmWrite('contract'))) { setStatus(''); return }
+    const autoSave = !!rvDoc
     const cur = quoteRef.current || initialQuote || null
     const ctNo = number || contractNumberFor(cur)
     try { pg._ctNo = ctNo || null; pg._rvDoc = rvDoc || null } catch { /* ignore */ }
     try {
       try {
-        if (client?.id && !justLook) {
-          setStatus('Saving contract…')
+        if (client?.id) {
+          setStatus(autoSave ? 'Saving contract…' : 'Preparing the contract…')
           const html = await captureContractHtml(pg)
           if (html && html.length > 3000) {
-            const blob = await renderQuotePdf(html)
             const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
-            await uploadClientDocBlob(client.id, 'contract', blob, `${contractFileBase(num)}-contract.pdf`, 'application/pdf')
-            try { window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } })) } catch { /* ignore */ }
-            toast(`Contract ${escHtml(num)} saved to ${escHtml(client.name || 'lead')} · Documents › Contracts`, 'success')
-            if (cur?.id) {
-              try {
-                const merged = await markQuote(supabase, cur.id, { contractSent: { at: new Date().toISOString(), number: num } })
-                if (merged && quoteRef.current && quoteRef.current.id === cur.id) quoteRef.current = { ...quoteRef.current, payload_json: merged }
-              } catch (e) { console.warn('contract-sent tag not saved', e) }
-            }
+            if (autoSave) await saveContractToHub({ html, num, quoteId: cur?.id || null })
+            else if (cur?.id) setPendingContract({ html, num, quoteId: cur.id })
+            else toast('Preview only — Save to Lead first; Save to Doc Hub then keeps the contract on the lead.')
           }
         }
       } catch (e) {
@@ -873,6 +900,16 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         b.onclick = null
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveContractThenPrint(getProgramWindow()) }, true)
       })
+      // the desktop app's Save dialog name (owner 10/19/26: "it should write like 'Peter Mawn-StormSafe Steel Revised
+      // Contract (10.19)'"): the program names every contract "… CONTRACT (m.d)" and takes its own window.electronAPI
+      // first, so a shim there renames by what the document IS and hands everything else through
+      const real = window.electronAPI
+      if (real && typeof real.savePdf === 'function' && !pg.__ssPdfNameShim) {
+        const shim = {}
+        for (const k in real) shim[k] = typeof real[k] === 'function' ? (...a) => real[k](...a) : real[k]
+        shim.savePdf = (html, name, ...rest) => real.savePdf(html, pdfNameFor(html, name), ...rest)
+        try { pg.electronAPI = shim; pg.__ssPdfNameShim = true } catch { /* ignore */ }
+      }
       // the program's own "Executed Copy — Deposit Paid" button: saved to Documents + the quote marked
       // Deposit Paid, exactly like the Doc Hub stamp (saveExecutedThenPrint)
       ;[...pg.document.querySelectorAll('button')].filter((b) => /printExecutedCopy/.test(b.getAttribute('onclick') || '')).forEach((b) => {
@@ -918,11 +955,19 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
               </button>
             )}
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
-            <button type="button" className="btn-secondary" onClick={onClose}>Done</button>
+            <button type="button" className="btn-secondary" onClick={closeBuilder}>Done</button>
             <QuoteStyleToggle getProgramWindow={getProgramWindow} />
             <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
           </div>
         </div>
+        {pendingContract && (
+          <div className="qb-lock qb-lock-save" role="status" aria-live="polite">
+            <span className="qb-lock-dot" aria-hidden="true" />
+            <span className="qb-lock-text">Contract <b>{pendingContract.num}</b> is open to look at — it is <b>not</b> in the Doc Hub yet. Happy with it?</span>
+            <button type="button" className="btn-primary qb-lock-btn" onClick={savePendingContract} disabled={!!status}>Save to Doc Hub</button>
+            <button type="button" className="btn-secondary qb-lock-btn" onClick={() => setPendingContract(null)} disabled={!!status} title="Leave it out of the Doc Hub">Not this one</button>
+          </div>
+        )}
         {(banner || blocked) && (
           <div className={`qb-lock qb-lock-${barTone || 'warn'}`} role="status" aria-live="polite">
             <span className="qb-lock-dot" aria-hidden="true" />

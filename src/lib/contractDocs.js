@@ -26,15 +26,21 @@ export function stripRev(num) { return str(num).replace(REV_RE, '') }
 export function revOf(num) { const m = REV_RE.exec(str(num)); return m ? m[1] : null }
 
 /** The agreement a quote belongs to (the number its first contract carries). */
+// The number on the paper the customer SIGNED wins (typed in Mark as signed — owner 10/19/26: Peter Mawn's
+// signed contract carried SS-2026-02861, a number the program made up at print time, not his quote's).
+const signedOriginalNumber = (p) => { const n = str(p.executed && p.executed.at ? p.executed.number : ''); return n && !revOf(n) ? n : '' }
 export function agreementRootOf(q) {
   const p = q?.payload_json || {}
   if (p.revisionOf) return stripRev(p.revisionOf.agreement_number || p.revisionOf.quote_number) || null
+  if (signedOriginalNumber(p)) return stripRev(signedOriginalNumber(p))
   if (p.contractSent && p.contractSent.number) return stripRev(p.contractSent.number)
   return str(q?.quote_number) || null
 }
 /** The number for this quote's contract (a first contract, or a reprint). */
 export function contractNumberFor(q) {
   const p = q?.payload_json || {}
+  // the signed paper's number, unless this row's contract has since been sent as an in-place "Rev n"
+  if (signedOriginalNumber(p) && !revOf(p.contractSent && p.contractSent.number)) return signedOriginalNumber(p)
   if (p.contractSent && str(p.contractSent.number)) return str(p.contractSent.number)
   if (p.revisionOf && agreementRootOf(q)) return `${agreementRootOf(q)} ${revisionLabel(p.revisionOf.rev_no)}`
   return str(q?.quote_number) || null
@@ -177,7 +183,7 @@ export function matchContractQuote(label, quotes) {
   const by = (fn) => live.filter(fn)
   // several quotes with the number (a redo reuses its Rev number): the one that was not replaced
   const one = (h) => (h.length === 1 ? h[0] : (h.filter((q) => q.status !== 'superseded').length === 1 ? h.find((q) => q.status !== 'superseded') : null))
-  let hit = by((q) => str(q.payload_json?.contractSent?.number) === p.number)
+  let hit = by((q) => str(q.payload_json?.contractSent?.number) === p.number || str(q.payload_json?.executed?.number) === p.number)
   if (one(hit)) return { quote: one(hit), candidates: live, how: 'contract number' }
   if (!hit.length) {
     hit = p.rev
@@ -532,16 +538,24 @@ async function patchExecuted(sb, quoteId, fn) {
 // create: an order sold before signed marks existed gets a mark with just that day (no status / star change).
 // number: the contract this day is for (kept on a mark that has none — e.g. the agreement's day asked
 // before a revised contract, on a root whose contract number later became "Rev n").
-export async function setSignedDay(sb, quoteId, day, { create = false, number = null } = {}) {
+// setNumber: the contract number on the signed paper, typed by the rep (replaces the mark's).
+export async function setSignedDay(sb, quoteId, day, { create = false, number = null, setNumber = null } = {}) {
   const d = cleanDay(day)
   if (!d) throw new Error('pick the date the customer signed')
   return patchExecuted(sb, quoteId, (ex) => {
     if (!ex && !create) throw new Error('this quote is not marked signed')
     const out = { ...(ex || {}), at: d, signedOn: d, confirmed: true, markedAt: new Date().toISOString() }
     if (stampAtOf(ex)) out.stampAt = stampAtOf(ex)
-    if (number && !str(out.number)) out.number = number
+    if (setNumber) out.number = setNumber
+    else if (number && !str(out.number)) out.number = number
     return out
   })
+}
+/** "ss-2026-02861 rev 1" → "SS-2026-02861 Rev 1"; null when it is not a contract number. */
+export function cleanContractNumber(v) {
+  const s = str(v).toUpperCase().replace(/\s+/g, ' ')
+  const m = /^SS-?(\d{4})-?(\d{5})(?:[\s-]*(?:REVISION|REV)\.?[\s-]*(\d+))?$/.exec(s)
+  return m ? `SS-${m[1]}-${m[2]}${m[3] ? ` Rev ${Number(m[3])}` : ''}` : null
 }
 /** Take the signed mark off (marked by mistake). The status is left as it is - the rep sets it. */
 export async function clearSignedMark(sb, quoteId) {
@@ -664,8 +678,15 @@ export function organizeContracts(files, quotes) {
     }
   }
   // 4) everything else by the contract number in its name
+  // the signed number, and the number(s) this quote's contract was generated under (the copies we made
+  // fold under the signed card) — only numbers of the same revision as the mark
   const signedByNumber = new Map()
-  for (const s of signed) if (s.number && !signedByNumber.has(low(s.number))) signedByNumber.set(low(s.number), s)
+  const sameRev = (s, n) => n && (Number(revOf(n)) || 0) === s.rev
+  for (const s of signed) {
+    for (const k of [s.number, contractNumberFor(s.quote), str(s.quote.payload_json?.contractSent?.number)]) {
+      if (sameRev(s, k) && !signedByNumber.has(low(k))) signedByNumber.set(low(k), s)
+    }
+  }
   const groups = new Map()
   const uploads = []
   for (const f of all) {
@@ -719,4 +740,26 @@ export function signedPickList(quotes, label = '') {
   const m = label ? matchContractQuote(label, live) : { quote: null }
   const rank = (q) => (m.quote && q.id === m.quote.id ? 0 : q.status === 'superseded' ? 4 : executedOf(q) ? 2 : isSold(q.status) ? 1 : 3)
   return { match: m.quote || null, list: live.slice().sort((a, b) => rank(a) - rank(b) || String(b.quote_date || b.created_at || '').localeCompare(String(a.quote_date || a.created_at || ''))) }
+}
+
+// ── The current order (Documents › Current) ───────────────────────────────────────────────────────
+/** The lead's order as it stands: the starred quote unless replaced, else the newest quote that was not replaced. */
+export function currentOrderQuote(quotes) {
+  const live = (quotes || []).filter((q) => q && !q.deleted_at && q.status !== 'superseded')
+  const star = live.find((q) => q.starred === true)
+  if (star) return star
+  return live.slice().sort((a, b) => String(b.quote_date || b.created_at || '').localeCompare(String(a.quote_date || a.created_at || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null
+}
+
+// ── PDF file names in the desktop app (owner 10/19/26) ────────────────────────────────────────────
+// The program names every contract "<Client>-StormSafe Steel CONTRACT (m.d).pdf". A revised contract
+// (its REVISED CONTRACT box) saves as "… Revised Contract (m.d)", an executed copy (its DEPOSIT PAID
+// watermark) as "… Executed Contract (m.d)". Quotes ("… QTE (m.d)") are left alone.
+export function pdfNameFor(html, name) {
+  const n = str(name)
+  if (!/StormSafe Steel CONTRACT/.test(n)) return n
+  const h = String(html || '')
+  if (/REVISED CONTRACT/.test(h)) return n.replace('StormSafe Steel CONTRACT', 'StormSafe Steel Revised Contract')
+  if (/letter-spacing:8px[^>]*>DEPOSIT PAID</.test(h)) return n.replace('StormSafe Steel CONTRACT', 'StormSafe Steel Executed Contract')
+  return n
 }

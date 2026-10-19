@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agreementSignedDay, agreementSignedDayDb, signedContractOf, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
+  agreementSignedDay, agreementSignedDayDb, signedContractOf, cleanContractNumber, agreementRootOf, contractNumberFor, revisedContractNumber, currentOrderQuote, pdfNameFor, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
   organizeContracts, revisionDocFor, setSignedDay, signedDayConfirmed, signedInfoOf, signedOnOf, signedPickList, withLiveExecuted,
 } from '../src/lib/contractDocs.js'
 
@@ -269,18 +269,19 @@ test('mark as signed through markExecuted: the file path and the typed day are k
   assert.equal(ex.filePath, 'c/contract/1-FINAL.pdf'); assert.equal(ex.stampedPath, 'c/contract/2-FINAL-EXECUTED-deposit-paid.pdf'); assert.equal(ex.signedOn, '2026-10-02')
 })
 
-test('Generate Contract always offers Just preview (nothing saved); other writes do not', async () => {
+test('Generate Contract is look-first: it asks only when the price differs; nothing saves by itself', async () => {
   const { writeCheck } = await import('../src/lib/priceLockCrm.js')
   const saved = { total: 1000, deposit: 170, balance: 830 }
-  const c = writeCheck({ kind: 'contract', saved, next: saved })
-  assert.equal(c.confirm, true)
-  assert.equal(c.alt.value, 'preview')
-  assert.ok(c.notes.some((n) => /Just preview/.test(n)))
-  // a quote with no saved price yet still asks (so a quick look never saves a file)
-  const n = writeCheck({ kind: 'contract', saved: null, next: saved })
-  assert.equal(n.confirm, true); assert.equal(n.alt.value, 'preview'); assert.equal(n.lines.length, 0)
-  for (const kind of ['save', 'exec', 'revision', 'apply']) assert.equal(writeCheck({ kind, saved, next: saved }).alt, null, kind)
-  assert.equal(writeCheck({ kind: 'save', saved: null, next: saved }).confirm, false)
+  const same = writeCheck({ kind: 'contract', saved, next: saved })
+  assert.equal(same.confirm, false)
+  assert.equal(same.alt, undefined)
+  const diff = writeCheck({ kind: 'contract', saved, next: { total: 1200, deposit: 204, balance: 996 } })
+  assert.equal(diff.confirm, true); assert.equal(diff.changed, true)
+  assert.ok(diff.notes.some((n) => /Save to Doc Hub/.test(n)))
+  assert.equal(writeCheck({ kind: 'contract', saved: null, next: saved }).confirm, false)
+  // a reason (a blocked automatic contract) still asks
+  assert.equal(writeCheck({ kind: 'contract', saved, next: saved, reason: 'price not held' }).confirm, true)
+  for (const kind of ['save', 'exec', 'revision', 'apply']) assert.equal(writeCheck({ kind, saved, next: saved }).confirm, true, kind)
   assert.ok(writeCheck({ kind: 'exec', saved, next: saved }).notes.some((n2) => /signed date already set is kept/.test(n2)))
 })
 
@@ -387,4 +388,61 @@ test('fifth review 10/19/26: "Yes, he signed Revision 1" asks for its day in the
   const { o, r1 } = peter()
   const p = await agreementSignedDayDb(rowsSb([o, r1]), r1, { repSigned: true })
   assert.equal(p.node.id, 'o')
+})
+
+test('the number on the signed paper (owner 10/19/26: Peter signed SS-2026-02861, a number made up at print time)', async () => {
+  assert.equal(cleanContractNumber(' ss-2026-02861 '), 'SS-2026-02861')
+  assert.equal(cleanContractNumber('SS202602861'), 'SS-2026-02861')
+  assert.equal(cleanContractNumber('SS-2026-02861 rev 1'), 'SS-2026-02861 Rev 1')
+  assert.equal(cleanContractNumber('SS-2026-02861 Revision 02'), 'SS-2026-02861 Rev 2')
+  assert.equal(cleanContractNumber('02861'), null)
+  assert.equal(cleanContractNumber(''), null)
+  // Peter: quote 68012, contract generated as 68012, the paper he signed says 02861
+  const o = { id: 'o', quote_number: 'SS-2026-68012', status: 'superseded', payload_json: { contractSent: { at: 'x', number: 'SS-2026-68012' }, executed: { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, number: 'SS-2026-02861' } } }
+  assert.equal(agreementRootOf(o), 'SS-2026-02861')
+  assert.equal(contractNumberFor(o), 'SS-2026-02861')
+  assert.equal(revisedContractNumber(o, '1'), 'SS-2026-02861 Rev 1')
+  // a revision made on it carries the agreement number; the next one counts on
+  const r1 = { id: 'r1', quote_number: 'SS-2026-23730', status: 'deposit_paid', payload_json: { revisionOf: { id: 'o', quote_number: 'SS-2026-68012', agreement_number: 'SS-2026-02861', rev_no: '1', signed: true, signed_contract: true } } }
+  assert.equal(contractNumberFor(r1), 'SS-2026-02861 Rev 1')
+  assert.equal(agreementSignedDay(r1, [o, r1]).day, '2026-09-24')
+  // a mark for "Rev n" never becomes the agreement number; an in-place "Rev 1" contract keeps its number for reprints
+  const rv = { quote_number: 'SS-2026-1', payload_json: { contractSent: { at: 'x', number: 'SS-2026-1 Rev 1' }, executed: { at: '2026-09-24', number: 'SS-2026-1 Rev 1' } } }
+  assert.equal(agreementRootOf(rv), 'SS-2026-1')
+  const ip = { quote_number: 'SS-2026-2', payload_json: { contractSent: { at: 'x', number: 'SS-2026-2 Rev 1' }, executed: { at: '2026-09-24', number: 'SS-2026-02862' } } }
+  assert.equal(contractNumberFor(ip), 'SS-2026-2 Rev 1')
+  assert.equal(agreementRootOf(ip), 'SS-2026-02862')
+  // files: a file named with the paper's number finds the quote; the copies generated as 68012 fold under the signed card
+  assert.equal(matchContractQuote('SS-2026-02861-signed.pdf', [o]).quote.id, 'o')
+  const files = [F('Peter_signed.pdf', '2026-10-19T16:00:00Z'), F('SS-2026-68012-contract.pdf', '2026-09-24T15:00:00Z'), F('SS-2026-68012-Rev-1-contract.pdf', '2026-10-19T13:00:00Z')]
+  o.payload_json.executed.filePath = files[0].path
+  const out = organizeContracts(files, [o, r1])
+  assert.equal(out.agreements[0].agreement, 'SS-2026-02861')
+  assert.equal(out.signed[0].number, 'SS-2026-02861')
+  assert.deepEqual(out.signed[0].generated.map((f) => f.label), ['SS-2026-68012-contract.pdf'])
+  assert.deepEqual(out.unsigned.map((u) => u.number), ['SS-2026-68012 Rev 1'])
+  // setSignedDay: the typed number replaces the mark's; without one an existing number stays
+  const rows = [{ id: 'o', status: 'superseded', payload_json: { executed: { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, number: 'SS-2026-68012' } } }]
+  const sb = rowsSb(rows)
+  await setSignedDay(sb, 'o', '2026-09-24', { number: 'SS-2026-99999' })
+  assert.equal(rows[0].payload_json.executed.number, 'SS-2026-68012')
+  await setSignedDay(sb, 'o', '2026-09-24', { setNumber: 'SS-2026-02861' })
+  assert.equal(rows[0].payload_json.executed.number, 'SS-2026-02861')
+})
+
+test('the current order + PDF file names (owner 10/19/26)', () => {
+  const o = { id: 'o', status: 'superseded', starred: true, quote_date: '2026-09-24' }
+  const r1 = { id: 'r1', status: 'deposit_paid', starred: false, quote_date: '2026-10-19' }
+  const d = { id: 'd', status: 'draft', quote_date: '2026-10-20' }
+  assert.equal(currentOrderQuote([o, r1, d]).id, 'd') // nothing starred among the live ones: the newest
+  r1.starred = true
+  assert.equal(currentOrderQuote([o, r1, d]).id, 'r1') // the star wins (a replaced quote never does)
+  assert.equal(currentOrderQuote([o]), null)
+  assert.equal(currentOrderQuote([]), null)
+  const qte = 'Peter Mawn-StormSafe Steel QTE (10.19).pdf', ct = 'Peter Mawn-StormSafe Steel CONTRACT (10.19).pdf'
+  assert.equal(pdfNameFor('<html>plain</html>', ct), ct)
+  assert.equal(pdfNameFor('<strong style="letter-spacing:.5px">REVISED CONTRACT</strong>', ct), 'Peter Mawn-StormSafe Steel Revised Contract (10.19).pdf')
+  assert.equal(pdfNameFor('<div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>', ct), 'Peter Mawn-StormSafe Steel Executed Contract (10.19).pdf')
+  assert.equal(pdfNameFor('<strong>REVISED CONTRACT</strong>', qte), qte)
+  assert.equal(pdfNameFor('', ''), '')
 })

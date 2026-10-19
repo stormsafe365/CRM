@@ -144,7 +144,7 @@ test('lockBanner / writeCheck: honored sold order names the signed price and the
 })
 
 // ── confirm before a write ──
-test('writeCheck: every write to a saved quote asks — untouched says "no price change"', () => {
+test('writeCheck: every write to a saved quote asks (a contract only at a different price) — untouched says "no price change"', () => {
   const c = writeCheck({ kind: 'save', saved: GRAHAM_SAVED, next: { ...GRAHAM_SAVED }, lock: grahamLock(), status: 'deposit_paid' })
   assert.equal(c.confirm, true)
   assert.equal(c.changed, false)
@@ -155,7 +155,7 @@ test('writeCheck: every write to a saved quote asks — untouched says "no price
   assert.ok(c.notes.some((n) => /No price change: the saved \$44,448\.00 is kept\./.test(n)))
   assert.ok(!c.notes.some((n) => /re-sign/.test(n)))
   const k = writeCheck({ kind: 'contract', saved: GRAHAM_SAVED, next: GRAHAM_SAVED, lock: grahamLock() })
-  assert.equal(k.confirm, true); assert.equal(k.title, 'Generate contract?')
+  assert.equal(k.confirm, false) // look-first (10/19/26): an unchanged price opens the contract with no question; Save to Doc Hub saves it
   const e = writeCheck({ kind: 'exec', saved: GRAHAM_SAVED, next: GRAHAM_SAVED, lock: grahamLock() })
   assert.equal(e.confirm, true); assert.equal(e.title, 'Generate executed copy?')
 })
