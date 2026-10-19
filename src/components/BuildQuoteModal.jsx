@@ -88,7 +88,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const [ask, setAsk] = useState(null)             // the confirm dialog's writeCheck()
   const askResolveRef = useRef(null)
   const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
-  const [needDay, setNeedDay] = useState(null)     // { root, retry } — the agreement's signed day, asked before a revised contract
+  const [needDay, setNeedDay] = useState(null)     // { node, number, retry } — the agreement's signed day, asked before a revised contract
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
   const [designLink, setDesignLink] = useState(false) // the program's SEND DESIGN LINK → DesignLinkModal (owner 10/16/26)
   const uarOpenRef = useRef(() => {})
@@ -597,7 +597,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
             if (curQ?.id) {
               try {
                 // the signed day already set is KEPT (never moved to today); none yet = today, not confirmed
-                const res = await markExecuted(supabase, curQ.id, { stampedPath, number: num })
+                const res = await markExecuted(supabase, curQ.id, { stampedPath, number: num, keepStamped: true })
                 if (quoteRef.current && quoteRef.current.id === curQ.id) quoteRef.current = { ...quoteRef.current, status: res.status, payload_json: { ...(quoteRef.current.payload_json || {}), executed: res.payload_json.executed }, ...(res.starred ? { starred: true } : {}) }
                 toast(executedToast(res, quoteStatusLabel(curQ.status)), 'success')
               } catch (e) { toast(`Quote #${escHtml(curQ.quote_number || '')} could not be marked Deposit Paid: ${escHtml(e.message || e)}`) }
@@ -692,23 +692,27 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   // active order (linked to the signed one), mark the signed quote revised, then
   // generate the Revised Contract from the held build. Nothing is written unless
   // the builder holds the revised totals to the cent.
-  async function finishUseAsRevision(r) {
+  async function finishUseAsRevision(r, { agreementDay } = {}) {
     const pg = getProgramWindow()
     if (!pg || savingRef.current) return
+    savingRef.current = true // before any await: a double click never starts two runs
     const { original } = r
     // A revised contract of a SIGNED order prints "…to Agreement X, signed <day>": that day must be the one
     // the customer really signed (never a stamp-click day — Peter Mawn's "October 13"). Not known yet →
-    // ask now (nothing saved), then go on by itself (owner 10/19/26).
-    let agrDay = null
-    if (isSold(original.status)) {
+    // ask now (nothing saved), then go on by itself with the day typed (owner 10/19/26).
+    let agrDay = agreementDay !== undefined ? agreementDay : null
+    if (agreementDay === undefined && isSold(original.status)) {
       let a = null
       try { a = await agreementSignedDayDb(supabase, original) } catch { a = null }
-      if (a && a.needsDay) { setNeedDay({ root: a.root, retry: () => finishUseAsRevision(r) }); return }
+      if (a && a.needsDay) {
+        savingRef.current = false
+        setNeedDay({ node: a.node, number: a.number, retry: (day) => finishUseAsRevision(r, { agreementDay: day }) })
+        return
+      }
       agrDay = a ? a.day : null
     }
     const cur = quoteRef.current || initialQuote || {}
     const orderStatus = isSold(original.status) ? original.status : (cur.status || 'draft')
-    savingRef.current = true
     setUar(false); setUarManual(null)
     let money
     try {
@@ -936,10 +940,10 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
       {needDay && (
         <MarkSignedModal
-          mode="date" clientId={client?.id} quotes={[needDay.root]} presetQuoteId={needDay.root.id} createMark
-          intro={`Before the revised contract: when did the customer sign agreement #${needDay.root.quote_number || ''}? It prints on the revised contract (“…to Agreement ${needDay.root.quote_number || ''}, signed …”).`}
+          mode="date" clientId={client?.id} quotes={[needDay.node]} presetQuoteId={needDay.node.id} createMark createNumber={needDay.number}
+          intro={`Before the revised contract: when did the customer sign ${needDay.number || ('#' + (needDay.node.quote_number || ''))}? The revised contract prints it as the date the agreement was signed. Nothing has been saved yet.`}
           onClose={() => { setNeedDay(null); toast('Revised contract not created — nothing was saved.') }}
-          onDone={() => { const go = needDay.retry; setNeedDay(null); go() }}
+          onDone={(res) => { const go = needDay.retry; setNeedDay(null); go(res && res.day) }}
         />
       )}
       {designLink && <DesignLinkModal client={client?.id ? client : null} onClose={() => setDesignLink(false)} />}

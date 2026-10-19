@@ -160,7 +160,8 @@ export function contractNumberFromHtml(html) {
 export function parseContractLabel(label) {
   const s = str(label)
   // uploads are sanitized ("SS-2026-00144 Rev 1 signed.pdf" → "SS-2026-00144_Rev_1_signed.pdf"): "_" separates too
-  const m = /(SS-\d{4}-\d{5})(?:[-_\s]+Rev[-_\s]*([A-Za-z0-9]+?))?(?=[-_.\s]|$)/i.exec(s)
+  // the revision is a NUMBER ("Rev 1", "Revision 2"); "…_Revised_…" is not a revision number
+  const m = /(SS-\d{4}-\d{5})(?:[-_\s]+Rev(?:ision)?[-_\s]*(\d+))?(?=[-_.\s]|$)/i.exec(s)
   if (!m) return null
   const base = m[1], rev = m[2] || null
   return { base, rev, number: rev ? `${base} ${revisionLabel(rev)}` : base }
@@ -254,50 +255,75 @@ export function signedNumberOf(q) {
 export function signedInfoOf(q) {
   return { signed: isSold(q?.status), date: signedDayConfirmed(q) ? signedOnOf(q) : null }
 }
-/** The original quote at the root of q's revision chain (q itself when it is not a revision). */
-export function agreementRootQuote(q, quotes) {
-  let cur = q
-  const seen = new Set()
-  for (let i = 0; i < 20 && cur && cur.payload_json?.revisionOf?.id && !seen.has(cur.id); i++) {
-    seen.add(cur.id)
-    const up = (quotes || []).find((x) => x && x.id === cur.payload_json.revisionOf.id)
-    if (!up || seen.has(up.id)) break
-    cur = up
-  }
-  return cur
-}
-/**
- * The day the AGREEMENT was signed ("REVISION 2 to Agreement SS-…, signed September 24, 2026"):
- * the root quote's mark - only when the rep CONFIRMED the day, and only when that mark is for the
- * original contract (not an in-place "Rev n" contract on the same row). Never a revision's own day.
- * { day, root, needsDay }: needsDay = the day is unknown but can be set on the root (ask before a
- * revised contract of a signed order is printed).
- */
-export function agreementSignedDay(q, quotes) {
-  const root = agreementRootQuote(q, quotes) || q
-  const ex = executedOf(root)
-  const forOriginal = !ex || !revOf(signedNumberOf(root))
-  const day = ex && forOriginal && signedDayConfirmed(root) ? signedOnOf(root) : null
-  return { day, root, needsDay: !day && forOriginal }
-}
-export function agreementSignedOn(q, quotes) { return agreementSignedDay(q, quotes).day }
-/** The same walk against the database (the builder has no list of the lead's quotes). */
-export async function agreementSignedDayDb(sb, q) {
+/** q's revision chain [q, its base, …, root]; complete = it reached a quote that is not a revision
+ *  (a base missing from `quotes`, or a loop in bad data, leaves it incomplete). */
+export function revisionChain(q, quotes) {
   const chain = [q]
+  const seen = new Set([q && q.id])
   let cur = q
   for (let i = 0; i < 20 && cur?.payload_json?.revisionOf?.id; i++) {
-    const id = cur.payload_json.revisionOf.id
-    if (chain.some((x) => x && x.id === id)) break
-    let up = null
-    try {
-      const { data } = await sb.from('quotes').select('id, status, quote_number, payload_json').eq('id', id).single()
-      up = Array.isArray(data) ? data[0] : data
-    } catch { up = null }
-    if (!up) break
+    const up = (quotes || []).find((x) => x && x.id === cur.payload_json.revisionOf.id)
+    if (!up || seen.has(up.id)) return { chain, complete: false }
+    seen.add(up.id)
     chain.push(up)
     cur = up
   }
-  return agreementSignedDay(q, chain)
+  return { chain, complete: !cur?.payload_json?.revisionOf?.id }
+}
+/** The original quote at the root of q's revision chain (q itself when it is not a revision). */
+export function agreementRootQuote(q, quotes) { const { chain } = revisionChain(q, quotes); return chain[chain.length - 1] }
+// a contract the customer SIGNED (a verbal accept is not one)
+const SIGNED_STATUS = ['deposit_paid', 'revised']
+/**
+ * The day the AGREEMENT was signed ("REVISION 2 to Agreement SS-…, signed September 24, 2026").
+ * The agreement = the first contract the customer signed in the chain: the root, unless the root was
+ * never signed and its revision was made "not signed" (revisionOf.signed === false) — then that revision.
+ * day: that quote's mark, only when the rep CONFIRMED the day (never a stamp-click day), and on the root
+ * only a mark for the ORIGINAL contract (not an in-place "Rev n" on the same row). Never a later revision's.
+ * { day, node, number, needsDay }: needsDay = not known, the agreement WAS signed and the chain is whole —
+ * ask before a revised contract is printed (the answer goes on `node`, for contract `number`).
+ */
+export function agreementSignedDay(q, quotes) {
+  const { chain, complete } = revisionChain(q, quotes)
+  const down = chain.slice().reverse() // root → q
+  const wasSigned = (k) => {
+    const n = down[k]
+    return !!executedOf(n) || SIGNED_STATUS.includes(n?.status) || (n?.status === 'superseded' && down[k + 1]?.payload_json?.revisionOf?.signed === true)
+  }
+  let i = 0
+  while (i < down.length - 1 && !wasSigned(i) && down[i + 1]?.payload_json?.revisionOf?.signed === false) i++
+  const node = down[i] || q
+  const isRoot = i === 0
+  const ex = executedOf(node)
+  const forIt = !ex || !isRoot || !revOf(signedNumberOf(node))
+  const day = ex && forIt && signedDayConfirmed(node) ? signedOnOf(node) : null
+  const number = isRoot ? agreementRootOf(node) : contractNumberFor(node)
+  return { day, node, root: node, number, needsDay: !day && forIt && wasSigned(i) && complete }
+}
+export function agreementSignedOn(q, quotes) { return agreementSignedDay(q, quotes).day }
+/** The same walk against the database (the builder has no list of the lead's quotes). q itself is read
+ *  again too: a day typed a moment ago ("When did he sign?") must count (review 10/19/26). */
+export async function agreementSignedDayDb(sb, q) {
+  const read = async (id) => {
+    try {
+      const { data } = await sb.from('quotes').select('id, status, quote_number, payload_json').eq('id', id).single()
+      return (Array.isArray(data) ? data[0] : data) || null
+    } catch { return null }
+  }
+  const fresh = q?.id ? await read(q.id) : null
+  // the caller's status stays (a redo passes the status the base had before its unsigned revisions)
+  const me = fresh && fresh.payload_json ? { ...q, payload_json: fresh.payload_json } : q
+  const list = [me]
+  let cur = me
+  for (let i = 0; i < 20 && cur?.payload_json?.revisionOf?.id; i++) {
+    const id = cur.payload_json.revisionOf.id
+    if (list.some((x) => x && x.id === id)) break
+    const up = await read(id)
+    if (!up) break
+    list.push(up)
+    cur = up
+  }
+  return agreementSignedDay(me, list)
 }
 export async function agreementSignedOnDb(sb, q) { return (await agreementSignedDayDb(sb, q)).day }
 
@@ -419,8 +445,13 @@ export function cardBalanceOf(q) {
 // The signed DAY (owner 10/19/26): signedOn = the day the customer signed, typed by the rep (Doc Hub ›
 // Mark as signed). Without it an existing signed day is KEPT (an Executed Copy clicked again never moves
 // it); a first stamp without one takes today, flagged not confirmed (the Doc Hub asks for the real day).
-export function nextExecuted(prev, { signedOn = null, at = null, file, filePath, stampedPath, number } = {}, now = new Date()) {
+// keepStamped: the builder's Executed Copy never replaces a DEPOSIT PAID copy already linked (that one is
+// the customer's signed pages). stampAt: an older stamp's click time, kept once the day is typed (it tells
+// which same-named file was the stamped one).
+const stampAtOf = (p) => (p ? (p.stampAt || (DAY_RE.test(str(p.at)) ? null : str(p.at) || null)) : null)
+export function nextExecuted(prev, { signedOn = null, at = null, file, filePath, stampedPath, number, keepStamped = false } = {}, now = new Date()) {
   const p = prev && prev.at ? prev : null
+  if (keepStamped && p && p.stampedPath) stampedPath = undefined
   let day = cleanDay(signedOn) || cleanDay(at)
   let confirmed = !!day
   // a click time passed in (ISO) = that LOCAL day, not confirmed as the signing day
@@ -428,6 +459,7 @@ export function nextExecuted(prev, { signedOn = null, at = null, file, filePath,
   if (!day && p) { day = signedOnOf({ payload_json: { executed: p } }); confirmed = p.confirmed === true }
   if (!day) { day = localDay(now); confirmed = false }
   const out = { ...(p || {}), at: day, signedOn: day, confirmed, markedAt: now.toISOString() }
+  if (stampAtOf(p)) out.stampAt = stampAtOf(p)
   if (file !== undefined) out.file = file
   if (filePath !== undefined) out.filePath = filePath
   if (stampedPath !== undefined) out.stampedPath = stampedPath
@@ -478,12 +510,17 @@ async function patchExecuted(sb, quoteId, fn) {
 }
 /** The rep types the day the customer really signed. */
 // create: an order sold before signed marks existed gets a mark with just that day (no status / star change).
-export async function setSignedDay(sb, quoteId, day, { create = false } = {}) {
+// number: the contract this day is for (kept on a mark that has none — e.g. the agreement's day asked
+// before a revised contract, on a root whose contract number later became "Rev n").
+export async function setSignedDay(sb, quoteId, day, { create = false, number = null } = {}) {
   const d = cleanDay(day)
   if (!d) throw new Error('pick the date the customer signed')
   return patchExecuted(sb, quoteId, (ex) => {
     if (!ex && !create) throw new Error('this quote is not marked signed')
-    return { ...(ex || {}), at: d, signedOn: d, confirmed: true, markedAt: new Date().toISOString() }
+    const out = { ...(ex || {}), at: d, signedOn: d, confirmed: true, markedAt: new Date().toISOString() }
+    if (stampAtOf(ex)) out.stampAt = stampAtOf(ex)
+    if (number && !str(out.number)) out.number = number
+    return out
   })
 }
 /** Take the signed mark off (marked by mistake). The status is left as it is - the rep sets it. */
@@ -588,7 +625,7 @@ export function organizeContracts(files, quotes) {
     const ex = executedOf(s.quote)
     const name = str(ex.file)
     if (!name) continue
-    const clickTs = Date.parse(DAY_RE.test(str(ex.at)) ? '' : str(ex.at)) || Date.parse(str(ex.markedAt)) || 0
+    const clickTs = Date.parse(str(stampAtOf(ex))) || Date.parse(str(ex.markedAt)) || 0
     const f = (clickTs && free((x) => low(x.label) === low(name) && tsOf(x) && tsOf(x) <= clickTs + 120000)) || free((x) => low(x.label) === low(name))
     if (!f) continue
     if (isStampedCopy(name)) { if (!s.stampedFile) s.stampedFile = take(f) } else if (!s.signedFile) s.signedFile = take(f)

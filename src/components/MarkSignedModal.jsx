@@ -30,7 +30,7 @@ export function quoteLine(q) {
   return `#${q.quote_number || '—'} · ${role}${role !== 'Original contract' && agr ? ` of ${agr}` : ''}`
 }
 
-export default function MarkSignedModal({ mode = 'mark', clientId, file = null, quotes = [], presetQuoteId = null, justUploaded = false, createMark = false, intro = null, onClose, onDone }) {
+export default function MarkSignedModal({ mode = 'mark', clientId, file = null, quotes = [], presetQuoteId = null, justUploaded = false, createMark = false, createNumber = null, intro = null, onClose, onDone }) {
   const { match, list } = useMemo(() => signedPickList(quotes, file?.label || ''), [quotes, file])
   const [qid, setQid] = useState(presetQuoteId || match?.id || '')
   const q = list.find((x) => x.id === qid) || (presetQuoteId ? quotes.find((x) => x.id === presetQuoteId) : null) || null
@@ -70,9 +70,9 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
     setBusy(true); setErr('')
     try {
       if (mode === 'date') {
-        await setSignedDay(supabase, q.id, d, { create: createMark })
+        await setSignedDay(supabase, q.id, d, { create: createMark, number: createNumber })
         toast(`#${esc(q.quote_number || '')} · signed ${fmtShortDate(d)}`, 'success')
-        onDone?.({ quoteId: q.id })
+        onDone?.({ quoteId: q.id, day: d })
         return
       }
       let stampedPath

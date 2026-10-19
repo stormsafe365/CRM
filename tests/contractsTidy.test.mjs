@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agreementSignedDay, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
+  agreementSignedDay, agreementSignedDayDb, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
   organizeContracts, revisionDocFor, setSignedDay, signedDayConfirmed, signedInfoOf, signedOnOf, signedPickList, withLiveExecuted,
 } from '../src/lib/contractDocs.js'
 
@@ -23,7 +23,7 @@ function peter() {
   }
   const r1 = {
     id: 'r1', quote_number: 'SS-2026-50001', status: 'deposit_paid', quote_date: '2026-10-19',
-    payload_json: { revisionOf: { id: 'o', quote_number: 'SS-2026-68012', agreement_number: 'SS-2026-68012', rev_no: '1' }, contractSent: { at: 'x', number: 'SS-2026-68012 Rev 1' } },
+    payload_json: { revisionOf: { id: 'o', quote_number: 'SS-2026-68012', agreement_number: 'SS-2026-68012', rev_no: '1', signed: true }, contractSent: { at: 'x', number: 'SS-2026-68012 Rev 1' } },
   }
   const d1 = { id: 'd1', quote_number: 'SS-2026-99855', status: 'sent', quote_date: '2026-09-24', payload_json: { contractSent: { at: 'x', number: 'SS-2026-99855' } } }
   const d2 = { id: 'd2', quote_number: 'SS-2026-85254', status: 'draft', quote_date: '2026-09-23', payload_json: {} }
@@ -282,4 +282,54 @@ test('Generate Contract always offers Just preview (nothing saved); other writes
   for (const kind of ['save', 'exec', 'revision', 'apply']) assert.equal(writeCheck({ kind, saved, next: saved }).alt, null, kind)
   assert.equal(writeCheck({ kind: 'save', saved: null, next: saved }).confirm, false)
   assert.ok(writeCheck({ kind: 'exec', saved, next: saved }).notes.some((n2) => /signed date already set is kept/.test(n2)))
+})
+
+test('second review 10/19/26: only a SIGNED agreement is asked about; the answer counts at once', async () => {
+  // a verbal accept is not a signed contract: nothing is asked, no date printed
+  const va = { id: 'v', quote_number: 'SS-2026-30000', status: 'verbal_accept', payload_json: {} }
+  assert.deepEqual([agreementSignedDay(va, [va]).day, agreementSignedDay(va, [va]).needsDay], [null, false])
+  // the root was never signed and Rev 1 was made "not signed": the agreement is Rev 1 (its own confirmed day)
+  const u = { id: 'u', quote_number: 'SS-2026-40000', status: 'superseded', payload_json: {} }
+  const r1 = { id: 'r1', quote_number: 'SS-2026-40001', status: 'deposit_paid', payload_json: { revisionOf: { id: 'u', quote_number: 'SS-2026-40000', agreement_number: 'SS-2026-40000', rev_no: '1', signed: false }, executed: { at: '2026-10-01', signedOn: '2026-10-01', confirmed: true } } }
+  const r2 = { id: 'r2', status: 'deposit_paid', payload_json: { revisionOf: { id: 'r1', rev_no: '2', signed: true } } }
+  const a = agreementSignedDay(r2, [u, r1, r2])
+  assert.equal(a.node.id, 'r1'); assert.equal(a.day, '2026-10-01'); assert.equal(a.needsDay, false)
+  // its day not confirmed yet: asked on Rev 1 (never a mark on the unsigned root)
+  r1.payload_json.executed = { at: '2026-10-19T15:00:00Z' }
+  const b = agreementSignedDay(r2, [u, r1, r2])
+  assert.equal(b.node.id, 'r1'); assert.equal(b.needsDay, true); assert.equal(b.number, 'SS-2026-40000 Rev 1')
+  // a base missing (the chain is not whole): never asked
+  assert.equal(agreementSignedDay(r2, [r2]).needsDay, false)
+  // the root's number is the agreement number, also when its contract was later sent as "Rev 1" in place
+  const ip = { id: 'ip', quote_number: 'SS-2026-50000', status: 'revised', payload_json: { contractSent: { at: 'x', number: 'SS-2026-50000 Rev 1' } } }
+  assert.deepEqual([agreementSignedDay(ip, [ip]).number, agreementSignedDay(ip, [ip]).needsDay], ['SS-2026-50000', true])
+  // the database walk reads q itself again: a day typed a moment ago counts (no second question)
+  const { o } = peter()
+  const stale = JSON.parse(JSON.stringify(o)) // what the Use-as-revision window loaded
+  const rows = [o]
+  const sb = rowsSb(rows)
+  assert.equal((await agreementSignedDayDb(sb, stale)).needsDay, true)
+  await setSignedDay(sb, 'o', '2026-09-24', { create: true, number: 'SS-2026-68012' })
+  const c = await agreementSignedDayDb(sb, stale)
+  assert.equal(c.day, '2026-09-24'); assert.equal(c.needsDay, false)
+  // a created mark keeps the number it was asked for
+  const rows2 = [{ id: 'n', status: 'revised', payload_json: { contractSent: { at: 'x', number: 'SS-2026-50000 Rev 1' } } }]
+  await setSignedDay(rowsSb(rows2), 'n', '2026-09-24', { create: true, number: 'SS-2026-50000' })
+  assert.equal(rows2[0].payload_json.executed.number, 'SS-2026-50000')
+  assert.equal(agreementSignedDay(rows2[0], rows2).day, '2026-09-24')
+})
+
+test('second review 10/19/26: file names, the kept DEPOSIT PAID copy, the kept stamp time', () => {
+  assert.equal(parseContractLabel('SS-2026-68012_Revision_1_signed.pdf').number, 'SS-2026-68012 Rev 1')
+  assert.equal(parseContractLabel('SS-2026-68012_Revised_contract.pdf').number, 'SS-2026-68012')
+  // the builder's Executed Copy never replaces the customer's signed DEPOSIT PAID copy
+  const prev = { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, stampedPath: 'c/signed-EXECUTED.pdf' }
+  assert.equal(nextExecuted(prev, { stampedPath: 'c/generated-executed.pdf', keepStamped: true }).stampedPath, 'c/signed-EXECUTED.pdf')
+  assert.equal(nextExecuted({ at: '2026-09-24', confirmed: true }, { stampedPath: 'c/gen.pdf', keepStamped: true }).stampedPath, 'c/gen.pdf')
+  // typing the day on an older by-name stamp keeps which same-named file it was
+  const q = { id: 'q', quote_number: 'SS-2026-00144', status: 'deposit_paid', payload_json: { executed: { at: '2026-09-24T16:01:00Z', file: 'SS-2026-00144-contract.pdf' } } }
+  const files = [F('SS-2026-00144-contract.pdf', '2026-10-13T10:00:00Z'), F('SS-2026-00144-contract.pdf', '2026-09-24T16:00:00Z')]
+  q.payload_json.executed = nextExecuted(q.payload_json.executed, { signedOn: '2026-09-24' }, new Date('2026-10-20T12:00:00Z'))
+  assert.equal(q.payload_json.executed.stampAt, '2026-09-24T16:01:00Z')
+  assert.equal(organizeContracts(files, [q]).signed[0].signedFile.createdAt, '2026-09-24T16:00:00Z')
 })
