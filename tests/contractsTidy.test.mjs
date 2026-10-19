@@ -374,3 +374,17 @@ test('fourth review 10/19/26: older Doc Hub stamps kept; 10/6 links left alone; 
   const y = agreementSignedDay(B, [V, A2, B])
   assert.equal(y.node.id, 'A2'); assert.equal(y.needsDay, true); assert.equal(y.number, 'SS-2026-60000 Rev 1')
 })
+
+test('fifth review 10/19/26: "Yes, he signed Revision 1" asks for its day in the same run', async () => {
+  const V = { id: 'V', quote_number: 'SS-2026-60000', status: 'superseded', payload_json: {} }
+  const A2 = { id: 'A2', quote_number: 'SS-2026-60001', status: 'verbal_accept', payload_json: { revisionOf: { id: 'V', quote_number: 'SS-2026-60000', agreement_number: 'SS-2026-60000', rev_no: '1', signed: true, signed_contract: false } } }
+  const sb = rowsSb([V, A2])
+  const plain = await agreementSignedDayDb(sb, A2)
+  assert.deepEqual([plain.node.id, plain.needsDay], ['A2', false]) // without the rep's answer: not known to be signed
+  const yes = await agreementSignedDayDb(sb, A2, { repSigned: true })
+  assert.deepEqual([yes.node.id, yes.needsDay, yes.number], ['A2', true, 'SS-2026-60000 Rev 1'])
+  // a signed root: the rep's answer changes nothing (the agreement stays the root)
+  const { o, r1 } = peter()
+  const p = await agreementSignedDayDb(rowsSb([o, r1]), r1, { repSigned: true })
+  assert.equal(p.node.id, 'o')
+})

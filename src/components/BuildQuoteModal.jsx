@@ -702,9 +702,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     // the customer really signed (never a stamp-click day — Peter Mawn's "October 13"). Not known yet →
     // ask now (nothing saved), then go on by itself with the day typed (owner 10/19/26).
     let agrDay = agreementDay !== undefined ? agreementDay : null
-    if (agreementDay === undefined && isSold(original.status)) {
+    if (agreementDay === undefined && (isSold(original.status) || r.repSigned === true)) {
       let a = null
-      try { a = await agreementSignedDayDb(supabase, original) } catch { a = null }
+      try { a = await agreementSignedDayDb(supabase, original, { repSigned: r.repSigned === true }) } catch { a = null }
       if (a && a.needsDay) {
         savingRef.current = false
         setNeedDay({ node: a.node, number: a.number, retry: (day) => finishUseAsRevision(r, { agreementDay: day }) })

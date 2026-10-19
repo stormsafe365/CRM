@@ -293,7 +293,8 @@ export function agreementSignedDay(q, quotes) {
   const down = chain.slice().reverse() // root → q
   const wasSigned = (k) => {
     const n = down[k]
-    return signedContractOf(n) || (n?.status === 'superseded' && linkBaseSigned(down[k + 1]?.payload_json?.revisionOf))
+    // marked / Deposit Paid / Revised — or the revision made on it recorded that it was signed
+    return signedContractOf(n) || linkBaseSigned(down[k + 1]?.payload_json?.revisionOf)
   }
   // step down past a base the customer never signed (unsigned, or only verbally accepted)
   let i = 0
@@ -311,7 +312,9 @@ export function agreementSignedDay(q, quotes) {
 export function agreementSignedOn(q, quotes) { return agreementSignedDay(q, quotes).day }
 /** The same walk against the database (the builder has no list of the lead's quotes). q itself is read
  *  again too: a day typed a moment ago ("When did he sign?") must count (review 10/19/26). */
-export async function agreementSignedDayDb(sb, q) {
+// repSigned: the rep just said "Yes, he signed" this version — counted as if the new revision's link
+// (signed_contract: true) already existed, so the day is asked / printed in this same run.
+export async function agreementSignedDayDb(sb, q, { repSigned = false } = {}) {
   const read = async (id) => {
     try {
       const { data } = await sb.from('quotes').select('id, status, quote_number, payload_json').eq('id', id).single()
@@ -330,6 +333,11 @@ export async function agreementSignedDayDb(sb, q) {
     if (!up) break
     list.push(up)
     cur = up
+  }
+  if (repSigned && me?.id) {
+    const next = { id: `${me.id}::next`, status: 'draft', payload_json: { revisionOf: { id: me.id, signed: true, signed_contract: true } } }
+    const a = agreementSignedDay(next, [...list, next])
+    return a.node && a.node.id === next.id ? agreementSignedDay(me, list) : a
   }
   return agreementSignedDay(me, list)
 }
