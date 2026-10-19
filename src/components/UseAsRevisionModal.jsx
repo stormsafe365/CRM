@@ -40,6 +40,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
   // a revision the customer has not signed yet (owner 10/19/26): asked about, then redone or built on
   const [plan, setPlan] = useState(null)      // contractDocs.redoPlanFor() while asking
   const [redo, setRedo] = useState(null)      // the chosen redo (same plan), or null
+  const [repSignedId, setRepSignedId] = useState(null) // "Yes, he signed Revision N": the rep says THIS revision was signed
   const [loadErr, setLoadErr] = useState('')
   const [origId, setOrigId] = useState('')
   const [busy, setBusy] = useState('')
@@ -80,7 +81,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
 
   // Next on the pick step: a picked order with a revision the customer may not have signed is asked about first
   function next() {
-    setHowErr([]); setRedo(null); setPlan(null)
+    setHowErr([]); setRedo(null); setPlan(null); setRepSignedId(null)
     const p = redoPlanFor(picked, all)
     if (p && p.kind === 'switch') { setOrigId(p.to.id); setStep('how'); return }
     if (p && p.kind === 'ask') { setPlan(p); setStep('ask'); return }
@@ -111,7 +112,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
       const res = await analyzeSignedOnly({ original, livePg: pg, onProgress: setBusy })
       setBusy('')
       if (res.blockers && res.blockers.length) { setHowErr(res.blockers); return }
-      onManual(original, res, redo)
+      onManual(original, res, redo, repSignedId === original?.id)
     } catch (e) { setBusy(''); setHowErr([e.message || String(e)]) }
   }
 
@@ -134,6 +135,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
       original, mode: 'auto', lines, money, signed: result.signed, terms: result.terms, forward: result.forward,
       origDims: result.origDims, aewChanged: result.aewChanged, baseToday: result.baseToday, origWraps: result.origWraps || null, revNo: revNo.trim() || '1', date, note: note.trim(),
       redo: redo ? { ids: redo.redo.map((q) => q.id), dropped: redo.dropped || [] } : null,
+      repSigned: repSignedId === original.id,
     })
   }
 
@@ -209,7 +211,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
               Compared with what the customer signed (#{plan.base.quote_number}{plan.effective.total_amount != null ? `, ${fmtMoney(plan.effective.total_amount)}` : ''}), with the deposit he already paid counted.{(() => { const gone = plan.redo.filter((q) => q.id !== currentQuote?.id); return gone.length ? <> The old unsigned revision{gone.length === 1 ? '' : 's'} (#{gone.map((q) => q.quote_number).join(', #')}) {gone.length === 1 ? 'is' : 'are'} retired, so there is only one active order.</> : null })()}
             </div>
           </button>
-          {rv.id === currentQuote?.id ? null : <button type="button" style={choice} onClick={() => { setRedo(null); setOrigId(rv.id); setStep('how') }}>
+          {rv.id === currentQuote?.id ? null : <button type="button" style={choice} onClick={() => { setRedo(null); setRepSignedId(rv.id); setOrigId(rv.id); setStep('how') }}>
             <div style={{ fontWeight: 800, fontSize: 14.5 }}>Yes, he signed Revision {rv.payload_json.revisionOf.rev_no || '?'} - make the next revision on top of it</div>
             <div style={{ ...MUTED, fontSize: 12.5, marginTop: 3 }}>Revises #{rv.quote_number} (what he signed). Tip: stamp his signed copy "Executed" in Documents so the CRM knows next time.</div>
           </button>}

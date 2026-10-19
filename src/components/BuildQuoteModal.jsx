@@ -684,6 +684,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
       origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, origWraps: m.info.origWraps, revNo: rv.revNo, date: rv.date, note: rv.note,
       redo: m.redo ? { ids: m.redo.redo.map((q) => q.id), dropped: m.redo.dropped || [] } : null,
+      repSigned: !!m.repSigned,
     })
   }
 
@@ -779,7 +780,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         revisionOf: {
           id: original.id, quote_number: original.quote_number || null, signed_total: r.signed.total, signed_deposit: r.signed.deposit, paid_before: paid, paid_total: r2(Math.max(paid, money.deposit)),
           revised_total: money.total, revision_order: num, rev_no: revNo, mode: r.mode, at,
-          agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig, signed_contract: signedContractOf(original),
+          agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig, signed_contract: r.repSigned === true || signedContractOf(original),
         },
       }
       await onSave(upd)
@@ -961,7 +962,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           currentQuote={quoteRef.current || initialQuote}
           getProgramWindow={getProgramWindow}
           onClose={() => setUar(false)}
-          onManual={(original, info, redo) => { setUar(false); setUarManual({ original, info, redo: redo || null }) }}
+          onManual={(original, info, redo, repSigned) => { setUar(false); setUarManual({ original, info, redo: redo || null, repSigned: !!repSigned }) }}
           onFinish={finishUseAsRevision}
         />
       )}

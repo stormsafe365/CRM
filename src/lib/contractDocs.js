@@ -297,7 +297,9 @@ export function agreementSignedDay(q, quotes) {
   }
   // step down past a base the customer never signed (unsigned, or only verbally accepted)
   let i = 0
-  while (i < down.length - 1 && !wasSigned(i) && down[i + 1]?.payload_json?.revisionOf && !linkBaseSigned(down[i + 1].payload_json.revisionOf)) i++
+  // (only on an explicit "not signed": a link with no signal at all — 10/6/26 links — leaves the base as it was)
+  const linkBaseNotSigned = (rv) => (rv && rv.signed_contract !== undefined ? rv.signed_contract === false : rv?.signed === false)
+  while (i < down.length - 1 && !wasSigned(i) && linkBaseNotSigned(down[i + 1]?.payload_json?.revisionOf)) i++
   const node = down[i] || q
   const isRoot = i === 0
   const ex = executedOf(node)
@@ -459,7 +461,9 @@ export function nextExecuted(prev, { signedOn = null, at = null, file, filePath,
   const p = prev && prev.at ? prev : null
   // keep only the stamp of the CUSTOMER's signed pages (a signed copy is linked, or it is the Doc Hub's
   // "-EXECUTED-deposit-paid.pdf"); the builder's own earlier copy is replaced by its newer one
-  if (keepStamped && p && p.stampedPath && (p.filePath || /-EXECUTED-deposit-paid\.pdf$/.test(str(p.stampedPath)))) stampedPath = undefined
+  // (an older Doc Hub mark links the signed copy only by NAME — { file: '<signed>.pdf' } — and its stamp by
+  // the name pair: the builder's copy never takes that place either)
+  if (keepStamped && p && ((p.stampedPath && (p.filePath || /-EXECUTED-deposit-paid\.pdf$/.test(str(p.stampedPath)))) || (!p.stampedPath && (p.filePath || (str(p.file) && !isStampedCopy(p.file)))))) stampedPath = undefined
   let day = cleanDay(signedOn) || cleanDay(at)
   let confirmed = !!day
   // a click time passed in (ISO) = that LOCAL day, not confirmed as the signing day

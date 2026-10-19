@@ -354,3 +354,23 @@ test('third review 10/19/26: a verbal accept is never the signed agreement; the 
   const cust = { at: '2026-09-24', confirmed: true, filePath: 'c/signed.pdf', stampedPath: 'c/1-SS-1-executed-deposit-paid.pdf' }
   assert.equal(nextExecuted(cust, { stampedPath: 'c/2-x.pdf', keepStamped: true }).stampedPath, 'c/1-SS-1-executed-deposit-paid.pdf')
 })
+
+test('fourth review 10/19/26: older Doc Hub stamps kept; 10/6 links left alone; the rep\'s "yes, he signed" counts', () => {
+  // an older Doc Hub mark ({ file: signed name }, no paths): the builder's Executed Copy never takes the stamp's place
+  const old = { at: '2026-09-24T14:00:00Z', file: 'SS-2026-00144_signed.pdf' }
+  assert.equal(nextExecuted(old, { stampedPath: 'c/SS-2026-00144-executed-deposit-paid.pdf', keepStamped: true }).stampedPath, undefined)
+  // an older BUILDER mark (its file is the builder's own copy): replaced by the newer copy
+  const oldB = { at: '2026-10-13T18:00:00Z', file: 'SS-2026-68012-executed-deposit-paid.pdf' }
+  assert.equal(nextExecuted(oldB, { stampedPath: 'c/new-executed-deposit-paid.pdf', keepStamped: true }).stampedPath, 'c/new-executed-deposit-paid.pdf')
+  // a 10/6 link with no signed / signed_contract: the root stays the agreement, nothing asked
+  const R = { id: 'R', quote_number: 'SS-2026-50000', status: 'superseded', payload_json: {} }
+  const A = { id: 'A', status: 'deposit_paid', payload_json: { revisionOf: { id: 'R', quote_number: 'SS-2026-50000', rev_no: '1' } } }
+  const x = agreementSignedDay(A, [R, A])
+  assert.equal(x.node.id, 'R'); assert.equal(x.needsDay, false)
+  // verbal-accept root V, Rev 1 (A2) signed by the customer per the rep ("Yes, he signed"), Rev 2 (B) made on it
+  const V = { id: 'V', quote_number: 'SS-2026-60000', status: 'superseded', payload_json: {} }
+  const A2 = { id: 'A2', status: 'superseded', payload_json: { revisionOf: { id: 'V', quote_number: 'SS-2026-60000', agreement_number: 'SS-2026-60000', rev_no: '1', signed: true, signed_contract: false } } }
+  const B = { id: 'B', status: 'deposit_paid', payload_json: { revisionOf: { id: 'A2', quote_number: 'SS-2026-60000', agreement_number: 'SS-2026-60000', rev_no: '2', signed: true, signed_contract: true } } }
+  const y = agreementSignedDay(B, [V, A2, B])
+  assert.equal(y.node.id, 'A2'); assert.equal(y.needsDay, true); assert.equal(y.number, 'SS-2026-60000 Rev 1')
+})
