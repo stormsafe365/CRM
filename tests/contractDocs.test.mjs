@@ -212,3 +212,65 @@ test('approval sheet revision label: same "Rev n" scheme, none for an unrevised 
   assert.equal(seedFromQuote({ quote_number: 'SS-2026-22222', payload_json: { revisionOf: { rev_no: '1' } } }, { fields: { bw: '30', bl: '40', bh: '12' } }).rev, 'Rev 1')
   assert.equal(seedFromQuote({ quote_number: 'SS-2026-00144', payload_json: {} }, { fields: { bw: '30', bl: '40', bh: '12' } }).rev, '')
 })
+
+// ── Redo a revision the customer has not signed (owner 10/19/26, Peter Mawn) ──
+test('redo: Peter - signed O, an unsigned Rev 1 (front doors), a mistaken "Rev 2" made from O again', async () => {
+  const { redoPlanFor, revisionsAfterRedo } = await import('../src/lib/contractDocs.js')
+  const O = { id: 'O', quote_number: 'SS-2026-68012', status: 'superseded', total_amount: 30046, deposit_amount: 6009.2,
+    payload_json: { fields: {}, executed: { at: '2026-10-10' }, revisedBy: { id: 'X2' }, revisions: [{ id: 'X1', rev_no: '1' }, { id: 'X2', rev_no: '2' }] } }
+  const X1 = { id: 'X1', quote_number: 'SS-2026-70001', status: 'deposit_paid', total_amount: 30246, starred: true,
+    payload_json: { fields: {}, revisionOf: { id: 'O', rev_no: '1', signed: true, at: '2026-10-18T10:00:00Z' } } }
+  const X2 = { id: 'X2', quote_number: 'SS-2026-70002', status: 'draft', total_amount: 30301,
+    payload_json: { fields: {}, revisionOf: { id: 'O', rev_no: '2', signed: false, at: '2026-10-19T10:00:00Z' } } }
+  const all = [O, X1, X2]
+  for (const picked of [O, X1, X2]) {
+    const p = redoPlanFor(picked, all)
+    assert.equal(p.kind, 'ask', picked.id)
+    assert.equal(p.base.id, 'O')
+    assert.equal(p.effective.status, 'deposit_paid', 'the signed order counts as signed again (deposit credited)')
+    assert.equal(paidOf(p.effective), 6009.2, 'the deposit he paid on the signed order')
+    assert.deepEqual(p.redo.map((q) => q.id).sort(), ['X1', 'X2'], 'both unsigned revisions are retired')
+    assert.equal(p.revNo, '1', 'the redo is still Revision 1')
+    assert.equal(revisionDocFor({ original: p.effective, lines: [], revNo: p.revNo, originalTotal: 30046, depositPaid: paidOf(p.effective) }).depositPaid, 6009.2)
+  }
+  assert.equal(redoPlanFor(O, all).revision.id, 'X2', 'asked about the newest revision')
+  // after the redo: X3 is Revision 1; the next real revision is Revision 2
+  const links = [...revisionsAfterRedo(O.payload_json.revisions, ['X1', 'X2']), { id: 'X3', rev_no: '1' }]
+  assert.equal(nextRevNo({ payload_json: { revisions: links } }), '2')
+  assert.equal(nextRevNo(O), '3', 'before: the redone ones still counted')
+})
+
+test('redo: nothing to ask for a plain signed order, or a revision stamped signed', async () => {
+  const { redoPlanFor } = await import('../src/lib/contractDocs.js')
+  assert.equal(redoPlanFor(signed, [signed]), null)
+  const O = { id: 'O', quote_number: 'SS-2026-00144', status: 'superseded', payload_json: { fields: {} } }
+  const R = { id: 'R', quote_number: 'SS-2026-00150', status: 'deposit_paid', payload_json: { fields: {}, executed: { at: '2026-10-12' }, revisionOf: { id: 'O', rev_no: '1', signed: true } } }
+  assert.equal(redoPlanFor(R, [O, R]), null, 'a signed revision: revise it as always (Rev 2 on top)')
+  const sw = redoPlanFor(O, [O, R])
+  assert.equal(sw.kind, 'switch')
+  assert.equal(sw.to.id, 'R', 'picking the replaced original revises the signed revision instead')
+  assert.equal(redoPlanFor({ id: 'Z', status: 'superseded', payload_json: {} }, []), null, 'replaced with no live revision: as before')
+})
+
+test('redo: a revision of an order that was never signed stays "not signed" (no deposit credited)', async () => {
+  const { redoPlanFor } = await import('../src/lib/contractDocs.js')
+  const O = { id: 'O', quote_number: 'SS-2026-00200', status: 'superseded', deposit_amount: 5000, payload_json: { fields: {} } }
+  const R = { id: 'R', quote_number: 'SS-2026-00201', status: 'sent', payload_json: { fields: {}, revisionOf: { id: 'O', rev_no: '1', signed: false } } }
+  const p = redoPlanFor(R, [O, R])
+  assert.equal(p.kind, 'ask')
+  assert.equal(p.effective.status, 'sent')
+  assert.equal(paidOf(p.effective), 0)
+})
+
+test('redo: a signed revision (Rev 1) with an unsigned Rev 2 on top - the redo keeps Rev 2 and credits everything paid', async () => {
+  const { redoPlanFor } = await import('../src/lib/contractDocs.js')
+  const O = { id: 'O', quote_number: 'SS-2026-00300', status: 'superseded', payload_json: { fields: {} } }
+  const R1 = { id: 'R1', quote_number: 'SS-2026-00301', status: 'superseded', deposit_amount: 7000,
+    payload_json: { fields: {}, executed: { at: '2026-10-05' }, revisionOf: { id: 'O', rev_no: '1', signed: true, paid_before: 6000, paid_total: 7000 } } }
+  const R2 = { id: 'R2', quote_number: 'SS-2026-00302', status: 'deposit_paid', payload_json: { fields: {}, revisionOf: { id: 'R1', rev_no: '2', signed: true } } }
+  const p = redoPlanFor(R2, [O, R1, R2])
+  assert.equal(p.base.id, 'R1')
+  assert.equal(p.revNo, '2')
+  assert.equal(p.effective.status, 'deposit_paid')
+  assert.equal(paidOf(p.effective), 7000, 'everything paid across the chain')
+})

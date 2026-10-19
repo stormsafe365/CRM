@@ -49,8 +49,64 @@ export function nextRevNo(original) {
   const p = original?.payload_json || {}
   // the revision this quote already is (Use as revision link, or a contract sent as "… Rev n")
   const prior = Math.max(Number(p.revisionOf?.rev_no) || 0, Number(revOf(p.contractSent?.number)) || 0)
-  const own = Array.isArray(p.revisions) ? p.revisions.length : 0
+  // a revision that was REDONE before the customer signed it does not count (its number is reused)
+  const own = Array.isArray(p.revisions) ? p.revisions.filter((l) => !(l && l.redone)).length : 0
   return String(prior + own + 1)
+}
+
+// ── Redo a revision the customer has not signed yet (owner 10/19/26) ──────
+// "what if i revise someones signed contract & either i mess up and need to redo after saving or i
+// send for them to sign off on it and they want another tweak made before signing". A Use-as-revision
+// quote is the active order from the moment it is made, but it is only SIGNED once its revised
+// contract is stamped executed - and that stamp is not always made, so the rep is ASKED. Not signed:
+// the new revision redoes it - same Rev number, compared with (and paid money from) the last version
+// the customer did sign, and every unsigned revision of that version is retired. Signed: the new
+// revision goes on top of it, as always.
+const activeRevisionsOf = (baseId, quotes) =>
+  (quotes || []).filter((q) => q && !q.deleted_at && q.status !== 'superseded' && q.payload_json?.revisionOf?.id === baseId)
+const revNum = (q) => Number(q?.payload_json?.revisionOf?.rev_no)
+/**
+ * What a new revision of `picked` really revises. null = nothing to ask (revise `picked` as always);
+ * { kind:'switch', to } = `picked` was replaced by a revision that IS stamped signed: revise that one;
+ * { kind:'ask', revision, base, effective, redo, revNo } = `revision` is not stamped signed - ask the rep.
+ *   base = the last version before the unsigned revision(s); effective = base with the status it had
+ *   (it was set to "replaced" when the first revision was made); redo = the unsigned revisions a redo
+ *   retires; revNo = the number the redo keeps.
+ */
+export function redoPlanFor(picked, quotes) {
+  if (!picked || picked.deleted_at) return null
+  let base = null
+  let revision = null
+  const rv = picked.payload_json?.revisionOf
+  if (rv && picked.status !== 'superseded') {
+    if (executedOf(picked)) return null
+    base = (quotes || []).find((q) => q && q.id === rv.id && !q.deleted_at) || null
+    if (!base) return null
+    revision = picked
+  } else if (picked.status === 'superseded') {
+    const act = activeRevisionsOf(picked.id, quotes)
+    if (!act.length) return null
+    const signedOne = act.find((q) => executedOf(q))
+    if (signedOne) return { kind: 'switch', to: signedOne }
+    base = picked
+    revision = act.slice().sort((a, b) => (revNum(b) || 0) - (revNum(a) || 0) || String(b.payload_json.revisionOf.at || '').localeCompare(String(a.payload_json.revisionOf.at || '')))[0]
+  } else {
+    return null
+  }
+  const redo = activeRevisionsOf(base.id, quotes).filter((q) => !executedOf(q))
+  if (!redo.some((q) => q.id === revision.id)) redo.push(revision)
+  // the base was signed if it still is, or if a revision made from it recorded "signed"
+  const wasSigned = isSold(base.status) || redo.some((q) => q.payload_json.revisionOf.signed === true)
+  const soldStatus = redo.map((q) => q.status).find((s) => isSold(s)) || 'deposit_paid'
+  const status = wasSigned ? (isSold(base.status) ? base.status : soldStatus) : (base.status === 'superseded' ? 'sent' : base.status)
+  const nums = redo.map(revNum).filter((n) => Number.isFinite(n) && n > 0)
+  const revNo = nums.length ? String(Math.min(...nums)) : nextRevNo(base)
+  return { kind: 'ask', revision, base, effective: { ...base, status }, redo, revNo }
+}
+/** The base quote's revision links after a redo: the redone ones flagged (their numbers are reused). */
+export function revisionsAfterRedo(prev, redoIds) {
+  const ids = new Set(redoIds || [])
+  return (Array.isArray(prev) ? prev : []).map((l) => (l && ids.has(l.id) ? { ...l, redone: true } : l))
 }
 /** File-name form: "SS-2026-00144-Rev-1" */
 export function contractFileBase(num) { return str(num).replace(/\s+/g, '-') }

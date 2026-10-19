@@ -19,7 +19,7 @@ import { quoteStatusColor, quoteStatusLabel } from '../lib/constants'
 import { analyzeRevision, analyzeSignedOnly } from '../lib/revisionEngine'
 import { revisionCandidates, revisionMoney } from '../lib/revisionDiff'
 import { REVISION_ADJ_LABEL, fmtMoney, isSold } from '../lib/priceLockCrm'
-import { nextRevNo, paidOf, revisedBalance } from '../lib/contractDocs'
+import { nextRevNo, paidOf, redoPlanFor, revisedBalance } from '../lib/contractDocs'
 import { ContractSentTag } from './ReplacedBadge'
 
 const FIELD = {
@@ -34,8 +34,12 @@ const KIND = { add: 'Add', remove: 'Remove', change: 'Change', move: 'Moved', fi
 const KIND_COLOR = { add: '#22d3c8', remove: '#f87171', move: '#94a3b8', drift: '#f0883e', residual: '#f0883e' }
 
 export default function UseAsRevisionModal({ client, currentQuote, getProgramWindow, onClose, onManual, onFinish }) {
-  const [step, setStep] = useState('pick') // pick | how | auto
+  const [step, setStep] = useState('pick') // pick | ask | how | auto
   const [quotes, setQuotes] = useState(null)
+  const [all, setAll] = useState([])          // every quote of the lead (to find a picked order's revisions)
+  // a revision the customer has not signed yet (owner 10/19/26): asked about, then redone or built on
+  const [plan, setPlan] = useState(null)      // contractDocs.redoPlanFor() while asking
+  const [redo, setRedo] = useState(null)      // the chosen redo (same plan), or null
   const [loadErr, setLoadErr] = useState('')
   const [origId, setOrigId] = useState('')
   const [busy, setBusy] = useState('')
@@ -54,6 +58,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
         if (dead) return
         if (error) { setLoadErr(error.message); setQuotes([]); return }
         const list = revisionCandidates(data || [], currentQuote?.id)
+        setAll(data || [])
         setQuotes(list)
         const from = currentQuote?.payload_json?.duplicatedFrom?.id
         const pre = list.find((c) => c.q.id === from && c.builder) || list.find((c) => c.sold && c.builder) || list.find((c) => c.builder)
@@ -64,11 +69,23 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const original = useMemo(() => (quotes || []).find((c) => c.q.id === origId)?.q || null, [quotes, origId])
+  const picked = useMemo(() => (quotes || []).find((c) => c.q.id === origId)?.q || null, [quotes, origId])
+  // a redo revises the last version the customer signed (with the status it had), not the picked quote
+  const original = redo ? redo.effective : picked
   useEffect(() => {
-    // Revision # follows the order's earlier revisions — a revision of a revision counts on (rep can change it).
-    setRevNo(original ? nextRevNo(original) : '1')
-  }, [original])
+    // Revision # follows the order's earlier revisions — a revision of a revision counts on (rep can change it);
+    // a redo keeps the number of the revision it replaces.
+    setRevNo(redo ? redo.revNo : original ? nextRevNo(original) : '1')
+  }, [original, redo])
+
+  // Next on the pick step: a picked order with a revision the customer may not have signed is asked about first
+  function next() {
+    setHowErr([]); setRedo(null); setPlan(null)
+    const p = redoPlanFor(picked, all)
+    if (p && p.kind === 'switch') { setOrigId(p.to.id); setStep('how'); return }
+    if (p && p.kind === 'ask') { setPlan(p); setStep('ask'); return }
+    setStep('how')
+  }
 
   async function runAuto() {
     const pg = getProgramWindow()
@@ -92,7 +109,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
       const res = await analyzeSignedOnly({ original, livePg: pg, onProgress: setBusy })
       setBusy('')
       if (res.blockers && res.blockers.length) { setHowErr(res.blockers); return }
-      onManual(original, res)
+      onManual(original, res, redo)
     } catch (e) { setBusy(''); setHowErr([e.message || String(e)]) }
   }
 
@@ -114,6 +131,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     onFinish({
       original, mode: 'auto', lines, money, signed: result.signed, terms: result.terms, forward: result.forward,
       origDims: result.origDims, aewChanged: result.aewChanged, baseToday: result.baseToday, origWraps: result.origWraps || null, revNo: revNo.trim() || '1', date, note: note.trim(),
+      redo: redo ? { ids: redo.redo.map((q) => q.id) } : null,
     })
   }
 
@@ -157,7 +175,46 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" disabled={!original} onClick={() => { setHowErr([]); setStep('how') }} style={{ fontWeight: 800 }}>Next →</button>
+          <button className="btn-primary" disabled={!picked} onClick={next} style={{ fontWeight: 800 }}>Next →</button>
+        </div>
+      </>
+    )
+  } else if (step === 'ask' && plan) {
+    const rv = plan.revision
+    const others = plan.redo.filter((q) => q.id !== rv.id)
+    const choice = { textAlign: 'left', border: '1px solid var(--line, #294059)', borderRadius: 12, padding: '13px 14px', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)', cursor: 'pointer', width: '100%' }
+    body = (
+      <>
+        {(() => {
+          const list = plan.redo.slice().sort((x, y) => (Number(x.payload_json.revisionOf.rev_no) || 0) - (Number(y.payload_json.revisionOf.rev_no) || 0))
+          const many = list.length > 1
+          return (
+            <>
+              <p style={{ margin: '0 0 8px', fontSize: 13.5 }}>
+                The signed order <b>#{plan.base.quote_number}</b>{plan.effective.total_amount != null ? <> ({fmtMoney(plan.effective.total_amount)})</> : null} already has {many ? <b>{list.length} revisions</b> : <b>a revision</b>} that {many ? 'are' : 'is'} not marked signed:
+              </p>
+              <ul style={{ margin: '0 0 10px 18px', padding: 0, fontSize: 13 }}>
+                {list.map((q) => <li key={q.id}>Revision {q.payload_json.revisionOf.rev_no || '?'} - quote #{q.quote_number}{q.total_amount != null ? `, ${fmtMoney(q.total_amount)}` : ''}{q.id === currentQuote?.id ? ' (the one open now)' : ''}</li>)}
+              </ul>
+              <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 800 }}>Has the customer signed {many ? 'any of these' : 'it'}?</p>
+            </>
+          )
+        })()}
+        <div style={{ display: 'grid', gap: 10 }}>
+          <button type="button" style={choice} onClick={() => { setRedo(plan); setOrigId(plan.base.id); setStep('how') }}>
+            <div style={{ fontWeight: 800, fontSize: 14.5 }}>No, not signed - redo it as Revision {plan.revNo}</div>
+            <div style={{ ...MUTED, fontSize: 12.5, marginTop: 3 }}>
+              Compared with what the customer signed (#{plan.base.quote_number}{plan.effective.total_amount != null ? `, ${fmtMoney(plan.effective.total_amount)}` : ''}), with the deposit he already paid counted.{(() => { const gone = plan.redo.filter((q) => q.id !== currentQuote?.id); return gone.length ? <> The old unsigned revision{gone.length === 1 ? '' : 's'} (#{gone.map((q) => q.quote_number).join(', #')}) {gone.length === 1 ? 'is' : 'are'} retired, so there is only one active order.</> : null })()}
+            </div>
+          </button>
+          {rv.id === currentQuote?.id ? null : <button type="button" style={choice} onClick={() => { setRedo(null); setOrigId(rv.id); setStep('how') }}>
+            <div style={{ fontWeight: 800, fontSize: 14.5 }}>Yes, he signed Revision {rv.payload_json.revisionOf.rev_no || '?'} - make the next revision on top of it</div>
+            <div style={{ ...MUTED, fontSize: 12.5, marginTop: 3 }}>Revises #{rv.quote_number} (what he signed). Tip: stamp his signed copy "Executed" in Documents so the CRM knows next time.</div>
+          </button>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 16 }}>
+          <button className="btn-secondary" onClick={() => { setPlan(null); setStep('pick') }}>← Back</button>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
         </div>
       </>
     )
@@ -166,6 +223,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     body = (
       <>
         <p style={{ margin: '0 0 10px', fontSize: 13 }}>
+          {redo ? <><b>Redoing Revision {redo.revNo}</b> (not signed yet). </> : null}
           {origSigned
             ? <>Revising <b>#{original?.quote_number}</b> — signed at <b>{original?.total_amount != null ? fmtMoney(original.total_amount) : '—'}</b>. Everything that didn’t change stays at the signed price; only the changes are priced (today’s prices).</>
             : <>Revising <b>#{original?.quote_number}</b> — <b>Original quote (not signed yet)</b> — its saved total <b>{original?.total_amount != null ? fmtMoney(original.total_amount) : '—'}</b> is the starting price. Everything that didn’t change stays at that price; only the changes are priced (today’s prices).</>}
@@ -183,7 +241,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
         {busy && <div style={{ ...MUTED, fontSize: 12.5, marginTop: 10 }}>{busy}</div>}
         {howErr.map((t, i) => <div key={i} style={{ color: 'var(--danger, #f87171)', fontSize: 12.5, marginTop: 8 }}>{t}</div>)}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 16 }}>
-          <button className="btn-secondary" disabled={!!busy} onClick={() => setStep('pick')}>← Back</button>
+          <button className="btn-secondary" disabled={!!busy} onClick={() => { setRedo(null); setOrigId(picked?.id || origId); setStep(plan ? 'ask' : 'pick') }}>← Back</button>
           <button className="btn-secondary" disabled={!!busy} onClick={onClose}>Cancel</button>
         </div>
       </>

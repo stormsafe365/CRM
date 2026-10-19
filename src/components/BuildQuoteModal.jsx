@@ -39,7 +39,7 @@ import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
   agreementRootOf, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
-  paidOf, revisedBalance, revisedContractNumber, revisionDocFor,
+  paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
 const SRC = '/build/build.html'
@@ -667,6 +667,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     finishUseAsRevision({
       original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
       origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, origWraps: m.info.origWraps, revNo: rv.revNo, date: rv.date, note: rv.note,
+      redo: m.redo ? { ids: m.redo.redo.map((q) => q.id) } : null,
     })
   }
 
@@ -759,7 +760,9 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       //    an active order (not sold, not open), so nothing counts it twice.
       const link = { id: cur.id || null, quote_number: cur.quote_number || null, revision_order: num, revised_total: money.total, at, contract_number: ctNo, rev_no: revNo }
       const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
-      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...prev, link] }
+      // a redo (owner 10/19/26): the unsigned revision(s) it replaces are flagged, so their number is reused
+      const redoIds = (r.redo?.ids || []).filter((id) => id && id !== cur.id)
+      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...revisionsAfterRedo(prev, r.redo?.ids || []), link] }
       let origMark = 'superseded'
       try {
         const { error } = await supabase.from('quotes').update({ status: 'superseded', payload_json: origPayload }).eq('id', original.id)
@@ -769,8 +772,27 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           toast(`Quote #${escHtml(original.quote_number)} could not be marked as replaced: ${escHtml(error.message)}`)
         }
       } catch (e) { origMark = 'failed'; console.warn('original not marked superseded', e) }
+      // A redo: the unsigned revision(s) it replaces stop being an order ("Replaced by #<this quote>"),
+      // so the lead never has two active orders (and nothing is counted twice).
+      let redoneN = 0, redoneStar = false
+      for (const id of redoIds) {
+        try {
+          const { data: rr } = await supabase.from('quotes').select('payload_json, starred').eq('id', id).single()
+          const row = Array.isArray(rr) ? rr[0] : rr
+          if (row && row.starred === true) redoneStar = true
+          const { error } = await supabase.from('quotes').update({ status: 'superseded', payload_json: { ...((row && row.payload_json) || {}), revisedBy: link, redoneBy: link } }).eq('id', id)
+          if (error) toast(`An earlier unsigned revision could not be retired: ${escHtml(error.message)}`)
+          else redoneN++
+        } catch (e) { console.warn('redone revision not retired', e) }
+      }
       // The star (the lead's current quote, Open Layout) moves to the active order.
       // Best effort: without migration 019 there is no starred column.
+      if (redoneStar && cur.id) {
+        try {
+          const { error: s0 } = await supabase.from('quotes').update({ starred: false }).in('id', redoIds)
+          if (!s0) await supabase.from('quotes').update({ starred: true }).eq('id', cur.id)
+        } catch (e) { console.warn('star not moved', e) }
+      }
       if (original.starred === true && cur.id) {
         try {
           const { error: s1 } = await supabase.from('quotes').update({ starred: false }).eq('id', original.id)
@@ -784,7 +806,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // what changed, line by line, for the REVISED CONTRACT box / row tags / payment path
       const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo })
       try { await saveContractThenPrint(pg, { confirmed: true, number: ctNo, rvDoc }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
-      toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.`, 'success')
+      toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.${redoneN ? ` Revision ${escHtml(revNo)} redone: ${redoneN} unsigned revision${redoneN === 1 ? '' : 's'} retired.` : ''}`, 'success')
     } catch (e) {
       console.warn('use as revision failed', e)
       toast('Use as Revision failed: ' + escHtml(e.message || e))
@@ -893,7 +915,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           currentQuote={quoteRef.current || initialQuote}
           getProgramWindow={getProgramWindow}
           onClose={() => setUar(false)}
-          onManual={(original, info) => { setUar(false); setUarManual({ original, info }) }}
+          onManual={(original, info, redo) => { setUar(false); setUarManual({ original, info, redo: redo || null }) }}
           onFinish={finishUseAsRevision}
         />
       )}
@@ -902,7 +924,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
           client={client}
           quote={uarManual.original}
           revisingWith={(quoteRef.current || initialQuote)?.quote_number || null}
-          defaultRevNo={nextRevNo(uarManual.original)}
+          defaultRevNo={uarManual.redo ? uarManual.redo.revNo : nextRevNo(uarManual.original)}
           onClose={() => setUarManual(null)}
           onUseAsRevision={finishUseAsRevisionManual}
           signed={{ ...uarManual.info.signed, deposit: paidOf(uarManual.original, uarManual.info.signed.deposit) }}
