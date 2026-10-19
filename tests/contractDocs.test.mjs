@@ -274,3 +274,50 @@ test('redo: a signed revision (Rev 1) with an unsigned Rev 2 on top - the redo k
   assert.equal(p.effective.status, 'deposit_paid')
   assert.equal(paidOf(p.effective), 7000, 'everything paid across the chain')
 })
+
+test('redo: Peter as he is now - the mistaken revision was DELETED; the signed order is the order again', async () => {
+  const { redoPlanFor, revisionsAfterRedo } = await import('../src/lib/contractDocs.js')
+  const O = { id: 'O', quote_number: 'SS-2026-68012', status: 'superseded', total_amount: 30046, deposit_amount: 4837,
+    payload_json: { fields: {}, revisedBy: { id: 'D', quote_number: 'SS-2026-03736' }, revisions: [{ id: 'D', rev_no: '1' }] } }
+  const D = { id: 'D', quote_number: 'SS-2026-03736', status: 'deposit_paid', deleted_at: '2026-10-19T12:00:00Z',
+    payload_json: { fields: {}, revisionOf: { id: 'O', rev_no: '1', signed: true } } }
+  const p = redoPlanFor(O, [O, D])
+  assert.equal(p.kind, 'restore', 'no question: the deleted revision is not an order')
+  assert.equal(p.effective.status, 'deposit_paid')
+  assert.equal(paidOf(p.effective), 4837, 'his deposit is credited')
+  assert.equal(p.revNo, '1')
+  assert.deepEqual(p.redo, [])
+  assert.deepEqual(p.dropped, ['D'])
+  const links = [...revisionsAfterRedo(O.payload_json.revisions, p.dropped), { id: 'N', rev_no: '1' }]
+  assert.equal(nextRevNo({ payload_json: { revisions: links } }), '2', 'the next real revision after this one is Rev 2')
+})
+
+test('deleting an unsigned revision puts the order it replaced back (status, Replaced-by, number, star)', async () => {
+  const { restoreAfterRevisionDeleted } = await import('../src/lib/contractDocs.js')
+  const rows = {
+    O: { id: 'O', quote_number: 'SS-2026-68012', status: 'superseded', starred: false, payload_json: { fields: {}, revisedBy: { id: 'D' }, revisions: [{ id: 'D', rev_no: '1' }] } },
+    D: { id: 'D', quote_number: 'SS-2026-03736', status: 'deposit_paid', starred: true, deleted_at: 'x', payload_json: { revisionOf: { id: 'O', rev_no: '1', signed: true } } },
+  }
+  const sb = {
+    from: () => {
+      let id = null, patch = null
+      const q = {
+        select: () => q, update: (p) => { patch = p; return q },
+        eq: (_k, v) => { id = v; if (patch) { Object.assign(rows[id], patch); return Promise.resolve({ error: null }) } return q },
+        single: () => Promise.resolve({ data: { ...rows[id] }, error: null }),
+      }
+      return q
+    },
+  }
+  const note = await restoreAfterRevisionDeleted(sb, 'D')
+  assert.match(note, /SS-2026-68012 is the active order again/)
+  assert.equal(rows.O.status, 'deposit_paid')
+  assert.equal(rows.O.payload_json.revisedBy, undefined, 'no more "Replaced by"')
+  assert.equal(rows.O.payload_json.revisions[0].redone, true)
+  assert.equal(nextRevNo(rows.O), '1', 'the next revision is Rev 1 again')
+  assert.equal(rows.O.starred, true)
+  assert.equal(rows.D.starred, false)
+  // a quote that is not a revision, or a revision already replaced: nothing to do
+  rows.O.status = 'deposit_paid'
+  assert.equal(await restoreAfterRevisionDeleted(sb, 'D'), null)
+})

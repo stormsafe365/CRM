@@ -667,7 +667,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     finishUseAsRevision({
       original: m.original, mode: 'manual', lines, signed: m.info.signed, terms: m.info.terms, forward: m.info.forward,
       origDims: m.info.origDims, newItems: m.info.newItems, newDetail: m.info.newDetail, aewChanged: m.info.aewChanged, baseToday: m.info.baseToday, origWraps: m.info.origWraps, revNo: rv.revNo, date: rv.date, note: rv.note,
-      redo: m.redo ? { ids: m.redo.redo.map((q) => q.id) } : null,
+      redo: m.redo ? { ids: m.redo.redo.map((q) => q.id), dropped: m.redo.dropped || [] } : null,
     })
   }
 
@@ -762,7 +762,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       const prev = Array.isArray(original.payload_json?.revisions) ? original.payload_json.revisions : []
       // a redo (owner 10/19/26): the unsigned revision(s) it replaces are flagged, so their number is reused
       const redoIds = (r.redo?.ids || []).filter((id) => id && id !== cur.id)
-      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...revisionsAfterRedo(prev, r.redo?.ids || []), link] }
+      const origPayload = { ...(original.payload_json || {}), revisedBy: link, revisions: [...revisionsAfterRedo(prev, [...(r.redo?.ids || []), ...(r.redo?.dropped || [])]), link] }
       let origMark = 'superseded'
       try {
         const { error } = await supabase.from('quotes').update({ status: 'superseded', payload_json: origPayload }).eq('id', original.id)

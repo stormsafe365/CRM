@@ -85,7 +85,13 @@ export function redoPlanFor(picked, quotes) {
     revision = picked
   } else if (picked.status === 'superseded') {
     const act = activeRevisionsOf(picked.id, quotes)
-    if (!act.length) return null
+    if (!act.length) {
+      // replaced only by revision(s) that were then DELETED (owner 10/19/26: "the revision i made but messed up
+      // on & didnt send, ive also since deleted it"): the order is the signed one again - no question to ask
+      const gone = deletedRevisionsOf(picked.id, quotes)
+      if (!gone.length) return null
+      return { kind: 'restore', revision: null, base: picked, effective: { ...picked, status: statusBefore(picked, gone) }, redo: [], dropped: gone.map((q) => q.id), revNo: lowestRevNo(gone, picked) }
+    }
     const signedOne = act.find((q) => executedOf(q))
     if (signedOne) return { kind: 'switch', to: signedOne }
     base = picked
@@ -95,13 +101,48 @@ export function redoPlanFor(picked, quotes) {
   }
   const redo = activeRevisionsOf(base.id, quotes).filter((q) => !executedOf(q))
   if (!redo.some((q) => q.id === revision.id)) redo.push(revision)
-  // the base was signed if it still is, or if a revision made from it recorded "signed"
-  const wasSigned = isSold(base.status) || redo.some((q) => q.payload_json.revisionOf.signed === true)
-  const soldStatus = redo.map((q) => q.status).find((s) => isSold(s)) || 'deposit_paid'
-  const status = wasSigned ? (isSold(base.status) ? base.status : soldStatus) : (base.status === 'superseded' ? 'sent' : base.status)
-  const nums = redo.map(revNum).filter((n) => Number.isFinite(n) && n > 0)
-  const revNo = nums.length ? String(Math.min(...nums)) : nextRevNo(base)
-  return { kind: 'ask', revision, base, effective: { ...base, status }, redo, revNo }
+  const gone = deletedRevisionsOf(base.id, quotes)
+  return { kind: 'ask', revision, base, effective: { ...base, status: statusBefore(base, [...redo, ...gone]) }, redo, dropped: gone.map((q) => q.id), revNo: lowestRevNo([...redo, ...gone], base) }
+}
+const deletedRevisionsOf = (baseId, quotes) => (quotes || []).filter((q) => q && q.deleted_at && q.payload_json?.revisionOf?.id === baseId)
+/** The status a replaced quote had before its revisions: signed (as they recorded) or not. */
+function statusBefore(base, revisions) {
+  if (isSold(base.status)) return base.status
+  const wasSigned = revisions.some((q) => q.payload_json?.revisionOf?.signed === true)
+  if (!wasSigned) return base.status === 'superseded' ? 'sent' : base.status
+  return revisions.map((q) => q.status).find((s) => isSold(s)) || 'deposit_paid'
+}
+function lowestRevNo(revisions, base) {
+  const nums = revisions.map(revNum).filter((n) => Number.isFinite(n) && n > 0)
+  return nums.length ? String(Math.min(...nums)) : nextRevNo(base)
+}
+
+/**
+ * An unsigned revision was DELETED (owner 10/19/26): the order it replaced is the order again - its signed
+ * status back, "Replaced by" gone, the link flagged so its Rev number is reused, the star back.
+ * Only when that revision was still the one replacing it. Returns a short note or null (nothing to do).
+ */
+export async function restoreAfterRevisionDeleted(sb, deletedId) {
+  const { data: d0 } = await sb.from('quotes').select('id, status, starred, payload_json').eq('id', deletedId).single()
+  const dq = Array.isArray(d0) ? d0[0] : d0
+  const rv = dq?.payload_json?.revisionOf
+  if (!rv || !rv.id || dq.status === 'superseded') return null
+  const { data: o0 } = await sb.from('quotes').select('*').eq('id', rv.id).single()
+  const o = Array.isArray(o0) ? o0[0] : o0
+  if (!o || o.deleted_at || o.status !== 'superseded' || o.payload_json?.revisedBy?.id !== dq.id) return null
+  const status = statusBefore({ ...o }, [dq])
+  const p = { ...(o.payload_json || {}) }
+  delete p.revisedBy
+  p.revisions = revisionsAfterRedo(p.revisions, [dq.id])
+  const { error } = await sb.from('quotes').update({ status, payload_json: p }).eq('id', o.id)
+  if (error) throw error
+  if (dq.starred === true && Object.prototype.hasOwnProperty.call(o, 'starred')) {
+    try {
+      await sb.from('quotes').update({ starred: false }).eq('id', dq.id)
+      await sb.from('quotes').update({ starred: true }).eq('id', o.id)
+    } catch { /* the star is best effort */ }
+  }
+  return `#${o.quote_number || ''} is the active order again`
 }
 /** The base quote's revision links after a redo: the redone ones flagged (their numbers are reused). */
 export function revisionsAfterRedo(prev, redoIds) {

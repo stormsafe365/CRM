@@ -11,7 +11,8 @@ import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
-import { nextRevNo } from '../lib/contractDocs'
+import { nextRevNo, restoreAfterRevisionDeleted } from '../lib/contractDocs'
+import { escHtml } from '../lib/designLinks'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -213,6 +214,11 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
         : error.message)
       return
     }
+    // a deleted revision gives the order it replaced back its place (owner 10/19/26)
+    try {
+      const back = await restoreAfterRevisionDeleted(supabase, quote.id)
+      if (back) toast(`${escHtml(back)} (the deleted revision had replaced it).`, 'success')
+    } catch (e) { console.warn('order not restored after the revision was deleted', e) }
     if (!data || data.length === 0) {
       setError('Could not delete this quote — the database blocked it (permission).')
       return

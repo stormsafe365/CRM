@@ -12,7 +12,7 @@ import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { openMenu, MENU_ICON, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
-import { executedToast, markExecuted, matchContractQuote } from '../lib/contractDocs'
+import { restoreAfterRevisionDeleted, executedToast, markExecuted, matchContractQuote } from '../lib/contractDocs'
 import { quoteStatusLabel } from '../lib/constants'
 
 const SECTIONS = [
@@ -192,9 +192,12 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       // so the Quotes box updates in lockstep (its realtime picks up the change).
       // No-op for non-quote files (contracts/renderings) — no row points at them.
       try {
-        await supabase.from('quotes')
+        const { data: gone } = await supabase.from('quotes')
           .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
           .eq('client_id', clientId).eq('pdf_snapshot_url', path)
+          .select('id')
+        // a deleted revision gives the order it replaced back its place (owner 10/19/26)
+        for (const g of gone || []) { try { await restoreAfterRevisionDeleted(supabase, g.id) } catch (e) { console.warn('order not restored', e) } }
       } catch { /* the file is deleted regardless */ }
       await refresh()
     } catch (e) { setError(e.message) }

@@ -84,6 +84,8 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     const p = redoPlanFor(picked, all)
     if (p && p.kind === 'switch') { setOrigId(p.to.id); setStep('how'); return }
     if (p && p.kind === 'ask') { setPlan(p); setStep('ask'); return }
+    // its only revision(s) were deleted: the signed order again - redone without a question
+    if (p && p.kind === 'restore') { setRedo(p); setStep('how'); return }
     setStep('how')
   }
 
@@ -131,7 +133,7 @@ export default function UseAsRevisionModal({ client, currentQuote, getProgramWin
     onFinish({
       original, mode: 'auto', lines, money, signed: result.signed, terms: result.terms, forward: result.forward,
       origDims: result.origDims, aewChanged: result.aewChanged, baseToday: result.baseToday, origWraps: result.origWraps || null, revNo: revNo.trim() || '1', date, note: note.trim(),
-      redo: redo ? { ids: redo.redo.map((q) => q.id) } : null,
+      redo: redo ? { ids: redo.redo.map((q) => q.id), dropped: redo.dropped || [] } : null,
     })
   }
 
