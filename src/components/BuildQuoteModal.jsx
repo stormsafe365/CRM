@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
 import PriceChangeConfirm from './PriceChangeConfirm'
+import MarkSignedModal from './MarkSignedModal'
 import QuoteStyleToggle from './QuoteStyleToggle'
 import { uploadClientDocBlob } from '../lib/storage'
 import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
@@ -38,7 +39,7 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, agreementSignedOnDb, contractFileBase, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
   paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
@@ -87,6 +88,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   const [ask, setAsk] = useState(null)             // the confirm dialog's writeCheck()
   const askResolveRef = useRef(null)
   const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
+  const [needDay, setNeedDay] = useState(null)     // { root, retry } — the agreement's signed day, asked before a revised contract
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
   const [designLink, setDesignLink] = useState(false) // the program's SEND DESIGN LINK → DesignLinkModal (owner 10/16/26)
   const uarOpenRef = useRef(() => {})
@@ -402,6 +404,12 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
   async function finishRevision() {
     const pg = getProgramWindow()
     if (!pg || !revisionChanges) return
+    // An order marked signed is revised with Make a revision (its own quote row) — revising the SAME row
+    // would overwrite the signed build and its signed date (review 10/19/26). Nothing was saved yet.
+    if (executedOf(quoteRef.current || initialQuote)) {
+      toast('This order is marked signed. Make the revision from Documents › Contracts › Actions › “Make a revision of this signed version” — it keeps the signed original as it is. Nothing was saved.')
+      return
+    }
     if (!revAppliedRef.current && blocked?.kind === 'revision') {
       toast('Apply the revision changes first (button in the bar at the top).')
       return
@@ -443,8 +451,8 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       // makes the change rows add up to the order's net change.
       const adj = curTot ? revisionReconcile(rows, net) : 0
       if (adj) rows.push({ desc: REVISION_ADJ_LABEL, kind: 'Modify', amount: adj })
-      let agrDay = null
-      try { agrDay = await agreementSignedOnDb(supabase, cur) } catch { /* the quote's own day */ }
+      let agrDay = null // only the agreement's CONFIRMED signed day is printed (null = no date)
+      try { agrDay = (await agreementSignedDayDb(supabase, cur)).day } catch { /* no date */ }
       rvDoc = revisionDocFor({ original: cur, lines: rv.rows || [], revNo: rv.revNo || '1', originalTotal: orig, depositPaid: origDep, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo: agreementRootOf(cur), agreementSignedDate: agrDay })
       const html = buildRevisionHtml({
         client,
@@ -589,7 +597,7 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
             if (curQ?.id) {
               try {
                 // the signed day already set is KEPT (never moved to today); none yet = today, not confirmed
-                const res = await markExecuted(supabase, curQ.id, { file: `${contractFileBase(num)}-executed-deposit-paid.pdf`, stampedPath })
+                const res = await markExecuted(supabase, curQ.id, { stampedPath, number: num })
                 if (quoteRef.current && quoteRef.current.id === curQ.id) quoteRef.current = { ...quoteRef.current, status: res.status, payload_json: { ...(quoteRef.current.payload_json || {}), executed: res.payload_json.executed }, ...(res.starred ? { starred: true } : {}) }
                 toast(executedToast(res, quoteStatusLabel(curQ.status)), 'success')
               } catch (e) { toast(`Quote #${escHtml(curQ.quote_number || '')} could not be marked Deposit Paid: ${escHtml(e.message || e)}`) }
@@ -688,6 +696,16 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
     const pg = getProgramWindow()
     if (!pg || savingRef.current) return
     const { original } = r
+    // A revised contract of a SIGNED order prints "…to Agreement X, signed <day>": that day must be the one
+    // the customer really signed (never a stamp-click day — Peter Mawn's "October 13"). Not known yet →
+    // ask now (nothing saved), then go on by itself (owner 10/19/26).
+    let agrDay = null
+    if (isSold(original.status)) {
+      let a = null
+      try { a = await agreementSignedDayDb(supabase, original) } catch { a = null }
+      if (a && a.needsDay) { setNeedDay({ root: a.root, retry: () => finishUseAsRevision(r) }); return }
+      agrDay = a ? a.day : null
+    }
     const cur = quoteRef.current || initialQuote || {}
     const orderStatus = isSold(original.status) ? original.status : (cur.status || 'draft')
     savingRef.current = true
@@ -812,8 +830,6 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
       //    deposit shown as paid, additional deposit due, new balance).
       try { pg._rvForce = true } catch { /* ignore */ }
       // what changed, line by line, for the REVISED CONTRACT box / row tags / payment path
-      let agrDay = null
-      try { agrDay = await agreementSignedOnDb(supabase, original) } catch { /* the quote's own day */ }
       const rvDoc = revisionDocFor({ original, lines: r.lines, revNo, originalTotal: r.signed.total, depositPaid: paid, adjustment: adj, adjLabel: REVISION_ADJ_LABEL, agreementNo, agreementSignedDate: agrDay })
       try { await saveContractThenPrint(pg, { confirmed: true, number: ctNo, rvDoc }) } finally { try { pg._rvForce = false } catch { /* ignore */ } }
       toast(`Revised contract ${escHtml(ctNo || '')} created at ${fmtMoney(money.total)} (${signedOrig ? 'signed' : 'original quote'} ${fmtMoney(r.signed.total)} ${money.net >= 0 ? '+' : '−'} ${fmtMoney(Math.abs(money.net))}). ${origMark === 'superseded' ? `#${escHtml(original.quote_number)} is marked replaced by #${escHtml(cur.quote_number || '')}; this` : 'The signed quote could not be updated; this'} quote is the active order.${redoneN ? ` Revision ${escHtml(revNo)} redone: ${redoneN} unsigned revision${redoneN === 1 ? '' : 's'} retired.` : ''}`, 'success')
@@ -918,6 +934,14 @@ export default function BuildQuoteModal({ client, initialQuote, onSave, onClose,
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
+      {needDay && (
+        <MarkSignedModal
+          mode="date" clientId={client?.id} quotes={[needDay.root]} presetQuoteId={needDay.root.id} createMark
+          intro={`Before the revised contract: when did the customer sign agreement #${needDay.root.quote_number || ''}? It prints on the revised contract (“…to Agreement ${needDay.root.quote_number || ''}, signed …”).`}
+          onClose={() => { setNeedDay(null); toast('Revised contract not created — nothing was saved.') }}
+          onDone={() => { const go = needDay.retry; setNeedDay(null); go() }}
+        />
+      )}
       {designLink && <DesignLinkModal client={client?.id ? client : null} onClose={() => setDesignLink(false)} />}
       {uar && (
         <UseAsRevisionModal

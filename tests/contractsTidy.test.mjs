@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agreementSignedOn, agreementSignedOnDb, cleanDay, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
+  agreementSignedDay, agreementSignedOn, agreementSignedOnDb, cleanDay, matchContractQuote, parseContractLabel, clearSignedMark, groupByLabel, isStampedCopy, localDay, markExecuted, nextExecuted,
   organizeContracts, revisionDocFor, setSignedDay, signedDayConfirmed, signedInfoOf, signedOnOf, signedPickList, withLiveExecuted,
 } from '../src/lib/contractDocs.js'
 
@@ -84,15 +84,55 @@ test('the revised contract prints the AGREEMENT\'s signed day (the original), no
   // a revision of the revision: still the agreement's day
   const r2 = { id: 'r2', status: 'deposit_paid', payload_json: { revisionOf: { id: 'r1', rev_no: '2' } } }
   assert.equal(agreementSignedOn(r2, [...quotes, r2]), '2026-09-24')
-  // the root missing from the list: the quote's own day
-  assert.equal(agreementSignedOn(r1, [r1]), '2026-10-02')
+  // the root missing from the list: NEVER the revision's own day (review 10/19/26) - not known
+  assert.equal(agreementSignedOn(r1, [r1]), null)
   // a loop in bad data never hangs
   const x = { id: 'x', payload_json: { revisionOf: { id: 'y' } } }, y = { id: 'y', payload_json: { revisionOf: { id: 'x' } } }
   assert.equal(agreementSignedOn(x, [x, y]), null)
   const doc = revisionDocFor({ original: r1, lines: [], revNo: '2', originalTotal: 1, depositPaid: 1, agreementSignedDate: '2026-09-24' })
   assert.equal(doc.signedDate, '2026-09-24')
+  // passed as not known (null / junk): no date printed, never the revision's own
+  assert.equal(revisionDocFor({ original: r1, lines: [], revNo: '2', originalTotal: 1, depositPaid: 1, agreementSignedDate: null }).signedDate, null)
+  assert.equal(revisionDocFor({ original: r1, lines: [], revNo: '2', originalTotal: 1, depositPaid: 1, agreementSignedDate: 'junk' }).signedDate, null)
+  // not passed (older callers): the quote's own CONFIRMED day only
   assert.equal(revisionDocFor({ original: r1, lines: [], revNo: '2', originalTotal: 1, depositPaid: 1 }).signedDate, '2026-10-02')
-  assert.equal(revisionDocFor({ original: r1, lines: [], revNo: '2', originalTotal: 1, depositPaid: 1, agreementSignedDate: 'junk' }).signedDate, '2026-10-02')
+})
+
+test('review 10/19/26: an unconfirmed stamp day is never the agreement\'s day; the revision asks for it', () => {
+  const { o, r1, quotes } = peter() // o = the 10/13 Executed Copy stamp, not confirmed
+  const a = agreementSignedDay(r1, quotes)
+  assert.equal(a.day, null); assert.equal(a.root.id, 'o'); assert.equal(a.needsDay, true)
+  // an order sold before marks existed (root not marked): ask too
+  delete o.payload_json.executed
+  assert.equal(agreementSignedDay(r1, quotes).needsDay, true)
+  // a mark for an in-place "Rev 1" contract on the root row is not the agreement's day - and is not asked over
+  o.payload_json.executed = { at: '2026-10-20', signedOn: '2026-10-20', confirmed: true, number: 'SS-2026-68012 Rev 1' }
+  assert.deepEqual([agreementSignedDay(r1, quotes).day, agreementSignedDay(r1, quotes).needsDay], [null, false])
+  o.payload_json.executed = { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, number: 'SS-2026-68012' }
+  assert.deepEqual([agreementSignedDay(r1, quotes).day, agreementSignedDay(r1, quotes).needsDay], ['2026-09-24', false])
+})
+
+test('review 10/19/26: sanitized upload names, a redo\'s shared number, the stamp time picks the signed file', () => {
+  assert.deepEqual(parseContractLabel('SS-2026-00144_Rev_1_signed.pdf'), { base: 'SS-2026-00144', rev: '1', number: 'SS-2026-00144 Rev 1' })
+  assert.deepEqual(parseContractLabel('SS-2026-00144_signed.pdf'), { base: 'SS-2026-00144', rev: null, number: 'SS-2026-00144' })
+  // a redo: the retired revision and the new one carry the same "Rev 1" number - the live one wins
+  const old = { id: 'r1', status: 'superseded', payload_json: { contractSent: { at: 'x', number: 'SS-2026-68012 Rev 1' } } }
+  const nw = { id: 'r1b', status: 'deposit_paid', payload_json: { contractSent: { at: 'y', number: 'SS-2026-68012 Rev 1' } } }
+  assert.equal(matchContractQuote('SS-2026-68012-Rev-1-contract.pdf', [old, nw]).quote.id, 'r1b')
+  const g = organizeContracts([F('SS-2026-68012-Rev-1-contract.pdf', '2026-10-19T15:00:00Z')], [old, nw]).unsigned[0]
+  assert.equal(g.quote.id, 'r1b'); assert.equal(g.old, false)
+  // an old stamp by NAME: the file that existed at the stamp, not the same name generated again later
+  const q = { id: 'q', quote_number: 'SS-2026-00144', status: 'deposit_paid', payload_json: { executed: { at: '2026-09-24T16:01:00Z', file: 'SS-2026-00144-contract.pdf' } } }
+  const files = [F('SS-2026-00144-contract.pdf', '2026-10-13T10:00:00Z'), F('SS-2026-00144-contract.pdf', '2026-09-24T16:00:00Z')]
+  assert.equal(organizeContracts(files, [q]).signed[0].signedFile.createdAt, '2026-09-24T16:00:00Z')
+  // a mark records the contract number it is for: the role follows the MARK, not a later contract number
+  const inPlace = { id: 'p', quote_number: 'SS-2026-11111', status: 'revised', payload_json: { contractSent: { at: 'x', number: 'SS-2026-11111 Rev 1' }, executed: { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true, number: 'SS-2026-11111' } } }
+  const out = organizeContracts([F('SS-2026-11111-contract.pdf', '2026-09-24T10:00:00Z'), F('SS-2026-11111-Rev-1-contract.pdf', '2026-10-01T10:00:00Z')], [inPlace])
+  assert.equal(out.signed[0].role, 'Original contract')
+  assert.deepEqual(out.signed[0].generated.map((f) => f.label), ['SS-2026-11111-contract.pdf'])
+  assert.deepEqual(out.unsigned.map((u) => u.number), ['SS-2026-11111 Rev 1'])
+  // nextExecuted keeps the number it is given
+  assert.equal(nextExecuted(null, { signedOn: '2026-09-24', number: 'SS-2026-11111' }).number, 'SS-2026-11111')
 })
 
 test('agreementSignedOnDb walks the chain in the database', async () => {

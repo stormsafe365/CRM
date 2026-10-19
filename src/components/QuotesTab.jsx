@@ -11,7 +11,7 @@ import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
-import { nextRevNo, restoreAfterRevisionDeleted, withLiveExecuted } from '../lib/contractDocs'
+import { executedOf, nextRevNo, restoreAfterRevisionDeleted, withLiveExecuted } from '../lib/contractDocs'
 import { escHtml } from '../lib/designLinks'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
@@ -513,6 +513,11 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
             // placements, then Generate Contract prints the revised contract
             // with renderings + the spacing sheet reflecting the changes.
             const q = revisionQuote
+            // an order marked signed is revised on its own row (Make a revision), never in place (10/19/26)
+            if (executedOf(q)) {
+              toast('This order is marked signed. Use Documents › Contracts › Actions › “Make a revision of this signed version” — it keeps the signed original as it is. (The Revision Order PDF alone still works.)')
+              return
+            }
             setRevisionQuote(null)
             setEditQuote(q)
             setRevisionChanges(changes)

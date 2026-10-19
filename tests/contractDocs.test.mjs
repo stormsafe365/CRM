@@ -76,9 +76,11 @@ test('executed → Deposit Paid, never a step back', () => {
   for (const s of ['deposit_paid', 'revised', 'superseded']) assert.equal(executedStatus(s), s)
 })
 
-test('signed info: the status says signed; the executed stamp gives the date', () => {
+test('signed info: the status says signed; only a CONFIRMED signed day is the date (10/19/26)', () => {
   assert.deepEqual(signedInfoOf(signed), { signed: true, date: null })
-  assert.deepEqual(signedInfoOf({ status: 'deposit_paid', payload_json: { executed: { at: '2026-10-01T14:00:00Z' } } }), { signed: true, date: '2026-10-01' })
+  // an older stamp (the click time) is never printed as the day the customer signed
+  assert.deepEqual(signedInfoOf({ status: 'deposit_paid', payload_json: { executed: { at: '2026-10-01T14:00:00Z' } } }), { signed: true, date: null })
+  assert.deepEqual(signedInfoOf({ status: 'deposit_paid', payload_json: { executed: { at: '2026-10-01', signedOn: '2026-10-01', confirmed: true } } }), { signed: true, date: '2026-10-01' })
   assert.deepEqual(signedInfoOf({ status: 'sent', payload_json: { contractSent: { at: '2026-10-01' } } }), { signed: false, date: null })
 })
 
@@ -90,7 +92,7 @@ test('the revised contract hand-off: lines, original, deposit paid (only when si
     { id: 'u4', cat: 'windows', kind: 'move', printKind: 'Modify', nextIndex: 1, desc: 'Window — moved (placement only)', amount: 0, wall: 'Left Eave Side', from: [{ val: '12', side: 'left' }], to: [{ val: '18', side: 'left' }], fromSill: '', toSill: '4.5' },
     { id: 'u5', cat: 'doors', kind: 'add', nextIndex: 2, desc: 'Add (left off)', amount: 100, include: false },
   ]
-  const doc = revisionDocFor({ original: { ...signed, payload_json: { executed: { at: '2026-10-01T09:00:00Z' } } }, lines, revNo: '1', originalTotal: 21962.63, depositPaid: 3506, adjustment: -50, adjLabel: 'Adj' })
+  const doc = revisionDocFor({ original: { ...signed, payload_json: { executed: { at: '2026-10-01', signedOn: '2026-10-01', confirmed: true } } }, lines, revNo: '1', originalTotal: 21962.63, depositPaid: 3506, adjustment: -50, adjLabel: 'Adj' })
   assert.equal(doc.agreementNo, 'SS-2026-00144')
   assert.equal(doc.signed, true)
   assert.equal(doc.signedDate, '2026-10-01')

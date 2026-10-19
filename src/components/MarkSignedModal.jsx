@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase'
 import { getDocSignedUrl, uploadClientDocBlob } from '../lib/storage'
 import { stampExecutedPdf } from '../lib/stampExecuted'
 import {
-  agreementRootOf, cleanDay, contractRoleOf, executedOf, executedToast, fmtShortDate, isStampedCopy, localDay, markExecuted,
+  agreementRootOf, cleanDay, contractNumberFor, contractRoleOf, executedOf, parseContractLabel, stripRev, executedToast, fmtShortDate, isStampedCopy, localDay, markExecuted,
   setSignedDay, signedDayConfirmed, signedOnOf, signedPickList,
 } from '../lib/contractDocs'
 import { quoteStatusLabel } from '../lib/constants'
@@ -30,7 +30,7 @@ export function quoteLine(q) {
   return `#${q.quote_number || '—'} · ${role}${role !== 'Original contract' && agr ? ` of ${agr}` : ''}`
 }
 
-export default function MarkSignedModal({ mode = 'mark', clientId, file = null, quotes = [], presetQuoteId = null, justUploaded = false, onClose, onDone }) {
+export default function MarkSignedModal({ mode = 'mark', clientId, file = null, quotes = [], presetQuoteId = null, justUploaded = false, createMark = false, intro = null, onClose, onDone }) {
   const { match, list } = useMemo(() => signedPickList(quotes, file?.label || ''), [quotes, file])
   const [qid, setQid] = useState(presetQuoteId || match?.id || '')
   const q = list.find((x) => x.id === qid) || (presetQuoteId ? quotes.find((x) => x.id === presetQuoteId) : null) || null
@@ -60,6 +60,9 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
   const d = cleanDay(day)
   const future = d && d > today
   const replacesFile = mode === 'mark' && q && executedOf(q)?.filePath && file && executedOf(q).filePath !== file.path && !fileIsStamped
+  // a confirmed signed day about to change (the same quote row signed again, or a typo fixed)
+  const oldDay = q && executedOf(q) && signedDayConfirmed(q) ? signedOnOf(q) : null
+  const changesDay = !!(oldDay && d && d !== oldDay)
   const ready = !!q && !!d && !future && !busy
 
   async function save() {
@@ -67,7 +70,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
     setBusy(true); setErr('')
     try {
       if (mode === 'date') {
-        await setSignedDay(supabase, q.id, d)
+        await setSignedDay(supabase, q.id, d, { create: createMark })
         toast(`#${esc(q.quote_number || '')} · signed ${fmtShortDate(d)}`, 'success')
         onDone?.({ quoteId: q.id })
         return
@@ -82,7 +85,10 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
         const blob = await stampExecutedPdf(new Uint8Array(await res.arrayBuffer()), ct)
         stampedPath = await uploadClientDocBlob(clientId, 'contract', blob, `${file.label.replace(/\.[^.]+$/, '')}-EXECUTED-deposit-paid.pdf`, 'application/pdf')
       }
-      const opts = { signedOn: d }
+      // the contract number this signature is for: the file's own when it is this agreement's, else the quote's
+      const pn = parseContractLabel(file.label)
+      const number = pn && stripRev(pn.number) === agreementRootOf(q) ? pn.number : contractNumberFor(q)
+      const opts = { signedOn: d, number }
       if (!fileIsStamped) { opts.filePath = file.path; opts.file = file.label }
       if (stampedPath) opts.stampedPath = stampedPath
       const r = await markExecuted(supabase, q.id, opts)
@@ -102,6 +108,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
         <h2>{title}</h2>
         {mode === 'mark' && file && <p className="msign-file" title={file.label}>{file.label}</p>}
         {mode === 'date' && q && <p className="msign-file">{quoteLine(q)}</p>}
+        {intro && <p className="msign-help" style={{ marginTop: 0 }}>{intro}</p>}
 
         {mode === 'mark' && (
           <>
@@ -135,6 +142,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
             <span>Also make the DEPOSIT PAID copy (logo + watermark over these signed pages — the bill of sale){stampedAlready ? ' · this order already has one' : ''}</span>
           </label>
         )}
+        {changesDay && <p className="msign-warn">This changes the signed date of {quoteLine(q)} from {fmtShortDate(oldDay)} to {fmtShortDate(d)}.</p>}
         {replacesFile && <p className="msign-warn">This order already has a signed copy linked. This file becomes its signed copy; the other one stays in Documents.</p>}
         {err && <p className="msign-err">{err}</p>}
 

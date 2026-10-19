@@ -138,8 +138,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const counts = Object.fromEntries(SECTIONS.map(s => [s.key, (filesByCat[s.key] || []).length]))
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
 
-  function triggerUpload(cat) {
+  function triggerUpload(cat, attachTo = null) {
     uploadCat.current = cat
+    attachFor.current = attachTo
     const sec = SECTIONS.find(s => s.key === cat)
     if (inputRef.current) { inputRef.current.accept = sec?.accept || ''; inputRef.current.click() }
   }
@@ -222,7 +223,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const q = s.quote
     const items = []
     if (s.signedFile) items.push({ id: 'see', label: 'See the signed copy', onClick: () => onView(s.signedFile.path) })
-    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => { attachFor.current = q.id; triggerUpload('contract') } })
+    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => triggerUpload('contract', q.id) })
     if (s.stampedFile) items.push({ id: 'stamped', label: 'See the DEPOSIT PAID copy', onClick: () => onView(s.stampedFile.path) })
     else if (s.signedFile) items.push({ id: 'stamp', label: 'Make the DEPOSIT PAID copy', onClick: () => makeStamped(s) })
     if (latest) {
@@ -302,8 +303,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         <div className="ctr-h"><span className="ctr-h-dot ok" />Signed {hasSigned ? `· ${org.signed.length}` : ''}</div>
         {!hasSigned && <p className="ctr-empty">Nothing is marked signed yet. Upload the signed contract (DocuSign download, scan or photo) and mark it — or tap ✓ on the one he signed below.</p>}
         {org.agreements.map((a) => (
-          <div key={a.agreement} className="ctr-agr">
-            <div className="ctr-agr-h">Agreement <b>{a.agreement}</b></div>
+          <div key={a.key} className="ctr-agr">
+            <div className="ctr-agr-h">{a.agreement ? <>Agreement <b>{a.agreement}</b></> : <>Order <b>{quoteLine(a.entries[0].quote)}</b></>}</div>
             {a.entries.map((s) => {
               const latest = s === a.latest
               const gk = `contract:gen:${s.quote.id}`
@@ -326,7 +327,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
                   <div className="ctr-files">
                     {s.signedFile
                       ? fileRow({ f: s.signedFile, cat: "contract", signed: true, chip: "Signed copy" })
-                      : <div className="ctr-missing">No signed copy attached. <button type="button" onClick={() => { attachFor.current = s.quote.id; triggerUpload('contract') }}>Attach it</button></div>}
+                      : <div className="ctr-missing">No signed copy attached. <button type="button" onClick={() => triggerUpload('contract', s.quote.id)}>Attach it</button></div>}
                     {s.stampedFile && fileRow({ f: s.stampedFile, cat: "contract", signed: true, chip: "Deposit paid" })}
                     {stamping === s.quote.id && <div className="ctr-missing">Making the DEPOSIT PAID copy…</div>}
                     {s.generated.length > 0 && (
