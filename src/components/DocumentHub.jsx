@@ -249,13 +249,21 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   }
 
   const activeAccent = CAT_ACCENT[active] || '#14A6A0'
+  // "#SS-2026-50001 (Revision 1)" — the quote that replaced a signed one
+  const replacedByText = (q) => {
+    const by = q.payload_json?.revisedBy
+    const rq = by && quotes.find((x) => x.id === by.id)
+    return rq ? quoteLine(rq).replace(/ of SS-[\d-]+$/, '') : `#${(by && by.quote_number) || '—'}`
+  }
+
+  const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : 'Signed copy') : null }
 
   // one file row (the table's 4 columns); `more` = folded older copies of the same file
-  function FileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false }) {
+  function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null }) {
     const acc = CAT_ACCENT[cat] || '#14A6A0'
     const canMark = cat === 'contract' && !signedPaths.has(f.path)
     return (
-      <div className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>
+      <div key={f.path} className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>
         <span className="doc-name" role="button" onClick={() => onView(f.path)} title={f.label}>
           <span className="doc-name-ic">{ICONS[cat]}</span>
           <span className="doc-name-txt">{f.label}{note && <span className="doc-note">{note}</span>}</span>
@@ -265,7 +273,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
             </button>
           )}
         </span>
-        <span>{signed ? <span className="doc-chip doc-chip-signed">Signed</span> : <span className="doc-chip">{CHIP_LABEL[cat] || labelSingular(cat)}</span>}</span>
+        <span>{signed ? <span className="doc-chip doc-chip-signed">{chip || 'Signed'}</span> : <span className="doc-chip">{chip || CHIP_LABEL[cat] || labelSingular(cat)}</span>}</span>
         <span className="doc-date num">{fmtDate(f.createdAt)}</span>
         <span className="doc-acts">
           {canMark && <button type="button" className="doc-mark" title="Mark as signed — this is what the customer signed" onClick={() => setMarkFor({ file: f, presetQuoteId: null, justUploaded: false })}>{CHECK}</button>}
@@ -278,13 +286,13 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const groupRows = (groups, cat) => groups.flatMap((g) => {
     const k = `${cat}:${g.latest.label.toLowerCase()}`
     return [
-      <FileRow key={g.latest.path} f={g.latest} cat={cat} more={g.older.length} gkey={k} signed={signedPaths.has(g.latest.path)} />,
-      ...(open.has(k) ? g.older.map((f) => <FileRow key={f.path} f={f} cat={cat} sub signed={signedPaths.has(f.path)} />) : []),
+      fileRow({ f: g.latest, cat: cat, more: g.older.length, gkey: k, signed: signedPaths.has(g.latest.path), chip: chipOf(g.latest.path) }),
+      ...(open.has(k) ? g.older.map((f) => fileRow({ f: f, cat: cat, sub: true, signed: signedPaths.has(f.path) })) : []),
     ]
   })
 
   // ── the Contracts tab, sorted ──
-  function ContractsView() {
+  function contractsView() {
     const hasSigned = org.agreements.length > 0
     const unsignedOpen = !hasSigned || open.has('contract:unsigned')
     const nUnsigned = org.unsigned.reduce((n, g) => n + 1 + g.older.length, 0)
@@ -308,23 +316,25 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
                       <span className="ctr-sig-sub">#{s.quote.quote_number || '—'} · {s.confirmed
                         ? <>signed <b className="ctr-day">{fmtShortDate(s.signedOn)}</b></>
                         : <button type="button" className="ctr-setday" onClick={() => setDateFor(s.quote.id)}>set the date he signed ✎</button>}
-                        {latest ? <span className="ctr-now">the order now</span> : <span className="ctr-old">replaced by a later revision</span>}
+                        {latest && s.current && <span className="ctr-now">the order now</span>}
+                        {latest && !s.current && <span className="ctr-warn">latest signed version · replaced by {replacedByText(s.quote)} — not marked signed</span>}
+                        {!latest && <span className="ctr-old">replaced by a later signed revision</span>}
                       </span>
                     </span>
                     <button type="button" className="ctr-menu" data-menu-anchor onClick={(e) => signedMenu(e, s, latest)}>Actions {CHEV}</button>
                   </div>
                   <div className="ctr-files">
                     {s.signedFile
-                      ? <FileRow f={s.signedFile} cat="contract" signed note="signed copy" />
+                      ? fileRow({ f: s.signedFile, cat: "contract", signed: true, chip: "Signed copy" })
                       : <div className="ctr-missing">No signed copy attached. <button type="button" onClick={() => { attachFor.current = s.quote.id; triggerUpload('contract') }}>Attach it</button></div>}
-                    {s.stampedFile && <FileRow f={s.stampedFile} cat="contract" signed note="DEPOSIT PAID copy" />}
+                    {s.stampedFile && fileRow({ f: s.stampedFile, cat: "contract", signed: true, chip: "Deposit paid" })}
                     {stamping === s.quote.id && <div className="ctr-missing">Making the DEPOSIT PAID copy…</div>}
                     {s.generated.length > 0 && (
                       <button type="button" className="ctr-fold" onClick={() => toggle(gk)}>
                         {open.has(gk) ? 'Hide' : 'Show'} the {s.generated.length} {s.generated.length === 1 ? 'copy' : 'copies'} we generated for this number
                       </button>
                     )}
-                    {open.has(gk) && s.generated.map((f) => <FileRow key={f.path} f={f} cat="contract" sub note="generated" />)}
+                    {open.has(gk) && s.generated.map((f) => fileRow({ f: f, cat: "contract", sub: true, chip: "Generated" }))}
                   </div>
                 </div>
               )
@@ -342,8 +352,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
               const k = `contract:num:${g.number.toLowerCase()}`
               const note = g.quote ? `${quoteLine(g.quote)}${g.old ? ' · replaced' : ''}` : 'no quote has this number'
               return [
-                <FileRow key={g.latest.path} f={g.latest} cat="contract" note={note} more={g.older.length} gkey={k} />,
-                ...(open.has(k) ? g.older.map((f) => <FileRow key={f.path} f={f} cat="contract" sub />) : []),
+                fileRow({ f: g.latest, cat: "contract", note: note, more: g.older.length, gkey: k }),
+                ...(open.has(k) ? g.older.map((f) => fileRow({ f: f, cat: "contract", sub: true })) : []),
               ]
             })}
           </>
@@ -352,7 +362,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         {org.uploads.length > 0 && (
           <>
             <div className="ctr-h"><span className="ctr-h-dot warn" />Uploads to sort · tap ✓ if it is what the customer signed</div>
-            {org.uploads.map((f) => <FileRow key={f.path} f={f} cat="contract" />)}
+            {org.uploads.map((f) => fileRow({ f: f, cat: "contract" }))}
           </>
         )}
       </div>
@@ -404,7 +414,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       {loading ? (
         <div className="muted" style={{ padding: 24 }}>Loading…</div>
       ) : active === 'contract' ? (
-        <div className="doc-list"><ContractsView /></div>
+        <div className="doc-list">{contractsView()}</div>
       ) : flatGroups.length === 0 ? (
         <div className="doc-empty">No files in {active === 'all' ? 'this lead' : labelSingular(active).toLowerCase()} yet.</div>
       ) : (
@@ -415,7 +425,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
               {CHECK} {org.signed.length === 1 ? 'Signed contract' : `${org.signed.length} signed contracts`} — see them under Contracts
             </button>
           )}
-          {groupRows(visibleGroups, null).length === 0 ? null : visibleGroups.flatMap((g) => groupRows([g], g.cat))}
+          {visibleGroups.flatMap((g) => groupRows([g], g.cat))}
           {flatGroups.length > 6 && (
             <button className="doc-showall" onClick={() => setDocExpanded(v => !v)}>
               {docExpanded ? 'Show less' : `Show all ${flatGroups.length}`}

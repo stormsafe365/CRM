@@ -435,7 +435,8 @@ export async function markExecuted(sb, quoteId, opts = {}) {
 /** The toast for markExecuted's result. */
 export function executedToast(res, label) {
   const day = res.confirmed ? `signed ${fmtShortDate(res.at)}` : 'signed date not set yet (set it in Documents › Contracts)'
-  return `Quote #${res.quote_number || ''} ${res.changed ? 'marked Deposit Paid' : `kept as ${label} (already further along)`} · ${day}${res.starred ? ' · ★ starred' : ''}`
+  const st = res.changed ? 'marked Deposit Paid' : res.status === 'deposit_paid' ? 'already Deposit Paid' : `kept as ${label} (already further along)`
+  return `Quote #${res.quote_number || ''} ${st} · ${day}${res.starred ? ' · ★ starred' : ''}`
 }
 
 // Change the signed mark itself (re-reads the row; nothing else on it changes).

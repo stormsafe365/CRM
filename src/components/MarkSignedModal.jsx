@@ -140,7 +140,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
 
         <div className="msign-btns">
           <button type="button" className="btn-secondary" disabled={busy} onClick={() => onClose?.()}>{justUploaded ? 'Not signed — just keep the file' : 'Cancel'}</button>
-          <button type="button" className="btn-primary" disabled={!ready} onClick={save} style={{ fontWeight: 800 }}>
+          <button type="button" className="btn-primary" disabled={busy} onClick={save} style={{ fontWeight: 800 }}>
             {busy ? 'Saving…' : mode === 'date' ? 'Save the date' : 'Mark signed'}
           </button>
         </div>
