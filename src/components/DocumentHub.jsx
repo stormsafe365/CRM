@@ -168,7 +168,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       const prefix = baseNo ? ('rev-' + baseNo.replace(/^SS-?/i, '') + '-').toLowerCase() : ''
       // the link's own file first; the prefix only when there is none (a newer retired revision's never wins)
       const files = filesByCat.revisions || []
-      const rf = (ro && files.find((f) => f.label.toLowerCase().startsWith(ro))) || (prefix && files.find((f) => f.label.toLowerCase().startsWith(prefix))) || null
+      const rf = rv ? ((ro && files.find((f) => f.label.toLowerCase().startsWith(ro))) || null) : ((prefix && files.find((f) => f.label.toLowerCase().startsWith(prefix))) || null)
       if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
     }
     return rows

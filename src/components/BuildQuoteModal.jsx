@@ -1025,7 +1025,18 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           getProgramWindow={getProgramWindow}
           getBuildWin={() => iframeRef.current?.contentWindow}
           onClose={() => setPicker(false)}
-          onSaved={({ clientName, client: c, saved }) => { setSavedTo(clientName); if (c && c.id) setClientState(c); if (saved && saved.id) quoteRef.current = saved; setPendingContract(null) }}
+          onSaved={({ clientName, client: c, saved }) => {
+            setSavedTo(clientName)
+            if (saved && saved.id) quoteRef.current = saved
+            setPendingContract(null)
+            if (c && c.id) {
+              setClientState(c)
+              // the picker knows only name / phone / email: the full lead row (city, state, zip) prints on the papers
+              supabase.from('clients').select('*').eq('id', c.id).single()
+                .then(({ data }) => { const row = Array.isArray(data) ? data[0] : data; if (row && row.id === c.id) setClientState(row) })
+                .catch(() => {})
+            }
+          }}
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
