@@ -313,7 +313,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const rq = by && quotes.find((x) => x.id === by.id)
     return rq ? quoteLine(rq).replace(/ of SS-[\d-]+$/, '') : `#${(by && by.quote_number) || '—'}`
   }
-  const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : 'Signed copy') : null }
+  const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : t.startsWith('the quote PDF') ? 'Order quote' : 'Signed copy') : null }
 
   // one file row (the table's 4 columns); `more` = folded older copies of the same file; `pick` = a tick-box
   function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null, pick = false }) {
