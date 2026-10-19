@@ -496,3 +496,15 @@ test('review 10/19/26 (hub): the paper number reaches earlier revisions; a Rev-l
   const both = '<strong>REVISED CONTRACT</strong><div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>'
   assert.equal(pdfNameFor(both, 'P-StormSafe Steel CONTRACT (10.19).pdf'), 'P-StormSafe Steel Executed Contract (10.19).pdf')
 })
+
+test('updateQuoteRow: same row, number + date kept, sold status + notes + the live signed mark protected', async () => {
+  const { updateQuoteRow } = await import('../src/lib/contractDocs.js')
+  const rows = [{ id: 'q', quote_number: 'SS-2026-1', quote_date: '2026-09-24', status: 'deposit_paid', notes: 'keep me', total_amount: 100, payload_json: { fields: {}, executed: { at: '2026-09-24', signedOn: '2026-09-24', confirmed: true } } }]
+  const sb = rowsSb(rows)
+  const out = await updateQuoteRow(sb, rows[0], { quote_number: 'SS-2026-9', quote_date: '2026-10-19', status: 'draft', notes: '', total_amount: 120, payload_json: { fields: { bw: '30' }, executed: { at: '2026-10-13T18:00:00Z' } } })
+  assert.equal(rows[0].quote_number, 'SS-2026-1'); assert.equal(rows[0].quote_date, '2026-09-24')
+  assert.equal(rows[0].status, 'deposit_paid'); assert.equal(rows[0].notes, 'keep me')
+  assert.equal(rows[0].total_amount, 120)
+  assert.equal(rows[0].payload_json.executed.signedOn, '2026-09-24') // the database's mark wins
+  assert.equal(out.quote_number, 'SS-2026-1'); assert.equal(out.total_amount, 120)
+})

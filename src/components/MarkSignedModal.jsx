@@ -32,8 +32,8 @@ export function quoteLine(q) {
   const agr = agreementRootOf(q)
   return `#${q.quote_number || '—'} · ${role}${role !== 'Original contract' && agr ? ` of ${agr}` : ''}`
 }
-/** this quote's own revision number (0 = an original) */
-const revNoOfQuote = (q) => Number(q?.payload_json?.revisionOf?.rev_no) || Number(revOf(q?.payload_json?.contractSent?.number)) || 0
+/** this quote's own revision number (0 = an original — also a root whose contract was re-sent in place as "Rev n") */
+const revNoOfQuote = (q) => Number(q?.payload_json?.revisionOf?.rev_no) || 0
 
 /** The contract number to offer, as a real number or '' (an unparseable quote number starts the box empty). */
 function numberFor(q, file, createNumber) {
@@ -80,7 +80,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
   const cn = typed && qRev && !revOf(typed) ? `${typed} ${revisionLabel(qRev)}` : typed
   const numTyped = String(num || '').trim() !== ''
   const numBad = numTyped && !typed
-  const revMismatch = !!(typed && ((qRev && revOf(typed) && Number(revOf(typed)) !== qRev) || (!qRev && revOf(typed))))
+  const revMismatch = !!(typed && qRev && revOf(typed) && Number(revOf(typed)) !== qRev)
   const replacesFile = mode === 'mark' && q && executedOf(q)?.filePath && file && executedOf(q).filePath !== file.path && !fileIsStamped
   // a confirmed signed day / number about to change (the same quote row signed again, or a typo fixed)
   const oldDay = q && executedOf(q) && signedDayConfirmed(q) ? signedOnOf(q) : null
@@ -96,7 +96,7 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
     if (!ready) {
       setErr(!q ? 'Pick which order this is.' : !d ? 'Pick the date the customer signed.' : future ? 'That date is in the future.'
         : numBad ? 'The contract number looks wrong — it reads like SS-2026-00000 (or SS-2026-00000 Rev 1).'
-        : revMismatch ? (qRev ? `This order is Revision ${qRev}: the number must end in Rev ${qRev} (or leave the Rev off and it is added).` : 'This is the original contract: its number has no "Rev".') : '')
+        : revMismatch ? `This order is Revision ${qRev}: the number must end in Rev ${qRev} (or leave the Rev off and it is added).` : '')
       return
     }
     setBusy(true); setErr('')
@@ -173,8 +173,9 @@ export default function MarkSignedModal({ mode = 'mark', clientId, file = null, 
         <div className="msign-q">Contract # on the signed paper</div>
         <input type="text" className="msign-num" value={num} placeholder={qRev ? `SS-2026-00000 Rev ${qRev}` : 'SS-2026-00000'} spellCheck={false} onChange={(e) => setNum(e.target.value)} />
         <p className="msign-help">As printed on the contract he signed.{qRev ? ` This order is Revision ${qRev}, so it ends in Rev ${qRev}.` : ''} Revised contracts say “Revision 1 to Agreement {cn ? stripRev(cn) : '…'}, signed {d ? fmtShortDate(d) : 'MM/DD/YYYY'}”.</p>
-        {otherNum && !revMismatch && <p className="msign-note">This order's contract was generated as {genNum}; the paper says {cn}. That's fine — the revised contracts {qRev ? 'of this agreement' : ''} will use {stripRev(cn)}.</p>}
-        {revMismatch && <p className="msign-err">{qRev ? `This order is Revision ${qRev}: the number must end in Rev ${qRev}.` : 'This is the original contract: its number has no "Rev".'}</p>}
+        {otherNum && !revMismatch && !qRev && <p className="msign-note">This order's contract was generated as {genNum}; the paper says {cn}. That's fine — the revised contracts will use {stripRev(cn)}.</p>}
+        {otherNum && !revMismatch && qRev > 0 && <p className="msign-note">This revision's contract was generated as {genNum}; the paper says {cn}. The agreement's number comes from the original contract's mark — set it there (Contracts › Actions › Change the signed date / contract #) if it differs.</p>}
+        {revMismatch && <p className="msign-err">This order is Revision {qRev}: the number must end in Rev {qRev}.</p>}
 
         {mode === 'mark' && !fileIsStamped && (
           <label className="msign-chk">

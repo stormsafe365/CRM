@@ -11,7 +11,7 @@ import { useUsers } from '../lib/useUsers'
 import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
-import { executedOf, nextRevNo, restoreAfterRevisionDeleted, withLiveExecuted } from '../lib/contractDocs'
+import { executedOf, nextRevNo, restoreAfterRevisionDeleted } from '../lib/contractDocs'
 import { escHtml } from '../lib/designLinks'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
@@ -19,7 +19,8 @@ import ReceiptModal from './ReceiptModal'
 import ColorSheetModal from './ColorSheetModal'
 import { openMenu, toast } from '../lib/uiFx'
 import RevisionModal from './RevisionModal'
-import { guardBuilderUpdate, isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
+import { isBuilderPayload, stripForDuplicate } from '../lib/priceLockCrm'
+import { updateQuoteRow } from '../lib/builderSave'
 import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
 import { StarBadge, StarButton } from './QuoteStar'
 import { usd } from '../lib/money'
@@ -214,15 +215,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   // overwritten by a builder save (guardBuilderUpdate — second guard after
   // builderSave's planQuoteFields).
   async function handleBuildUpdate(original, payload) {
-    const { quote_number, quote_date, ...rest } = payload
-    // the signed mark (payload_json.executed) is set / changed in Documents › Contracts while the
-    // builder may be open: the database wins, never the payload the builder opened with (10/19/26)
-    if (rest.payload_json) rest.payload_json = await withLiveExecuted(supabase, original.id, rest.payload_json)
-    const { error } = await supabase
-      .from('quotes')
-      .update({ ...guardBuilderUpdate(original, rest), quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
-      .eq('id', original.id)
-    if (error) throw error
+    return updateQuoteRow(supabase, original, payload) // lib/builderSave: same row, number + date kept, sold status + notes + signed mark protected
   }
 
   async function handleDelete(quote) {

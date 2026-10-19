@@ -24,7 +24,7 @@ import MarkSignedModal from './MarkSignedModal'
 import QuoteStyleToggle from './QuoteStyleToggle'
 import { uploadClientDocBlob } from '../lib/storage'
 import { captureContractHtml, quoteNumberFromHtml } from '../lib/quoteCapture'
-import { harvestAndSaveQuote, harvestRevisionUpdate, renderQuotePdf } from '../lib/builderSave'
+import { harvestAndSaveQuote, harvestRevisionUpdate, renderQuotePdf, updateQuoteRow } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
 import { buildRevisionHtml, makeRevisionOrderNumber } from '../lib/revisionHtml'
 import { supabase } from '../lib/supabase'
@@ -81,6 +81,10 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   // shared picker to attach to an existing lead or create a new one on the spot.
   const [picker, setPicker] = useState(false)
   const [savedTo, setSavedTo] = useState(null) // lead name after a picker save
+  const prefillRef = useRef(false)                 // the lead's contact info is filled in once, never after a save
+  // the save: the lead page's (QuotesTab), or — opened without a lead (Dashboard) — the row saved through the
+  // picker is updated in place (review 10/19/26: the second Save had nothing to call)
+  const save = typeof onSave === 'function' ? onSave : (payload, cur) => (cur?.id ? updateQuoteRow(supabase, cur, payload) : Promise.reject(new Error('Pick a lead first (Save to Lead).')))
 
   // The saved row as it is NOW (updated after each save in this session), so a
   // second save compares against — and records history from — what's saved.
@@ -160,7 +164,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         buildWin: iframeRef.current?.contentWindow,
         client,
         initialQuote: quoteRef.current,
-        onSave,
+        onSave: save,
         setStatus,
       })
       if (quoteRef.current) quoteRef.current = mergeSaved(quoteRef.current, payload)
@@ -280,7 +284,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   // info and the ZIP resolves city/county/state. We never overwrite a field the
   // user already filled, and never touch the program's source.
   useEffect(() => {
-    if (!client || restoreData) return // editing a saved quote already carries its own client info
+    if (!client || restoreData || prefillRef.current || quoteRef.current?.id) return // editing a saved quote (or one just saved) carries its own client info
     let done = false
     const t = setInterval(() => {
       if (done) return
@@ -299,6 +303,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         try { if (typeof pg.doZip === 'function') pg.doZip(zip) } catch { /* ignore */ }
       }
       done = true
+      prefillRef.current = true
       clearInterval(t)
       toast('Client info filled in from the lead', 'success')
     }, 500)
@@ -502,7 +507,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       try {
         setStatus('Updating the quote…')
         const upd = await harvestRevisionUpdate({ pg, buildWin: iframeRef.current?.contentWindow, initialQuote: cur, setStatus })
-        await onSave(upd)
+        await save(upd, cur)
         quoteRef.current = mergeSaved(cur, upd)
       } catch (e) {
         console.warn('revision persist failed', e)
@@ -562,13 +567,14 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     const p = pendingContract
     if (!p) return false
     if (status) { toast('Wait for the current save to finish, then try again.'); return false }
-    // the build or the saved price moved since it was generated: never file a contract at the wrong price
+    // the build or the saved card MOVED since it was generated: never file a contract at the wrong price
+    // (a contract generated at a different price than the card was allowed by the dialog — that is not movement)
     const pg = getProgramWindow()
     const screen = pg ? readScreenTotals(pg) : null
     const saved = savedTotalsOf(quoteRef.current)
-    if (p.totals && ((screen && totalsDiffer(p.totals, screen)) || (saved && totalsDiffer(p.totals, saved)))) {
+    if ((p.totals && screen && totalsDiffer(p.totals, screen)) || (p.savedAt && saved && totalsDiffer(p.savedAt, saved))) {
       setPendingContract(null)
-      toast('The quote changed since this contract was generated — generate it again. Nothing was saved.')
+      toast('The quote changed since this contract was generated — generate it again (then Save to Doc Hub). Nothing was saved.')
       return false
     }
     setStatus('Saving contract…')
@@ -599,7 +605,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           if (html && html.length > 3000) {
             const num = ctNo || contractNumberFromHtml(html) || quoteNumberFromHtml(html) || `SS-${new Date().getFullYear()}`
             if (autoSave) await saveContractToHub({ html, num, quoteId: cur?.id || null })
-            else if (cur?.id) setPendingContract({ html, num, quoteId: cur.id, totals: readScreenTotals(pg) })
+            else if (cur?.id) setPendingContract({ html, num, quoteId: cur.id, totals: readScreenTotals(pg), savedAt: savedTotalsOf(cur) })
             else toast('Preview only — Save to Lead first; Save to Doc Hub then keeps the contract on the lead.')
           }
         }
@@ -829,7 +835,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig, signed_contract: r.repSigned === true || signedContractOf(original),
         },
       }
-      await onSave(upd)
+      await save(upd, cur)
       quoteRef.current = mergeSaved(cur, upd)
 
       // 3) The signed quote: 'superseded' (base enum — no migration needed), linked

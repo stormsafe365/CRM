@@ -11,6 +11,16 @@ import { readBuilderTotals, buildSummary, capturePrintHtml, dataUrlToThumb, quot
 import { appendPriceHistory, planQuoteFields, savedTotalsOf, totalsDiffer, withPrintCheck } from './priceLockCrm'
 import { carryCrmMarkers } from './contractDocs'
 
+// Re-save an edited builder quote onto the SAME row, keeping its original quote number + date so it
+// stays the same quote — just revised. A sold status (verbal accept / deposit paid / revised) and the
+// notes are never overwritten by a builder save (guardBuilderUpdate — second guard after planQuoteFields).
+// The signed mark (payload_json.executed) is set / changed in Documents › Contracts while the builder
+// may be open: the database wins, never the payload the builder opened with (10/19/26).
+// Used by the lead page (QuotesTab) and by the builder itself for a quote saved through Save to Lead's
+// picker (review 10/19/26: the second Save then had no update path).
+// (lives in lib/contractDocs so node can unit-test it; re-exported here for the builder and the lead page)
+export { updateQuoteRow } from './contractDocs'
+
 // Render the captured quote document to a PDF blob. Prefer Electron's native
 // print-to-PDF (honors the quote's print styles + its Dark / White quote style exactly like the
 // builder's own working "Save / Print PDF"); fall back to html2pdf in a browser.

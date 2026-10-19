@@ -24,7 +24,7 @@ import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 import MarkSignedModal, { quoteLine } from './MarkSignedModal'
 import {
-  clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted,
+  clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted, revOf,
 } from '../lib/contractDocs'
 import { isBuilderPayload, isSold } from '../lib/priceLockCrm'
 import { quoteStatusLabel } from '../lib/constants'
@@ -159,10 +159,16 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       const file = curQuote.pdf_snapshot_url ? allFiles.find((f) => f.path === curQuote.pdf_snapshot_url) || null : null
       rows.push({ kind: 'quote', key: 'quote:' + curQuote.id, q: curQuote, file })
     }
-    // the current order's own Revision Order (a retired revision's never counts as current)
-    const ro = String(curQuote?.payload_json?.revisionOf?.revision_order || '')
-    const rf = ro ? (filesByCat.revisions || []).find((f) => f.label.toLowerCase().startsWith(ro.toLowerCase())) : null
-    if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
+    // the current order's own Revision Order (a retired revision's never counts as current): the one its link
+    // names, else the newest "REV-<number>-<date>" of the quote it revises (an in-place revision: its own number)
+    if (curQuote) {
+      const rv = curQuote.payload_json?.revisionOf
+      const ro = String(rv?.revision_order || '').toLowerCase()
+      const baseNo = String((rv && rv.quote_number) || (!rv && revOf(String(curQuote.payload_json?.contractSent?.number || '')) ? curQuote.quote_number : '') || '')
+      const prefix = baseNo ? ('rev-' + baseNo.replace(/^SS-?/i, '') + '-').toLowerCase() : ''
+      const rf = (filesByCat.revisions || []).find((f) => (ro && f.label.toLowerCase().startsWith(ro)) || (prefix && f.label.toLowerCase().startsWith(prefix))) || null
+      if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
+    }
     return rows
   }, [org, curQuote, allFiles, filesByCat.revisions])
   const shownPaths = useMemo(() => {

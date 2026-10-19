@@ -11,7 +11,7 @@
 // The program (quote-builder.html) prints window._ctNo; standalone it still
 // generates a fresh SS-YYYY-NNNNN.
 
-import { isSold } from './priceLockCrm.js'
+import { guardBuilderUpdate, isSold } from './priceLockCrm.js'
 
 const str = (v) => (v == null ? '' : String(v).trim())
 export const REV_LABEL = 'Rev'
@@ -811,4 +811,22 @@ export async function propagateAgreementNumber(sb, rootId, number) {
     if (error) throw error
   }
   return changed
+}
+
+// ── A builder re-save onto the SAME quote row ────────────────────────────────────────────────────
+// Keeps the original quote number + date so it stays the same quote — just revised. A sold status
+// (verbal accept / deposit paid / revised) and the notes are never overwritten by a builder save
+// (guardBuilderUpdate — second guard after planQuoteFields). The signed mark (payload_json.executed)
+// may have been set / changed in Documents › Contracts while the builder was open: the database wins.
+// Used by the lead page (QuotesTab) and by the builder for a quote saved through Save to Lead's picker
+// (review 10/19/26: the second Save then had no update path).
+export async function updateQuoteRow(sb, original, payload) {
+  const { quote_number, quote_date, ...rest } = payload
+  if (rest.payload_json) rest.payload_json = await withLiveExecuted(sb, original.id, rest.payload_json)
+  const { error } = await sb
+    .from('quotes')
+    .update({ ...guardBuilderUpdate(original, rest), quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date })
+    .eq('id', original.id)
+  if (error) throw error
+  return { ...original, ...rest, quote_number: original.quote_number ?? quote_number, quote_date: original.quote_date ?? quote_date }
 }
