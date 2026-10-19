@@ -4761,3 +4761,5 @@ a.brand { text-decoration: none; color: inherit; }
 .qb-lock-save { background: rgba(52,211,153,.10); color: #bdf3dc; border-bottom-color: rgba(52,211,153,.45); }
 .qb-lock-save b { color: #34d399; }
 @media (max-width: 520px) { .dh-stats { grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 12px 12px 0; } .dh-stat { padding: 9px 10px; } .dh-stat b { font-size: 19px; } .dh-cur-row { grid-template-columns: 30px 1fr auto; } .dh-cur-acts { grid-column: 2 / 4; justify-self: end; } }
+
+.dh-search-under { margin: -6px 22px 14px; }

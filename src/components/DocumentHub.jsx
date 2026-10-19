@@ -32,10 +32,10 @@ import { quoteStatusLabel } from '../lib/constants'
 const SECTIONS = [
   { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
   { key: 'contract',    label: 'Contracts',   accept: 'application/pdf,image/*', hint: 'PDF, scan or photo' },
-  { key: 'revisions',   label: 'Revisions',   accept: 'application/pdf,image/*', hint: 'PDF or image' },
   { key: 'rendering',   label: 'Renderings',  accept: 'image/*,application/pdf', hint: 'Image or PDF' },
   { key: 'layout',      label: 'Layout',      accept: 'application/pdf,image/*', hint: 'Signed sheet' },
-  { key: 'additional',  label: 'Other',       accept: '',                        hint: 'Any file' },
+  { key: 'revisions',   label: 'Revisions',   accept: 'application/pdf,image/*', hint: 'PDF or image' },
+  { key: 'additional',  label: 'Additional',  accept: '',                        hint: 'Any file' },
 ]
 
 const ic = (paths) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
@@ -56,7 +56,7 @@ const SEARCH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
 // category accents (rotating palette; All uses the brand teal) + short chip labels.
 const CAT_ACCENT = { all: '#22c4bf', quote: '#61d89e', contract: '#ff9351', rendering: '#9da9dd', layout: '#ffeb99', revisions: '#22c4bf', additional: '#61d89e' }
-const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Other' }
+const CHIP_LABEL = { quote: 'Quote', contract: 'Contract', rendering: 'Render', layout: 'Layout', revisions: 'Revision', additional: 'Extra' }
 const hexRgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})` }
 const accentVars = (accent) => ({
   '--accent': accent, '--ring': hexRgba(accent, 0.40), '--soft': hexRgba(accent, 0.20),
@@ -529,7 +529,6 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     return <>{listHead}{foldedRows(fs, cat)}{bulkBar()}</>
   }
 
-  const chips = [{ key: 'all', label: 'All', n: total }, ...SECTIONS.map((s) => ({ key: s.key, label: s.label, n: counts[s.key] }))]
   return (
     <section className="doc-hub" style={accentVars(activeAccent)}>
       {/* Header bar */}
@@ -548,24 +547,25 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
 
       <input ref={inputRef} type="file" onChange={onPick} hidden />
 
-      {/* counts · search · chips */}
-      <div className="dh-stats">
-        <div className="dh-stat ok"><b>{org.signed.length}</b><span>Signed</span></div>
-        <div className="dh-stat now"><b>{current.length}</b><span>Current</span></div>
-        <div className="dh-stat"><b>{history.length}</b><span>History</span></div>
+      {/* Category grid — the 6A centered cards with a per-category accent bar (the look the owner likes) */}
+      <div className="doc-cats-6a">
+        <button className={`cat-card${active === 'all' ? ' on' : ''}`} style={accentVars(CAT_ACCENT.all)} onClick={() => selectCat('all')}>
+          <span className="cat-bar" /><span className="cat-tile">{ICONS.all}</span>
+          <span className="cat-nm">All Files</span><span className="cat-ct num">{total} files</span>
+        </button>
+        {SECTIONS.map(s => (
+          <button key={s.key} className={`cat-card${active === s.key ? ' on' : ''}`} style={accentVars(CAT_ACCENT[s.key])} onClick={() => selectCat(s.key)}>
+            <span className="cat-bar" /><span className="cat-tile">{ICONS[s.key]}</span>
+            <span className="cat-nm">{s.label}</span>
+            <span className="cat-ct num">{s.key === 'contract' && org.signed.length ? `${org.signed.length} signed · ${counts[s.key]} files` : `${counts[s.key]} files`}</span>
+          </button>
+        ))}
       </div>
-      <label className="dh-search">
+      <label className="dh-search dh-search-under">
         {SEARCH}
         <input type="search" value={query} placeholder="Search files by name, kind or date…" onChange={(e) => { setQuery(e.target.value); setSel(new Set()) }} />
         {query && <button type="button" onClick={() => { setQuery(''); setSel(new Set()) }} aria-label="Clear the search">✕</button>}
       </label>
-      <div className="dh-chips">
-        {chips.map((c) => (
-          <button key={c.key} type="button" className={`dh-chip${active === c.key ? ' on' : ''}`} onClick={() => selectCat(c.key)}>
-            {c.label}<span className="n">{c.key === 'contract' && org.signed.length ? `${org.signed.length}✓ · ${c.n}` : c.n}</span>
-          </button>
-        ))}
-      </div>
 
       {error && <div className="error-banner" style={{ margin: '0 24px 12px' }}>{error}</div>}
 
