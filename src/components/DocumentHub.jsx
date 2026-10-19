@@ -166,7 +166,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       const ro = String(rv?.revision_order || '').toLowerCase()
       const baseNo = String((rv && rv.quote_number) || (!rv && revOf(String(curQuote.payload_json?.contractSent?.number || '')) ? curQuote.quote_number : '') || '')
       const prefix = baseNo ? ('rev-' + baseNo.replace(/^SS-?/i, '') + '-').toLowerCase() : ''
-      const rf = (filesByCat.revisions || []).find((f) => (ro && f.label.toLowerCase().startsWith(ro)) || (prefix && f.label.toLowerCase().startsWith(prefix))) || null
+      // the link's own file first; the prefix only when there is none (a newer retired revision's never wins)
+      const files = filesByCat.revisions || []
+      const rf = (ro && files.find((f) => f.label.toLowerCase().startsWith(ro))) || (prefix && files.find((f) => f.label.toLowerCase().startsWith(prefix))) || null
       if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
     }
     return rows

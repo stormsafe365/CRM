@@ -101,6 +101,12 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
   const [designLink, setDesignLink] = useState(false) // the program's SEND DESIGN LINK → DesignLinkModal (owner 10/16/26)
   const uarOpenRef = useRef(() => {})
+  // the program's hooked buttons (SAVE QUOTE / GENERATE CONTRACT / EXECUTED COPY) are wired once; they call
+  // through these refs so they always see the latest lead / quote (review 10/19/26: the first render's
+  // closures still had no lead after a picker save)
+  const saveToLeadRef = useRef(() => {})
+  const contractRef = useRef(() => {})
+  const execRef = useRef(() => {})
 
   const revisionRows = revisionChanges ? (revisionChanges.rows || revisionChanges) : null
   const hasRevisionRows = !!(revisionRows && revisionRows.length)
@@ -168,6 +174,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         setStatus,
       })
       if (quoteRef.current) quoteRef.current = mergeSaved(quoteRef.current, payload)
+      if (quoteRef.current && saved && saved.payload_json && saved.id === quoteRef.current.id) quoteRef.current = { ...quoteRef.current, payload_json: saved.payload_json } // the live signed mark
       // a NEW quote: its saved row is the quote in hand from now on — Generate Contract carries ITS number and
       // a second Save updates it (10/19/26: contracts printed right after a first save carried made-up numbers)
       else if (saved) quoteRef.current = saved
@@ -328,7 +335,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         b.dataset.ssHooked = '1'
         b.removeAttribute('onclick')
         b.onclick = null
-        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLead() }, true)
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveToLeadRef.current() }, true)
       })
     }
     const t = setInterval(tick, 600)
@@ -507,8 +514,9 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       try {
         setStatus('Updating the quote…')
         const upd = await harvestRevisionUpdate({ pg, buildWin: iframeRef.current?.contentWindow, initialQuote: cur, setStatus })
-        await save(upd, cur)
+        const savedRow = await save(upd, cur)
         quoteRef.current = mergeSaved(cur, upd)
+        if (savedRow && savedRow.payload_json && savedRow.id === cur.id) quoteRef.current = { ...quoteRef.current, payload_json: savedRow.payload_json }
       } catch (e) {
         console.warn('revision persist failed', e)
         toast('The revision documents are being saved, but the quote card could not be updated: ' + escHtml(e.message || e))
@@ -677,10 +685,13 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     if (!pg) { toast('The builder is still loading — give it a moment and try again.'); return }
     if (status || savingRef.current) return
     if (!client?.id) { toast('Use as Revision works on a lead’s quote — open this quote from the lead’s Quotes.'); return }
-    if (!initialQuote?.id) { toast('Save this quote to the lead first (Save to Lead), then Use as Revision.'); return }
+    if (!(quoteRef.current || initialQuote)?.id) { toast('Save this quote to the lead first (Save to Lead), then Use as Revision.'); return }
     setUar(true)
   }
   uarOpenRef.current = openUseAsRevision
+  saveToLeadRef.current = saveToLead
+  contractRef.current = saveContractThenPrint
+  execRef.current = saveExecutedThenPrint
 
   // Route the program's button to the CRM (capture phase, like Save to Lead /
   // Generate Contract), and offer window.__ssUseAsRevision, which the program's
@@ -835,8 +846,9 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           agreement_number: agreementNo, contract_number: ctNo, signed: signedOrig, signed_contract: r.repSigned === true || signedContractOf(original),
         },
       }
-      await save(upd, cur)
+      const savedRow = await save(upd, cur)
       quoteRef.current = mergeSaved(cur, upd)
+      if (savedRow && savedRow.payload_json && savedRow.id === cur.id) quoteRef.current = { ...quoteRef.current, payload_json: savedRow.payload_json }
 
       // 3) The signed quote: 'superseded' (base enum — no migration needed), linked
       //    to this one; its card shows "Replaced by #<this quote>". It is no longer
@@ -923,7 +935,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         b.dataset.ssContractHooked = '1'
         b.removeAttribute('onclick')
         b.onclick = null
-        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveContractThenPrint(getProgramWindow()) }, true)
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); contractRef.current(getProgramWindow()) }, true)
       })
       // the desktop app's Save dialog name (owner 10/19/26: "it should write like 'Peter Mawn-StormSafe Steel Revised
       // Contract (10.19)'"): the program names every contract "… CONTRACT (m.d)" and takes its own window.electronAPI
@@ -942,7 +954,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         b.dataset.ssExecHooked = '1'
         b.removeAttribute('onclick')
         b.onclick = null
-        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); saveExecutedThenPrint(getProgramWindow()) }, true)
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); execRef.current(getProgramWindow()) }, true)
       })
     }
     const t = setInterval(tick, 600)
