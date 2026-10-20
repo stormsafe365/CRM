@@ -18,6 +18,8 @@ import { usd } from '../lib/money'
 import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
 import { loadCurrentQuote } from '../lib/layoutFromQuote'
 import UnassignedDesigns from '../components/UnassignedDesigns'
+import { ageText, compareInquiry, fmtDay, inquiryOf } from '../lib/leadDates'
+import { nyDay } from '../lib/perfStats'
 
 // Tabs follow the sales funnel order. Each tab maps to one stage; the
 // 'working' and 'dead' tabs also fold in legacy values so old rows land
@@ -304,14 +306,11 @@ export default function ClientsList() {
       sorted.sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
     } else if (sortBy === 'created_desc') {
       sorted.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
-    } else if (sortBy === 'first_contact_desc') {
-      // Most recent first contact first; nulls sink to bottom.
-      sorted.sort((a, b) => {
-        if (!a.first_contact_date && !b.first_contact_date) return 0
-        if (!a.first_contact_date) return 1
-        if (!b.first_contact_date) return -1
-        return b.first_contact_date.localeCompare(a.first_contact_date)
-      })
+    } else if (sortBy === 'inquiry_desc' || sortBy === 'first_contact_desc') {
+      // Inquiry date (first contact, else the day it was added): newest first; no date sinks to the bottom.
+      sorted.sort((a, b) => compareInquiry(a, b, 'desc'))
+    } else if (sortBy === 'inquiry_asc') {
+      sorted.sort((a, b) => compareInquiry(a, b, 'asc'))
     } else if (sortBy === 'follow_up_asc') {
       // Soonest follow-up first; nulls sink to bottom.
       sorted.sort((a, b) => {
@@ -325,6 +324,8 @@ export default function ClientsList() {
     }
     return sorted
   }, [repScoped, search, group, stageFilter, ssfu, buildingTypeFilter, sortBy, specOf])
+
+  const todayNY = nyDay(new Date())
 
   return (
     <>
@@ -402,7 +403,8 @@ export default function ClientsList() {
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={SEL}>
               <option value="updated_desc">Recently updated</option>
               <option value="created_desc">Recently added</option>
-              <option value="first_contact_desc">First contact (newest)</option>
+              <option value="inquiry_desc">Inquiry date (newest)</option>
+              <option value="inquiry_asc">Inquiry date (oldest)</option>
               <option value="follow_up_asc">Follow-up (soonest)</option>
               <option value="name_asc">Name (A–Z)</option>
             </select>
@@ -421,7 +423,13 @@ export default function ClientsList() {
           <table className="dt lead-table">
             <thead>
               <tr>
-                <th>Client</th><th>Stage</th><th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th><th aria-label="Expand"></th>
+                <th>Client</th><th>Stage</th>
+                <th aria-sort={sortBy === 'inquiry_asc' ? 'ascending' : (sortBy === 'inquiry_desc' || sortBy === 'first_contact_desc') ? 'descending' : 'none'}>
+                  <button type="button" className="th-sort" title="Sort by inquiry date (click again to flip)" onClick={() => setSortBy(sortBy === 'inquiry_desc' ? 'inquiry_asc' : 'inquiry_desc')}>
+                    Inquiry{sortBy === 'inquiry_asc' ? ' ▲' : (sortBy === 'inquiry_desc' || sortBy === 'first_contact_desc') ? ' ▼' : ''}
+                  </button>
+                </th>
+                <th>Building</th><th>Temp</th><th>Rep</th><th>Follow-Up</th><th>Source</th><th aria-label="Expand"></th>
               </tr>
             </thead>
             <tbody key={`${repFilter}-${group}`}>
@@ -432,6 +440,7 @@ export default function ClientsList() {
                 const isOpen = expanded === c.id
                 const toggle = () => setExpanded(isOpen ? null : c.id)
                 const spec = specOf.get(c.id) || leadBuildingSpec(c)
+                const inq = inquiryOf(c)
                 return (
                   <Fragment key={c.id}>
                     <tr onClick={toggle} className={`lead-row row-enter${isOpen ? ' open' : ''}`} style={{ '--ri': Math.min(i, 14) }}>
@@ -445,6 +454,14 @@ export default function ClientsList() {
                         </div>
                       </td>
                       <td><StagePill status={c.status} /></td>
+                      <td>
+                        {inq.day ? (
+                          <>
+                            <div className="num" style={{ color: 'var(--fg)' }} title={inq.from === 'added' ? 'The day this lead was added (no First Contact Date set)' : 'First Contact Date'}>{fmtDay(inq.day)}</div>
+                            <div style={{ color: 'var(--fg-3)', fontSize: 11.5, marginTop: 2 }}>{ageText(inq.day, todayNY)}</div>
+                          </>
+                        ) : <span className="muted">—</span>}
+                      </td>
                       <td>
                         {spec.size || spec.type ? (
                           <>
@@ -474,7 +491,7 @@ export default function ClientsList() {
                     </tr>
                     {isOpen && (
                       <tr className="lead-drawer-row">
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <LeadDrawer
                             c={c} loc={loc} spec={spec}
                             quote={expandedQuote?.id === c.id ? expandedQuote.total : undefined}
@@ -538,6 +555,7 @@ function LeadDrawer({ c, loc, spec, quote, onChangeStage, onOpenPortal }) {
           <div className="lead-spec">
             <div className="lead-spec-row"><span>Building</span><span className="num" style={{ color: 'var(--fg)' }} title={fromQuoteTitle(spec.sizeFrom)}>{spec.size || '—'}</span></div>
             <div className="lead-spec-row"><span>Type</span><span style={{ color: 'var(--cyan)' }} title={fromQuoteTitle(spec.typeFrom)}>{spec.type ? buildingTypeLabel(spec.type) : '—'}</span></div>
+            <div className="lead-spec-row"><span>Inquiry date</span><span className="num" style={{ color: 'var(--fg)' }} title={inquiryOf(c).from === 'added' ? 'The day this lead was added (no First Contact Date set)' : 'First Contact Date'}>{fmtDay(inquiryOf(c).day) || '—'}</span></div>
             <div className="lead-spec-row"><span>Current quote</span><span className="num" style={{ color: 'var(--lime)' }}>{quote === undefined ? '…' : money(quote)}</span></div>
           </div>
         </div>
