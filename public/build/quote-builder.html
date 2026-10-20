@@ -8067,13 +8067,14 @@ function ltPartGapPairs(items,crossOnly){
     var a=s[i], b=s[j];
     if(crossOnly && a.ae===b.ae) continue;
     var gap=b.x-(a.x+a.w);
-    if(gap<LT_PART_GAP-LT_PART_EPS) out.push({a:a,b:b,gap:gap});
+    if(gap<LT_PART_GAP-LT_PART_EPS){ var vg=ovlVClear({y:a.sill,h:a.h},{y:b.sill,h:b.h}); if(vg<OVL_VGAP-OVL_VEPS) out.push({a:a,b:b,gap:gap,vg:vg}); }
   }
   return out;
 }
 function ltPartGapMsg(p){
   var nm=function(it){return 'the '+it.what+(it.n>1?(' #'+(it.i+1)):'');};
-  return 'On the Storage Partition Wall, '+nm(p.a)+(p.gap<-LT_PART_EPS?' overlaps ':(' is only '+_ltPartIn(Math.max(0,p.gap))+' from '))+nm(p.b)+' — keep 1\' between openings (a jamb post goes between them).';
+  if(isFinite(p.vg) && p.vg>=0) return 'On the Storage Partition Wall, '+nm(p.a)+' is only '+_ltPartIn(p.vg)+' '+((p.a.sill>=p.b.sill+p.b.h-LT_PART_EPS)?'above ':'below ')+nm(p.b)+' — keep '+OVL_VGAP+' ft of wall between one opening and the one above it (or 1\' between them side by side).';
+  return 'On the Storage Partition Wall, '+nm(p.a)+(p.gap<-LT_PART_EPS?' overlaps ':(' is only '+_ltPartIn(Math.max(0,p.gap))+' from '))+nm(p.b)+' — keep 1\' between openings side by side, or '+OVL_VGAP+' ft of wall between one above the other (a jamb post goes between them).';
 }
 // Every partition opening of one lean-to: [{ae,msg}] ('' = fits).
 function ltPartFitAll(lte){
@@ -10417,8 +10418,11 @@ function togglePosSide(btn){
 //     spaces lean-to openings with.
 //   * Footprint = the opening width the program already draws and prices with
 //     (getPosItems itemW, ltPartDims): a framed opening's jamb posts / a door's
-//     trim live in that 1'. Horizontal span only — two openings sharing any
-//     run of wall clash whatever their heights (the partition precedent).
+//     trim live in that 1'. Two openings clash only when they overlap BOTH ways
+//     (owner 10/20/26): sideways (1' between) AND up-and-down (OVL_VGAP, 2 ft of
+//     wall between the top of the lower and the bottom of the upper). One above
+//     the other with that room is fine; an opening with no known height counts as
+//     overlapping vertically (the old, horizontal-only rule).
 //   * Same tolerance as the partition: LT_PART_EPS (0.01 ft).
 // PLACEMENT: a wall where no Auto opening breaks a rule keeps the program's own
 // Auto spots EXACTLY (same formula, same numbers) — so a quote without a clash
@@ -10436,16 +10440,21 @@ function togglePosSide(btn){
 // Pure helpers first (ovlClear .. ovlLayoutWall): no DOM, unit-tested from the
 // HTML (openingFit.test.ts lifts them with a quote-aware scan — no quote marks
 // inside their bodies).
-var OVL_CLR=1, OVL_GAP=1, OVL_EPS=0.01;
+var OVL_CLR=1, OVL_GAP=1, OVL_VGAP=2, OVL_EPS=0.01, OVL_VEPS=0.0001;
+// OVL_VGAP: wall between the TOP of the lower opening and the BOTTOM of the upper one (owner 10/20/26: an opening above or below another is fine when there is room, 2 ft; to be confirmed with CCI). ONE named constant: every vertical check reads it. OVL_VEPS = float tolerance only (all spots sit on the 1/96 ft grid, so 1.99 ft is short and blocked).
 // Clear distance between two spans {x,w} (negative = they overlap).
 function ovlClear(a,b){ return Math.max(b.x-(a.x+a.w), a.x-(b.x+b.w)); }
+// Clear vertical distance between two spans {y,h} (sill to sill+height); negative = they overlap vertically. -Infinity when either has no known height or sill: it counts as overlapping.
+function ovlVClear(a,b){ if(!(a.h>0) || !(b.h>0) || !isFinite(a.y) || !isFinite(b.y)) return -Infinity; return Math.max(b.y-(a.y+a.h), a.y-(b.y+b.h)); }
+// Is span s within OVL_VGAP (vertically) of any of the movable spans mv? No mv = yes (the old rule).
+function ovlVHit(s,mv){ var k; if(!mv || !mv.length) return true; for(k=0;k<mv.length;k++){ if(ovlVClear(s,mv[k])<OVL_VGAP-OVL_VEPS) return true; } return false; }
 // Rule breaks on one wall of length len: corner (closer than 1 ft to an end, or
 // past it) and pair (closer than 1 ft to another opening, or overlapping).
 // bars (optional): partition lines crossing the wall (a lean-to storage
 // partition on its outer wall, 10/6/26) — a post line like a corner: an opening
 // stays 1 ft clear of it and never straddles it (bar issue).
 function ovlIssues(len,sp,bars){
-  var out=[], i, j, s, lo, hi, g, b;
+  var out=[], i, j, s, lo, hi, g, b, v, is;
   bars=bars||[];
   for(i=0;i<sp.length;i++){
     s=sp[i]; if(!(s.w>0) || !isFinite(s.x)) continue;
@@ -10464,16 +10473,16 @@ function ovlIssues(len,sp,bars){
     for(j=i+1;j<sp.length;j++){
       if(!(sp[j].w>0) || !isFinite(sp[j].x)) continue;
       g=ovlClear(sp[i],sp[j]);
-      if(g<OVL_GAP-OVL_EPS) out.push({k:'pair', a:i, b:j, gap:g});
+      if(g<OVL_GAP-OVL_EPS){ v=ovlVClear(sp[i],sp[j]); if(v<OVL_VGAP-OVL_VEPS){ is={k:'pair', a:i, b:j, gap:g}; if(isFinite(v)) is.vg=v; out.push(is); } }
     }
   }
   return out;
 }
 // Free stretches [lo,hi] a movable opening may occupy on a wall of length len
 // once the kept spans stay put: 1 ft from each corner, 1 ft from every kept span.
-function ovlFree(len,fixed,bars){
+function ovlFree(len,fixed,bars,mv){
   var iv=[[OVL_CLR,len-OVL_CLR]], f, k, s, a, b, nx, p, cut=[];
-  for(f=0;f<fixed.length;f++){ s=fixed[f]; if(s.w>0 && isFinite(s.x)) cut.push([s.x-OVL_GAP,s.x+s.w+OVL_GAP]); }
+  for(f=0;f<fixed.length;f++){ s=fixed[f]; if(s.w>0 && isFinite(s.x) && ovlVHit(s,mv)) cut.push([s.x-OVL_GAP,s.x+s.w+OVL_GAP]); }
   for(f=0;f<(bars||[]).length;f++){ if(isFinite(bars[f])) cut.push([bars[f]-OVL_CLR,bars[f]+OVL_CLR]); } // 1 ft each side of a partition line
   for(f=0;f<cut.length;f++){
     a=cut[f][0]; b=cut[f][1]; nx=[];
@@ -10540,21 +10549,21 @@ function ovlLayoutWall(len,items,bars){
   res={xs:xs, moved:moved, re:false, fit:true};
   for(i=0;i<n;i++){
     if(!(items[i].w>0) || !isFinite(items[i].x)) continue;
-    sp.push({x:items[i].x,w:items[i].w,f:!!items[i].fixed});
-    if(items[i].fixed) fixed.push({x:items[i].x,w:items[i].w}); else mov.push(i);
+    sp.push({x:items[i].x,w:items[i].w,y:items[i].y,h:items[i].h,f:!!items[i].fixed});
+    if(items[i].fixed) fixed.push({x:items[i].x,w:items[i].w,y:items[i].y,h:items[i].h}); else mov.push(i);
   }
   if(!mov.length) return res;
   ovlIssues(len,sp,bars).forEach(function(is){ if(!sp[is.a].f || (is.b!=null && !sp[is.b].f)) bad=true; });
   if(!bad) return res;
-  var ws=mov.map(function(k){ return items[k].w; }), p0;
+  var ws=mov.map(function(k){ return items[k].w; }), mv=mov.map(function(k){ return {y:items[k].y,h:items[k].h}; }), p0;
   // A partition line on the wall: the spread it always made (no line) is kept
   // when it already stays clear of the line — only a spread that would put an
   // opening across the partition is redone around it.
   if(bars && bars.length){
-    p0=ovlPack(ovlFree(len,fixed),ws);
+    p0=ovlPack(ovlFree(len,fixed,null,mv),ws);
     if(p0 && !ovlIssues(len,p0.map(function(x,j){ return {x:x,w:ws[j]}; }),bars).some(function(is){ return is.k==='bar'; })) px=p0;
   }
-  if(!px) px=ovlPack(ovlFree(len,fixed,bars),ws);
+  if(!px) px=ovlPack(ovlFree(len,fixed,bars,mv),ws);
   if(!px){ res.fit=false; return res; }
   mov.forEach(function(k,j){ if(Math.abs(px[j]-xs[k])>1e-9){ xs[k]=px[j]; moved[k]=true; } });
   res.re=true;
@@ -10587,7 +10596,7 @@ function ovlFoDims(el,comp){
   if(comp.indexOf('Framed Opening')!==0) return null;
   if(comp.indexOf('45°')>=0 || comp.indexOf('Double-Tubed')>=0) return null;
   var w=2.5, h=2.5, yo=foSillFt(el), wm;
-  if(comp.indexOf('(Custom Size)')>=0){ var s=foCustomFeet(el); w=s.w; h=s.h; yo=(comp.indexOf('Window')>=0)?foSillFt(el):0; }
+  if(comp.indexOf('(Custom Size)')>=0){ var fu=el.querySelector('.fo-unit'), fk=(fu&&fu.value==='in')?(1/12):1, fcw=parseFloat((el.querySelector('.fo-cw')||{}).value), fch=parseFloat((el.querySelector('.fo-ch')||{}).value); w=(fcw>0)?fcw*fk:0; h=(fch>0)?fch*fk:0; yo=(comp.indexOf('Window')>=0)?foSillFt(el):0; } // blank size = not sized yet: no footprint, never refused for room (the 10x8 default in foCustomFeet is for drawing / pricing only); entered size + sill are used as typed
   else if(comp.indexOf('Garage Door')>=0 || comp.indexOf('Side Opening')>=0){ wm=comp.match(/(\d+)' Wide/); w=wm?parseInt(wm[1]):10; h=8; yo=0; }
   else if(comp.indexOf('Double Door')>=0){ w=6; h=6.67; yo=0; }
   else if(comp.indexOf('Walk-Through')>=0){ w=3; h=6.67; yo=0; }
@@ -10606,7 +10615,7 @@ function ovlMainDesc(el,ov){
     var sz=(v('.rsz')||'10x8').split('x'); w=parseFloat(sz[0])||10; h=parseFloat(sz[1])||8;
     loc=v('.rloc'); qty=parseInt(v('.rqt'))||1; kind='rollup'; what=_ovlFt(w)+' × '+_ovlFt(h)+' roll-up door';
   } else if(el.classList.contains('we')){ loc=v('.wloc'); qty=parseInt(v('.wqt'))||1; w=3; h=6.67; kind='wtd'; what='walk door'; }
-  else if(el.classList.contains('ne')){ loc=v('.nloc'); qty=parseInt(v('.nqt'))||1; w=2.5; h=2.5; yo=winSillFt(el); kind='win'; what='window'; }
+  else if(el.classList.contains('ne')){ loc=v('.nloc'); qty=parseInt(v('.nqt'))||1; w=2.5; h=2.5; yo=winSillFt(el); kind='win'; what='window'; var _wr=(MFR().winTypes||[]).find(function(r){return r.v===v('.ntp');}); if(_wr && _wr.fh>0) h=_wr.fh/12; }
   else if(el.classList.contains('ace')){
     var comp=(ov.comp!=null)?ov.comp:v('.act');
     if(ov.comp==null){ var lr=el.querySelector('.fo-loc-row'); if(!lr || lr.classList.contains('hidden')) return null; }
@@ -10675,7 +10684,7 @@ function ovlLtDesc(ae,ov,ltLen){
   var uid=_ovlTag(ae);
   return {el:ae, uid:uid, seq:parseInt(ae.dataset.ovlSeq)||0, keep:ae.dataset.ovlKeep==='1', wall:'l'+lte._ovlUid+':'+loc,
     name:'the '+OVL_LT_WALL[loc]+' of the '+(fs?'free-standing':side)+' lean-to', len:len, frame:'left', lt:true, part:(loc==='partition'),
-    w:w, kind:t, what:what, qty:qty, xs:xs, typed:xs.map(function(){ return pos==='offset'; }), bars:(loc==='outer')?ovlLtStorBars(lte,len):[]};
+    w:w, h:dm.h, yo:dm.sill, kind:t, what:what, qty:qty, xs:xs, typed:xs.map(function(){ return pos==='offset'; }), bars:(loc==='outer')?ovlLtStorBars(lte,len):[]};
 }
 // Owner rule (10/6/26: "components/openings can NEVER overlap"): a lean-to's
 // storage partition crosses its OUTER wall — that line is an obstacle there,
@@ -10705,12 +10714,12 @@ function ovlScan(){
   return ds;
 }
 function _ovlSig(ds){
-  return ds.map(function(d){ return [d.uid,d.seq,d.keep?1:0,d.wall,d.name,d.len,d.w,d.qty,d.xs.join(','),d.typed.join(','),d.what,(d.bars||[]).join(',')].join('|'); }).join(';');
+  return ds.map(function(d){ return [d.uid,d.seq,d.keep?1:0,d.wall,d.name,d.len,d.w,d.h,d.yo,d.qty,d.xs.join(','),d.typed.join(','),d.what,(d.bars||[]).join(',')].join('|'); }).join(';');
 }
 // Lay out one wall {len, ds} — oldest entry first (lowest data-ovl-seq).
 function ovlWallSolve(Wl){
   var ds=Wl.ds.slice().sort(function(a,b){ return (a.seq-b.seq)||(a.uid-b.uid); }), items=[];
-  ds.forEach(function(d){ for(var i=0;i<d.qty;i++) items.push({w:d.w, x:d.xs[i], fixed:!!(d.typed[i]||d.keep), g:d.uid, d:d, i:i}); });
+  ds.forEach(function(d){ for(var i=0;i<d.qty;i++) items.push({w:d.w, y:d.yo, h:d.h, x:d.xs[i], fixed:!!(d.typed[i]||d.keep), g:d.uid, d:d, i:i}); });
   var bars=[]; Wl.ds.forEach(function(d){ (d.bars||[]).forEach(function(b){ if(bars.indexOf(b)<0) bars.push(b); }); });
   Wl.bars=bars; // the lean-to storage partition line(s) on this wall
   var lay=ovlLayoutWall(Wl.len,items,bars);
@@ -10802,8 +10811,13 @@ function _ovlIssueMsg(Wl,is,selfIdx){
       ' — keep 1\' clear of each corner post.';
   }
   var other=Wl.items[is.a===selfIdx?is.b:is.a];
+  // Stacked: one wholly above the other, but closer than OVL_VGAP — say how much vertical room is missing.
+  if(is.vg!=null && is.vg>=0){
+    return _ovlCap(_ovlNm(me))+' ('+_ovlSpan(Wl,me)+') is only '+_ovlFt(is.vg)+' '+((me.y>=other.y+other.h-OVL_EPS)?'above ':'below ')+_ovlNm(other)+' at '+_ovlSpan(Wl,other)+' on '+Wl.name+
+      ' — keep '+OVL_VGAP+' ft of wall between one opening and the one above it (or 1\' between them side by side).';
+  }
   return _ovlCap(_ovlNm(me))+' ('+_ovlSpan(Wl,me)+') '+(is.gap<-OVL_EPS?'overlaps ':('is only '+_ovlFt(Math.max(0,is.gap))+' from '))+_ovlNm(other)+' at '+_ovlSpan(Wl,other)+' on '+Wl.name+
-    ' — keep 1\' between openings (a jamb post goes between them).';
+    ' — keep 1\' between openings side by side, or '+OVL_VGAP+' ft of wall between one above the other (a jamb post goes between them).';
 }
 // Length the openings of a wall need with the rule spacing (1' at each corner + between).
 function _ovlNeed(items){ var n=0, s=0; items.forEach(function(it){ if(it.w>0){ n++; s+=it.w; } }); return n?(s+(n+1)*OVL_GAP):0; }
