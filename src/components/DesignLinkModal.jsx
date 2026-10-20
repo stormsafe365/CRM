@@ -17,7 +17,7 @@ import { useUsers } from '../lib/useUsers'
 import { useLeadSearch } from '../lib/useLeadSearch'
 import { toast } from '../lib/uiFx'
 import { createDesignLink, designLinkMessage, logDesignLink, sharedLinkMessage, sharedLabelOk, SHARED_LINK_DAYS, seededLinkMessage, loadLeadQuotesForPicker, quotePickerReason, designSummary } from '../lib/designLinks'
-import { quoteToSeed } from '../lib/designSeed'
+import { quoteToSeed, contactWords } from '../lib/designSeed'
 import { readQuoteForLayout } from '../lib/quoteLayoutEngine'
 import { sortStarredFirst } from '../lib/layoutFromQuote'
 import { currentOrderQuote } from '../lib/contractDocs'
@@ -326,7 +326,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
         <div style={{ ...LBL, marginTop: 14 }}>The link will open on</div>
         <div style={{ fontWeight: 700 }}>{designSummary(pack.seed) || 'Their building'}</div>
         <div style={MUTED}>from quote #{pack.quote.quote_number || '—'}. No prices go on the link.</div>
-        {pack.seed.contact ? <div style={MUTED}>The link will arrive with this customer’s name, phone and email filled in.</div> : null}
+        {pack.seed.contact ? <div style={MUTED}>The link will arrive with this customer’s {contactWords(pack.seed.contact)} filled in.</div> : null}
         {pack.notes.length ? (
           <>
             <div style={{ ...LBL, marginTop: 12 }}>Not on the customer’s page</div>

@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { designDiff } from '../src/lib/designDiff.js'
-import { quoteToSeed, settleDesign, impactFor, parseCounty, parseZip, mapSide, SEED_MAX_CHARS, cleanContact } from '../src/lib/designSeed.js'
+import { quoteToSeed, settleDesign, impactFor, parseCounty, parseZip, mapSide, SEED_MAX_CHARS, cleanContact, contactWords } from '../src/lib/designSeed.js'
 
 const seedOf = (payload, opts) => {
   const r = quoteToSeed(payload, opts)
@@ -372,7 +372,7 @@ const FORBIDDEN_KEYS = ['cn', 'cp', 'ce', 'ct-billaddr', 'ct-siteaddr', 'notes',
 const keysOf = (v, out = new Set()) => { if (Array.isArray(v)) v.forEach((x) => keysOf(x, out)); else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { out.add(k); keysOf(x, out) } return out }
 
 // a small deterministic generator (so a failure reproduces)
-const LEAD = { id: 'c9', name: '  Lee <b>Lead"`  ', phone: '(561) 555-0177 ext x', email: ' lee@example.com ', address_line: '9 Secret Rd', status: 'working', notes: 'private' }
+const LEAD = { id: 'c9', name: '  Lee <b>Lead"`  ', phone: ' (561) 555-0177 ', email: ' lee@example.com ', address_line: '9 Secret Rd', status: 'working', notes: 'private' }
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 } }
 
 test('a seed never carries names, phones, addresses, prices, tax or a maker name - 300 varied quotes', () => {
@@ -455,4 +455,17 @@ test('45 degree cut: set when any roll-up door has it; the diff reports it', () 
   assert.ok(settled(r.seed))
   const sent = JSON.parse(JSON.stringify(r.seed)); sent.design.upgrades.angle45 = false
   assert.deepEqual(designDiff(r.seed, sent).map((c) => c.text), ['Upgrade removed: 45° angle cut on roll-up doors'])
+})
+
+test('contact phone: kept only as a plain 10-11 digit number; extensions, letters and short numbers are left out; the review words match', () => {
+  const ph = (p) => cleanContact({ name: 'A', phone: p }).phone
+  assert.equal(ph('(561) 771-5555'), '(561) 771-5555')
+  assert.equal(ph('+1 561 771 5555'), '+1 561 771 5555')
+  assert.equal(ph('(561) 771-5555 ext 12'), undefined)
+  assert.equal(ph('561-771-5555 x12'), undefined)
+  assert.equal(ph('771-5555'), undefined)
+  assert.equal(ph('56177155551234'), undefined)
+  assert.equal(contactWords({ name: 'A', phone: '5617715555', email: 'a@b.co' }), 'name, phone and email')
+  assert.equal(contactWords({ name: 'A', email: 'a@b.co' }), 'name and email')
+  assert.equal(contactWords({ phone: '5617715555' }), 'phone')
 })

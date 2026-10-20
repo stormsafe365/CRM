@@ -7,7 +7,7 @@
 // names (never a copy of `fields`) and builds the customer page's own saved-design envelope
 //   { schema: 'ss-web-design', v: 1, design, ctx: { zip, county, impact } }
 // The seed is handed to the ANONYMOUS design page by its link token (migration 024, design_link_seed), so it
-// never holds a price, a name, a phone, an address, a quote number or a manufacturer: see tests/designSeed.test.mjs.
+// never holds a price, an address, a quote number or a manufacturer, and carries ONLY the lead's name, phone and email (in `contact`): see tests/designSeed.test.mjs.
 //
 // The design page keeps a design inside its own build rules (web-customer/src/model/normalize.ts) on every
 // load. This file carries a hand port of those rules (settleDesign) and runs the result through it, so the
@@ -662,11 +662,19 @@ export function cleanContact(c) {
   const out = {}
   const name = String(c.name ?? '').replace(/[<>"`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120)
   if (name) out.name = name
-  const phone = String(c.phone ?? '').replace(/[^0-9+()\-. ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40)
-  if (phone.replace(/\D/g, '').length >= 7) out.phone = phone
+  // a phone with letters (an extension) or other than 10-11 digits is left out, never guessed at
+  const phone = String(c.phone ?? '').trim()
+  const digits = phone.replace(/\D/g, '')
+  if (phone.length <= 40 && /^[0-9+()\-. ]+$/.test(phone) && (digits.length === 10 || digits.length === 11)) out.phone = phone.replace(/\s+/g, ' ')
   const email = String(c.email ?? '').trim().slice(0, 160)
   if (/^[^\s@<>"`]+@[^\s@<>"`]+\.[^\s@<>"`]+$/.test(email)) out.email = email
   return Object.keys(out).length ? out : null
+}
+
+/** "name and email" - only the contact fields that are really in the seed. */
+export function contactWords(contact) {
+  const k = ['name', 'phone', 'email'].filter((x) => contact && contact[x])
+  return k.length > 1 ? `${k.slice(0, -1).join(', ')} and ${k[k.length - 1]}` : k[0] || ''
 }
 
 const IMPACT_ALL = ['Charlotte', 'Collier', 'Hillsborough', 'Indian River', 'Lee', 'Manatee', 'Palm Beach', 'Sarasota', 'St. Lucie']

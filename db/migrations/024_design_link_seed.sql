@@ -4,7 +4,7 @@
 -- StormSafe Rep ... and I'd get the adjustment from them & rework their quote").
 --
 -- The rep makes the link from a lead's saved quote; the building (size, walls, doors, windows, lean-tos, colors,
--- upgrades - NEVER a price, a name, a phone or an email) is stored on the link as `seed`. The design page asks for
+-- upgrades - NEVER a price; the only personal fields are the lead's name, phone and email, in `contact`) is stored on the link as `seed`. The design page asks for
 -- it with the link (design_link_seed below, through its own server function, the same way it checks the link),
 -- opens on that building, and the customer edits it and sends it back like any design. The CRM compares what
 -- comes back with the seed and lists what changed.
