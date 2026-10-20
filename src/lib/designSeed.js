@@ -26,7 +26,7 @@
 
 export const SEED_SCHEMA = 'ss-web-design'
 export const SEED_VERSION = 1
-export const SEED_MAX_CHARS = 60000
+export const SEED_MAX_CHARS = 45000
 
 // ── the page's catalogs (web-customer/src/model/catalog.ts, rules.ts) ───────────────────────────────────────
 const COLORS = [
@@ -483,7 +483,10 @@ export function quoteToSeed(payload, { layout = null, quote = null } = {}) {
   if (bh > 20) return refuse(`This building is ${trimNum(bh)}′ tall; the customer page goes up to 20′ tall.`)
 
   const notes = new Set()
-  const mfr = String(payload.mfr || payload.manufacturer || 'CCI').toUpperCase() === 'CA' ? 'CA' : 'CCI'
+  // same rule as layoutFromQuote: anything that is not CCI is handled the safe way (nearest-color mapping, no impact lock)
+  const mfrRaw = String(payload.mfr || '').toUpperCase()
+  const mfr = mfrRaw === 'CCI' ? 'CCI' : 'CA'
+  if (mfrRaw !== 'CCI' && mfrRaw !== 'CA') notes.add('The maker was not recorded on this quote: colors were matched to the nearest page color and impact-rated parts are off.')
   const type = bt === 'gch' ? 'combo' : bt === 'carport' ? 'carport' : 'garage'
   const width = Math.round(bw), length = Math.round(bl), height = Math.round(bh)
   const sw = nearest(width, widthOptions(type)), sh = nearest(height, heightOptions(sw)) // for the side-wall bands only

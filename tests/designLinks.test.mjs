@@ -342,3 +342,26 @@ test('designSeed: read once per link and cached; a missing column or no row mean
   assert.equal((await designSeed(sb, null)).seed, null)
   assert.equal((await designSeed(sb, 'short')).seed, null)
 })
+
+// ── review fixes ────────────────────────────────────────────────────────────────────────────────────────────
+
+import { SEED_MAX_CHARS as MAXC, quoteToSeed } from '../src/lib/designSeed.js'
+import { SEED_TOO_BIG_TEXT } from '../src/lib/designLinks.js'
+
+test('a quote with no recorded maker (or Input) is handled the safe way, like the layout code, with a note', () => {
+  const q = { fields: { btype: 'standard', bw: '24', bl: '40', bh: '12', wfg: 'Closed', wbg: 'Closed', wle: 'Closed', wre: 'Closed', county: 'Palm Beach', cr: '#6B6360' }, ltWraps: 'FL' }
+  for (const mfr of [undefined, '', 'INPUT']) {
+    const r = quoteToSeed({ ...q, mfr })
+    assert.ok(r.ok)
+    assert.equal(r.seed.ctx.impact, false)
+    assert.equal(r.seed.design.colors.roof, 'quaker-gray') // nearest-color mapping
+    assert.ok(r.notes.some((n) => /maker was not recorded/.test(n)))
+  }
+  assert.ok(!quoteToSeed({ ...q, mfr: 'CCI', fields: { ...q.fields, cr: '#B9BCBB' } }).notes.some((n) => /maker was not recorded/.test(n)))
+  assert.equal(MAXC, 45000)
+})
+
+test('a seed the database refuses as too big gives a friendly message', async () => {
+  const sb = { from: () => ({ insert: async () => ({ error: { code: '23514', message: 'new row for relation "design_links" violates check constraint "design_links_seed_check"' } }) }) }
+  await assert.rejects(createDesignLink(sb, { clientId: 'C1', seed: SEED }), (e) => e.message === SEED_TOO_BIG_TEXT && e.missingTable === false)
+})

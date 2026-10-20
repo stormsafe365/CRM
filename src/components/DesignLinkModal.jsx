@@ -276,6 +276,16 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
         </div>
       </>
     )
+  } else if (!link && step === 'lookup') {
+    body = (
+      <>
+        <div style={{ color: '#f0883e', fontSize: 13, marginTop: 14 }} role="alert">Could not look up this lead’s quotes, so the link was not made.</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => make(lead)}>Make a blank link instead</button>
+          <button type="button" className="btn-primary" disabled={busy} onClick={() => { setStep(''); startQuoteStep(lead) }}>Try again</button>
+        </div>
+      </>
+    )
   } else if (!link && step === 'preparing') {
     body = <div style={{ ...MUTED, padding: '18px 0' }} role="status">{progress || 'Preparing their building…'}</div>
   } else if (!link && step === 'review' && pack) {

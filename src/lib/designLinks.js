@@ -55,6 +55,8 @@ export const MISSING_TABLE_TEXT = 'Design links need the one-time database updat
 
 export const SEED_MISSING_TEXT = 'Links that start on the lead’s building need the one-time database update first (db/migrations/024_design_link_seed.sql in the Supabase SQL editor).'
 
+export const SEED_TOO_BIG_TEXT = 'This building is too detailed to send as a design link. Remove some doors or windows from the quote, or send a blank link.'
+
 export const SHARED_MISSING_TEXT = 'Shared links need the one-time database update first (db/migrations/021_design_links_shared.sql in the Supabase SQL editor).'
 /** Days a shared link works (contractors / Facebook pass it around for a long time). */
 export const SHARED_LINK_DAYS = 730
@@ -83,9 +85,10 @@ export async function createDesignLink(sb, { clientId = null, userId = null, kin
     const m = String(error.message || '')
     // a seeded link is never made without its seed: before migration 024 this is an error, not a plain link
     const seedMissing = seeded && (error.code === '42703' || error.code === 'PGRST204') && /seed|design_links/i.test(m)
+    const seedTooBig = seeded && (error.code === '23514' || /design_links_seed_check/i.test(m))
     const sharedMissing = shared && (error.code === '42703' || /'?(kind|label)'? column|column .*(kind|label)/i.test(m))
-    const e = new Error(seedMissing ? SEED_MISSING_TEXT : sharedMissing ? SHARED_MISSING_TEXT : isMissingTable(error) ? MISSING_TABLE_TEXT : m || 'Could not make the link.')
-    e.missingTable = !seedMissing && !sharedMissing && isMissingTable(error)
+    const e = new Error(seedMissing ? SEED_MISSING_TEXT : seedTooBig ? SEED_TOO_BIG_TEXT : sharedMissing ? SHARED_MISSING_TEXT : isMissingTable(error) ? MISSING_TABLE_TEXT : m || 'Could not make the link.')
+    e.missingTable = !seedMissing && !seedTooBig && !sharedMissing && isMissingTable(error)
     e.seedMissing = seedMissing
     throw e
   }
