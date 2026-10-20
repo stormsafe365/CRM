@@ -10595,12 +10595,12 @@ function ovlFoDims(el,comp){
   comp=String(comp||'');
   if(comp.indexOf('Framed Opening')!==0) return null;
   if(comp.indexOf('45°')>=0 || comp.indexOf('Double-Tubed')>=0) return null;
-  var w=2.5, h=2.5, yo=foSillFt(el), wm;
-  if(comp.indexOf('(Custom Size)')>=0){ var fu=el.querySelector('.fo-unit'), fk=(fu&&fu.value==='in')?(1/12):1, fcw=parseFloat((el.querySelector('.fo-cw')||{}).value), fch=parseFloat((el.querySelector('.fo-ch')||{}).value); w=(fcw>0)?fcw*fk:0; h=(fch>0)?fch*fk:0; yo=(comp.indexOf('Window')>=0)?foSillFt(el):0; } // blank size = not sized yet: no footprint, never refused for room (the 10x8 default in foCustomFeet is for drawing / pricing only); entered size + sill are used as typed
+  var w=2.5, h=2.5, yo=foSillFt(el), wm, nf=false;
+  if(comp.indexOf('(Custom Size)')>=0){ var s=foCustomFeet(el), fcw=parseFloat((el.querySelector('.fo-cw')||{}).value), fch=parseFloat((el.querySelector('.fo-ch')||{}).value); w=s.w; h=s.h; yo=(comp.indexOf('Window')>=0)?foSillFt(el):0; nf=!(fcw>0 && fch>0); } // a blank dimension keeps the 10x8 default footprint for the layout and pricing (as ever); nf = not fully sized yet: never refused or flagged for room
   else if(comp.indexOf('Garage Door')>=0 || comp.indexOf('Side Opening')>=0){ wm=comp.match(/(\d+)' Wide/); w=wm?parseInt(wm[1]):10; h=8; yo=0; }
   else if(comp.indexOf('Double Door')>=0){ w=6; h=6.67; yo=0; }
   else if(comp.indexOf('Walk-Through')>=0){ w=3; h=6.67; yo=0; }
-  return {w:w,h:h,yo:yo};
+  return {w:w,h:h,yo:yo,nf:nf};
 }
 // One main-building entry (.re/.we/.ne/.ace) as the model reads it. ov: try a
 // change first — {loc, qty, comp}. Spots follow getPosItems exactly: typed
@@ -10610,7 +10610,7 @@ function ovlMainDesc(el,ov){
   ov=ov||{};
   var v=function(s){ var e=el.querySelector(s); return e?e.value:''; };
   var W=parseInt(G('bw').value)||30, L=parseInt(G('bl').value)||40;
-  var loc, qty, w, h=0, yo=0, kind, what;
+  var loc, qty, w, h=0, yo=0, kind, what, nf=false;
   if(el.classList.contains('re')){
     var sz=(v('.rsz')||'10x8').split('x'); w=parseFloat(sz[0])||10; h=parseFloat(sz[1])||8;
     loc=v('.rloc'); qty=parseInt(v('.rqt'))||1; kind='rollup'; what=_ovlFt(w)+' × '+_ovlFt(h)+' roll-up door';
@@ -10620,7 +10620,7 @@ function ovlMainDesc(el,ov){
     var comp=(ov.comp!=null)?ov.comp:v('.act');
     if(ov.comp==null){ var lr=el.querySelector('.fo-loc-row'); if(!lr || lr.classList.contains('hidden')) return null; }
     var fd=ovlFoDims(el,comp); if(!fd) return null;
-    w=fd.w; h=fd.h; yo=fd.yo; loc=v('.fo-loc'); qty=parseInt(v('.acq'))||1; kind='fo'; what=_ovlFt(w)+' framed opening';
+    w=fd.w; h=fd.nf?0:fd.h; yo=fd.yo; nf=!!fd.nf; loc=v('.fo-loc'); qty=parseInt(v('.acq'))||1; kind='fo'; what=_ovlFt(w)+' framed opening';
   } else return null;
   w=dimQ(w); h=dimQ(h); yo=dimQ(yo); // the 1/8" grid getPosItems uses (10/6/26)
   if(ov.loc!=null) loc=ov.loc;
@@ -10640,7 +10640,7 @@ function ovlMainDesc(el,ov){
   }
   var uid=_ovlTag(el);
   return {el:el, uid:uid, seq:parseInt(el.dataset.ovlSeq)||0, keep:el.dataset.ovlKeep==='1', wall:'m:'+wall, name:'the '+loc, len:len,
-    frame:eave?(flip?'back':'front'):'left', w:w, h:h, yo:yo, kind:kind, what:what, qty:qty, xs:xs, typed:typed};
+    frame:eave?(flip?'back':'front'):'left', w:w, h:h, yo:yo, nf:nf, kind:kind, what:what, qty:qty, xs:xs, typed:typed};
 }
 // A lean-to accessory's program spots on an outer / end wall — runTrussChecks'
 // own layout (it prices the side frames from it) on the wall's real length.
@@ -10719,12 +10719,12 @@ function _ovlSig(ds){
 // Lay out one wall {len, ds} — oldest entry first (lowest data-ovl-seq).
 function ovlWallSolve(Wl){
   var ds=Wl.ds.slice().sort(function(a,b){ return (a.seq-b.seq)||(a.uid-b.uid); }), items=[];
-  ds.forEach(function(d){ for(var i=0;i<d.qty;i++) items.push({w:d.w, y:d.yo, h:d.h, x:d.xs[i], fixed:!!(d.typed[i]||d.keep), g:d.uid, d:d, i:i}); });
+  ds.forEach(function(d){ for(var i=0;i<d.qty;i++) items.push({w:d.w, y:d.yo, h:d.h, nf:!!d.nf, x:d.xs[i], fixed:!!(d.typed[i]||d.keep), g:d.uid, d:d, i:i}); });
   var bars=[]; Wl.ds.forEach(function(d){ (d.bars||[]).forEach(function(b){ if(bars.indexOf(b)<0) bars.push(b); }); });
   Wl.bars=bars; // the lean-to storage partition line(s) on this wall
   var lay=ovlLayoutWall(Wl.len,items,bars);
   items.forEach(function(it,k){ it.x=lay.xs[k]; it.moved=lay.moved[k]; });
-  Wl.items=items; Wl.fit=lay.fit; Wl.re=lay.re; Wl.issues=ovlIssues(Wl.len,items,bars);
+  Wl.items=items; Wl.fit=lay.fit; Wl.re=lay.re; Wl.issues=ovlIssues(Wl.len,items,bars).filter(function(is){ return !(items[is.a].nf || (is.b!=null && items[is.b].nf)); }); // a custom frame-out with a blank size is never flagged (it keeps its 10x8 default footprint for the layout)
   return Wl;
 }
 function ovlBuild(ds){
