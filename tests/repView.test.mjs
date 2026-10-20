@@ -1,7 +1,7 @@
 // Rep vs admin view (owner 10/20/26): sidebar list, URL guard, and the calm rep dashboard model.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { NAV_META, visibleNav, isRepBlocked, dashLayout } from '../src/lib/repView.js'
+import { NAV_META, visibleNav, isRepBlocked, dashLayout, repHidesLink, designsPingTarget } from '../src/lib/repView.js'
 
 const labels = (isAdmin) => visibleNav(NAV_META, isAdmin).map((i) => i.label)
 
@@ -40,4 +40,13 @@ test('rep dashboard layout: trimmed command center; admin layout unchanged', () 
   assert.deepEqual(a.tools, ['QTE Builder', '2D Layout'])
   assert.deepEqual(a.bottom, ['activeClients', 'projectStage', 'dueToday', 'needsAttention'])
   assert.equal(a.quotesSent && a.analytics, true)
+})
+
+test('no dead links for a rep: Follow-Up HQ / Customer Designs links hidden or repointed; admin and unknown roles keep them', () => {
+  assert.equal(repHidesLink(false), true)
+  for (const s of [true, null, 'error']) assert.equal(repHidesLink(s), false)
+  // a design ping never opens a page the rep is redirected away from
+  assert.equal(designsPingTarget(false), '/clients')
+  assert.equal(isRepBlocked(false, designsPingTarget(false)), false)
+  for (const s of [true, null, 'error']) assert.equal(designsPingTarget(s), '/designs')
 })

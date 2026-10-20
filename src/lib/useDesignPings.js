@@ -12,13 +12,17 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 import { toast } from './uiFx'
 import { escHtml } from './designLinks'
+import { designsPingTarget } from './repView'
 
 const NOTIFY_GAP_MS = 15000
 
-export function useDesignPings() {
+// isAdmin (from useIsAdmin): a rep's notification never opens the removed Customer Designs page.
+export function useDesignPings(isAdmin = null) {
   const navigate = useNavigate()
   const navRef = useRef(navigate)
   navRef.current = navigate
+  const adminRef = useRef(isAdmin)
+  adminRef.current = isAdmin
   useEffect(() => {
     let alive = true
     let lastNote = 0
@@ -37,7 +41,7 @@ export function useDesignPings() {
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
           const note = new Notification('New customer design', { body: n > 1 ? `${n} designs came in from design links.` : `${who} sent a design from their design link.`, icon: '/logo.png' })
-          note.onclick = () => { window.focus(); navRef.current(n === 1 && r.client_id ? `/clients/${r.client_id}` : '/designs'); note.close() }
+          note.onclick = () => { window.focus(); navRef.current(n === 1 && r.client_id ? `/clients/${r.client_id}` : designsPingTarget(adminRef.current)); note.close() }
         }
       } catch { /* notifications are optional */ }
     }

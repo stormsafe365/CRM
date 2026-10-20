@@ -5,11 +5,15 @@
 
 import { useNavigate } from 'react-router-dom'
 import { useDesignCounts } from '../lib/useDesignCounts'
+import { useIsAdmin } from '../lib/useIsAdmin'
+import { repHidesLink } from '../lib/repView'
 
 export default function UnassignedDesigns() {
   const navigate = useNavigate()
   const { waiting } = useDesignCounts()
-  if (!waiting) return null
+  const isAdmin = useIsAdmin()
+  // The Customer Designs page is removed for a rep, so the strip (its only button goes there) is not shown to her.
+  if (!waiting || repHidesLink(isAdmin)) return null
   return (
     <div className="card" role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px', marginBottom: 12, borderColor: 'rgba(34,211,200,.45)' }}>
       <span>

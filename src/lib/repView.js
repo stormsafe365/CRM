@@ -38,6 +38,17 @@ export function isRepBlocked(isAdmin, path) {
   return REP_BLOCKED_PATHS.some((p) => path === p || path.startsWith(p + '/'))
 }
 
+/** Links a rep must not see because the page behind them is removed for her (a definite rep only; an admin or a
+ *  not-yet-known role keeps every link). Owner 10/20/26: no dead buttons. */
+export function repHidesLink(isAdmin) {
+  return isAdmin === false
+}
+
+/** Where a design notification opens. A rep has no Customer Designs page, so her many-designs ping opens Leads. */
+export function designsPingTarget(isAdmin) {
+  return repHidesLink(isAdmin) ? '/clients' : '/designs'
+}
+
 /**
  * Dashboard pieces per login (owner 10/20/26). Admin = today's full command center. A rep keeps the greeting
  * buttons, the four tiles ('Ordered · In Project' is relabelled 'Sold'), the Follow-Up Calendar, the QTE

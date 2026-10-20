@@ -11,6 +11,8 @@ import { Link } from 'react-router-dom'
 import { isoToday, daysBetween, fmtLong } from '../lib/followups'
 import { readState, followupsForClient, toggleFollowupForClient } from '../lib/ssfuEngine'
 import { toast } from '../lib/uiFx'
+import { useIsAdmin } from '../lib/useIsAdmin'
+import { repHidesLink } from '../lib/repView'
 
 // Mirrors the calendar's TYPES palette so it reads as the same timeline.
 const TYPE_META = {
@@ -49,6 +51,8 @@ function load(clientId) {
 
 export default function OrderTimeline({ client }) {
   const [fus, setFus] = useState(() => load(client.id))
+  // A rep has no Follow-Up HQ page (redirected away), so she gets no link to it (owner 10/20/26).
+  const noHQ = repHidesLink(useIsAdmin())
 
   useEffect(() => {
     const refresh = () => setFus(load(client.id))
@@ -88,12 +92,14 @@ export default function OrderTimeline({ client }) {
     <section className="card card-pad ot-card">
       <div className="section-head">
         <h3>Order Timeline</h3>
-        <Link to="/calendar" className="link-cyan">Open in Follow-Up HQ →</Link>
+        {!noHQ && <Link to="/calendar" className="link-cyan">Open in Follow-Up HQ →</Link>}
       </div>
 
       {fus === null ? (
         <div className="empty-state" style={{ padding: '14px 0' }}>
-          Open <Link to="/calendar" className="link-cyan">Follow-Up HQ</Link> once to build this order’s milestone timeline.
+          {noHQ
+            ? 'This order’s milestone timeline has not been built yet.'
+            : <>Open <Link to="/calendar" className="link-cyan">Follow-Up HQ</Link> once to build this order’s milestone timeline.</>}
         </div>
       ) : list.length === 0 ? (
         <div className="empty-state" style={{ padding: '14px 0' }}>
