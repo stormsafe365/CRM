@@ -32,6 +32,16 @@ export function designLinkMessage({ clientName, repName, url }) {
   return `${hi}, ${me}. Here's a link to design your building in 3D: pick the size, walls, doors, windows and colors, then tap "Send to my steel building rep" and it comes straight to me. No prices on it; I'll put your quote together from your design.\n\n${url}`
 }
 
+/**
+ * The text for a link that opens on the lead's own building (a seeded link). Customer-facing: no prices,
+ * no quote number, no CRM or manufacturer words.
+ */
+export function seededLinkMessage({ clientName, repName, url }) {
+  const hi = firstName(clientName) ? `Hi ${firstName(clientName)}` : 'Hi'
+  const me = firstName(repName) ? `it's ${firstName(repName)} with StormSafe Steel` : `it's your rep at StormSafe Steel`
+  return `${hi}, ${me}. Here's your building in 3D, set up from the quote we talked about. Change anything you like (size, walls, doors, windows, lean-tos, colors), then tap "Send to my steel building rep" and your changes come straight to me. No prices on it; I'll update your quote from your changes.\n\n${url}`
+}
+
 /** The table is not there yet (the owner has not run migration 020). */
 export function isMissingTable(error) {
   if (!error) return false
@@ -43,6 +53,8 @@ export function isMissingTable(error) {
 
 export const MISSING_TABLE_TEXT = 'Design links need the one-time database update first (db/migrations/020_design_links.sql in the Supabase SQL editor).'
 
+export const SEED_MISSING_TEXT = 'Links that start on the lead’s building need the one-time database update first (db/migrations/024_design_link_seed.sql in the Supabase SQL editor).'
+
 export const SHARED_MISSING_TEXT = 'Shared links need the one-time database update first (db/migrations/021_design_links_shared.sql in the Supabase SQL editor).'
 /** Days a shared link works (contractors / Facebook pass it around for a long time). */
 export const SHARED_LINK_DAYS = 730
@@ -53,18 +65,28 @@ export const SHARED_LINK_DAYS = 730
  * contractor / Facebook Messenger to many people - a name (label), never tied
  * to a lead, 2 years (migration 021).
  */
-export async function createDesignLink(sb, { clientId = null, userId = null, kind = 'lead', label = '', rand } = {}) {
+export async function createDesignLink(sb, { clientId = null, userId = null, kind = 'lead', label = '', rand, seed = null, seedQuoteId = null, seedQuoteNumber = null, seedNotes = null } = {}) {
   const token = newToken(rand)
   const shared = kind === 'shared'
+  const seeded = !shared && !!seed // a shared link never starts on one lead's building
   const row = shared
     ? { token, client_id: null, created_by: userId, kind: 'shared', label: String(label).trim().slice(0, 80), expires_at: new Date(Date.now() + SHARED_LINK_DAYS * 86400000).toISOString() }
     : { token, client_id: clientId, created_by: userId }
+  if (seeded) {
+    row.seed = seed
+    if (seedQuoteId) row.seed_quote_id = seedQuoteId
+    if (seedQuoteNumber) row.seed_quote_number = String(seedQuoteNumber)
+    if (Array.isArray(seedNotes)) row.seed_notes = seedNotes
+  }
   const { error } = await sb.from('design_links').insert(row)
   if (error) {
     const m = String(error.message || '')
+    // a seeded link is never made without its seed: before migration 024 this is an error, not a plain link
+    const seedMissing = seeded && (error.code === '42703' || error.code === 'PGRST204') && /seed|design_links/i.test(m)
     const sharedMissing = shared && (error.code === '42703' || /'?(kind|label)'? column|column .*(kind|label)/i.test(m))
-    const e = new Error(sharedMissing ? SHARED_MISSING_TEXT : isMissingTable(error) ? MISSING_TABLE_TEXT : m || 'Could not make the link.')
-    e.missingTable = !sharedMissing && isMissingTable(error)
+    const e = new Error(seedMissing ? SEED_MISSING_TEXT : sharedMissing ? SHARED_MISSING_TEXT : isMissingTable(error) ? MISSING_TABLE_TEXT : m || 'Could not make the link.')
+    e.missingTable = !seedMissing && !sharedMissing && isMissingTable(error)
+    e.seedMissing = seedMissing
     throw e
   }
   return { token, url: designLinkUrl(token) }
@@ -104,13 +126,14 @@ export async function setSharedLinkOff(sb, token, off) {
 }
 
 /** Timeline entry on the lead: who made the link (the customer's send adds its own entry). */
-export async function logDesignLink(sb, { clientId, userId, url }) {
+export async function logDesignLink(sb, { clientId, userId, url, quoteId = null, quoteNumber = null }) {
   if (!clientId) return
+  const from = quoteNumber ? ` from quote #${quoteNumber}` : ''
   await sb.from('activities').insert({
     client_id: clientId,
     type: 'note',
-    body: `Design link created: ${url}`,
-    metadata: { kind: 'design_link' },
+    body: `Design link created${from}: ${url}`,
+    metadata: quoteNumber || quoteId ? { kind: 'design_link', quote_id: quoteId, quote_number: quoteNumber } : { kind: 'design_link' },
     created_by: userId ?? null,
   })
 }
@@ -349,4 +372,59 @@ export async function designImage(sb, id) {
   const img = error ? null : safeImage(data && data.image)
   if (!error) imageCache.set(id, img)
   return img
+}
+
+// ── links that start on the lead's own building (migration 024) ─────────────────────────────────────────────
+
+const PICKER_BASE = 'id, quote_number, quote_date, created_at, status, building_size'
+// newest columns first; an older database (no starred / deleted_at / JSON path) steps down to the next set
+const PICKER_COL_SETS = [
+  `${PICKER_BASE}, starred, deleted_at, bt:payload_json->fields->>btype`,
+  `${PICKER_BASE}, starred, deleted_at`,
+  `${PICKER_BASE}, deleted_at`,
+  PICKER_BASE,
+]
+const SCHEMA_CODES = new Set(['42703', '42883', 'PGRST100', 'PGRST204'])
+const schemaError = (e) => SCHEMA_CODES.has(String(e?.code || '')) || /column|schema cache|parse/i.test(String(e?.message || ''))
+
+/**
+ * A lead's quotes for the "which building" step, light columns only (no payload, no picture). Rows in Trash are
+ * left out; replaced (superseded) ones are kept so the dialog can list them apart. { rows, error }
+ * `bt` = the saved building type (null: entered by hand, undefined: this database could not tell).
+ */
+export async function loadLeadQuotesForPicker(sb, clientId) {
+  for (const cols of PICKER_COL_SETS) {
+    const { data, error } = await sb.from('quotes').select(cols).eq('client_id', clientId).limit(100)
+    if (!error) return { rows: (data || []).filter((q) => q && !q.deleted_at), error: null }
+    if (!schemaError(error)) return { rows: [], error }
+  }
+  return { rows: [], error: { message: 'Could not read the lead’s quotes.' } }
+}
+
+/** Why a quote can't start a link, or '' when it can (from the light row; the full payload is checked on confirm). */
+export function quotePickerReason(q) {
+  if (q.bt === null) return 'Entered by hand: no saved building.'
+  if (q.bt === 'fslean') return 'Free-standing lean-to building: not on the customer page.'
+  if (q.bt !== undefined && !['standard', 'widespan', 'carport', 'gch'].includes(q.bt)) return 'No building type chosen on this quote yet.'
+  return ''
+}
+
+const seedCache = new Map() // token -> { seed, quoteNumber, notes } (only successful reads are kept)
+
+/**
+ * The building a link was started on, for the rep's "what changed" panel: { seed, quoteNumber, notes } with seed
+ * null for a link that has none (a plain link, a shared link, or a database before migration 024). Read once per
+ * link (the list rows never carry it: it can be 64 KB).
+ */
+export async function designSeed(sb, token) {
+  const none = { seed: null, quoteNumber: null, notes: [] }
+  if (!token || !TOKEN_RE.test(String(token))) return none
+  if (seedCache.has(token)) return seedCache.get(token)
+  const { data, error } = await sb.from('design_links').select('seed, seed_quote_number, seed_notes').eq('token', token).maybeSingle()
+  if (error) return none // before 024 (or unreadable): no seed, asked again next time
+  const row = Array.isArray(data) ? data[0] : data
+  const seed = row && row.seed && typeof row.seed === 'object' ? row.seed : null
+  const res = { seed, quoteNumber: (row && row.seed_quote_number) || null, notes: Array.isArray(row && row.seed_notes) ? row.seed_notes.filter((n) => typeof n === 'string') : [] }
+  seedCache.set(token, res)
+  return res
 }

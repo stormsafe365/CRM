@@ -1048,7 +1048,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           onDone={(res) => { const go = needDay.retry; setNeedDay(null); go(res && res.day) }}
         />
       )}
-      {designLink && <DesignLinkModal client={client?.id ? client : null} onClose={() => setDesignLink(false)} />}
+      {designLink && <DesignLinkModal client={client?.id ? client : null} quote={quoteRef.current || initialQuote || null} onClose={() => setDesignLink(false)} />}
       {uar && (
         <UseAsRevisionModal
           client={client}

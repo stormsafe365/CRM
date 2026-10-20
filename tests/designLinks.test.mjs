@@ -213,3 +213,132 @@ test('designImage: a picture loads once, only a real JPEG data URL', async () =>
   assert.equal(calls, 1) // the second time comes from the cache
   assert.equal(await designImage(sb('javascript:alert(1)'), 'id-2'), null)
 })
+
+// ── links that start on the lead's own building (owner 10/20/26, migration 024) ─────────────────────────────
+
+import {
+  seededLinkMessage, SEED_MISSING_TEXT, logDesignLink, loadLeadQuotesForPicker, quotePickerReason, designSeed,
+} from '../src/lib/designLinks.js'
+
+const SEED = { schema: 'ss-web-design', v: 1, design: { type: 'garage', width: 24, length: 30, height: 10, openings: [], leanTos: [], wraps: [] }, ctx: { zip: '33401', county: 'Palm Beach', impact: true } }
+
+test('a seeded link carries the seed and where it came from; the plain row stays exactly three keys', async () => {
+  const rows = []
+  const sb = { from: () => ({ insert: async (row) => { rows.push(row); return { error: null } } }) }
+  await createDesignLink(sb, { clientId: 'C1', userId: 'U1' })
+  assert.deepEqual(Object.keys(rows[0]).sort(), ['client_id', 'created_by', 'token'])
+  await createDesignLink(sb, { clientId: 'C1', userId: 'U1', seed: SEED, seedQuoteId: 'Q1', seedQuoteNumber: 'SS-2026-0042', seedNotes: ['Lap siding is not on the page.'] })
+  assert.deepEqual(Object.keys(rows[1]).sort(), ['client_id', 'created_by', 'seed', 'seed_notes', 'seed_quote_id', 'seed_quote_number', 'token'])
+  assert.equal(rows[1].seed, SEED)
+  assert.equal(rows[1].seed_quote_number, 'SS-2026-0042')
+  // only what was given is sent
+  await createDesignLink(sb, { clientId: 'C1', userId: 'U1', seed: SEED })
+  assert.deepEqual(Object.keys(rows[2]).sort(), ['client_id', 'created_by', 'seed', 'token'])
+  // a shared link never gets a seed, even if one is passed
+  await createDesignLink(sb, { kind: 'shared', label: 'ABC Concrete', userId: 'U1', seed: SEED })
+  assert.ok(!('seed' in rows[3]))
+})
+
+test('a seeded link is never made plain: a missing seed column is a clear error, not a seedless link', async () => {
+  const attempts = []
+  const missing = { code: 'PGRST204', message: "Could not find the 'seed' column of 'design_links' in the schema cache" }
+  const sb = { from: () => ({ insert: async (row) => { attempts.push(row); return { error: missing } } }) }
+  await assert.rejects(createDesignLink(sb, { clientId: 'C1', userId: 'U1', seed: SEED }), (e) => e.message === SEED_MISSING_TEXT && /024_design_link_seed\.sql/.test(e.message) && e.seedMissing === true && e.missingTable === false)
+  assert.equal(attempts.length, 1) // one try, no retry without the seed
+  assert.ok('seed' in attempts[0])
+  const pg = { from: () => ({ insert: async () => ({ error: { code: '42703', message: 'column "seed" of relation "design_links" does not exist' } }) }) }
+  await assert.rejects(createDesignLink(pg, { clientId: 'C1', seed: SEED }), (e) => e.message === SEED_MISSING_TEXT)
+  // a plain link still reports the old messages
+  await assert.rejects(createDesignLink({ from: () => ({ insert: async () => ({ error: { code: '42P01', message: 'relation "design_links" does not exist' } }) }) }, {}), (e) => e.missingTable === true && /020_design_links/.test(e.message))
+})
+
+test('seeded message: customer wording (no prices, CRM or maker words); the plain message is unchanged', () => {
+  const m = seededLinkMessage({ clientName: 'Jack Daouly', repName: 'Jenna Shiebler', url: 'https://x/?t=1' })
+  assert.match(m, /^Hi Jack, it's Jenna with StormSafe Steel\./)
+  assert.match(m, /Send to my steel building rep/)
+  assert.match(m, /Here's your building in 3D/)
+  assert.match(m, /https:\/\/x\/\?t=1$/)
+  assert.doesNotMatch(m, /crm|\$\s?\d|quote #|carolina|carports anywhere|\bCCI\b|\bCA\b/i)
+  assert.match(seededLinkMessage({ clientName: '', repName: '', url: 'u' }), /^Hi, it's your rep at StormSafe Steel\./)
+  // byte-identical plain message
+  assert.equal(designLinkMessage({ clientName: 'Jack Daouly', repName: 'Jenna Shiebler', url: 'https://x/?t=1' }),
+    "Hi Jack, it's Jenna with StormSafe Steel. Here's a link to design your building in 3D: pick the size, walls, doors, windows and colors, then tap \"Send to my steel building rep\" and it comes straight to me. No prices on it; I'll put your quote together from your design.\n\nhttps://x/?t=1")
+})
+
+test('the timeline entry names the quote only for a seeded link', async () => {
+  const logged = []
+  const sb = { from: () => ({ insert: async (r) => { logged.push(r); return {} } }) }
+  await logDesignLink(sb, { clientId: 'C1', userId: 'U1', url: 'https://x/?t=1' })
+  assert.equal(logged[0].body, 'Design link created: https://x/?t=1')
+  assert.deepEqual(logged[0].metadata, { kind: 'design_link' })
+  await logDesignLink(sb, { clientId: 'C1', userId: 'U1', url: 'https://x/?t=2', quoteId: 'Q1', quoteNumber: 'SS-2026-0042' })
+  assert.equal(logged[1].body, 'Design link created from quote #SS-2026-0042: https://x/?t=2')
+  assert.deepEqual(logged[1].metadata, { kind: 'design_link', quote_id: 'Q1', quote_number: 'SS-2026-0042' })
+})
+
+test('lead quotes for the picker: light columns, steps down on an older database, Trash left out, never a payload', async () => {
+  const seen = []
+  const rowsAll = [{ id: 'a', quote_number: 'SS-1', status: 'sent', bt: 'standard' }, { id: 'b', quote_number: 'SS-2', status: 'draft', deleted_at: '2026-10-01', bt: 'gch' }, { id: 'c', quote_number: 'SS-3', status: 'superseded', bt: null }]
+  const sb = {
+    from: (t) => {
+      assert.equal(t, 'quotes')
+      return {
+        select(cols) { seen.push(cols); this.cols = cols; return this },
+        eq(k, v) { assert.deepEqual([k, v], ['client_id', 'C1']); return this },
+        async limit() { return /bt:payload_json/.test(this.cols) ? { data: null, error: { code: '42703', message: 'column quotes.starred does not exist' } } : { data: rowsAll, error: null } },
+      }
+    },
+  }
+  const r = await loadLeadQuotesForPicker(sb, 'C1')
+  assert.equal(r.error, null)
+  assert.deepEqual(r.rows.map((x) => x.id), ['a', 'c']) // the one in Trash is gone, the replaced one is kept for its own group
+  assert.ok(seen.length >= 2 && /bt:payload_json->fields->>btype/.test(seen[0]))
+  assert.ok(seen.every((c) => !/payload_json(?!->)/.test(c) && !/\*/.test(c)), seen.join(' || '))
+  // a real error (not a missing column) is reported, not swallowed into the next set
+  const bad = { from: () => ({ select() { return this }, eq() { return this }, limit: async () => ({ data: null, error: { code: '57014', message: 'timeout' } }) }) }
+  const e = await loadLeadQuotesForPicker(bad, 'C1')
+  assert.deepEqual(e.rows, [])
+  assert.equal(e.error.code, '57014')
+  // why a row is greyed out
+  assert.match(quotePickerReason({ bt: null }), /no saved building/)
+  assert.match(quotePickerReason({ bt: 'fslean' }), /Free-standing/)
+  assert.equal(quotePickerReason({ bt: 'gch' }), '')
+  assert.equal(quotePickerReason({}), '') // this database cannot tell: the full payload is checked on confirm
+})
+
+test('designSeed: read once per link and cached; a missing column or no row means no seed (and is not cached)', async () => {
+  const TOK = 'seedtok_' + 'a'.repeat(16)
+  let calls = 0
+  const sb = {
+    from: (t) => {
+      assert.equal(t, 'design_links')
+      return {
+        select(cols) { assert.equal(cols, 'seed, seed_quote_number, seed_notes'); return this },
+        eq(k, v) { assert.deepEqual([k, v], ['token', TOK]); return this },
+        maybeSingle: async () => { calls++; return { data: { seed: SEED, seed_quote_number: 'SS-2026-0042', seed_notes: ['Lap siding is not on the page.', 7] }, error: null } },
+      }
+    },
+  }
+  const a = await designSeed(sb, TOK)
+  const b = await designSeed(sb, TOK)
+  assert.equal(calls, 1)
+  assert.equal(a, b)
+  assert.deepEqual([a.seed.schema, a.quoteNumber, a.notes], ['ss-web-design', 'SS-2026-0042', ['Lap siding is not on the page.']])
+  // a plain link: no seed (cached - the link will not grow one)
+  const T2 = 'plaintk_' + 'b'.repeat(16)
+  let c2 = 0
+  const plain = { from: () => ({ select() { return this }, eq() { return this }, maybeSingle: async () => { c2++; return { data: { seed: null, seed_quote_number: null, seed_notes: null }, error: null } } }) }
+  assert.equal((await designSeed(plain, T2)).seed, null)
+  await designSeed(plain, T2)
+  assert.equal(c2, 1)
+  // before migration 024: the column is missing -> no seed, asked again later
+  const T3 = 'oldsql_' + 'c'.repeat(17)
+  let c3 = 0
+  const old = { from: () => ({ select() { return this }, eq() { return this }, maybeSingle: async () => { c3++; return { data: null, error: { code: '42703', message: 'column design_links.seed does not exist' } } } }) }
+  assert.equal((await designSeed(old, T3)).seed, null)
+  await designSeed(old, T3)
+  assert.equal(c3, 2)
+  // nothing to ask for
+  assert.equal((await designSeed(sb, null)).seed, null)
+  assert.equal((await designSeed(sb, 'short')).seed, null)
+})

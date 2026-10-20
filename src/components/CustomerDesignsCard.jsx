@@ -5,12 +5,13 @@
 // Hidden until the lead has sent a design. Live: a new design appears without
 // a refresh.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
-import { loadClientDesigns, markDesign, safeImage, designSummary, escHtml, designImage } from '../lib/designLinks'
+import { loadClientDesigns, markDesign, safeImage, designSummary, escHtml, designImage, designSeed } from '../lib/designLinks'
+import { designDiff, diffSummary } from '../lib/designDiff'
 
 const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
 
@@ -42,6 +43,18 @@ export function DesignItem({ d, onChanged, actions = null }) {
     designImage(supabase, d.id).then((x) => { if (alive && x) setImg(x) })
     return () => { alive = false }
   }, [d])
+  // What the customer changed from the building the rep sent (links made from a quote, migration 024). The
+  // building is read once per link (lists never carry it), shared links never have one.
+  const [seedInfo, setSeedInfo] = useState(null)
+  const [changesOpen, setChangesOpen] = useState(false)
+  const shared = d.design_links?.kind === 'shared'
+  useEffect(() => {
+    if (!d.link_token || shared) { setSeedInfo(null); return undefined }
+    let alive = true
+    designSeed(supabase, d.link_token).then((x) => { if (alive) setSeedInfo(x && x.seed ? x : null) })
+    return () => { alive = false }
+  }, [d.link_token, shared])
+  const changes = useMemo(() => (seedInfo ? designDiff(seedInfo.seed, d.design) : []), [seedInfo, d.design])
   const summary = designSummary(d.design)
   const fileBase = `design-${String(d.name || 'customer').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${String(d.created_at).slice(0, 10)}`
 
@@ -50,6 +63,10 @@ export function DesignItem({ d, onChanged, actions = null }) {
       await markDesign(supabase, d.id, { status }, user?.id)
       onChanged?.()
     } catch (e) { toast(escHtml(e.message || 'Could not update the design.')) }
+  }
+  async function copyChanges() {
+    const text = changes.map((c) => '- ' + c.text).join('\n').replace(/[<>]/g, '') // never markup into the program's boxes
+    try { await navigator.clipboard.writeText(text); toast('Changes copied', 'success') } catch { window.prompt('Copy the changes:', text) }
   }
   async function copySpec() {
     const text = String(d.spec || '').replace(/[<>]/g, '') // never markup into the program's boxes
@@ -73,6 +90,25 @@ export function DesignItem({ d, onChanged, actions = null }) {
           {d.phone ? <> · {d.phone}</> : null}{d.email ? <> · {d.email}</> : null}{d.zip ? <> · ZIP {d.zip}</> : null}
         </div>
         {d.notes ? <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', fontSize: 13.5 }}>“{d.notes}”</div> : null}
+        {seedInfo ? (
+          <div style={{ marginTop: 8, padding: '8px 10px', border: '1px solid var(--line, #294059)', borderLeft: `3px solid ${changes.length ? '#22d3c8' : 'var(--line, #294059)'}`, borderRadius: 8, background: 'var(--inset, #0B1B32)' }} aria-label="What changed from the quote">
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              <b style={{ fontSize: 13.5 }}>{diffSummary(changes, seedInfo.quoteNumber)}</b>
+              {changes.length ? <button type="button" className="btn-secondary" style={{ padding: '2px 9px', fontSize: 12 }} aria-expanded={changesOpen} onClick={() => setChangesOpen((v) => !v)}>{changesOpen ? 'Hide' : 'Show what changed'}</button> : null}
+              {changes.length ? <button type="button" className="btn-secondary" style={{ padding: '2px 9px', fontSize: 12 }} onClick={copyChanges}>Copy</button> : null}
+            </div>
+            {changesOpen && changes.length ? (
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
+                {changes.map((c, i) => <li key={i}>{c.text}</li>)}
+              </ul>
+            ) : null}
+            {changesOpen && seedInfo.notes.length ? (
+              <div style={{ ...MUTED, marginTop: 8 }}>
+                Not on the customer’s page when you sent it, so they could not change it: {seedInfo.notes.join(' ')}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setOpen((v) => !v)}>{open ? 'Hide spec' : 'Show the spec'}</button>
           <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={copySpec}>Copy spec</button>
