@@ -57,7 +57,7 @@ test('doors and windows: removed, added, moved, changed - matched by id, then by
   assert.deepEqual(lines((d) => { d.openings.push({ id: 'o4', kind: 'walk', wall: 'left', w: 3, h: 80 / 12, sill: 0, pos: 20, style: 'std' }) }), ['Added: 3×7 walk door, left side'])
   assert.deepEqual(lines((d) => { d.openings[1].pos = 12 }), ['Moved: 30×30 window, left side: 6′ → 12′'])
   assert.deepEqual(lines((d) => { d.openings[0].w = 12 }), ['Changed: front end roll-up door size 10×10 → 12×10'])
-  assert.deepEqual(lines((d) => { d.openings[0].color = 'barnRed' }), ['Changed: front end roll-up door: White → Barn Red'])
+  assert.deepEqual(lines((d) => { d.openings[0].color = 'barnRed' }), ['Roll-up door color (front end): White → Barn Red'])
   assert.deepEqual(lines((d) => { d.openings[2].style = '9lite' }), ['Changed: right side walk door: Standard, white → 9-lite (glass), white'])
   // a new id on the same part at the same spot is not a removal plus an addition
   assert.deepEqual(lines((d) => { d.openings[1].id = 'o9' }), [])

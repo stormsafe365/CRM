@@ -431,3 +431,22 @@ export async function designSeed(sb, token) {
   seedCache.set(token, res)
   return res
 }
+
+/**
+ * Why a saved quote row (with its payload_json, as the Quotes tab loads it) cannot start a design link, or '' when it
+ * can or when the payload is not on the row (then it is checked on click). Cheap: reads only the size and type fields.
+ */
+export function quoteSeedReason(q) {
+  const p = q && q.payload_json
+  if (!p || typeof p !== 'object') return ''
+  const f = p.fields
+  if (!f || typeof f !== 'object') return 'Entered by hand: no saved building to send.'
+  if (f.btype === 'fslean') return 'A free-standing lean-to building is not on the customer page.'
+  if (!['standard', 'widespan', 'carport', 'gch'].includes(f.btype)) return 'No building type chosen on this quote yet.'
+  const w = parseFloat(f.bw), l = parseFloat(f.bl), h = parseFloat(f.bh)
+  if (![w, l, h].every((n) => Number.isFinite(n) && n > 0)) return 'This quote’s width, length or height is missing.'
+  if (w > 60) return 'Wider than the customer page goes (60′).'
+  if (l > 200) return 'Longer than the customer page goes (200′).'
+  if (h > 20) return 'Taller than the customer page goes (20′).'
+  return ''
+}

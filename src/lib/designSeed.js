@@ -7,7 +7,7 @@
 // names (never a copy of `fields`) and builds the customer page's own saved-design envelope
 //   { schema: 'ss-web-design', v: 1, design, ctx: { zip, county, impact } }
 // The seed is handed to the ANONYMOUS design page by its link token (migration 024, design_link_seed), so it
-// never holds a price, a name, a phone, an address, a quote number or a manufacturer: see tests/designSeed.test.mjs.
+// never holds a price, an address, a quote number or a manufacturer, and carries ONLY the lead's name, phone and email (in `contact`): see tests/designSeed.test.mjs.
 //
 // The design page keeps a design inside its own build rules (web-customer/src/model/normalize.ts) on every
 // load. This file carries a hand port of those rules (settleDesign) and runs the result through it, so the
@@ -253,7 +253,7 @@ export function settleDesign(input, impact) {
   const u = d.upgrades ?? {}
   out.upgrades = {
     insulation: out.roofStyle === 'Vertical' ? oneOf(u.insulation, ['none', 'roof', 'roofWalls'], 'none') : 'none',
-    frame12: u.frame12 === true, oc4: u.oc4 === true, panels26: u.panels26 === true, colorScrews: u.colorScrews === true, openers: u.openers === true,
+    frame12: u.frame12 === true, oc4: u.oc4 === true, angle45: u.angle45 === true, panels26: u.panels26 === true, colorScrews: u.colorScrews === true, openers: u.openers === true,
   }
 
   const seen = new Set()
@@ -320,7 +320,9 @@ export function settleDesign(input, impact) {
   }
   out.leanTos = lts
   out.wraps = WRAP_KEYS.filter((k) => Array.isArray(d.wraps) && d.wraps.includes(k) && WRAP_SIDES[k].every((s) => sides.has(s)))
-  if (out.upgrades.openers && !(out.openings.some((o) => o.kind === 'rollup') || out.leanTos.some((l) => l.openings.some((o) => o.kind === 'rollup')))) out.upgrades.openers = false
+  const anyRollup = out.openings.some((o) => o.kind === 'rollup') || out.leanTos.some((l) => l.openings.some((o) => o.kind === 'rollup'))
+  if (out.upgrades.openers && !anyRollup) out.upgrades.openers = false
+  if (out.upgrades.angle45 && !anyRollup) out.upgrades.angle45 = false
   return out
 }
 
@@ -470,7 +472,7 @@ const refuse = (reason) => ({ ok: false, reason })
  * returned (the program's own resolved opening spots). quote = the quotes row (only its number is read, for the result).
  * -> { ok:true, seed, notes:[...], quoteNumber, positions:'program'|'typed' } | { ok:false, reason }
  */
-export function quoteToSeed(payload, { layout = null, quote = null } = {}) {
+export function quoteToSeed(payload, { layout = null, quote = null, contact = null } = {}) {
   const f = payload && payload.fields
   if (!isObj(f)) return refuse('This quote has no saved building (it was entered by hand), so there is nothing to start the customer on.')
   const bt = f.btype
@@ -546,6 +548,8 @@ export function quoteToSeed(payload, { layout = null, quote = null } = {}) {
     insulation: insul, frame12: f['framing-upgrade'] === '12', oc4: f['oc-spacing'] === '4oc', panels26: f['sheeting-upgrade'] === 'upgrade',
     colorScrews: f.fastenerAdd === true || !!(payload.priced && payload.priced.free && payload.priced.free.fastener),
     openers: (Array.isArray(payload.doors) ? payload.doors : []).some((x) => x && parseInt(x.rop) > 0),
+    // the program saves the 45° angle cut per roll-up entry ('yes'); the page has one yes/no for every roll-up door
+    angle45: (Array.isArray(payload.doors) ? payload.doors : []).some((x) => x && (x.r45 === 'yes' || x.r45 === '1' || x.r45 === 1 || x.r45 === true)),
   }
 
   // rep-side things the page has no place for
@@ -642,9 +646,35 @@ export function quoteToSeed(payload, { layout = null, quote = null } = {}) {
     schema: SEED_SCHEMA, v: SEED_VERSION, design,
     ctx: { zip: parseZip(f.zip), county, impact },
   }
+  const ct = cleanContact(contact)
+  if (ct) seed.contact = ct
   const json = JSON.stringify(seed)
   if (json.length > SEED_MAX_CHARS) return refuse('This building is too detailed to send as a design link.')
   return { ok: true, seed, notes: [...notes], quoteNumber: (quote && quote.quote_number) || payload.quote_number || null, positions: allFromProgram && lay ? 'program' : 'typed' }
+}
+
+/**
+ * The lead's name / phone / email so the page need not ask for what the rep already has (owner 10/20/26). The ONLY personal
+ * fields a seed may hold. Trimmed, length-capped, markup characters out; empty or unusable values are left out.
+ */
+export function cleanContact(c) {
+  if (!isObj(c)) return null
+  const out = {}
+  const name = String(c.name ?? '').replace(/[<>"`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120)
+  if (name) out.name = name
+  // a phone with letters (an extension) or other than 10-11 digits is left out, never guessed at
+  const phone = String(c.phone ?? '').trim()
+  const digits = phone.replace(/\D/g, '')
+  if (phone.length <= 40 && /^[0-9+()\-. ]+$/.test(phone) && (digits.length === 10 || digits.length === 11)) out.phone = phone.replace(/\s+/g, ' ')
+  const email = String(c.email ?? '').trim().slice(0, 160)
+  if (/^[^\s@<>"`]+@[^\s@<>"`]+\.[^\s@<>"`]+$/.test(email)) out.email = email
+  return Object.keys(out).length ? out : null
+}
+
+/** "name and email" - only the contact fields that are really in the seed. */
+export function contactWords(contact) {
+  const k = ['name', 'phone', 'email'].filter((x) => contact && contact[x])
+  return k.length > 1 ? `${k.slice(0, -1).join(', ')} and ${k[k.length - 1]}` : k[0] || ''
 }
 
 const IMPACT_ALL = ['Charlotte', 'Collier', 'Hillsborough', 'Indian River', 'Lee', 'Manatee', 'Palm Beach', 'Sarasota', 'St. Lucie']

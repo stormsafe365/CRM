@@ -12,7 +12,8 @@ import QuoteForm from './QuoteForm'
 import QuoteStatusPill from './QuoteStatusPill'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { executedOf, nextRevNo, restoreAfterRevisionDeleted } from '../lib/contractDocs'
-import { escHtml } from '../lib/designLinks'
+import { escHtml, quoteSeedReason } from '../lib/designLinks'
+import DesignLinkModal from './DesignLinkModal'
 import QuoteDeck from './QuoteDeck'
 import BuildQuoteModal from './BuildQuoteModal'
 import ReceiptModal from './ReceiptModal'
@@ -50,6 +51,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
   const [pdfUrl, setPdfUrl] = useState(null) // open the quote PDF in an in-app viewer
   const [starBusy, setStarBusy] = useState(false)
   const reloadRef = useRef(null)
+  const [linkQuote, setLinkQuote] = useState(null) // 'Create link' on a quote card: the design link for THAT quote's building
 
   // Load quotes + subscribe to changes
   useEffect(() => {
@@ -413,9 +415,10 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           onColorSheet={setColorQuote}
           onToggleStar={canStar ? toggleStar : null}
           starBusy={starBusy}
+          onCreateLink={client?.id ? setLinkQuote : null}
         />
       ) : viewMode === 'spread' && !editingId && !adding ? (
-        <QuoteSpread quotes={quotes} onToggleStar={canStar ? toggleStar : null} starBusy={starBusy} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onExecutedCopy={handleExecutedCopy} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
+        <QuoteSpread onCreateLink={client?.id ? setLinkQuote : null} quotes={quotes} onToggleStar={canStar ? toggleStar : null} starBusy={starBusy} onOpen={openQuote} onViewPdf={handleViewPdf} onDelete={confirmDeleteQuote} onDuplicate={handleDuplicate} onGenerateContract={handleGenerateContract} onExecutedCopy={handleExecutedCopy} onRevisionForm={handleRevisionForm} onReceipt={setReceiptQuote} onColorSheet={setColorQuote} />
       ) : (
         <div className="quotes-list">
           {quotes.map(q =>
@@ -480,6 +483,8 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           )}
         </div>
       )}
+
+      {linkQuote && client?.id && <DesignLinkModal key={linkQuote.id} client={client} quote={linkQuote} autoMake onClose={() => setLinkQuote(null)} />}
 
       {receiptQuote && (
         <ReceiptModal
@@ -548,7 +553,7 @@ function formatDate(yyyyMMdd) {
 }
 
 // Spread view — all quotes side by side in a scroll row (design .spread-grid).
-function QuoteSpread({ quotes, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+function QuoteSpread({ onCreateLink, quotes, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const ref = useRef(null)
   useEffect(() => {
     const els = ref.current ? [...ref.current.querySelectorAll('.spread-card')] : []
@@ -562,7 +567,7 @@ function QuoteSpread({ quotes, onToggleStar, starBusy, onOpen, onViewPdf, onDele
       {many && <button className="spread-arrow left" onClick={() => scrollBy(-1)} aria-label="Scroll left">‹</button>}
       <div className="spread-scroll" ref={ref}>
         <div className="spread-grid">
-          {quotes.map(q => <SpreadCard key={q.id} q={q} onToggleStar={onToggleStar} starBusy={starBusy} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onExecutedCopy={onExecutedCopy} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
+          {quotes.map(q => <SpreadCard key={q.id} onCreateLink={onCreateLink} q={q} onToggleStar={onToggleStar} starBusy={starBusy} onOpen={onOpen} onViewPdf={onViewPdf} onDelete={onDelete} onDuplicate={onDuplicate} onGenerateContract={onGenerateContract} onExecutedCopy={onExecutedCopy} onRevisionForm={onRevisionForm} onReceipt={onReceipt} onColorSheet={onColorSheet} />)}
         </div>
       </div>
       {many && <button className="spread-arrow right" onClick={() => scrollBy(1)} aria-label="Scroll right">›</button>}
@@ -570,7 +575,7 @@ function QuoteSpread({ quotes, onToggleStar, starBusy, onOpen, onViewPdf, onDele
   )
 }
 
-function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+function SpreadCard({ onCreateLink, q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const thumb = q.payload_json?.rendering_thumb || null
   const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
   return (
@@ -599,6 +604,7 @@ function SpreadCard({ q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, on
       <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
       <div className="q-actions">
         {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
+        {onCreateLink && <button className="btn btn-ghost" style={{ color: 'var(--teal, #22d3c8)' }} disabled={!!quoteSeedReason(q)} title={quoteSeedReason(q) || 'Make the customer design link for this quote’s building'} onClick={() => onCreateLink(q)}>Create link</button>}
         <button className="btn btn-primary" onClick={() => onOpen(q)}>Open / Edit</button>
         <button className="btn btn-ghost" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
           ...(q.pdf_snapshot_url ? [{ id: 'pdf', label: 'View PDF', onClick: () => onViewPdf(q.pdf_snapshot_url) }] : []),

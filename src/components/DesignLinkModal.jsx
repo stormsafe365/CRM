@@ -17,7 +17,7 @@ import { useUsers } from '../lib/useUsers'
 import { useLeadSearch } from '../lib/useLeadSearch'
 import { toast } from '../lib/uiFx'
 import { createDesignLink, designLinkMessage, logDesignLink, sharedLinkMessage, sharedLabelOk, SHARED_LINK_DAYS, seededLinkMessage, loadLeadQuotesForPicker, quotePickerReason, designSummary } from '../lib/designLinks'
-import { quoteToSeed } from '../lib/designSeed'
+import { quoteToSeed, contactWords } from '../lib/designSeed'
 import { readQuoteForLayout } from '../lib/quoteLayoutEngine'
 import { sortStarredFirst } from '../lib/layoutFromQuote'
 import { currentOrderQuote } from '../lib/contractDocs'
@@ -62,7 +62,7 @@ const HARD_WAIT_MS = 25000
 // shared: open straight on the shared-link step (contractor / Facebook - many people; owner 10/16/26).
 // onMade(link) is told when a link was made.
 // quote: the saved quote the rep has open (the builder's SEND DESIGN LINK) - preselected in the quote step.
-export default function DesignLinkModal({ client = null, onClose, zIndex = 1300, shared: startShared = false, onMade, quote = null }) {
+export default function DesignLinkModal({ client = null, onClose, zIndex = 1300, shared: startShared = false, onMade, quote = null, autoMake = false }) {
   const { user } = useAuth()
   const { users } = useUsers()
   const [lead, setLead] = useState(client)          // the lead the link is for (null = pick / none)
@@ -142,7 +142,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
     setStep('quote')
   }
   useEffect(() => {
-    if (client?.id) startQuoteStep(client)
+    if (client?.id && !autoMake) startQuoteStep(client)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -153,34 +153,56 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
 
   // The rep confirmed a quote: read its saved building, ask the quote program (hidden, nothing saved) where every
   // door and window really sits, build the seed. The program is slow or unavailable -> typed positions + a note.
-  async function confirmQuote() {
-    if (pick === 'blank') { setPack(null); make(lead); return }
-    const q = quotes.find((x) => x.id === pick)
-    if (!q) return
-    setPickErr(''); setStep('preparing'); setBusy(true); setProgress('Reading the saved quote…')
+  // -> { pack } or { error } (a reason for the rep; never a silent plain link)
+  async function buildPack(q) {
+    setProgress('Reading the saved quote…')
     try {
       const { data, error } = await supabase.from('quotes').select('payload_json').eq('id', q.id).maybeSingle()
       const row = Array.isArray(data) ? data[0] : data
       const payload = row?.payload_json
-      if (error || !payload) throw new Error('Could not read that quote. Try again, or pick another.')
-      const pre = quoteToSeed(payload, { quote: q })
-      if (!pre.ok) { setPickErr(pre.reason); setStep('quote'); return }
+      if (error || !payload) return { error: 'Could not read that quote. Try again, or pick another.' }
+      const pre = quoteToSeed(payload, { quote: q, contact: lead })
+      if (!pre.ok) return { error: pre.reason }
       setProgress('Preparing their building…')
       let layout = null
       try {
         layout = await Promise.race([readQuoteForLayout(payload, { timeoutMs: 20000 }), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), HARD_WAIT_MS))])
       } catch { layout = null }
-      const res = quoteToSeed(payload, { layout, quote: q })
-      if (!res.ok) { setPickErr(res.reason); setStep('quote'); return }
-      setPack({ seed: res.seed, notes: res.notes, quote: q, positions: res.positions })
-      setStep('review')
+      const res = quoteToSeed(payload, { layout, quote: q, contact: lead })
+      if (!res.ok) return { error: res.reason }
+      return { pack: { seed: res.seed, notes: res.notes, quote: q, positions: res.positions } }
     } catch (e) {
-      setPickErr(e.message || 'Could not read that quote.')
-      setStep('quote')
-    } finally {
-      setBusy(false)
+      return { error: e.message || 'Could not read that quote.' }
     }
   }
+
+  async function confirmQuote() {
+    if (pick === 'blank') { setPack(null); make(lead); return }
+    const q = quotes.find((x) => x.id === pick)
+    if (!q) return
+    setPickErr(''); setStep('preparing'); setBusy(true)
+    const r = await buildPack(q)
+    setBusy(false)
+    if (r.error) { setPickErr(r.error); setStep('quote'); return }
+    setPack(r.pack)
+    setStep('review')
+  }
+
+  // The button on a quote card: no picker, no review - read that quote's building and make the link; the carry-over
+  // notes show with the finished link. A failure stays on screen (try again / a blank link on purpose), never a quiet plain link.
+  async function autoMakeLink() {
+    if (madeRef.current) return
+    setErr(''); setStep('preparing'); setBusy(true)
+    const r = await buildPack(quote)
+    setBusy(false)
+    if (r.error) { setPickErr(r.error); setStep('autofail'); return }
+    setPack(r.pack)
+    make(lead, undefined, r.pack)
+  }
+  useEffect(() => {
+    if (autoMake && client?.id && quote?.id) autoMakeLink()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const head = (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -276,6 +298,16 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
         </div>
       </>
     )
+  } else if (!link && step === 'autofail') {
+    body = (
+      <>
+        <div style={{ color: '#f0883e', fontSize: 13, marginTop: 14 }} role="alert">{pickErr || 'Could not prepare this quote’s building.'} The link was not made.</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => { setPack(null); make(lead) }}>Make a blank link instead</button>
+          <button type="button" className="btn-primary" disabled={busy} onClick={autoMakeLink}>Try again</button>
+        </div>
+      </>
+    )
   } else if (!link && step === 'lookup') {
     body = (
       <>
@@ -293,7 +325,8 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
       <>
         <div style={{ ...LBL, marginTop: 14 }}>The link will open on</div>
         <div style={{ fontWeight: 700 }}>{designSummary(pack.seed) || 'Their building'}</div>
-        <div style={MUTED}>from quote #{pack.quote.quote_number || '—'}. No prices, names or phone numbers go on the link.</div>
+        <div style={MUTED}>from quote #{pack.quote.quote_number || '—'}. No prices go on the link.</div>
+        {pack.seed.contact ? <div style={MUTED}>The link will arrive with this customer’s {contactWords(pack.seed.contact)} filled in.</div> : null}
         {pack.notes.length ? (
           <>
             <div style={{ ...LBL, marginTop: 12 }}>Not on the customer’s page</div>
@@ -345,7 +378,7 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
               : 'The link works for 120 days. Nothing is sent until you send it.'}
         </div>
         {pack && pack.notes.length ? (
-          <details style={{ ...MUTED, marginTop: 8 }}>
+          <details open={autoMake} style={{ ...MUTED, marginTop: 8 }}>
             <summary style={{ cursor: 'pointer' }}>Not on the customer’s page ({pack.notes.length})</summary>
             <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>{pack.notes.map((n) => <li key={n}>{n}</li>)}</ul>
           </details>
