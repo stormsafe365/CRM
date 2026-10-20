@@ -45,7 +45,7 @@ const WINDOW_NAME = {
   std: 'White 30×30', w3036: 'White 30×36', b3030: 'Black 30×30', b3036: 'Black 30×36', hw: 'High-wind rated 30×30', hi: 'Impact-rated 30×30', hi3036: 'Impact-rated 30×36',
 }
 const UPGRADE_LABEL = {
-  insulation: 'Insulation', frame12: '12-gauge framing', oc4: 'Trusses 4′ on center', panels26: '26-gauge wall panels', colorScrews: 'Color-match fasteners', openers: 'Roll-up door openers',
+  insulation: 'Insulation', frame12: '12-gauge framing', oc4: 'Trusses 4′ on center', panels26: '26-gauge wall panels', colorScrews: 'Color-match fasteners', angle45: '45° angle cut on roll-up doors', openers: 'Roll-up door openers',
 }
 const INSULATION_LABEL = { none: 'none', roof: 'roof', roofWalls: 'roof and walls' }
 
@@ -113,7 +113,7 @@ function diffOpenings(a, b, push, wallName) {
     if (x.wall !== y.wall) push('opening', `Moved: ${name} ${wallName(x)} → ${wallName(y)}`)
     else if (!near(x.pos, y.pos)) push('opening', `Moved: ${name}, ${wallName(y)}: ${fmtFt(x.pos)} → ${fmtFt(y.pos)}`)
     if (!sizeSame(x, y)) push('opening', `Changed: ${wallName(y)} ${lower(kindWord(y))} size ${dim(x.w)}×${dim(x.h)} → ${dim(y.w)}×${dim(y.h)}`)
-    if (lookOf(x) !== lookOf(y)) push('opening', `Changed: ${wallName(y)} ${lower(kindWord(y))}: ${lookName(x)} → ${lookName(y)}`)
+    if (lookOf(x) !== lookOf(y)) push('opening', y.kind === 'rollup' ? `Roll-up door color (${wallName(y)}): ${lookName(x)} → ${lookName(y)}` : `Changed: ${wallName(y)} ${lower(kindWord(y))}: ${lookName(x)} → ${lookName(y)}`)
     if (x.kind === 'frame' && x.frame !== y.frame) push('opening', `Changed: ${wallName(y)} framed opening: ${x.frame} type → ${y.frame} type`)
   }
 }
@@ -186,7 +186,7 @@ export function designDiff(seedState, sentState) {
 
   // upgrades
   const ua = a.upgrades || {}, ub = b.upgrades || {}
-  for (const k of ['insulation', 'frame12', 'oc4', 'panels26', 'colorScrews', 'openers']) {
+  for (const k of ['insulation', 'frame12', 'oc4', 'panels26', 'colorScrews', 'openers', 'angle45']) {
     if (k === 'insulation') {
       const x = ua.insulation || 'none', y = ub.insulation || 'none'
       if (x !== y) push('upgrade', `Insulation: ${INSULATION_LABEL[x] || x} → ${INSULATION_LABEL[y] || y}`)

@@ -163,14 +163,14 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
       const row = Array.isArray(data) ? data[0] : data
       const payload = row?.payload_json
       if (error || !payload) throw new Error('Could not read that quote. Try again, or pick another.')
-      const pre = quoteToSeed(payload, { quote: q })
+      const pre = quoteToSeed(payload, { quote: q, contact: lead })
       if (!pre.ok) { setPickErr(pre.reason); setStep('quote'); return }
       setProgress('Preparing their building…')
       let layout = null
       try {
         layout = await Promise.race([readQuoteForLayout(payload, { timeoutMs: 20000 }), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), HARD_WAIT_MS))])
       } catch { layout = null }
-      const res = quoteToSeed(payload, { layout, quote: q })
+      const res = quoteToSeed(payload, { layout, quote: q, contact: lead })
       if (!res.ok) { setPickErr(res.reason); setStep('quote'); return }
       setPack({ seed: res.seed, notes: res.notes, quote: q, positions: res.positions })
       setStep('review')
@@ -293,7 +293,8 @@ export default function DesignLinkModal({ client = null, onClose, zIndex = 1300,
       <>
         <div style={{ ...LBL, marginTop: 14 }}>The link will open on</div>
         <div style={{ fontWeight: 700 }}>{designSummary(pack.seed) || 'Their building'}</div>
-        <div style={MUTED}>from quote #{pack.quote.quote_number || '—'}. No prices, names or phone numbers go on the link.</div>
+        <div style={MUTED}>from quote #{pack.quote.quote_number || '—'}. No prices go on the link.</div>
+        {pack.seed.contact ? <div style={MUTED}>The link will arrive with this customer’s name, phone and email filled in.</div> : null}
         {pack.notes.length ? (
           <>
             <div style={{ ...LBL, marginTop: 12 }}>Not on the customer’s page</div>

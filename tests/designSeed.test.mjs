@@ -6,7 +6,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { quoteToSeed, settleDesign, impactFor, parseCounty, parseZip, mapSide, SEED_MAX_CHARS } from '../src/lib/designSeed.js'
+import { designDiff } from '../src/lib/designDiff.js'
+import { quoteToSeed, settleDesign, impactFor, parseCounty, parseZip, mapSide, SEED_MAX_CHARS, cleanContact } from '../src/lib/designSeed.js'
 
 const seedOf = (payload, opts) => {
   const r = quoteToSeed(payload, opts)
@@ -73,7 +74,7 @@ test('fixture: garage + carport (GCH) 24x40x12, enclosed 20, with wainscot and u
   assert.deepEqual(d.walls, { front: 'open', back: 'closed', left: 'open', right: 'open' })
   assert.equal(d.wainscot, true)
   assert.equal(d.colors.wainscot, 'print-richwood') // vertical panels keep the printed wainscot
-  assert.deepEqual(d.upgrades, { insulation: 'roof', frame12: false, oc4: true, panels26: true, colorScrews: false, openers: true })
+  assert.deepEqual(d.upgrades, { insulation: 'roof', frame12: false, oc4: true, angle45: false, panels26: true, colorScrews: false, openers: true })
   // the roll-up door on the garage/carport divider
   assert.deepEqual(d.openings.map((o) => [o.id, o.kind, o.wall, o.w, o.h, o.pos, o.color]), [['o1', 'rollup', 'partition', 10, 8, 4, 'white']])
   assert.ok(settled(r.seed))
@@ -371,6 +372,7 @@ const FORBIDDEN_KEYS = ['cn', 'cp', 'ce', 'ct-billaddr', 'ct-siteaddr', 'notes',
 const keysOf = (v, out = new Set()) => { if (Array.isArray(v)) v.forEach((x) => keysOf(x, out)); else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { out.add(k); keysOf(x, out) } return out }
 
 // a small deterministic generator (so a failure reproduces)
+const LEAD = { id: 'c9', name: '  Lee <b>Lead"`  ', phone: '(561) 555-0177 ext x', email: ' lee@example.com ', address_line: '9 Secret Rd', status: 'working', notes: 'private' }
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 } }
 
 test('a seed never carries names, phones, addresses, prices, tax or a maker name - 300 varied quotes', () => {
@@ -395,18 +397,23 @@ test('a seed never carries names, phones, addresses, prices, tax or a maker name
       windows: [{ nloc: 'Right Eave Side', ntp: 'std', nqt: pick(['1', '2']), positions: [{ val: '6' }, { val: '' }] }],
       leantos: R() < 0.5 ? [{ lts: pick(['Left Eave', 'Back Gable']), ltw: '10', ltl2: '20', lth: '8', ltp: '2:12', 'lt-type': 'attached', 'lt-wm': 'enclosed', accs: [{ 'lt-acc-type': 'wtd', 'lt-acc-qty': '1', 'lt-acc-loc': 'outer', 'lt-acc-pos': 'auto' }] }] : [],
     }
-    const r = quoteToSeed(q, { quote: { id: 'q1', quote_number: 'SS-2026-0099', total_amount: 23200 } })
+    const r = quoteToSeed(q, { quote: { id: 'q1', quote_number: 'SS-2026-0099', total_amount: 23200 }, contact: LEAD })
     if (!r.ok) continue
     made++
     if (r.seed.design.openings.length) withOpenings++
     if (r.seed.design.leanTos.length) withLeanTos++
-    const json = JSON.stringify(r.seed)
-    assert.ok(json.length <= SEED_MAX_CHARS)
-    const found = FORBIDDEN_KEYS.filter((k) => keysOf(r.seed).has(k))
+    // the one allowed personal block: exactly the lead's name / phone / email, nothing of the quote's own customer fields
+    assert.deepEqual(r.seed.contact, { name: 'Lee bLead', phone: '(561) 555-0177', email: 'lee@example.com' })
+    const { contact, ...body } = r.seed
+    assert.ok(contact)
+    assert.ok(JSON.stringify(r.seed).length <= SEED_MAX_CHARS)
+    const json = JSON.stringify(body)
+    const found = FORBIDDEN_KEYS.filter((k) => keysOf(body).has(k))
     assert.deepEqual(found, [], `forbidden keys in a seed: ${found}`)
     assert.doesNotMatch(json, /Pat Q|555-0147|pat@example|Palm Way|Main St|gate code|Jenna|SS-2026|\$\s?\d|\d,\d{3}\b|data:image/)
     assert.doesNotMatch(json, /carolina|carports anywhere|\bCCI\b|\bCA\b|eversafe|manufacturer/i)
-    assert.deepEqual(Object.keys(r.seed).sort(), ['ctx', 'design', 'schema', 'v'])
+    assert.deepEqual(Object.keys(r.seed).sort(), ['contact', 'ctx', 'design', 'schema', 'v'])
+    assert.doesNotMatch(JSON.stringify(r.seed), /Pat Q|555-0147|pat@example|Palm Way|Main St|gate code|Secret Rd|private|working/i)
     assert.deepEqual(Object.keys(r.seed.ctx).sort(), ['county', 'impact', 'zip'])
     assert.ok(settled(r.seed), 'a seed survives the page clean-up unchanged')
     // the notes are for the rep and stay clear of prices and quote numbers too
@@ -429,4 +436,23 @@ test('helpers: county and ZIP parsing, impact rule', () => {
   assert.equal(impactFor({ mfr: 'CCI', county: 'Okaloosa', width: 20, length: 30 }), false)
   assert.equal(impactFor({ mfr: 'CCI', county: 'Lee', width: 20, length: 30, overrides: { grand: { imp: true } } }), false)
   assert.equal(impactFor({ mfr: 'CA', county: 'Lee', width: 20, length: 30 }), false)
+})
+
+test('contact: the lead name, phone and email only, cleaned and capped; junk is left out', () => {
+  const q = { mfr: 'CCI', fields: { btype: 'standard', bw: '24', bl: '40', bh: '12' } }
+  assert.deepEqual(quoteToSeed(q, { contact: LEAD }).seed.contact, { name: 'Lee bLead', phone: '(561) 555-0177', email: 'lee@example.com' })
+  assert.equal(quoteToSeed(q).seed.contact, undefined)
+  assert.equal(quoteToSeed(q, { contact: { name: '', phone: '12', email: 'nope' } }).seed.contact, undefined)
+  assert.equal(quoteToSeed(q, { contact: { name: 'A'.repeat(300), phone: '5615550177', email: 'a@b.co' } }).seed.contact.name.length, 120)
+  assert.deepEqual(Object.keys(cleanContact(LEAD)).sort(), ['email', 'name', 'phone'])
+})
+
+test('45 degree cut: set when any roll-up door has it; the diff reports it', () => {
+  const base = { mfr: 'CCI', fields: { btype: 'standard', bw: '24', bl: '40', bh: '12', wfg: 'Closed' }, doors: [{ rloc: 'Front Gable End', rsz: '10x8', rqt: '1', r45: 'no', positions: [{ val: '4' }] }, { rloc: 'Front Gable End', rsz: '8x8', rqt: '1', r45: 'yes', positions: [{ val: '16' }] }] }
+  const r = quoteToSeed(base)
+  assert.equal(r.seed.design.upgrades.angle45, true)
+  assert.equal(quoteToSeed({ ...base, doors: [base.doors[0]] }).seed.design.upgrades.angle45, false)
+  assert.ok(settled(r.seed))
+  const sent = JSON.parse(JSON.stringify(r.seed)); sent.design.upgrades.angle45 = false
+  assert.deepEqual(designDiff(r.seed, sent).map((c) => c.text), ['Upgrade removed: 45° angle cut on roll-up doors'])
 })
