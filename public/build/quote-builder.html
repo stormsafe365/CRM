@@ -9055,7 +9055,7 @@ function rcManual(){
   var pdepLbl=G('pdep-label'); if(pdepLbl) pdepLbl.textContent='Deposit Due Now ('+(window._depPct||17)+'%)';
   var pbalSplitEl=G('pbal-split-note');
   if(pbalSplitEl){
-    if(bal>15000){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install'); pbalSplitEl.style.display='block'; }
+    if(paySplitOn(ad,bal)){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install'); pbalSplitEl.style.display='block'; }
     else { pbalSplitEl.style.display='none'; }
   }
   var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?('\u2014 '+fD(adjTot)):'';
@@ -9096,6 +9096,19 @@ function gAdjLabel(){
 //
 // Discount, tax, deposit, additional discount and balance from a pre-discount
 // subtotal. Used by rc(), rcManual() and the contract's honored-subtotal path.
+// Payment split (owner 10/20/26). CCI Dealer Handbook, Special Requirements: orders of $15,000 and larger,
+// and every 32'-60' wide building, pay half of the remaining balance when installation is scheduled and the
+// rest after install. The test uses 'ad' (building price incl. options after discount, BEFORE sales tax) = CCI's retail.
+// Every other manufacturer keeps the old rule (remaining balance over $15,000).
+function paySplitOn(ad,bal){
+  if(ACTIVE_MFR==='CCI') return bal>0 && (ad>=15000 || (parseInt((G('bw')||{}).value)||0)>=32);
+  return bal>15000;
+}
+function paySplitIntro(){
+  if(ACTIVE_MFR==='CCI') return "Orders of $15,000 or more (and all 32'-60' wide buildings) pay half of the remaining balance when "+(_delivOnly()?'delivery':'installation')+' is scheduled and the rest '+(_delivOnly()?'at delivery':'after installation')+':';
+  return 'Orders with a remaining balance over $15,000 are split into two payments:';
+}
+
 function qMoney(sub){
   var disc=parseFloat(G('disc').value)||0;
   var tax=parseFloat(G('tax').value)||0;
@@ -9820,7 +9833,7 @@ function rc(){
   // Show split-payment note when remaining balance > $15,000
   var pbalSplitEl=G('pbal-split-note');
   if(pbalSplitEl){
-    if(bal>15000){
+    if(paySplitOn(ad,bal)){
       var half=Math.round(bal/2);
       pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install');
       pbalSplitEl.style.display='block';
@@ -12941,7 +12954,7 @@ async function printQuote(){
   }
   var rows='';
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
-  if(base) rows+=row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
+  if(base) rows+=row(w+"' \xD7 "+l+"'"+(bt3p==='fslean'?' Free-Standing Lean-To / Single Slope':'')+" (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) rows+=row(h+"' Leg Height",null,null,leg);
   if(framingUpgP) rows+=row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":(T.ladder12?'12-Gauge Framing (commercial ladder legs)':'12-Gauge Framing Upgrade')),null,null,framingUpgP);
   if(ocUpgradeP) rows+=row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
@@ -13027,9 +13040,6 @@ async function printQuote(){
   else if(fastenerPQ>0) rows+=row('Color Match Fasteners',null,null,fastenerPQ);
   if(bt3p==='widespan') rows+=row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(bt3p==='fslean'){
-    rows+=row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
-    rows+=row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
-    if(fsCertMph()>=160) rows+=row('Up to 170 MPH + 4ft Wind Certification (included in '+(fsCert()>0?'base':'the 12-gauge framing line')+')',null,null,0);
     // fslean walls are priced by fsWalls() (in the Building Amount) — itemize them
     if(walls) rows+=row(fsWallsDesc(),null,null,walls);
   }
@@ -13355,11 +13365,11 @@ async function printQuote(){
   (_delivOnly()?'<div style="margin:-2px 0 8px;padding:4px 10px;border-left:3px solid #f0883e;background:#151009;color:#f0883e;font-size:7.5pt;font-weight:700;letter-spacing:.4px">'+(_pickupOnly()?'CUSTOMER PICKUP \u2014 no delivery or installation. Remaining balance due at pickup.':'DELIVERED ONLY \u2014 no installation included. Remaining balance due at scheduling of delivery.')+'</div>':'')+
 
   // Balance > $15,000: split into two payments (50% at scheduling, 50% after installation)
-  (bal > 15000 ? (function(){
+  (paySplitOn(ad, bal) ? (function(){
     var half = Math.round(bal/2);
     return '<div style="background:#0d1820;border:1px solid #1fcec4;border-radius:6px;padding:10px 14px;margin-bottom:8px">'+
       '<div style="font-size:9pt;font-weight:800;color:#1fcec4;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Remaining Balance — Payment Breakdown</div>'+
-      '<div style="font-size:8.5pt;color:#dde7ef;line-height:1.4;margin-bottom:6px">Orders with a remaining balance over $15,000 are split into two payments:</div>'+
+      '<div style="font-size:8.5pt;color:#dde7ef;line-height:1.4;margin-bottom:6px">'+paySplitIntro()+'</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">'+
         '<div style="background:#111d28;border-radius:4px;padding:7px 10px;border-left:3px solid #1fcec4">'+
           '<div style="font-size:7pt;font-weight:700;color:#8aa3b5;text-transform:uppercase;letter-spacing:.6px">Due at Scheduling</div>'+
@@ -14616,7 +14626,7 @@ async function printContract(){
   var _rvOldDone=[]; function row(desc,qty,unit,amt){ var _it={desc:desc, qty:qty, unit:unit, amt:amt, hl:!!window._rvHlCur}; if(_it.hl) rvTagRow(_it, window._rvElCur, _rvOldDone); lineItems.push(_it); } // amounts show cents wherever they have them (lean-to / storage rows included)
 
   var overrideActive=G('base-override')&&G('base-override').value&&parseFloat(G('base-override').value)>0;
-  if(base) row(w+"' \xD7 "+l+"' (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
+  if(base) row(w+"' \xD7 "+l+"'"+(bt3p==='fslean'?' Free-Standing Lean-To / Single Slope':'')+" (GA: "+(fuValP==='12'?'12':'14')+" | "+pitch+" Roof Pitch)"+(overrideActive?' — Manual Price':''),null,null,base);
   if(leg) row(h+"' Leg Height",null,null,leg);
   if(framingUpgP) row((window._cb12x4?"12-Gauge Framing w/ 4' Centers (up to 170 MPH)":(T.ladder12?'12-Gauge Framing (commercial ladder legs)':'12-Gauge Framing Upgrade')),null,null,framingUpgP);
   if(ocUpgradeP) row("4' OC Framing Spacing Upgrade",null,null,ocUpgradeP);
@@ -14693,9 +14703,6 @@ async function printContract(){
   else if(fastenerPQ>0) row('Color Match Fasteners',null,null,fastenerPQ);
   if(bt3p==='widespan') row('26-Gauge Full Sheeting — Standard (Wide Span)',null,null,0);
   if(bt3p==='fslean'){
-    row('FREE-STANDING LEAN-TO (Single Slope) — NOT a carport',null,null,0);
-    row('Tall side '+(parseInt(G('bh').value)||0)+"' / Low side "+fsLowSide()+"' — "+fsPitch()+':12 pitch',null,null,0);
-    if(fsCertMph()>=160) row('Up to 170 MPH + 4ft Wind Certification (included in '+(fsCert()>0?'base':'the 12-gauge framing line')+')',null,null,0);
     // fslean walls are priced by fsWalls() (in the Building Subtotal) — itemize them
     if(walls) row(fsWallsDesc(),null,null,walls);
   }
@@ -17925,6 +17932,7 @@ function textQuote(){
   m+='Here\'s your building quote:\n\n';
   m+='\u{1F4D0} BUILDING\n';
   m+=w+'\' \u00D7 '+l+'\' \u00D7 '+h+'\' ('+sqft.toLocaleString()+' sq ft)\n';
+  if(G('btype')&&G('btype').value==='fslean') m+='Free-Standing Lean-To (Single Slope)\n';
   m+=roofStyle+' Roof \u2022 '+wallStyle+' Walls \u2022 '+pitch+'\n';
   m+=(fuVal==='12'?'12GA':'14GA')+' Framing \u2022 '+(T.sheet26?'26GA':'Standard Sheeting')+'\n';
   if(ltWraps().active.length){ var _ovT=ltOverall(); m+='Overall with lean-tos: '+_ovT.w+'\' \u00D7 '+_ovT.l+'\' (main building '+w+'\' \u00D7 '+l+'\')\n'; }
