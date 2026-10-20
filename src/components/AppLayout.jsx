@@ -10,13 +10,14 @@ import { useTimedReminders } from '../lib/useTimedReminders'
 import { useDesignPings } from '../lib/useDesignPings'
 import { useDesignCounts } from '../lib/useDesignCounts'
 import { useIsAdmin } from '../lib/useIsAdmin'
+import { NAV_META, visibleNav } from '../lib/repView'
 import { isoToday } from '../lib/followups'
 import { useUsers, userLabel } from '../lib/useUsers'
 import { mountCursorFx } from '../lib/uiFx'
 import CommandCenter from './CommandCenter'
 
 // Lucide-style 2px-stroke icons, matched to the mockup sidebar.
-const navItems = [
+const navIcons = [
   {
     to: '/dashboard', label: 'Dashboard',
     icon: <><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" /></>,
@@ -73,6 +74,9 @@ const navItems = [
     icon: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></>,
   },
 ]
+
+// Labels, order and rep/admin visibility come from repView.js (unit-tested); the icons live here.
+const navItems = NAV_META.map((m) => ({ icon: navIcons.find((n) => n.to === m.to)?.icon, ...m }))
 
 export default function AppLayout({ children }) {
   const { user, signOut } = useAuth()
@@ -175,7 +179,7 @@ export default function AppLayout({ children }) {
         </Link>
 
         <nav className="nav">
-          {navItems.filter(item => !item.adminOnly || isAdmin === true).map(item => (
+          {visibleNav(navItems, isAdmin).map(item => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -185,7 +189,7 @@ export default function AppLayout({ children }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
                 {item.icon}
               </svg>
-              {isAdmin === false && item.repLabel ? item.repLabel : item.label}
+              {item.label}
               {item.to === '/followups' && dueCount > 0 && (
                 <span className="badge-count" style={{ position: 'static', marginLeft: 'auto', border: 'none' }}>
                   {dueCount > 9 ? '9+' : dueCount}

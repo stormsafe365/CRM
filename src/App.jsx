@@ -1,7 +1,7 @@
 // App: routing wired to AuthProvider so every route can see auth state.
 // AppLayout wraps every protected page so the header is consistent.
 
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/AppLayout'
@@ -22,14 +22,34 @@ import Pipeline from './pages/Pipeline'
 import CustomerDesigns from './pages/CustomerDesigns'
 import Performance from './pages/Performance'
 import ComingSoon from './pages/ComingSoon'
+import { useIsAdmin } from './lib/useIsAdmin'
+import { isRepBlocked } from './lib/repView'
 
 // Tiny helper to avoid repeating <ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>
+// Soft guard (owner 10/20/26): a sales rep who types a removed sidebar page's URL lands on the Dashboard.
+// Admins and in-lead pages (/clients/:id, /build) are never redirected.
 function Protected({ children }) {
   return (
     <ProtectedRoute>
-      <AppLayout>{children}</AppLayout>
+      <RepGuard>
+        <AppLayout>{children}</AppLayout>
+      </RepGuard>
     </ProtectedRoute>
   )
+}
+
+function RepGuard({ children }) {
+  const isAdmin = useIsAdmin()
+  const { pathname } = useLocation()
+  if (isRepBlocked(isAdmin, pathname)) return <Navigate to="/dashboard" replace />
+  return children
+}
+
+// Admins (and a failed role check) get today's full dashboard; a rep gets the calm one.
+function DashboardRoute() {
+  const isAdmin = useIsAdmin()
+  if (isAdmin === null) return <div className="loading-screen">Loading…</div>
+  return <Dashboard rep={isAdmin === false} />
 }
 
 export default function App() {
@@ -38,7 +58,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
 
-        <Route path="/dashboard"     element={<Protected><Dashboard /></Protected>} />
+        <Route path="/dashboard"     element={<Protected><DashboardRoute /></Protected>} />
         <Route path="/clients"       element={<Protected><ClientsList /></Protected>} />
         <Route path="/clients/new"   element={<Protected><ClientNew /></Protected>} />
         <Route path="/clients/:id"   element={<Protected><ClientDetail /></Protected>} />

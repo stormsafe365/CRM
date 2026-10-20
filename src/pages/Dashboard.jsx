@@ -22,6 +22,7 @@ import { AreaChart } from '../components/charts'
 import DashCalendar from '../components/DashCalendar'
 import BuildQuoteModal from '../components/BuildQuoteModal'
 import DashAnalytics from '../components/DashAnalytics'
+import { dashLayout } from '../lib/repView'
 
 const DAY = 86400000
 
@@ -50,7 +51,9 @@ const Eyebrow = ({ children }) => (
 
 const OPEN_QUOTE_STATUSES = ['draft', 'sent', 'verbal_accept']
 
-export default function Dashboard() {
+// rep = a sales rep login: the same command center, trimmed (see dashLayout in repView.js).
+export default function Dashboard({ rep = false }) {
+  const L = dashLayout(rep)
   const { user } = useAuth()
   const navigate = useNavigate()
   const [clients, setClients] = useState([])
@@ -74,7 +77,7 @@ export default function Dashboard() {
     async function load() {
       const [c, q] = await Promise.all([
         supabase.from('clients').select('*'),
-        supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at, created_by, deleted_at'),
+        rep ? Promise.resolve({ data: [] }) : supabase.from('quotes').select('id, client_id, status, manufacturer, total_amount, created_at, created_by, deleted_at'),
       ])
       if (cancelled) return
       setClients((c.data ?? []).filter(x => !x.deleted_at))
@@ -188,7 +191,7 @@ export default function Dashboard() {
       sub: `${buckets.newLeadsMonth.length} this month`, to: '/clients?view=new_lead' },
     { label: 'Active Working Leads', icon: ico.flame, value: buckets.activeWorking.length, accent: 'green',
       sub: 'Working · hot · contract sent', to: '/clients?view=working' },
-    { label: 'Ordered · In Project', icon: ico.hardHat, value: buckets.ordered.length, accent: 'purple',
+    { label: L.orderedLabel, icon: ico.hardHat, value: buckets.ordered.length, accent: 'purple',
       sub: 'Deposit paid + contract signed', to: '/clients?view=ordered' },
     { label: 'Due Today', icon: ico.calClock, value: dueToday.length, accent: 'orange',
       delta: overdue.length > 0 ? `▲ ${overdue.length} overdue` : null,
@@ -199,7 +202,7 @@ export default function Dashboard() {
   const tools = [
     { icon: ico.fileText, name: 'QTE Builder', desc: 'Pricing & quote tool', onClick: () => setBuilding(true) },
     { icon: ico.layout, name: '2D Layout', desc: 'Doors, windows & openings', onClick: () => navigate('/layout') },
-  ]
+  ].filter(t => L.tools.includes(t.name))
 
   return (
     <>
@@ -255,7 +258,7 @@ export default function Dashboard() {
       </div>
 
       {/* ===== QUOTES SENT (compact strip) ===== */}
-      <div className="dsh-panel dsh-quotes">
+      {L.quotesSent && <div className="dsh-panel dsh-quotes">
         <div className="dsh-quotes-head">
           <div className="dsh-quotes-titles">
             <Eyebrow>Quotes Sent</Eyebrow>
@@ -279,12 +282,12 @@ export default function Dashboard() {
         <div className="dsh-quotes-chart">
           <AreaChart points={area.points} labels={area.labels} peakText={area.peakText} />
         </div>
-      </div>
+      </div>}
 
       {/* ===== BOTTOM ROW ===== */}
-      <div className="dsh-bottom">
+      <div className="dsh-bottom" style={rep ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}>
         {/* Active Clients */}
-        <div className="dsh-panel dsh-statcard acc-cyan">
+        {L.bottom.includes('activeClients') && <div className="dsh-panel dsh-statcard acc-cyan">
           <div className="dsh-panel-title">Active Clients</div>
           <SpecRow label="New Leads · This Week" value={buckets.newLeadsWeek.length} to="/clients?view=new_lead" />
           <SpecRow label="Attempting to Contact" value={buckets.attempting.length} to="/clients?view=contacted" />
@@ -292,10 +295,10 @@ export default function Dashboard() {
           <SpecRow label="Working Hot Leads" value={buckets.hot.length} to="/clients?view=working_hot" />
           <SpecRow label="Contract Sent" value={buckets.contractSent.length} to="/clients?view=contract_sent" />
           <SpecRow label="Dead" value={buckets.dead.length} dim to="/clients?view=dead" last />
-        </div>
+        </div>}
 
         {/* Project Stage */}
-        <div className="dsh-panel dsh-statcard acc-purple">
+        {L.bottom.includes('projectStage') && <div className="dsh-panel dsh-statcard acc-purple">
           <div className="dsh-panel-title">Project Stage</div>
           {buckets.ordered.length === 0 ? (
             <div className="dsh-muted" style={{ fontSize: 13 }}>No ordered projects yet.</div>
@@ -317,10 +320,10 @@ export default function Dashboard() {
               })}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Follow-Ups Due Today */}
-        <div className="dsh-panel dsh-statcard acc-orange">
+        {L.bottom.includes('dueToday') && <div className="dsh-panel dsh-statcard acc-orange">
           <div className="dsh-panel-title dsh-title-row">
             <span>Follow-Ups Due Today</span>
             <Link to="/followups" className="dsh-link">View all</Link>
@@ -342,7 +345,7 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Needs Attention */}
         <div className="dsh-panel dsh-statcard acc-orange">
@@ -376,7 +379,7 @@ export default function Dashboard() {
       </div>
 
       {/* ===== SALES ANALYTICS ===== */}
-      {!loading && <DashAnalytics clients={clients} quotes={quotes} />}
+      {!loading && L.analytics && <DashAnalytics clients={clients} quotes={quotes} />}
 
       {building && <BuildQuoteModal client={null} onClose={() => setBuilding(false)} />}
     </>
