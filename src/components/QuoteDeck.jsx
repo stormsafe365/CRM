@@ -9,6 +9,7 @@ import { openMenu } from '../lib/uiFx'
 import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
 import { usd } from '../lib/money'
+import { quoteSeedReason } from '../lib/designLinks'
 
 const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
@@ -29,7 +30,7 @@ const calIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const userIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 const imgIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L8 21" /></svg>
 
-export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
+export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet, onCreateLink }) {
   // The deck follows a quote (by id), not a slot — starring moves a quote to
   // the front of the list and the deck stays on it. A deleted quote falls back
   // to the same slot, as before.
@@ -123,6 +124,7 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
           <span className="qcard-creator">{userIcon} Created by {creator !== '—' ? creator : 'you'}</span>
           <div className="qcard-actions">
             {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
+            {onCreateLink && <button className="qcard-btn" style={{ color: 'var(--teal, #22d3c8)' }} disabled={!!quoteSeedReason(q)} title={quoteSeedReason(q) || 'Make the customer design link for this quote’s building'} onClick={() => onCreateLink(q)}>Create link</button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
             <button className="qcard-btn" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
               ...(q.pdf_snapshot_url ? [{ id: 'pdf', label: 'View PDF', onClick: () => onViewPdf(q.pdf_snapshot_url) }] : []),

@@ -365,3 +365,19 @@ test('a seed the database refuses as too big gives a friendly message', async ()
   const sb = { from: () => ({ insert: async () => ({ error: { code: '23514', message: 'new row for relation "design_links" violates check constraint "design_links_seed_check"' } }) }) }
   await assert.rejects(createDesignLink(sb, { clientId: 'C1', seed: SEED }), (e) => e.message === SEED_TOO_BIG_TEXT && e.missingTable === false)
 })
+
+import { quoteSeedReason } from '../src/lib/designLinks.js'
+
+test('quote card button: a cheap reason from the row, empty when it can seed or the payload is not on the row', () => {
+  const row = (f) => ({ payload_json: { fields: f } })
+  assert.equal(quoteSeedReason(row({ btype: 'gch', bw: '24', bl: '40', bh: '12' })), '')
+  assert.equal(quoteSeedReason({ id: 'x' }), '') // no payload on the row: checked on click
+  assert.match(quoteSeedReason({ payload_json: {} }), /Entered by hand/)
+  assert.match(quoteSeedReason({ payload_json: { source: 'upload' } }), /Entered by hand/)
+  assert.match(quoteSeedReason(row({ btype: 'fslean', bw: '10', bl: '20', bh: '8' })), /free-standing/i)
+  assert.match(quoteSeedReason(row({ btype: '', bw: '10', bl: '20', bh: '8' })), /building type/)
+  assert.match(quoteSeedReason(row({ btype: 'standard', bw: '', bl: '20', bh: '8' })), /missing/)
+  assert.match(quoteSeedReason(row({ btype: 'widespan', bw: '70', bl: '20', bh: '8' })), /60/)
+  assert.match(quoteSeedReason(row({ btype: 'standard', bw: '30', bl: '250', bh: '8' })), /200/)
+  assert.match(quoteSeedReason(row({ btype: 'standard', bw: '30', bl: '40', bh: '22' })), /20/)
+})
