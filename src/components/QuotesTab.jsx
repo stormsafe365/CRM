@@ -28,7 +28,7 @@ import { usd } from '../lib/money'
 
 const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 
-export default function QuotesTab({ clientId, client, clientBuildingSize, building: buildingProp, setBuilding: setBuildingProp }) {
+export default function QuotesTab({ clientId, client, clientBuildingSize, building: buildingProp, setBuilding: setBuildingProp, designForQuote = null, onDesignDone = null }) {
   const { user } = useAuth()
   const { users } = useUsers()
   const [quotes, setQuotes] = useState([])
@@ -355,7 +355,7 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
           )}
           {!adding && !editingId && (
             <>
-              <button onClick={() => { setEditQuote(null); setBuilding(true) }} className="btn btn-primary">
+              <button onClick={() => { setEditQuote(null); onDesignDone?.(); setBuilding(true) }} className="btn btn-primary">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>Build Quote
               </button>
               <button onClick={() => setAdding(true)} className="btn btn-ghost">
@@ -370,14 +370,15 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
 
       {building && (
         <BuildQuoteModal
-          key={editQuote?.id || 'new'}
+          key={editQuote?.id || (designForQuote ? 'design-' + designForQuote.id : 'new')}
           client={client ?? { id: clientId }}
           initialQuote={editQuote}
+          fromDesign={editQuote ? null : designForQuote}
           autoContract={autoContract}
           autoExec={autoExec}
           revisionChanges={revisionChanges}
           onSave={(payload, cur) => ((editQuote || cur?.id) ? handleBuildUpdate(editQuote || cur, payload) : handleCreate(payload))}
-          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false); setRevisionChanges(null) }}
+          onClose={() => { setBuilding(false); setEditQuote(null); setAutoContract(false); setAutoExec(false); setRevisionChanges(null); onDesignDone?.() }}
         />
       )}
 

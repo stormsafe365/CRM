@@ -1828,6 +1828,13 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .qb-lock-detail { opacity: .85; }
 .qb-lock-blocked { font-weight: 700; }
 .qb-lock-btn { padding: 4px 10px; font-size: 12px; }
+/* Build quote from a customer design: "Check these before quoting" (owner 10/21/26) */
+.qb-design-list { flex: 1 1 100%; margin: 2px 0 0; padding: 0 0 0 2px; list-style: none; max-height: 190px; overflow: auto; color: var(--fg, #e2e8f0); }
+.qb-design-list li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-top: 1px solid rgba(255, 255, 255, .06); }
+.qb-design-tag { flex: none; min-width: 44px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.qb-design-warn .qb-design-tag { color: #FFD08A; }
+.qb-design-info .qb-design-tag { color: #8598AC; }
+.qb-design-info { color: #A6B7C8; }
 @media (max-width: 720px) {
   .qb-overlay { padding: 0; }
   .qb-modal { height: 100vh; border-radius: 0; border: 0; }

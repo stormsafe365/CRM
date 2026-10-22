@@ -4,6 +4,8 @@
 //   on a lead      -> the lead's name + Open lead, Mark reviewed, Remove
 //   not on a lead  -> Attach to a lead (same phone / email / name first),
 //                     Make a new lead, Mark reviewed, Remove
+// + "Build quote from this design" (owner 10/21/26): on a lead it opens the lead page with the quote program filled in;
+//   not on a lead it asks for the lead first (attach / make one), then does the same.
 // The picture, contact and spec come from DesignItem (CustomerDesignsCard).
 
 import { useMemo, useState } from 'react'
@@ -15,7 +17,7 @@ import { isoToday } from '../lib/followups'
 import { findDuplicateClients, dupSummary, othersOnly, othersText } from '../lib/dupCheck'
 import { attachDesign, markDesign, matchLeads, escHtml, sharedFrom } from '../lib/designLinks'
 import { useLeadSearch } from '../lib/useLeadSearch'
-import { DesignItem } from './CustomerDesignsCard'
+import { DesignItem, BuildFromDesignButton } from './CustomerDesignsCard'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
@@ -59,6 +61,10 @@ export function DesignInboxRow({ d, lead, onDone }) {
   const navigate = useNavigate()
   const [attaching, setAttaching] = useState(false)
   const [busy, setBusy] = useState(false)
+  // "Build quote from this design" on a design that is not on a lead yet (owner 10/21/26): the lead comes first (Attach
+  // to a lead / Make a new lead, as ever), then the lead page opens the quote program filled in with the design.
+  const [buildAfter, setBuildAfter] = useState(false)
+  const openBuilder = (clientId) => navigate(`/clients/${clientId}`, { state: { buildFromDesign: d.id } })
 
   async function attachTo(c) {
     if (busy) return
@@ -68,6 +74,7 @@ export function DesignInboxRow({ d, lead, onDone }) {
       toast(`Design attached to ${escHtml(c.name || 'the lead')}`, 'success')
       setAttaching(false)
       onDone()
+      if (buildAfter) openBuilder(c.id)
     } catch (e) {
       toast(escHtml(e.message || 'Could not attach the design.'))
       if (e.alreadyAttached) onDone() // someone else attached it: refresh the list
@@ -105,7 +112,8 @@ export function DesignInboxRow({ d, lead, onDone }) {
       }
       toast(`New lead made for ${escHtml(d.name)}, with the design`, 'success')
       onDone()
-      navigate(`/clients/${data.id}`)
+      if (buildAfter) openBuilder(data.id)
+      else navigate(`/clients/${data.id}`)
     } catch (e) { toast(escHtml(e.message || 'Could not make the lead.')) } finally { setBusy(false) }
   }
   async function setStatus(status) {
@@ -116,11 +124,16 @@ export function DesignInboxRow({ d, lead, onDone }) {
   const onLead = !!d.client_id
   const actions = (
     <>
+      {d.status !== 'dismissed' ? (
+        onLead
+          ? <BuildFromDesignButton d={d} onClick={() => openBuilder(d.client_id)} disabledReason={lead && lead.trashed ? 'The lead is in Trash: restore it from Trash first.' : ''} />
+          : <BuildFromDesignButton d={d} onClick={() => { setBuildAfter(true); setAttaching(true) }} disabledReason={busy ? 'Working…' : ''} />
+      ) : null}
       {onLead ? (
         <Link className="btn-primary" style={{ ...SMALL, textDecoration: 'none' }} to={`/clients/${d.client_id}`}>Open lead{leadName ? `: ${leadName}` : ''}</Link>
       ) : (
         <>
-          <button type="button" className="btn-primary" style={SMALL} disabled={busy} onClick={() => setAttaching((v) => !v)}>Attach to a lead</button>
+          <button type="button" className="btn-primary" style={SMALL} disabled={busy} onClick={() => { setBuildAfter(false); setAttaching((v) => !v) }}>Attach to a lead</button>
           <button type="button" className="btn-secondary" style={SMALL} disabled={busy} onClick={newLead}>Make a new lead</button>
         </>
       )}
@@ -137,7 +150,8 @@ export function DesignInboxRow({ d, lead, onDone }) {
         {sharedFrom(d) ? <> · From: <b style={{ color: 'var(--fg, #e2e8f0)' }}>{sharedFrom(d)}</b> (shared link)</> : null}
       </div>
       <DesignItem d={d} onChanged={onDone} actions={actions} />
-      {attaching ? <AttachPicker design={d} busy={busy} onPick={attachTo} onCancel={() => setAttaching(false)} /> : null}
+      {attaching && buildAfter ? <div style={{ ...MUTED, marginTop: 8 }}>A quote is built on a lead: pick the lead this design belongs to below (or <b>Make a new lead</b>). The lead page then opens the quote program filled in with the design.</div> : null}
+      {attaching ? <AttachPicker design={d} busy={busy} onPick={attachTo} onCancel={() => { setAttaching(false); setBuildAfter(false) }} /> : null}
     </div>
   )
 }

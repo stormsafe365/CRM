@@ -165,6 +165,18 @@ export async function loadClientDesigns(sb, clientId) {
 }
 
 /**
+ * One design (the list columns + its link's kind / name) - "Build quote from this design" opened from the Customer
+ * Designs page reads it fresh on the lead page (owner 10/21/26). null when it can't be read.
+ */
+export async function loadDesignRow(sb, id) {
+  if (!id) return null
+  const { data, error } = await listQuery(sb, (q) => q.eq('id', id).limit(1))
+  if (error) return null
+  const rows = Array.isArray(data) ? data : data ? [data] : []
+  return rows[0] || null
+}
+
+/**
  * Designs sent from a link that is not tied to a lead, not dismissed. { rows, missing }
  * light: ids only (the Leads page strip just counts them; the pictures load when Review opens).
  */

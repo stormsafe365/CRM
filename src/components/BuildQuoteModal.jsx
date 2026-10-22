@@ -16,6 +16,13 @@
 // contract / executed copy / revision only run while the saved price is held;
 // every write to a saved quote asks first in one dialog (saved → new; it says
 // so when nothing changed).
+//
+// Build quote from a customer design (owner 10/21/26): `fromDesign` = a
+// design_requests row. Once the program is loaded it is filled in with the
+// customer's building (lib/designToQuote: CCI, today's pricing, never a price
+// put in), the lead's contact info goes in as usual, and a "Check these before
+// quoting" bar lists what the program could not take exactly as drawn. Nothing
+// is saved until the rep saves (Save to Lead creates the quote as usual).
 
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
@@ -34,6 +41,8 @@ import {
   REVISION_ADJ_LABEL, revisionOriginal, revisionReconcile, savedTotalsOf, writeCheck, totalsDiffer } from '../lib/priceLockCrm'
 import UseAsRevisionModal from './UseAsRevisionModal'
 import DesignLinkModal from './DesignLinkModal'
+import { designToQuote, applyDesignToProgram, restoreChecks, mergeChecks } from '../lib/designToQuote'
+import { designSeed } from '../lib/designLinks'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
@@ -66,7 +75,7 @@ function priceLockDisabled() {
   try { return window.localStorage.getItem('ss_price_lock') === 'off' } catch { return false }
 }
 
-export default function BuildQuoteModal({ client: clientProp, initialQuote, onSave, onClose, autoContract = false, autoExec = false, revisionChanges = null }) {
+export default function BuildQuoteModal({ client: clientProp, initialQuote, onSave, onClose, autoContract = false, autoExec = false, revisionChanges = null, fromDesign = null }) {
   // the lead: the prop, or the one picked in Save to Lead (SaveToLeadPicker) — review 10/19/26: a quote saved
   // through the picker then got a made-up contract number and no Save to Doc Hub
   const [clientState, setClientState] = useState(clientProp)
@@ -100,6 +109,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const [needDay, setNeedDay] = useState(null)     // { node, number, retry } — the agreement's signed day, asked before a revised contract
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
   const [designLink, setDesignLink] = useState(false) // the program's SEND DESIGN LINK → DesignLinkModal (owner 10/16/26)
+  const [designChecks, setDesignChecks] = useState(null) // Build quote from a customer design: { items, open } (owner 10/21/26)
   const uarOpenRef = useRef(() => {})
   // the program's hooked buttons (SAVE QUOTE / GENERATE CONTRACT / EXECUTED COPY) are wired once; they call
   // through these refs so they always see the latest lead / quote (review 10/19/26: the first render's
@@ -291,7 +301,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   // info and the ZIP resolves city/county/state. We never overwrite a field the
   // user already filled, and never touch the program's source.
   useEffect(() => {
-    if (!client || restoreData || prefillRef.current || quoteRef.current?.id) return // editing a saved quote (or one just saved) carries its own client info
+    if (!client || restoreData || fromDesign || prefillRef.current || quoteRef.current?.id) return // editing a saved quote (or one just saved) carries its own client info; a customer design fills it below
     let done = false
     const t = setInterval(() => {
       if (done) return
@@ -317,6 +327,57 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client])
+
+  // Build quote from a customer design (owner 10/21/26): once the program page is fully loaded (the price lock is its
+  // LAST script), fill it in with the design at TODAY's pricing (lib/designToQuote: the program's own restoreQuoteData +
+  // the ZIP's county rules), then the lead's contact info, then read the program back and list for the rep everything
+  // it could not take exactly as the customer drew it. No quote row is written here.
+  useEffect(() => {
+    if (!fromDesign || restoreData) return undefined
+    let done = false
+    let alive = true
+    const t = setInterval(async () => {
+      if (done) return
+      const pg = getProgramWindow()
+      if (!pg || typeof pg.restoreQuoteData !== 'function') return
+      try { if (pg.document.readyState !== 'complete' || !pg.PriceLock) return } catch { return }
+      done = true
+      clearInterval(t)
+      // a link started from a quote: what the page could not show from that quote (design_links.seed_notes)
+      let seed = { notes: [], quoteNumber: null }
+      try { if (fromDesign.link_token && fromDesign.design_links?.kind !== 'shared') seed = await designSeed(supabase, fromDesign.link_token) } catch { /* no notes */ }
+      if (!alive) return
+      const res = designToQuote(fromDesign.design, { zip: fromDesign.zip, leadZip: client?.zip, seedNotes: seed.notes, seedQuoteNumber: seed.quoteNumber })
+      if (!res.ok) { toast(`This design can't fill in the quote program: ${escHtml(res.reason)}`); return }
+      let ok = true
+      try { applyDesignToProgram(pg, res.payload) } catch (e) { ok = false; console.warn('design fill failed', e) }
+      // Client Information: the lead's, else what the customer typed when sending (never over a value already there)
+      try {
+        const d = pg.document
+        const set = (id, val) => { const el = d.getElementById(id); if (el && !el.value && val) el.value = String(val) }
+        set('cn', client?.name || fromDesign.name)
+        set('cp', client?.phone || fromDesign.phone)
+        set('ce', client?.email || fromDesign.email)
+        if (typeof pg.sy === 'function') pg.sy()
+      } catch { /* typed by the rep */ }
+      prefillRef.current = true
+      // the restore finishes a few follow-ups on timers (no-overlap model, labels) before it is read back
+      await new Promise((r) => setTimeout(r, 900))
+      if (!alive) return
+      let back = null
+      try { back = pg.collectQuoteData() } catch { back = null }
+      let county = null
+      try { county = (pg.document.getElementById('county') || {}).textContent || null } catch { /* ignore */ }
+      const fromProgram = ok ? restoreChecks(res.payload, back, { T: pg._qTotals || null, county: county && county !== '—' ? county : null })
+        : [{ level: 'warn', text: 'The quote program could not take the whole design: compare every part of the build with the design (Show the spec) before quoting.' }]
+      const items = mergeChecks(res.checks, fromProgram)
+      setDesignChecks({ items, open: true })
+      const nWarn = items.filter((c) => c.level === 'warn').length
+      toast(`Filled in from ${escHtml(fromDesign.name || 'the customer')}'s design${nWarn ? ` — ${nWarn} thing${nWarn === 1 ? '' : 's'} to check before quoting` : ''}`, nWarn ? undefined : 'success')
+    }, 500)
+    return () => { alive = false; clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Once the nested program is ready, relabel its SAVE QUOTE button(s) → "Save to
   // Lead" and route their click to the CRM save. Polls (the program loads async).
@@ -963,7 +1024,9 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   }, [])
 
   const barTone = blocked ? (banner?.tone === 'error' ? 'error' : 'warn') : banner?.tone
-  const barTitle = restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : '3D Builder'
+  const barTitle = restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : fromDesign ? '3D Builder · from customer design' : '3D Builder'
+  const checkWarn = designChecks ? designChecks.items.filter((c) => c.level === 'warn').length : 0
+  const checkInfo = designChecks ? designChecks.items.length - checkWarn : 0
   const barClient = client?.name || savedTo
   return (
     <div className="qb-overlay" role="dialog" aria-modal="true" aria-label="3D Builder">
@@ -981,6 +1044,8 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
                   ? <>Place the added components on the building, then hit <b>✓ Finish Revision</b> — saves the Revision Order + Revised Contract.</>
                   : restoreData
                   ? <>Adjust the build, then <b>Save to Lead</b> to update this quote.</>
+                  : fromDesign
+                  ? <>Filled in from the customer&rsquo;s design: check the list below, then <b>Save to Lead</b>.</>
                   : client?.id
                     ? <>Build &amp; price, then hit <b>Save to Lead</b> — saves the quote + PDF to this lead.</>
                     : <>Build &amp; price, then hit <b>Save to Lead</b> — attach it to a lead or create a new one.</>}
@@ -997,6 +1062,24 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
             <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
           </div>
         </div>
+        {designChecks && (
+          <div className={`qb-lock ${checkWarn ? 'qb-lock-warn' : 'qb-lock-ok'} qb-design-checks`} role="region" aria-label="Check these before quoting">
+            <span className="qb-lock-dot" aria-hidden="true" />
+            <span className="qb-lock-text">
+              <b>Check these before quoting</b> — filled in from {fromDesign?.name || 'the customer'}&rsquo;s design (CCI, today&rsquo;s pricing): {checkWarn} to check{checkInfo ? `, ${checkInfo} to know` : ''}. Nothing is saved until you Save to Lead.
+            </span>
+            <button type="button" className="btn-secondary qb-lock-btn" aria-expanded={designChecks.open} onClick={() => setDesignChecks((c) => (c ? { ...c, open: !c.open } : c))}>{designChecks.open ? 'Hide' : 'Show'}</button>
+            {designChecks.open && (
+              <ul className="qb-design-list">
+                {designChecks.items.map((c, i) => (
+                  <li key={i} className={c.level === 'warn' ? 'qb-design-warn' : 'qb-design-info'}>
+                    <span className="qb-design-tag">{c.level === 'warn' ? 'Check' : 'Note'}</span>{c.text}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {pendingContract && (
           <div className="qb-lock qb-lock-save" role="status" aria-live="polite">
             <span className="qb-lock-dot" aria-hidden="true" />

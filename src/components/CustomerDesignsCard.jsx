@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext'
 import { toast } from '../lib/uiFx'
 import { loadClientDesigns, markDesign, safeImage, designSummary, escHtml, designImage, designSeed } from '../lib/designLinks'
 import { designDiff, diffSummary } from '../lib/designDiff'
+import { designQuoteReason } from '../lib/designToQuote'
 
 const MUTED = { color: 'var(--fg-3, #8598AC)', fontSize: 12.5 }
 
@@ -30,7 +31,22 @@ function Lightbox({ src, onClose }) {
   )
 }
 
-export function DesignItem({ d, onChanged, actions = null }) {
+/**
+ * "Build quote from this design" (owner 10/21/26): opens the Build Quote program pre-filled with the customer's
+ * building (lib/designToQuote). Nothing is saved until the rep saves in the program as usual.
+ */
+export function BuildFromDesignButton({ d, onClick, disabledReason = '' }) {
+  const why = designQuoteReason(d && d.design) || disabledReason
+  return (
+    <button type="button" className="btn-primary" style={{ padding: '4px 10px', fontSize: 12.5 }} disabled={!!why}
+      title={why || 'Open the quote program pre-filled with this design (CCI). Check the list it shows, then Save to Lead.'}
+      onClick={() => { if (!why) onClick(d) }}>
+      Build quote from this design
+    </button>
+  )
+}
+
+export function DesignItem({ d, onChanged, actions = null, onBuildQuote = null }) {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [big, setBig] = useState(false)
@@ -110,6 +126,7 @@ export function DesignItem({ d, onChanged, actions = null }) {
           </div>
         ) : null}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {onBuildQuote ? <BuildFromDesignButton d={d} onClick={onBuildQuote} /> : null}
           <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setOpen((v) => !v)}>{open ? 'Hide spec' : 'Show the spec'}</button>
           <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={copySpec}>Copy spec</button>
           {img ? <a className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5, textDecoration: 'none' }} href={img} download={`${fileBase}.jpg`}>Save picture</a> : null}
@@ -127,7 +144,7 @@ export function DesignItem({ d, onChanged, actions = null }) {
   )
 }
 
-export default function CustomerDesignsCard({ clientId, onSendLink }) {
+export default function CustomerDesignsCard({ clientId, onSendLink, onBuildQuote = null }) {
   const [rows, setRows] = useState([])
 
   useEffect(() => {
@@ -158,8 +175,8 @@ export default function CustomerDesignsCard({ clientId, onSendLink }) {
         <h3>Customer Designs{fresh ? ` · ${fresh} new` : ''}</h3>
         {onSendLink ? <span className="link-cyan" role="button" onClick={onSendLink}>Send another link</span> : null}
       </div>
-      <div style={{ ...MUTED, marginBottom: 4 }}>Sent by the customer from their design link. No prices: build the quote from the spec.</div>
-      {rows.map((d) => <DesignItem key={d.id} d={d} onChanged={() => window.dispatchEvent(new CustomEvent('ss:designs-updated'))} />)}
+      <div style={{ ...MUTED, marginBottom: 4 }}>Sent by the customer from their design link. No prices: "Build quote from this design" opens the quote program filled in with it.</div>
+      {rows.map((d) => <DesignItem key={d.id} d={d} onBuildQuote={onBuildQuote} onChanged={() => window.dispatchEvent(new CustomEvent('ss:designs-updated'))} />)}
     </section>
   )
 }

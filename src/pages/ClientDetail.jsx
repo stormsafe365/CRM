@@ -4,8 +4,8 @@
 // and the Document Hub. "Edit" (pencil) opens the full form.
 // Live-updates via realtime so partner edits show without a refresh.
 
-import { useEffect, useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { loadCurrentQuote } from '../lib/layoutFromQuote'
 import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
@@ -23,6 +23,7 @@ import OrderTimeline from '../components/OrderTimeline'
 import LeadTempSlider from '../components/LeadTempSlider'
 import DesignLinkModal from '../components/DesignLinkModal'
 import CustomerDesignsCard from '../components/CustomerDesignsCard'
+import { loadDesignRow } from '../lib/designLinks'
 
 // "Click to text": open the RingCentral desktop app's SMS composer with the
 // number prefilled (rcapp:// is the scheme the RingCentral app registers).
@@ -90,6 +91,10 @@ export default function ClientDetail() {
   const [buildingQuote, setBuildingQuote] = useState(false) // "Build Quote" — shared by QuotesTab + Document Hub menu
   const [ordering, setOrdering] = useState(false) // "Mark as Ordered" → OrderModal
   const [designLink, setDesignLink] = useState(false) // "Send design link" → DesignLinkModal (owner 10/16/26)
+  // "Build quote from this design" (owner 10/21/26): the customer design the builder opens filled in with (QuotesTab)
+  const [designForQuote, setDesignForQuote] = useState(null)
+  const location = useLocation()
+  function buildFromDesign(d) { if (!d) return; setDesignForQuote(d); setBuildingQuote(true) }
 
   useEffect(() => {
     let cancelled = false
@@ -132,6 +137,26 @@ export default function ClientDetail() {
       supabase.removeChannel(channel)
     }
   }, [id])
+
+  // Opened from the Customer Designs page: /clients/:id with state { buildFromDesign: <design id> }. Read once (the state is
+  // cleared at once, so a refresh or Back never reopens it); the design must be on THIS lead.
+  // (clearing the state re-runs this effect, so the read is not cancelled by it: the lead page still showing is what counts)
+  const wantDesign = location.state && location.state.buildFromDesign
+  const pageIdRef = useRef(id)
+  const designAskedRef = useRef(null) // the request in hand (React may run an effect twice)
+  useEffect(() => { pageIdRef.current = id; return () => { pageIdRef.current = null } }, [id])
+  useEffect(() => {
+    if (!wantDesign || !client || client.id !== id || designAskedRef.current === wantDesign) return
+    designAskedRef.current = wantDesign
+    const leadId = client.id
+    navigate(location.pathname, { replace: true, state: null })
+    loadDesignRow(supabase, wantDesign).then((row) => {
+      if (pageIdRef.current !== leadId) return // left this lead meanwhile
+      if (row && row.client_id === leadId) buildFromDesign(row)
+      else toast('That design could not be opened on this lead (it may have been moved or removed).')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantDesign, client?.id, id])
 
   async function handleUpdate(payload) {
     const { error } = await supabase.from('clients').update(payload).eq('id', id)
@@ -378,12 +403,13 @@ export default function ClientDetail() {
 
         {client.status === 'ordered' && <OrderTimeline client={client} />}
 
-        <CustomerDesignsCard clientId={client.id} onSendLink={() => setDesignLink(true)} />
+        <CustomerDesignsCard clientId={client.id} onSendLink={() => setDesignLink(true)} onBuildQuote={buildFromDesign} />
 
         <div className="row-2 quotes-docs">
           <QuotesTab clientId={client.id} client={client} clientBuildingSize={client.building_size}
-            building={buildingQuote} setBuilding={setBuildingQuote} />
-          <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => setBuildingQuote(true)} />
+            building={buildingQuote} setBuilding={setBuildingQuote}
+            designForQuote={designForQuote} onDesignDone={() => setDesignForQuote(null)} />
+          <DocumentHub clientId={client.id} clientName={client.name} client={client} onBuildQuote={() => { setDesignForQuote(null); setBuildingQuote(true) }} />
         </div>
 
         {/* Notes live ONLY in the Activity & Progress card above (bottom Notes section removed per owner). */}
