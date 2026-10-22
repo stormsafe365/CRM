@@ -18,6 +18,7 @@ import { usd } from '../lib/money'
 import { loadQuoteSpecs, leadBuildingSpec, fromQuoteTitle } from '../lib/leadQuoteSpec'
 import { loadCurrentQuote } from '../lib/layoutFromQuote'
 import UnassignedDesigns from '../components/UnassignedDesigns'
+import LeadsExportPanel from '../components/LeadsExportPanel'
 import { ageText, compareInquiry, fmtDay, inquiryOf } from '../lib/leadDates'
 import { nyDay } from '../lib/perfStats'
 
@@ -83,6 +84,8 @@ export default function ClientsList() {
   const [quoteSpecs, setQuoteSpecs] = useState(() => new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // Export (owner 10/22/26): admins only - a CSV / email list of the leads for Google Sheets and Mailchimp
+  const [showExport, setShowExport] = useState(false)
 
   // Filters
   const [searchParams, setSearchParams] = useSearchParams()
@@ -344,6 +347,12 @@ export default function ClientsList() {
           </div>
         </div>
         <div className="right">
+          {isAdmin === true && (
+            <button type="button" className="btn btn-ghost" onClick={() => setShowExport(true)} title="Download the leads as a spreadsheet file, or copy all their emails">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="m7 11 5 5 5-5" /><path d="M5 21h14" /></svg>
+              Export
+            </button>
+          )}
           <Link to="/clients/new" className="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             New Lead
@@ -352,6 +361,10 @@ export default function ClientsList() {
       </div>
 
       <UnassignedDesigns />
+
+      {isAdmin === true && showExport && (
+        <LeadsExportPanel leads={clients} users={users} onClose={() => setShowExport(false)} />
+      )}
 
       {repTabs.length > 1 && isAdmin === true && (
         <div className="list-tabs" ref={repTabsRef} style={{ marginBottom: 10 }}>
