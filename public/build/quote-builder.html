@@ -6256,6 +6256,30 @@ function gAnchorLegs(){
 function gAnchors(){ return ACTIVE_MFR==='CCI' ? 0 : gAnchorLegs()*ANCHOR_UNIT; }
 
 var INSUL_RATE=1.50;
+// CCI END-WALL INSULATION ON HIGHER PITCHES (CCI email 10/22/26, chart "End Insulation on Higher Pitches"): "Add to
+// Height" = the TOTAL feet added to the end-wall height at 4:12 / 5:12 / 6:12, by width, as [4:12, 5:12, 6:12]. It REPLACES
+// the standard add at those pitches. Odd widths round up to the next even width (as the standard add does). 14' and 16' are
+// not on the chart: 12' and 18' are both 2/2/2, so they use 2/2/2. Everything the chart does not cover keeps the standard
+// add: 3:12, the 2:12 standard on 32'+ wide, widths over 60', every other manufacturer, free-standing lean-tos.
+var INSUL_END_ADD_PITCH={
+  12:[2,2,2],14:[2,2,2],16:[2,2,2],18:[2,2,2],20:[2,2,3],
+  22:[2,2,3],24:[2,3,3],26:[2,3,3],28:[2,3,4],30:[3,3,4],
+  32:[3,3,4],34:[3,4,4],36:[3,4,5],38:[3,4,5],40:[3,4,5],
+  42:[4,4,5],44:[4,5,6],46:[4,5,6],48:[4,5,6],50:[4,5,6],
+  52:[4,5,6],54:[5,6,7],56:[5,6,7],58:[5,6,7],60:[5,6,7]
+};
+// One number for the price (gInsul) and the on-screen insulation note.
+function insulEndAdd(w){
+  var iwE=(w%2===1)?w+1:w;
+  // standard: + 2' for the gable section; CCI 32'-60' wide (10/14/26, audit F31): Dealer Handbook p22 "For 32' - 50'
+  // Wide Buildings, add 3' to the end wall height / For 52' - 60' Wide Buildings, add 4'" (Sensei 40x60x14 $8,340).
+  var add=(ACTIVE_MFR==='CCI' && iwE>=32 && iwE<=60)?(iwE<=50?3:4):2;
+  if(ACTIVE_MFR==='CCI' && (G('btype')||{}).value!=='fslean'){
+    var ps=(G('pitch-sel')||{}).value, pk=['4:12','5:12','6:12'].indexOf(ps), row=INSUL_END_ADD_PITCH[iwE];
+    if(pk>=0 && row) add=row[pk];
+  }
+  return add;
+}
 function gInsul(){
   var insulSel=G('insul-sel');
   if(!insulSel||insulSel.value==='none') return 0;
@@ -6283,7 +6307,7 @@ function gInsul(){
     var sideWall=Math.round(insulL*h*2*INSUL_RATE);
     // End walls: + 2' for the gable section; CCI 32'-60' wide (10/14/26, audit F31): Dealer Handbook p22 "For 32' - 50'
     // Wide Buildings, add 3' to the end wall height / For 52' - 60' Wide Buildings, add 4'" (Sensei 40x60x14 $8,340).
-    var _iwE=(w%2===1)?w+1:w, _iAdd=(ACTIVE_MFR==='CCI' && _iwE>=32 && _iwE<=60)?(_iwE<=50?3:4):2;
+    var _iAdd=insulEndAdd(w); // same add as the on-screen note (insulEndAdd); CCI pitch chart 10/22/26
     var endWall=Math.round(w*(h+_iAdd)*2*INSUL_RATE);
     wallCost=sideWall+endWall;
   }
@@ -9807,7 +9831,7 @@ function rc(){
         if(gchEncL>0 && gchEncL<il){ insulDisplayL=gchEncL; gchNote=' (enclosed '+gchEncL+"\' only)"; }
       }
       var roofCost2=Math.round((iw+2)*insulDisplayL*INSUL_RATE);
-      var wallCost2=insulSel2.value==='roof-walls'?Math.round(insulDisplayL*ih*2*INSUL_RATE)+Math.round(iw*(ih+2)*2*INSUL_RATE):0;
+      var wallCost2=insulSel2.value==='roof-walls'?Math.round(insulDisplayL*ih*2*INSUL_RATE)+Math.round(iw*(ih+insulEndAdd(iw))*2*INSUL_RATE):0;
       insulNoteEl.textContent='Roof: '+(iw+2)+'\' × '+insulDisplayL+'\' = '+((iw+2)*insulDisplayL).toLocaleString()+' sqft ($'+roofCost2.toLocaleString()+')'+(wallCost2?' + Walls: $'+wallCost2.toLocaleString():'')+gchNote;
     }
   }
