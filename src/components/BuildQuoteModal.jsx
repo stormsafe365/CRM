@@ -23,9 +23,21 @@
 // put in), the lead's contact info goes in as usual, and a "Check these before
 // quoting" bar lists what the program could not take exactly as drawn. Nothing
 // is saved until the rep saves (Save to Lead creates the quote as usual).
+//
+// Update Quote ▾ (owner 10/24/26: she tweaked a saved quote and wanted to keep BOTH versions): once a saved quote
+// is open the save button is a split button — Update this quote (as before), Save as a new quote (lib/saveAsNew:
+// a NEW row for the lead, priced like any new quote at today's pricing, the original row never written; the
+// builder then carries on with the new quote), Done — close without saving (asks when something changed).
 
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
+import SaveSplitButton from './SaveSplitButton'
+import { useAuth } from '../context/AuthContext'
+import { promoteToWorking } from '../lib/promoteLead'
+import {
+  buildSignature, finishProgramForNewQuote, prepareProgramForNewQuote, saveAsNewBlocker, saveAsNewConfirm, saveAsNewProblems,
+  saveAsNewRow, unsavedCheck, unsavedMessage,
+} from '../lib/saveAsNew'
 import PriceChangeConfirm from './PriceChangeConfirm'
 import MarkSignedModal from './MarkSignedModal'
 import QuoteStyleToggle from './QuoteStyleToggle'
@@ -91,13 +103,26 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const [picker, setPicker] = useState(false)
   const [savedTo, setSavedTo] = useState(null) // lead name after a picker save
   const prefillRef = useRef(false)                 // the lead's contact info is filled in once, never after a save
+  const auth = useAuth()
+  const userId = auth?.user?.id ?? null
+  // a row THIS builder created with "Save as a new quote": its later saves update that row directly (the lead
+  // page's handler would update the quote the builder was opened on)
+  const ownRowRef = useRef(null)
   // the save: the lead page's (QuotesTab), or — opened without a lead (Dashboard) — the row saved through the
   // picker is updated in place (review 10/19/26: the second Save had nothing to call)
-  const save = typeof onSave === 'function' ? onSave : (payload, cur) => (cur?.id ? updateQuoteRow(supabase, cur, payload) : Promise.reject(new Error('Pick a lead first (Save to Lead).')))
+  const save = (payload, cur) => {
+    if (cur?.id && ownRowRef.current === cur.id) return updateQuoteRow(supabase, cur, payload)
+    if (typeof onSave === 'function') return onSave(payload, cur)
+    return cur?.id ? updateQuoteRow(supabase, cur, payload) : Promise.reject(new Error('Pick a lead first (Save to Lead).'))
+  }
 
   // The saved row as it is NOW (updated after each save in this session), so a
   // second save compares against — and records history from — what's saved.
   const quoteRef = useRef(initialQuote || null)
+  // ...and the part the bar shows (title, Update Quote ▾); set after every save that changes the quote in hand
+  const [curQuote, setCurQuote] = useState(initialQuote?.id ? { id: initialQuote.id, quote_number: initialQuote.quote_number || null } : null)
+  // the build as read right after it was opened / last saved — Done asks before dropping changes made since
+  const baselineRef = useRef(null)
   const restoredRef = useRef(false)
   const revAppliedRef = useRef(false)
   const [banner, setBanner] = useState(null)       // saved-vs-today bar (lib/priceLockCrm lockBanner)
@@ -149,11 +174,105 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       kind, saved: savedTotalsOf(cur), next: readScreenTotals(pg), lock: readLockState(pg), status: cur?.status, ...extra,
     })
     if (!check.confirm) return Promise.resolve(true)
+    return askConfirm(check)
+  }
+  // the one confirm dialog (PriceChangeConfirm) with any check object; resolves true / false / 'preview'
+  function askConfirm(check) {
     return new Promise((resolve) => {
       if (askResolveRef.current) askResolveRef.current(false) // never two dialogs at once
       askResolveRef.current = resolve
       setAsk(check)
     })
+  }
+
+  // ── The quote in hand: after a save, the bar shows it and Done measures changes from it ──
+  function takeBaseline() {
+    const pg = getProgramWindow()
+    try { baselineRef.current = pg ? buildSignature(pg.collectQuoteData()) : null } catch { baselineRef.current = null }
+  }
+  function markSaved() {
+    const q = quoteRef.current
+    setCurQuote(q && q.id ? { id: q.id, quote_number: q.quote_number || null } : null)
+    takeBaseline()
+  }
+  // Unsaved changes on a saved quote (null = nothing saved yet: Done closes as it always did)
+  function unsavedNow() {
+    const cur = quoteRef.current
+    if (!cur || !cur.id) return null
+    const pg = getProgramWindow()
+    if (!pg) return null
+    let sig = null
+    try { sig = buildSignature(pg.collectQuoteData()) } catch { sig = null }
+    return unsavedCheck({ baseline: baselineRef.current, sig, saved: savedTotalsOf(cur), screen: readScreenTotals(pg), lock: readLockState(pg) })
+  }
+
+  // ── Save as a new quote (owner 10/24/26: keep BOTH versions) ──
+  // The build on screen becomes a NEW quote row for this lead; the quote the builder was editing is never written.
+  // A new quote is priced like any new quote: the program first drops the reopened quote's held price and
+  // grandfathered rules (lib/saveAsNew prepareProgramForNewQuote → PriceLock.freshen) and the new row is saved at
+  // exactly what it shows then (asked first when that moved the price). Numbered, dated, PDF'd and saved like a
+  // first Save to Lead (lib/builderSave harvestAndSaveQuote with no quote in hand); the builder then carries on
+  // with the new quote.
+  async function saveAsNew() {
+    if (savingRef.current || status) return
+    const pg = getProgramWindow()
+    if (!pg) { toast('The builder is still loading — give it a moment and try again.'); return }
+    const original = quoteRef.current
+    const why = saveAsNewBlocker({ original, revisionChanges })
+    if (why) { toast(escHtml(why)); return }
+    if (!client?.id) { toast('Pick a lead first (Save to Lead).'); return }
+    const origNo = original.quote_number ? `#${original.quote_number}` : 'The original quote'
+    savingRef.current = true
+    try {
+      setStatus('Pricing it as a new quote…')
+      const prep = prepareProgramForNewQuote(pg)
+      refreshBanner()
+      if (!prep.ok) { toast(`Not saved as a new quote — ${escHtml(prep.reason)}. Nothing was saved.`); return }
+      if (!prep.after) { toast('No price yet — set a width, length and height first. Nothing was saved.'); return }
+      // nothing of the original's held / signed price may be left in the program now
+      let left = []
+      try {
+        let priced = null
+        try { priced = pg.PriceLock && typeof pg.PriceLock.snapshot === 'function' ? pg.PriceLock.snapshot() : null } catch { priced = null }
+        left = saveAsNewProblems({ ...pg.collectQuoteData(), priced })
+      } catch { left = [] }
+      if (left.length) { toast(`Not saved as a new quote: ${escHtml(left.join('; '))}. Close and reopen the quote, then try again. Nothing was saved.`); return }
+      // switching to today's pricing moved the price the rep was looking at: show it before anything is saved
+      if (prep.before && totalsDiffer(prep.before, prep.after)) {
+        setStatus('')
+        const go = await askConfirm(saveAsNewConfirm({ original, before: prep.before, after: prep.after }))
+        if (go !== true) { toast(`Nothing saved — ${escHtml(origNo)} is unchanged. The builder now shows today’s pricing.`); return }
+      }
+      const res = await harvestAndSaveQuote({
+        pg,
+        buildWin: iframeRef.current?.contentWindow,
+        client,
+        initialQuote: null, // a brand-new quote: no saved price, history or marks of the original
+        onSave: async (payload) => {
+          const row = saveAsNewRow({ payload, original, clientId: client.id, userId, now: new Date() })
+          const { data, error } = await supabase.from('quotes').insert(row).select().single()
+          if (error) throw error
+          promoteToWorking(client.id, userId).catch(() => {}) // a saved quote = the lead has been quoted (forward-only)
+          return Array.isArray(data) ? data[0] : data
+        },
+        setStatus,
+      })
+      const saved = res.saved
+      if (!saved || !saved.id) throw new Error('The new quote may not have been saved — check the lead’s Quotes before trying again.')
+      quoteRef.current = saved
+      ownRowRef.current = saved.id
+      finishProgramForNewQuote(pg) // the original's "as ordered" revision baseline goes with it
+      setPendingContract(null)     // a contract generated for the original is not this quote's
+      setBlocked(null)             // nor is an automatic document that did not run for it
+      markSaved()
+      refreshBanner()
+      toast(`Saved as new quote #${escHtml(saved.quote_number || '')} — ${escHtml(origNo)} is unchanged${res.pdfWarn ? `. ${escHtml(res.pdfWarn)}` : ''}`, res.pdfWarn ? undefined : 'success')
+    } catch (e) {
+      toast(escHtml((e && e.message) || 'Could not save the new quote.'))
+    } finally {
+      savingRef.current = false
+      setStatus('')
+    }
   }
   function answer(yes) {
     const r = askResolveRef.current
@@ -191,6 +310,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       setPendingContract(null) // a contract generated before this save no longer matches
       setStatus('')
       savingRef.current = false
+      markSaved()
       refreshBanner()
       toast(pdfWarn ? escHtml(pdfWarn) : `Quote ${escHtml(quote_number)} saved to ${escHtml(client.name || 'lead')}`, pdfWarn ? undefined : 'success')
     } catch (e) {
@@ -264,6 +384,9 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       const saved = savedTotalsOf(initialQuote)
       const num = initialQuote?.quote_number || ''
       const pending = autoExec ? 'exec' : autoContract ? 'contract' : hasRevisionRows ? 'revision' : null
+      // Done's "unsaved changes" baseline: the build as reopened, read once the program has settled (before the
+      // revision rows are applied, so those count as changes)
+      if (ok) { if (pending === 'revision') takeBaseline(); else setTimeout(takeBaseline, 1200) }
       const next = pending === 'exec' ? ' — generating executed copy…' : pending === 'contract' ? ' — generating contract…' : pending === 'revision' ? '' : ' — adjust and re-save'
       let msg
       if (!ok) msg = "Couldn't fully load this quote's saved build — please rebuild or check the console."
@@ -652,7 +775,10 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     finally { setStatus('') }
   }
   // Done with a generated contract still unsaved: ask (OK = save it, Cancel = leave it out)
+  // Done on a saved quote with changes not saved yet (owner 10/24/26): ask first (OK = close and lose them)
   async function closeBuilder() {
+    const u = savingRef.current ? null : unsavedNow() // (mid-save: closes as it always did)
+    if (u && u.dirty && !window.confirm(unsavedMessage({ quoteNumber: quoteRef.current?.quote_number || null, check: u }))) return
     if (pendingContract && window.confirm(`Contract ${pendingContract.num} was generated but not saved to the Doc Hub. OK = save it there first, Cancel = close without saving it.`)) {
       if (await savePendingContract()) onClose() // otherwise the builder stays open with the bar (the toast says why)
       return
@@ -1024,7 +1150,11 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   }, [])
 
   const barTone = blocked ? (banner?.tone === 'error' ? 'error' : 'warn') : banner?.tone
-  const barTitle = restoreData ? `Editing Quote${initialQuote?.quote_number ? ` #${initialQuote.quote_number}` : ''}` : fromDesign ? '3D Builder · from customer design' : '3D Builder'
+  // a saved quote in hand (reopened, or saved in this session): Update Quote ▾
+  const hasQuote = !!curQuote?.id
+  const curNo = curQuote?.quote_number || null
+  const newBlock = hasQuote ? saveAsNewBlocker({ original: quoteRef.current, revisionChanges }) : null
+  const barTitle = hasQuote ? `Editing Quote${curNo ? ` #${curNo}` : ''}` : restoreData ? 'Editing Quote' : fromDesign ? '3D Builder · from customer design' : '3D Builder'
   const checkWarn = designChecks ? designChecks.items.filter((c) => c.level === 'warn').length : 0
   const checkInfo = designChecks ? designChecks.items.length - checkWarn : 0
   const barClient = client?.name || savedTo
@@ -1042,8 +1172,8 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
             : <div className="qb-bar-status" style={{ flex: 1, textAlign: 'center', opacity: 0.7 }}>
                 {revisionChanges
                   ? <>Place the added components on the building, then hit <b>✓ Finish Revision</b> — saves the Revision Order + Revised Contract.</>
-                  : restoreData
-                  ? <>Adjust the build, then <b>Save to Lead</b> to update this quote.</>
+                  : hasQuote
+                  ? <>Adjust the build, then <b>Update Quote</b> — or <b>▾ Save as a new quote</b> to keep both versions.</>
                   : fromDesign
                   ? <>Filled in from the customer&rsquo;s design: check the list below, then <b>Save to Lead</b>.</>
                   : client?.id
@@ -1059,7 +1189,22 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
             <button type="button" className="btn-secondary" onClick={closeBuilder}>Done</button>
             <QuoteStyleToggle getProgramWindow={getProgramWindow} />
-            <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : restoreData ? '💾 Update Quote' : '💾 Save to Lead'}</button>
+            {hasQuote ? (
+              <SaveSplitButton
+                label={status ? 'Saving…' : '💾 Update Quote'}
+                onMain={saveToLead}
+                disabled={!!status}
+                mainStyle={SAVE_BTN}
+                menuLabel="More save options"
+                items={[
+                  { id: 'update', label: `Update this quote${curNo ? ` (#${curNo})` : ''}`, hint: 'Saves your changes over this quote', onSelect: saveToLead },
+                  { id: 'new', label: 'Save as a new quote', tone: 'accent', hint: `Keeps ${curNo ? '#' + curNo : 'this quote'} exactly as it is — your changes become a new quote (today’s pricing)`, disabled: !!newBlock, disabledReason: newBlock, onSelect: saveAsNew },
+                  { id: 'done', label: 'Done — close without saving', hint: 'Asks first if something changed', onSelect: closeBuilder },
+                ]}
+              />
+            ) : (
+              <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
+            )}
           </div>
         </div>
         {designChecks && (
@@ -1110,7 +1255,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           onClose={() => setPicker(false)}
           onSaved={({ clientName, client: c, saved }) => {
             setSavedTo(clientName)
-            if (saved && saved.id) quoteRef.current = saved
+            if (saved && saved.id) { quoteRef.current = saved; markSaved() }
             setPendingContract(null)
             if (c && c.id) {
               setClientState(c)

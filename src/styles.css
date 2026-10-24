@@ -1798,6 +1798,41 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .qb-bar-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qb-bar-actions { flex: none; align-items: center; }
 .qb-bar-actions > .btn-primary, .qb-bar-actions > .btn-secondary { white-space: nowrap; }
+/* Update Quote ▾ split button (owner 10/24/26): Update this quote / Save as a new quote / Done */
+.qb-split { position: relative; display: inline-flex; align-items: stretch; flex: none; }
+.qb-split > .btn-primary { white-space: nowrap; }
+.qb-split-main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.qb-split-caret {
+  border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;
+  padding-left: 9px; padding-right: 9px; display: inline-flex; align-items: center; justify-content: center;
+}
+.qb-split-caret svg { transition: transform .14s; }
+.qb-split.is-open .qb-split-caret svg { transform: rotate(180deg); }
+.qb-split-main:focus-visible, .qb-split-caret:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; position: relative; z-index: 1; }
+.qb-split-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  width: 300px; max-width: calc(100vw - 24px); padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: linear-gradient(180deg, var(--elev, #122031), var(--card, #0D1929));
+  border: 1px solid var(--line-2); border-radius: var(--r-md, 10px);
+  box-shadow: var(--drop-3, 0 18px 50px rgba(0,0,0,.55)), var(--bevel-top, inset 0 1px 0 rgba(255,255,255,.05));
+}
+.qb-split-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 9px 11px; border-radius: var(--r-sm, 6px); border: 1px solid transparent;
+  background: transparent; color: var(--fg, #E7EEF4); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.qb-split-label { font-weight: 700; }
+.qb-split-hint { font-size: 11.5px; line-height: 1.35; color: var(--fg-3, #8598AC); font-weight: 400; }
+.qb-split-item:hover, .qb-split-item:focus-visible { background: var(--acc-bg); border-color: var(--acc-bd); outline: none; }
+.qb-split-item:hover .qb-split-label, .qb-split-item:focus-visible .qb-split-label { color: var(--cyan); }
+.qb-split-item:focus-visible { box-shadow: 0 0 0 1px var(--cyan); }
+.qb-split-accent .qb-split-label { color: var(--cyan); }
+.qb-split-item.is-disabled { cursor: not-allowed; }
+.qb-split-item.is-disabled .qb-split-label { color: var(--fg-3, #8598AC); }
+.qb-split-item.is-disabled:hover { background: transparent; border-color: transparent; }
+.qb-split-item.is-disabled:hover .qb-split-label { color: var(--fg-3, #8598AC); }
+@media (prefers-reduced-motion: reduce) { .qb-split-caret svg { transition: none; } }
 @media (max-width: 1440px) {
   .qb-style-long { display: none; }
   .qb-style-short { display: inline; }
