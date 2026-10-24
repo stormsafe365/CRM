@@ -8,7 +8,10 @@
 // impact rule on or off is not a "change".
 //
 // The label maps below are copied from the page (web-customer/src/model/design.ts, catalog.ts): the CRM cannot
-// import the page's TypeScript. Plain JS, no imports (node-testable).
+// import the page's TypeScript. A design the WEBSITE sent (wrapped one level deeper, designShape.js) has no seed to compare with: [].
+// Plain JS (node-testable).
+
+import { innerDesign, isWebsiteDesign } from './designShape.js'
 
 const EPS = 1 / 96 - 1e-9 // one 1/8" step: anything closer is the same number
 
@@ -62,10 +65,7 @@ const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
 const lower = (s) => String(s).charAt(0).toLowerCase() + String(s).slice(1)
 
 /** The design inside an envelope (or the bare design); null when it is not one. */
-function designOf(s) {
-  const d = isObj(s) && isObj(s.design) ? s.design : s
-  return isObj(d) && typeof d.type === 'string' && isObj(d.walls) ? d : null
-}
+const designOf = innerDesign
 
 /** The part's look for a person: "10×10 roll-up door", "3×7 walk door", "30×36 window", "10×8 framed opening". */
 function partName(o) {
@@ -124,6 +124,8 @@ const kindWord = (o) => ({ rollup: 'roll-up door', walk: 'walk door', window: 'w
  * Each line: { kind: 'size'|'style'|'walls'|'color'|'opening'|'leanto'|'upgrade', text }.
  */
 export function designDiff(seedState, sentState) {
+  // the website's builder is a different model (its own upgrades / storage room) and never starts from a seed: nothing to compare
+  if (isWebsiteDesign(seedState) || isWebsiteDesign(sentState)) return []
   const a = designOf(seedState), b = designOf(sentState)
   if (!a || !b) return []
   const out = []

@@ -6,6 +6,8 @@
 // The link token is random (18 bytes, 24 URL-safe characters) and says nothing
 // about the lead. Customers never see the word "CRM".
 
+import { summaryDesign } from './designShape.js'
+
 export const DESIGN_SITE = 'https://stormsafe-design.pages.dev/'
 export const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/
 const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
@@ -303,10 +305,13 @@ export function matchLeads(design, leads) {
 /** "data:image/jpeg;base64,…" only — never anything else in an <img src>. */
 export const safeImage = (s) => (typeof s === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(s) ? s : null)
 
-/** Building line from the saved design: "Garage 24' × 30' × 10' (W × L × H) + 1 lean-to". */
+/**
+ * Building line from the saved design: "Garage 24' × 30' × 10' (W × L × H) + 1 lean-to".
+ * `d` = design_requests.design in either shape (the design link page's envelope, or the website's wrapper: designShape.js).
+ */
 export function designSummary(d) {
-  const x = d && d.design
-  if (!x || typeof x !== 'object') return ''
+  const x = summaryDesign(d)
+  if (!x) return ''
   const type = { garage: 'Garage', carport: 'Carport', combo: 'Garage + Carport' }[x.type] || 'Building'
   const dims = [x.width, x.length, x.height].every((v) => Number.isFinite(Number(v))) ? ` ${Number(x.width)}' × ${Number(x.length)}' × ${Number(x.height)}' (W × L × H)` : ''
   const lt = Array.isArray(x.leanTos) && x.leanTos.length ? ` + ${x.leanTos.length === 1 ? '1 lean-to' : `${x.leanTos.length} lean-tos`}` : ''

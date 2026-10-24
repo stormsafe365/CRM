@@ -1,7 +1,8 @@
 // designToQuote: a CUSTOMER DESIGN -> the quote program, pre-filled (owner 10/21/26: "Build quote from this design").
 //
 // A design_requests row holds what the customer sent from the no-price design page: `design` = the page's saved-design
-// envelope { schema:'ss-web-design', v:1, design, ctx:{ zip, county, impact } }. designToQuote() turns it into the shape
+// envelope { schema:'ss-web-design', v:1, design, ctx:{ zip, county, impact } } - or, from the WEBSITE's Customize page, the
+// same envelope one level deeper (designShape.js reads both). designToQuote() turns it into the shape
 // the quote program's own collectQuoteData() writes and restoreQuoteData() reads (fields by element id, doors, wtds,
 // windows, addcomps, leantos with accs, ltWraps, mfr), so the CRM's Build Quote opens on the customer's building and the
 // rep never retypes it.
@@ -27,8 +28,9 @@
 // Plain JS (node-testable).
 
 import { settleDesign, parseCounty, parseZip, activeWraps } from './designSeed.js'
+import { DESIGN_SCHEMA, innerDesign, ctxOf, isWebsiteDesign, adaptDesign, storageOf } from './designShape.js'
 
-export const DESIGN_SCHEMA = 'ss-web-design'
+export { DESIGN_SCHEMA }
 
 // ── the page's catalog -> the program's values (CCI) ────────────────────────────────────────────────────────────
 const COLOR_HEX = {
@@ -73,6 +75,8 @@ const GARAGE_BUCKETS = [10, 12, 14, 16] // the widest door each catalog row take
 
 // ── words for the rep ───────────────────────────────────────────────────────────────────────────────────────────
 const WALL_NAME = { front: 'front end', back: 'back end', left: 'left side', right: 'right side', partition: 'garage/carport divider wall' }
+/** The wall in the rep's words: the partition is the divider on a garage + carport, the storage room's wall otherwise. */
+const wallName = (d, w) => (w === 'partition' && d.type !== 'combo' ? 'storage room wall' : WALL_NAME[w])
 const LT_SIDE_NAME = { 'Left Eave': 'left side', 'Right Eave': 'right side', 'Front Gable': 'front end', 'Back Gable': 'back end' }
 const LT_WALL_NAME = { outer: 'outer wall', front: 'front end', back: 'back end' }
 const WRAP_NAME = { FL: 'front-left', FR: 'front-right', BL: 'back-left', BR: 'back-right' }
@@ -105,19 +109,26 @@ const refuse = (reason) => ({ ok: false, reason })
 /** The program's building type: GCH, Wide Span (32'+ wide, any walls - the page's own rule), Carport, Standard. */
 const btypeOf = (d) => (d.type === 'combo' ? 'gch' : d.width >= 32 ? 'widespan' : d.type === 'carport' ? 'carport' : 'standard')
 
-/** The design inside an envelope (or a bare design); null when it is not one. */
+/**
+ * The design inside an envelope; null when it is not one. Reads every shape a design_requests.design comes in: the design
+ * link page's envelope, the website's wrapper (designShape.js), or a bare design.
+ */
 export function designOf(s) {
-  const d = isObj(s) && isObj(s.design) ? s.design : s
-  return isObj(d) && typeof d.type === 'string' && isObj(d.walls) ? d : null
+  return innerDesign(s)
 }
 
 /**
- * Why this design_requests.design can't open the builder, or '' when it can (cheap; for a disabled button's tooltip).
+ * Why this design_requests.design can't open the builder, or '' when it can (cheap; shown under the buttons).
  */
 export function designQuoteReason(envelope) {
   if (isObj(envelope) && envelope.schema !== undefined && envelope.schema !== DESIGN_SCHEMA) return 'This design is not from the customer design page.'
-  const d = designOf(envelope)
-  if (!d) return 'This design has no building in it.'
+  const raw = designOf(envelope)
+  if (!raw) {
+    // the website posts the design wrapped with the builder's saved state; when the builder could not read it, the state is null
+    if (isObj(envelope) && envelope.source === 'website') return 'The website did not send the 3D building with this one, only the spec text: build it by hand from the spec.'
+    return 'This design has no building in it.'
+  }
+  const d = adaptDesign(raw)
   if (!['garage', 'carport', 'combo'].includes(d.type)) return 'This design has no building type.'
   return ''
 }
@@ -210,7 +221,7 @@ function mainEntries(d, checks) {
         if (c.custom) { e['fo-unit'] = 'ft'; e['fo-cw'] = numStr(o.w); e['fo-ch'] = numStr(o.h) }
         if (o.frame === 'window') e['fo-sill'] = near(o.sill, WINDOW_SILL, 1 / 96) ? '4.17' : numStr(o.sill)
         out.addcomps.push(e)
-        if (c.note) checks.push({ level: 'warn', text: `${cap(WALL_NAME[o.wall])}: ${c.note}${g.items.length > 1 ? ` (${g.items.length} of them)` : ''}` })
+        if (c.note) checks.push({ level: 'warn', text: `${cap(wallName(d, o.wall))}: ${c.note}${g.items.length > 1 ? ` (${g.items.length} of them)` : ''}` })
       }
     }
   }
@@ -298,14 +309,20 @@ const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1)
 export function designToQuote(envelope, opts = {}) {
   const why = designQuoteReason(envelope)
   if (why) return refuse(why)
-  const raw = designOf(envelope)
-  const ctx = isObj(envelope) && isObj(envelope.ctx) ? envelope.ctx : {}
+  const inner = designOf(envelope)
+  const ctx = ctxOf(envelope)
+  const site = isWebsiteDesign(envelope)
+  // the website's own fields (12-gauge, end storage room) in the CRM page's model - the SAME object for a design link page design
+  const raw = adaptDesign(inner)
+  const storage = storageOf(inner)
   const checks = []
 
   // The page keeps every design inside its own build rules (designSeed.settleDesign = its normalizeDesign): a design the
   // page sent is already settled; one from an older page build is brought inside them the way the page itself would.
-  const d = settleDesign(raw, ctx.impact === true)
-  if (canon(d) !== canon(raw)) checks.push({ level: 'info', text: 'The design was tidied by the design page’s own rules (it was sent by an older page version) — check it against the picture.' })
+  const d = settleDesign(raw, ctx.impact === true, { partition: !!storage })
+  // (the website keeps no `chosen` pick on an impact-rated part; settling adds it, which is not a change to the design)
+  const same = (x) => (site ? canon(withoutChosen(x)) : canon(x))
+  if (same(d) !== same(raw)) checks.push({ level: 'info', text: 'The design was tidied by the design page’s own rules (it was sent by an older page version) — check it against the picture.' })
 
   const wide = d.width >= 32
   const btype = btypeOf(d)
@@ -320,6 +337,13 @@ export function designToQuote(envelope, opts = {}) {
     cr: COLOR_HEX[d.colors.roof], cw: COLOR_HEX[d.colors.walls], ct: COLOR_HEX[d.colors.trim], wain: d.wainscot ? 'yes' : 'no',
   }
   if (d.wainscot) f.cwn = COLOR_HEX[d.colors.wainscot] || PRINT_HEX[d.colors.wainscot]
+  // the website's end storage room = the program's End Storage (Storage / Add'l End Wall): a partition wall `depth` ft in from the
+  // front or back end. The program prices it (never here); its depth list is its own frame lines, restoreChecks reads it back.
+  if (storage) {
+    f['add-end-wall'] = 'yes'
+    f['aew-end'] = storage.end
+    if (storage.depth) f['aew-depth'] = numStr(storage.depth)
+  }
 
   // walls
   if (btype === 'gch') {
@@ -348,8 +372,8 @@ export function designToQuote(envelope, opts = {}) {
   else if (leadZip && leadZip !== zip) checks.push({ level: 'info', text: `The customer sent the design with ZIP ${zip}; the lead has ZIP ${leadZip}. The quote uses ${zip} (the job site's county rules and tax) — change it if the building goes elsewhere.` })
 
   // doors, windows, framed openings
-  const off = d.type === 'combo' ? [] : d.openings.filter((o) => d.walls[o.wall] !== 'closed')
-  if (off.length) checks.push({ level: 'warn', text: `${off.map((o) => `${cap(partName(o))} on the ${WALL_NAME[o.wall]}`).join('; ')} — that wall is not closed on the design (the page lists it but does not draw it). Entered as drawn: remove it if the customer did not mean it.` })
+  const off = d.type === 'combo' ? [] : d.openings.filter((o) => o.wall !== 'partition' && d.walls[o.wall] !== 'closed') // (the storage room's wall takes openings)
+  if (off.length) checks.push({ level: 'warn', text: `${off.map((o) => `${cap(partName(o))} on the ${wallName(d, o.wall)}`).join('; ')} — that wall is not closed on the design (the page lists it but does not draw it). Entered as drawn: remove it if the customer did not mean it.` })
   const mains = mainEntries(d, checks)
   const leantos = leanToEntries(d, checks)
   const nRoll = mains.doors.reduce((s, e) => s + (parseInt(e.rqt, 10) || 0), 0)
@@ -371,12 +395,28 @@ export function designToQuote(envelope, opts = {}) {
 
   const seedNotes = Array.isArray(opts.seedNotes) ? opts.seedNotes.filter((n) => typeof n === 'string' && n.trim()) : []
   if (seedNotes.length) checks.push({ level: 'warn', text: `This design started from ${opts.seedQuoteNumber ? 'quote #' + opts.seedQuoteNumber : 'the quote the link was made from'}, which had things the design page cannot show — add them again if they still apply: ${seedNotes.join(' ')}` })
-  checks.push({ level: 'info', text: 'Not asked on the design page (the program’s defaults are used — set them with the customer): property type / tax exemption, permits / plans, foundation, delivery, chain hoists, brush seals, lap siding, roof overhang, storage partition, other additional components (gutters, cupolas, skylights, trim upgrades), discount.' })
+  if (storage) {
+    const where = `${storage.depth ? `${ftIn(storage.depth)} in from` : 'at'} the ${storage.end} end`
+    checks.push({ level: 'info', text: `End storage room (asked for on the website): a partition wall ${where}, entered as the program's End Storage (it prices it). Confirm the depth${d.openings.some((o) => o.wall === 'partition') ? ' and the doors / windows on the storage room wall' : ''} with the customer.` })
+  }
+  if (site) checks.push({ level: 'info', text: 'This design came from the website’s builder, which does not ask about insulation, 26-gauge wall panels, color-match fasteners, roll-up door openers or the 45° angle cut: the program’s defaults are used — set them with the customer.' })
+  checks.push({ level: 'info', text: `Not asked on the design page (the program’s defaults are used — set them with the customer): property type / tax exemption, permits / plans, foundation, delivery, chain hoists, brush seals, lap siding, roof overhang, ${storage ? '' : 'storage partition, '}other additional components (gutters, cupolas, skylights, trim upgrades), discount.` })
 
   const payload = { version: 3, fields: f, mfr: 'CCI', ovl: 1, doors: mains.doors, wtds: mains.wtds, windows: mains.windows, addcomps: mains.addcomps, leantos }
   if (wraps.length) payload.ltWraps = wraps.join(',')
   checks.sort((a, b) => (a.level === b.level ? 0 : a.level === 'warn' ? -1 : 1))
   return { ok: true, payload, checks, county, zip: zip || null }
+}
+
+/** A copy of a design without the `chosen` pick on its parts (see designToQuote: the website keeps none). */
+function withoutChosen(d) {
+  try {
+    const c = JSON.parse(JSON.stringify(d))
+    const strip = (list) => { if (Array.isArray(list)) for (const o of list) if (isObj(o)) delete o.chosen }
+    strip(c.openings)
+    if (Array.isArray(c.leanTos)) for (const lt of c.leanTos) if (isObj(lt)) strip(lt.openings)
+    return c
+  } catch { return d }
 }
 
 /** Key-order-free JSON (the page and settleDesign build the same objects with their keys in different orders). */
@@ -425,11 +465,13 @@ const FIELD_LABEL = {
   'gch-left': 'Left side (carport part)', 'gch-right': 'Right side (carport part)', 'gch-enc': 'Garage (enclosed) length',
   'framing-upgrade': 'Framing gauge', 'oc-spacing': 'Truss spacing', 'sheeting-upgrade': 'Wall panel gauge', 'insul-sel': 'Insulation',
   wain: 'Wainscot', cr: 'Roof color', cw: 'Wall color', ct: 'Trim color', cwn: 'Wainscot color', lap: 'Lap siding', 'delivery-type': 'Delivery',
+  'add-end-wall': 'Storage room', 'aew-end': 'Storage room end', 'aew-depth': 'Storage room depth',
 }
 const VALUE_WORDS = {
   'framing-upgrade': { 14: '14-gauge', 12: '12-gauge' }, 'oc-spacing': { '5oc': '5′ on center', '4oc': '4′ on center' },
   'sheeting-upgrade': { standard: 'standard', upgrade: '26-gauge' }, 'insul-sel': { none: 'none', roof: 'roof', 'roof-walls': 'roof + walls' },
   lap: { no: 'no', yes: 'yes' }, wain: { no: 'no', yes: 'yes' }, rs: { 'Boxed Eve': 'Boxed Eave' },
+  'add-end-wall': { no: 'none', yes: 'End Storage' }, 'aew-end': { front: 'front end', back: 'back end' },
 }
 // part fields in the rep's words
 const KEY_WORDS = {
@@ -465,6 +507,7 @@ function why(k, want, got, T, county) {
   if (k === 'framing-upgrade' && String(got) === '12') return { level: 'warn', text: `Framing: the program requires 12-gauge framing here${co} (county / size / use rule) — the customer did not ask for it. It is priced.` }
   if (k === 'oc-spacing' && got === '4oc') return { level: 'warn', text: `Truss spacing: the program requires 4′ on center here${co} (county / wind rule) — the customer did not ask for it. It is priced.` }
   if (k === 'lap' && got === 'yes') return { level: 'warn', text: `Lap siding: the program adds it here${co} (county rule) — the design page does not ask about it. Override it in the program if the site is outside the rule.` }
+  if (k === 'aew-depth') return { level: 'warn', text: `Storage room: the program offers the partition on its truss lines, so it set ${got}′ (the nearest to the ${want}′ the customer drew). Check it with the customer.` }
   if (k === 'gch-enc') return { level: 'warn', text: `Garage (enclosed) part: the program offers the garage / carport split on its truss lines and 5′ steps, so it set ${got}′ (the nearest to the ${want}′ the customer drew). Check it with the customer.` }
   if (k === 'delivery-type') return { level: 'warn', text: `Delivery: the program set "${got}"${co} (no installation service there).` }
   if (k === 'sheeting-upgrade' && got === 'upgrade' && T && T.sheetFree) return { level: 'info', text: '26-gauge wall panels: included free by the program (order over its free-upgrade amount).' }

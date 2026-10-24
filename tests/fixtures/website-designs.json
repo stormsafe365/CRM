@@ -1,0 +1,568 @@
+[
+ {
+  "id": "garage-with-lean-tos",
+  "row": {
+   "id": "dr-garage-with-lean-tos",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "33801",
+   "notes": "Timeline: Within 3 months\nby the fence",
+   "spec": "StormSafe Steel — building design request (not a quote)\n\nBuilding: Enclosed — 30' W × 40' L × 12' H\nOverall with lean-tos: 52' W × 40' L\nRoof: Vertical roof, 4:12 pitch\nWall panels: Vertical\n\nWalls (left / right as seen standing in front of the building, facing the front end):\n- Front end: Closed\n- Back end: Closed\n- Left side: Closed\n- Right side: Closed\n\nColors: Roof Galvalume, Walls Tan, Trim White\nWainscot: Rich Wood print, 3' band along the bottom of the walls\n\nUpgrades selected:\n- 4' on-center framing: REQUIRED (over 24' wide, included)\n- Vertical wall sheeting: UPGRADE\n- Wainscot: UPGRADE (see colors)\n\nDoors, windows and framed openings (position = distance from the named end or corner to the near edge):\n1. Roll-up door 10' W × 8' H, Barn Red — Front end, 4' from the left eave corner to its near edge\n2. Roll-up door 10' W × 8' H, Barn Red — Front end, 16' from the left eave corner to its near edge\n3. Walk-in door 36\" × 80\", Standard, white — Left side, 6' from the front gable to its near edge\n4. Window 30\" × 36\", White — Left side, 14' from the front gable to its near edge, sill 4'2\"\n5. Framed opening (door) 12' W × 8' H, customer-supplied unit — Back end, 9' from the right eave corner to its near edge\n\nLean-tos:\n1. Left side lean-to 12' W × 40' L, low leg 8', 2:12 pitch, starts 0' from the front end — walls: Fully enclosed\n   a. Walk-in door 36\" × 80\", Standard, white — outer wall, 3' from the left end to its near edge\n   b. Window 30\" × 30\", White — outer wall, 9' from the left end to its near edge, sill 4'2\"\n2. Right side lean-to 10' W × 20' L, low leg 8', 2:12 pitch, starts 10' from the front end — walls: Front end Open; Back end Closed; Outer side ½ closed from the top\n\nLocation: ZIP 33801, Polk County, FL",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": "garage",
+    "width": 30,
+    "length": 40,
+    "height": 12,
+    "state": {
+     "schema": "ss-web-design",
+     "v": 1,
+     "design": {
+      "type": "garage",
+      "width": 30,
+      "length": 40,
+      "height": 12,
+      "enclosedLength": 20,
+      "roofStyle": "Vertical",
+      "pitch": "4:12",
+      "panels": "Vertical",
+      "walls": {
+       "front": "closed",
+       "back": "closed",
+       "left": "closed",
+       "right": "closed"
+      },
+      "colors": {
+       "roof": "galvalume",
+       "walls": "tan",
+       "trim": "white",
+       "wainscot": "print-richwood"
+      },
+      "wainscot": true,
+      "openings": [
+       {
+        "id": "o1",
+        "kind": "rollup",
+        "wall": "front",
+        "w": 10,
+        "h": 8,
+        "sill": 0,
+        "pos": 4,
+        "color": "barnRed"
+       },
+       {
+        "id": "o2",
+        "kind": "rollup",
+        "wall": "front",
+        "w": 10,
+        "h": 8,
+        "sill": 0,
+        "pos": 16,
+        "color": "barnRed"
+       },
+       {
+        "id": "o3",
+        "kind": "walk",
+        "wall": "left",
+        "w": 3,
+        "h": 6.666666666666667,
+        "sill": 0,
+        "pos": 6,
+        "style": "std"
+       },
+       {
+        "id": "o4",
+        "kind": "window",
+        "wall": "left",
+        "w": 2.5,
+        "h": 3,
+        "sill": 4.166666666666667,
+        "pos": 14,
+        "style": "w3036"
+       },
+       {
+        "id": "o5",
+        "kind": "frame",
+        "wall": "back",
+        "w": 12,
+        "h": 8,
+        "sill": 0,
+        "pos": 9,
+        "frame": "door"
+       }
+      ],
+      "leanTos": [
+       {
+        "id": "lt1",
+        "side": "Left Eave",
+        "width": 12,
+        "length": 40,
+        "start": 0,
+        "lowLeg": 8,
+        "pitch": "2:12",
+        "enclosure": "enclosed",
+        "walls": {
+         "front": "closed",
+         "back": "closed",
+         "side": "closed"
+        },
+        "openings": [
+         {
+          "id": "lo1",
+          "kind": "walk",
+          "wall": "outer",
+          "w": 3,
+          "h": 6.666666666666667,
+          "sill": 0,
+          "pos": 3,
+          "style": "std"
+         },
+         {
+          "id": "lo2",
+          "kind": "window",
+          "wall": "outer",
+          "w": 2.5,
+          "h": 2.5,
+          "sill": 4.166666666666667,
+          "pos": 9,
+          "style": "std"
+         }
+        ]
+       },
+       {
+        "id": "lt2",
+        "side": "Right Eave",
+        "width": 10,
+        "length": 20,
+        "start": 10,
+        "lowLeg": 8,
+        "pitch": "2:12",
+        "enclosure": "custom",
+        "walls": {
+         "front": "open",
+         "back": "closed",
+         "side": "q2"
+        },
+        "openings": []
+       }
+      ],
+      "wraps": [],
+      "upgrades": {
+       "gauge12": false,
+       "oc4": true,
+       "vertical": true
+      },
+      "storage": {
+       "on": false,
+       "end": "back",
+       "depth": 8
+      }
+     },
+     "ctx": {
+      "zip": "33801",
+      "county": "Polk",
+      "impact": false
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "carport-gauge12-palm-beach",
+  "row": {
+   "id": "dr-carport-gauge12-palm-beach",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "33411",
+   "notes": "Timeline: Within 3 months\nby the fence",
+   "spec": "StormSafe Steel — building design request (not a quote)\n\nBuilding: Carport — 20' W × 40' L × 12' H\nRoof: Vertical roof, 3:12 pitch (standard)\nWall panels: Vertical\n\nWalls (left / right as seen standing in front of the building, facing the front end):\n- Front end: Open\n- Back end: Gable only (top triangle)\n- Left side: 1 panel from the top (3′)\n- Right side: Open\n\nColors: Roof Galvalume, Walls Pewter Gray, Trim Black\nWainscot: None\n\nUpgrades selected:\n- 12-gauge framing: REQUIRED in Palm Beach County at this size (included)\n- 4' on-center framing: REQUIRED (Palm Beach County, included)\n- Vertical wall sheeting: UPGRADE\n\nDoors, windows and framed openings: None\n\nLean-tos: None\n\nLocation: ZIP 33411, Palm Beach County, FL\nImpact area: impact-rated windows and walk-in doors (shown in this design)",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": "carport",
+    "width": 20,
+    "length": 40,
+    "height": 12,
+    "state": {
+     "schema": "ss-web-design",
+     "v": 1,
+     "design": {
+      "type": "carport",
+      "width": 20,
+      "length": 40,
+      "height": 12,
+      "enclosedLength": 20,
+      "roofStyle": "Vertical",
+      "pitch": "standard",
+      "panels": "Vertical",
+      "walls": {
+       "front": "open",
+       "back": "gableOnly",
+       "left": "1panel",
+       "right": "open"
+      },
+      "colors": {
+       "roof": "galvalume",
+       "walls": "pewter-gray",
+       "trim": "black",
+       "wainscot": "quaker-gray"
+      },
+      "wainscot": false,
+      "openings": [],
+      "leanTos": [],
+      "wraps": [],
+      "upgrades": {
+       "gauge12": true,
+       "oc4": true,
+       "vertical": true
+      },
+      "storage": {
+       "on": false,
+       "end": "back",
+       "depth": 8
+      }
+     },
+     "ctx": {
+      "zip": "33411",
+      "county": "Palm Beach",
+      "impact": true
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "hybrid-divider-doors",
+  "row": {
+   "id": "dr-hybrid-divider-doors",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "32114",
+   "notes": "Timeline: Within 3 months\nby the fence",
+   "spec": "StormSafe Steel — building design request (not a quote)\n\nBuilding: Hybrid — 24' W × 50' L × 12' H (enclosed garage 30' at the back, open carport 20' at the front)\nRoof: Vertical roof, 3:12 pitch (standard)\nWall panels: Horizontal\n\nWalls (left / right as seen standing in front of the building, facing the front end):\n- Front end (carport): Open\n- Back end: Closed\n- Left side, carport part: Open (garage part closed)\n- Right side, carport part: Open (garage part closed)\n- Divider wall between garage and carport: Closed\n\nColors: Roof Galvalume, Walls Pewter Gray, Trim Black\nWainscot: None\n\nUpgrades selected:\n- None\n\nDoors, windows and framed openings (position = distance from the named end or corner to the near edge):\n1. Roll-up door 10' W × 10' H, White — Garage/carport divider wall, 6' from the left eave corner to its near edge\n2. Walk-in door 36\" × 80\", Impact-rated (hi-wind), white — Back end, 12' from the right eave corner to its near edge\n3. Window 30\" × 30\", Impact-rated — Left side, 8' from the front gable to its near edge, sill 4'2\"\n\nLean-tos: None\n\nLocation: ZIP 32114, Volusia County, FL\nImpact area: impact-rated windows and walk-in doors (shown in this design)",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": "combo",
+    "width": 24,
+    "length": 50,
+    "height": 12,
+    "state": {
+     "schema": "ss-web-design",
+     "v": 1,
+     "design": {
+      "type": "combo",
+      "width": 24,
+      "length": 50,
+      "height": 12,
+      "enclosedLength": 30,
+      "roofStyle": "Vertical",
+      "pitch": "standard",
+      "panels": "Horizontal",
+      "walls": {
+       "front": "open",
+       "back": "closed",
+       "left": "open",
+       "right": "open"
+      },
+      "colors": {
+       "roof": "galvalume",
+       "walls": "pewter-gray",
+       "trim": "black",
+       "wainscot": "quaker-gray"
+      },
+      "wainscot": false,
+      "openings": [
+       {
+        "id": "o1",
+        "kind": "rollup",
+        "wall": "partition",
+        "w": 10,
+        "h": 10,
+        "sill": 0,
+        "pos": 6,
+        "color": "white"
+       },
+       {
+        "id": "o2",
+        "kind": "walk",
+        "wall": "back",
+        "w": 3,
+        "h": 6.666666666666667,
+        "sill": 0,
+        "pos": 12,
+        "style": "hiwind"
+       },
+       {
+        "id": "o3",
+        "kind": "window",
+        "wall": "left",
+        "w": 2.5,
+        "h": 2.5,
+        "sill": 4.166666666666667,
+        "pos": 8,
+        "style": "hi"
+       }
+      ],
+      "leanTos": [],
+      "wraps": [],
+      "upgrades": {
+       "gauge12": false,
+       "oc4": false,
+       "vertical": false
+      },
+      "storage": {
+       "on": false,
+       "end": "back",
+       "depth": 10
+      }
+     },
+     "ctx": {
+      "zip": "32114",
+      "county": "Volusia",
+      "impact": true
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "garage-with-storage-room",
+  "row": {
+   "id": "dr-garage-with-storage-room",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "33901",
+   "notes": "Timeline: Within 3 months\nby the fence",
+   "spec": "StormSafe Steel — building design request (not a quote)\n\nBuilding: Enclosed — 26' W × 40' L × 12' H\nRoof: Vertical roof, 3:12 pitch (standard)\nWall panels: Horizontal\n\nWalls (left / right as seen standing in front of the building, facing the front end):\n- Front end: Closed\n- Back end: Closed\n- Left side: Closed\n- Right side: Closed\n\nColors: Roof Galvalume, Walls Pewter Gray, Trim Black\nWainscot: None\n\nUpgrades selected:\n- 12-gauge framing: REQUIRED in Lee County at this size (included)\n- 4' on-center framing: REQUIRED (over 24' wide, included)\n- End storage: UPGRADE, partition wall 8' in from the back end (storage room 26' W × 8' deep)\n\nDoors, windows and framed openings (position = distance from the named end or corner to the near edge):\n1. Roll-up door 12' W × 10' H, White — Front end, 7' from the left eave corner to its near edge\n2. Walk-in door 36\" × 80\", Impact-rated (hi-wind), white — Storage room wall, 5' from the left eave corner to its near edge\n3. Window 30\" × 30\", Impact-rated — Storage room wall, 14' from the left eave corner to its near edge, sill 4'2\"\n4. Walk-in door 36\" × 80\", Impact-rated (hi-wind), white — Left side, 8' from the front gable to its near edge\n\nLean-tos: None\n\nLocation: ZIP 33901, Lee County, FL\nImpact area: impact-rated windows and walk-in doors (shown in this design)",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": "garage",
+    "width": 26,
+    "length": 40,
+    "height": 12,
+    "state": {
+     "schema": "ss-web-design",
+     "v": 1,
+     "design": {
+      "type": "garage",
+      "width": 26,
+      "length": 40,
+      "height": 12,
+      "enclosedLength": 20,
+      "roofStyle": "Vertical",
+      "pitch": "standard",
+      "panels": "Horizontal",
+      "walls": {
+       "front": "closed",
+       "back": "closed",
+       "left": "closed",
+       "right": "closed"
+      },
+      "colors": {
+       "roof": "galvalume",
+       "walls": "pewter-gray",
+       "trim": "black",
+       "wainscot": "quaker-gray"
+      },
+      "wainscot": false,
+      "openings": [
+       {
+        "id": "o1",
+        "kind": "rollup",
+        "wall": "front",
+        "w": 12,
+        "h": 10,
+        "sill": 0,
+        "pos": 7,
+        "color": "white"
+       },
+       {
+        "id": "o2",
+        "kind": "walk",
+        "wall": "partition",
+        "w": 3,
+        "h": 6.666666666666667,
+        "sill": 0,
+        "pos": 5,
+        "style": "hiwind"
+       },
+       {
+        "id": "o3",
+        "kind": "window",
+        "wall": "partition",
+        "w": 2.5,
+        "h": 2.5,
+        "sill": 4.166666666666667,
+        "pos": 14,
+        "style": "hi"
+       },
+       {
+        "id": "o4",
+        "kind": "walk",
+        "wall": "left",
+        "w": 3,
+        "h": 6.666666666666667,
+        "sill": 0,
+        "pos": 8,
+        "style": "hiwind"
+       }
+      ],
+      "leanTos": [],
+      "wraps": [],
+      "upgrades": {
+       "gauge12": true,
+       "oc4": false,
+       "vertical": false
+      },
+      "storage": {
+       "on": true,
+       "end": "back",
+       "depth": 8
+      }
+     },
+     "ctx": {
+      "zip": "33901",
+      "county": "Lee",
+      "impact": true
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "wide-span-no-upgrades",
+  "row": {
+   "id": "dr-wide-span-no-upgrades",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "34470",
+   "notes": "Timeline: Within 3 months\nby the fence",
+   "spec": "StormSafe Steel — building design request (not a quote)\n\nBuilding: Enclosed — 40' W × 60' L × 14' H\nRoof: Vertical roof, 2:12 pitch (standard)\nWall panels: Vertical\n\nWalls (left / right as seen standing in front of the building, facing the front end):\n- Front end: Closed\n- Back end: Closed\n- Left side: Closed\n- Right side: Closed\n\nColors: Roof Galvalume, Walls Pewter Gray, Trim Black\nWainscot: None\n\nUpgrades selected:\n- 4' on-center framing: REQUIRED (over 24' wide, included)\n- Vertical wall sheeting: standard on wide span (included)\n\nDoors, windows and framed openings (position = distance from the named end or corner to the near edge):\n1. Roll-up door 12' W × 12' H, White — Front end, 8' from the left eave corner to its near edge\n2. Roll-up door 12' W × 12' H, White — Front end, 22' from the left eave corner to its near edge\n3. Walk-in door 36\" × 80\", Standard, white — Right side, 10' from the front gable to its near edge\n\nLean-tos: None\n\nLocation: ZIP 34470, Marion County, FL",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": "garage",
+    "width": 40,
+    "length": 60,
+    "height": 14,
+    "state": {
+     "schema": "ss-web-design",
+     "v": 1,
+     "design": {
+      "type": "garage",
+      "width": 40,
+      "length": 60,
+      "height": 14,
+      "enclosedLength": 20,
+      "roofStyle": "Vertical",
+      "pitch": "standard",
+      "panels": "Vertical",
+      "walls": {
+       "front": "closed",
+       "back": "closed",
+       "left": "closed",
+       "right": "closed"
+      },
+      "colors": {
+       "roof": "galvalume",
+       "walls": "pewter-gray",
+       "trim": "black",
+       "wainscot": "quaker-gray"
+      },
+      "wainscot": false,
+      "openings": [
+       {
+        "id": "o1",
+        "kind": "rollup",
+        "wall": "front",
+        "w": 12,
+        "h": 12,
+        "sill": 0,
+        "pos": 8,
+        "color": "white"
+       },
+       {
+        "id": "o2",
+        "kind": "rollup",
+        "wall": "front",
+        "w": 12,
+        "h": 12,
+        "sill": 0,
+        "pos": 22,
+        "color": "white"
+       },
+       {
+        "id": "o3",
+        "kind": "walk",
+        "wall": "right",
+        "w": 3,
+        "h": 6.666666666666667,
+        "sill": 0,
+        "pos": 10,
+        "style": "std"
+       }
+      ],
+      "leanTos": [],
+      "wraps": [],
+      "upgrades": {
+       "gauge12": false,
+       "oc4": false,
+       "vertical": false
+      },
+      "storage": {
+       "on": false,
+       "end": "back",
+       "depth": 8
+      }
+     },
+     "ctx": {
+      "zip": "34470",
+      "county": "Marion",
+      "impact": false
+     }
+    }
+   }
+  }
+ },
+ {
+  "id": "no-state",
+  "row": {
+   "id": "dr-no-state",
+   "client_id": null,
+   "name": "Pat Customer",
+   "phone": "5615550147",
+   "email": "pat@example.com",
+   "zip": "33801",
+   "notes": "",
+   "spec": "(design not captured)",
+   "status": "new",
+   "design": {
+    "schema": "ss-web-design",
+    "source": "website",
+    "type": null,
+    "width": null,
+    "length": null,
+    "height": null,
+    "state": null
+   }
+  }
+ }
+]

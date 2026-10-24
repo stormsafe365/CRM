@@ -223,8 +223,10 @@ export function activeWraps(d) {
 /**
  * Keep a design inside the page's build rules: a hand port of the page's normalizeDesign
  * (web-customer/src/model/normalize.ts), same results for the same input. `impact` = impact-rated parts shown.
+ * opts.partition: keep doors / windows on the `partition` wall of a building that is not a garage + carport (the WEBSITE's
+ * end storage room has a wall of its own, owner 10/24/26). Off by default: a design link page design settles exactly as before.
  */
-export function settleDesign(input, impact) {
+export function settleDesign(input, impact, opts = {}) {
   const d = JSON.parse(JSON.stringify(input))
   const out = {}
   out.type = oneOf(d.type, ['garage', 'carport', 'combo'], 'garage')
@@ -264,7 +266,7 @@ export function settleDesign(input, impact) {
     if (!['rollup', 'walk', 'window', 'frame'].includes(raw.kind)) continue
     const wall = oneOf(raw.wall, MAIN_WALLS, 'front')
     if (raw.wall !== wall) continue
-    if (wall === 'partition' && out.type !== 'combo') continue
+    if (wall === 'partition' && out.type !== 'combo' && !(opts && opts.partition)) continue
     if (out.type === 'combo' && wall === 'front') continue
     let id = typeof raw.id === 'string' && ID_RE.test(raw.id) ? raw.id : ''
     if (!id || seen.has(id)) id = nextFreeId('o', seen)

@@ -17,7 +17,7 @@ import { isoToday } from '../lib/followups'
 import { findDuplicateClients, dupSummary, othersOnly, othersText } from '../lib/dupCheck'
 import { attachDesign, markDesign, matchLeads, escHtml, sharedFrom } from '../lib/designLinks'
 import { useLeadSearch } from '../lib/useLeadSearch'
-import { DesignItem, BuildFromDesignButton } from './CustomerDesignsCard'
+import { DesignItem, BuildFromDesignButton, BuildQuoteNote } from './CustomerDesignsCard'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
@@ -149,7 +149,7 @@ export function DesignInboxRow({ d, lead, onDone }) {
         {onLead ? <>On lead <b style={{ color: 'var(--fg, #e2e8f0)' }}>{leadName || '…'}</b>{lead && lead.trashed ? <span style={{ color: '#f0883e' }}> (the lead is in Trash: restore it from Trash to work it)</span> : null}</> : <span style={{ color: '#f0883e', fontWeight: 600 }}>Not on a lead yet</span>}
         {sharedFrom(d) ? <> · From: <b style={{ color: 'var(--fg, #e2e8f0)' }}>{sharedFrom(d)}</b> (shared link)</> : null}
       </div>
-      <DesignItem d={d} onChanged={onDone} actions={actions} />
+      <DesignItem d={d} onChanged={onDone} actions={actions} buildNote={d.status !== 'dismissed' ? <BuildQuoteNote d={d} extra={onLead && lead && lead.trashed ? 'The lead is in Trash: restore it from Trash first.' : ''} /> : null} />
       {attaching && buildAfter ? <div style={{ ...MUTED, marginTop: 8 }}>A quote is built on a lead: pick the lead this design belongs to below (or <b>Make a new lead</b>). The lead page then opens the quote program filled in with the design.</div> : null}
       {attaching ? <AttachPicker design={d} busy={busy} onPick={attachTo} onCancel={() => { setAttaching(false); setBuildAfter(false) }} /> : null}
     </div>

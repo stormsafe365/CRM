@@ -7,8 +7,12 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { quoteToSeed, settleDesign } from '../src/lib/designSeed.js'
-import { designToQuote, designQuoteReason, restoreChecks, mergeChecks, canon, numStr, applyDesignToProgram } from '../src/lib/designToQuote.js'
+import { designToQuote, designQuoteReason, designOf, restoreChecks, mergeChecks, canon, numStr, applyDesignToProgram } from '../src/lib/designToQuote.js'
+import { innerDesign, ctxOf, isWebsiteDesign, adaptDesign, storageOf } from '../src/lib/designShape.js'
+import { designSummary } from '../src/lib/designLinks.js'
+import { designDiff } from '../src/lib/designDiff.js'
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 } }
 const env = (design, ctx = { zip: null, county: null, impact: false }) => ({ schema: 'ss-web-design', v: 1, design, ctx })
@@ -478,4 +482,200 @@ test('applyDesignToProgram is self-contained (the headless program check runs th
   applyDesignToProgram(pg, { fields: { bw: '24', zip: '99999', _span_county: 'Lee' } })
   assert.deepEqual(calls.slice(0, 2), [['restore', '24'], ['onCountyEdit']])
   assert.equal(el.textContent, 'Lee')
+})
+
+// ── designs the WEBSITE sent (owner 10/24/26) ─────────────────────────────────────────────────────────────────────────
+// "Build quote from this design" was disabled (and the card title read just "Customer design") on designs from the website's
+// Customize page: it posts the page's saved-state envelope ONE LEVEL DEEPER (stormsafe-site public/customize.html, sendToCrm):
+//   design = { schema:'ss-web-design', source:'website', type, width, length, height, state:{ schema, v:1, design, ctx } }
+// where the design link page stores the state envelope itself (design_requests.design = { schema, v, design, ctx }).
+// tests/fixtures/website-designs.json holds rows built by the website's REAL code (raw designs settled by its own
+// normalizeDesign, builder-src/web-customer/src/model/normalize.ts, wrapped by its real sendToCrm). Its builder is an earlier
+// fork of the page's model with its own upgrades { gauge12, oc4, vertical } and an end storage room { on, end, depth }.
+const WEB = JSON.parse(readFileSync(new URL('./fixtures/website-designs.json', import.meta.url), 'utf8'))
+const webRow = (id) => WEB.find((r) => r.id === id).row
+const WEB_WITH_STATE = WEB.filter((r) => r.row.design.state)
+/** What sendToCrm puts in design_requests.design (the first test proves this copy equals the real code's output). */
+const webWrap = (state) => { const dz = state && state.design; return { schema: 'ss-web-design', source: 'website', type: dz && dz.type, width: dz && dz.width, length: dz && dz.length, height: dz && dz.height, state: state || null } }
+/** The same website design as the design link page would send it: the page's upgrades, no storage room (independent of adaptDesign). */
+function linkTwin(d) {
+  const t = JSON.parse(JSON.stringify(d)); const u = t.upgrades
+  delete t.storage
+  t.upgrades = { insulation: 'none', frame12: u.gauge12 === true, oc4: u.oc4 === true, panels26: false, colorScrews: false, openers: false, angle45: false }
+  return t
+}
+const WEB_LINE = /website’s builder/
+
+test('website rows (the real normalizer + the real sendToCrm): the wrapper is found, the real design is inside, and its title and reason work', () => {
+  assert.equal(WEB.length, 6)
+  for (const { id, row } of WEB_WITH_STATE) {
+    assert.deepEqual(JSON.parse(JSON.stringify(webWrap(row.design.state))), row.design, id) // the test's wrapper copy = the real code's output
+    assert.equal(row.design.source, 'website')
+    assert.ok(!('walls' in row.design), id) // the outer wrapper has a type and a size, but no walls: it is not the design
+    assert.strictEqual(innerDesign(row.design), row.design.state.design, id)
+    assert.strictEqual(designOf(row.design), row.design.state.design, id)
+    assert.deepEqual(ctxOf(row.design), row.design.state.ctx, id)
+    assert.ok(isWebsiteDesign(row.design), id)
+    assert.equal(designQuoteReason(row.design), '', id)
+    assert.match(designSummary(row.design), /^(Garage|Carport|Garage \+ Carport) \d+' × \d+' × \d+' \(W × L × H\)/, id)
+    assert.ok(designToQuote(row.design, { zip: row.zip }).ok, id)
+  }
+  assert.equal(designSummary(webRow('garage-with-lean-tos').design), "Garage 30' × 40' × 12' (W × L × H) + 2 lean-tos")
+  assert.equal(designSummary(webRow('hybrid-divider-doors').design), "Garage + Carport 24' × 50' × 12' (W × L × H)")
+  assert.equal(designSummary(webRow('carport-gauge12-palm-beach').design), "Carport 20' × 40' × 12' (W × L × H)")
+})
+
+test('the design link envelope, the website wrapper and a bare design all give the same building and place', () => {
+  const R = rng(1024)
+  for (let i = 0; i < 30; i++) {
+    const { d, ctx } = randomDesign(R)
+    const link = env(d, ctx)
+    const site = webWrap(link)
+    for (const shape of [link, site, d]) assert.strictEqual(innerDesign(shape), d)
+    assert.deepEqual(ctxOf(link), ctx); assert.deepEqual(ctxOf(site), ctx); assert.deepEqual(ctxOf(d), {})
+    assert.ok(isWebsiteDesign(site)); assert.ok(!isWebsiteDesign(link)); assert.ok(!isWebsiteDesign(d))
+  }
+  // the wrapper's own type / size never pass for a design; junk finds nothing
+  const noState = webRow('no-state').design
+  assert.deepEqual([innerDesign(noState), innerDesign({ schema: 'ss-web-design', source: 'website', type: 'garage', width: 24, length: 30, height: 10, state: null })], [null, null])
+  for (const junk of [null, undefined, 5, 'x', [], {}, { design: 3 }, { state: { design: {} } }, { design: { type: 'garage' } }]) assert.equal(innerDesign(junk), null)
+  assert.deepEqual(ctxOf(null), {}); assert.deepEqual(ctxOf({ ctx: 5 }), {})
+})
+
+test('a website design builds the SAME quote as the same design from the design link (only the website’s own fields differ)', () => {
+  for (const { id, row } of WEB_WITH_STATE) {
+    const d = row.design.state.design
+    const web = ok(designToQuote(row.design, { zip: row.zip }))
+    const twin = ok(designToQuote(env(linkTwin(d), row.design.state.ctx), { zip: row.zip }))
+    if (!d.storage.on) assert.deepEqual(web.payload, twin.payload, id)
+    else {
+      // the storage room: its fields and its wall's doors are added, nothing else moves
+      const noRoom = ok(designToQuote(env({ ...linkTwin(d), openings: d.openings.filter((o) => o.wall !== 'partition') }, row.design.state.ctx), { zip: row.zip }))
+      const p = JSON.parse(JSON.stringify(web.payload))
+      for (const k of ['add-end-wall', 'aew-end', 'aew-depth']) delete p.fields[k]
+      for (const [k, loc] of [['doors', 'rloc'], ['wtds', 'wloc'], ['windows', 'nloc'], ['addcomps', 'fo-loc']]) p[k] = p[k].filter((e) => e[loc] !== 'Partition Wall')
+      assert.deepEqual(p, noRoom.payload, id)
+    }
+    assert.equal(web.county, twin.county); assert.equal(web.zip, twin.zip)
+    assert.ok(web.checks.some((c) => WEB_LINE.test(c.text)), id) // says it came from the website's builder (no insulation / openers / ... asked)
+    assert.ok(!web.checks.some((c) => /tidied/.test(c.text)), id + ': a valid website design is not "tidied"')
+    assert.ok(!twin.checks.some((c) => WEB_LINE.test(c.text)), id)
+    // never a price
+    for (const k of keysOf(web.payload)) assert.ok(!PRICE_KEYS.includes(k), k)
+    // no seed to compare with: no "what changed" list, no error
+    assert.deepEqual(designDiff(env(linkTwin(d), row.design.state.ctx), row.design), [], id)
+    assert.deepEqual(designDiff(null, row.design), [], id)
+  }
+})
+
+test('website 12-gauge framing, 4′ on center, vertical panels, wainscot and print colors reach the program fields', () => {
+  // 12-gauge: the website's `gauge12` is the page's `frame12` - read as 14-gauge it would be a wrong price
+  const car = ok(designToQuote(webRow('carport-gauge12-palm-beach').design, { zip: '33411' }))
+  assert.equal(webRow('carport-gauge12-palm-beach').design.state.design.upgrades.frame12, undefined)
+  assert.deepEqual([car.payload.fields['framing-upgrade'], car.payload.fields['oc-spacing'], car.payload.fields.btype], ['12', '4oc', 'carport'])
+  assert.deepEqual([car.payload.fields.wfg, car.payload.fields.wbg, car.payload.fields['sp-left'], car.payload.fields['sp-right']], ['Open', 'Gable Only', '1panel', 'open'])
+  has(car, /customer picked vertical; the program’s carport panels are horizontal/)
+  const g = ok(designToQuote(webRow('garage-with-lean-tos').design, { zip: '33801' }))
+  assert.equal(g.payload.fields['framing-upgrade'], '14')
+  assert.deepEqual([g.payload.fields.ws, g.payload.fields.wain, g.payload.fields.cwn, g.payload.fields['pitch-sel']], ['Vertical', 'yes', '#B0A183', '4:12'])
+  // the wide span garage keeps everything it had (nothing asked, nothing added)
+  const w = ok(designToQuote(webRow('wide-span-no-upgrades').design, { zip: '34470' }))
+  assert.deepEqual([w.payload.fields.btype, w.payload.fields.bw, w.payload.fields.ws, w.payload.fields['framing-upgrade']], ['widespan', '40', 'Vertical', '14'])
+  // the doors, windows, framed openings and lean-tos arrive too (the quantity run, positions, the lean-to's own parts)
+  assert.deepEqual(g.payload.doors.map((e) => [e.rloc, e.rsz, e.rqt, e.rco, e.positions.map((p) => p.val)]), [['Front Gable End', '10x8', '2', 'barnRed', ['4', '16']]])
+  assert.deepEqual(g.payload.leantos.map((l) => [l.lts, l.ltw, l['lt-wm'], l.accs.length]), [['Left Eave', '12', 'enclosed', 2], ['Right Eave', '10', 'custom', 0]])
+  assert.equal(g.payload.addcomps[0]['fo-loc'], 'Back Gable End')
+  const h = ok(designToQuote(webRow('hybrid-divider-doors').design, { zip: '32114' }))
+  assert.deepEqual([h.payload.fields.btype, h.payload.fields['gch-enc'], h.payload.doors[0].rloc], ['gch', '30', 'Partition Wall'])
+})
+
+test('the website’s end storage room becomes the program’s End Storage, with the doors on its wall; the program prices it, never this file', () => {
+  const row = webRow('garage-with-storage-room')
+  const d = row.design.state.design
+  assert.deepEqual(d.storage, { on: true, end: 'back', depth: 8 }) // asked for 10, the website's own rule snapped it to a frame line
+  assert.equal(d.openings.filter((o) => o.wall === 'partition').length, 2)
+  const r = ok(designToQuote(row.design, { zip: row.zip }))
+  assert.deepEqual([r.payload.fields['add-end-wall'], r.payload.fields['aew-end'], r.payload.fields['aew-depth']], ['yes', 'back', '8'])
+  assert.deepEqual(r.payload.wtds.find((e) => e.wloc === 'Partition Wall'), { wloc: 'Partition Wall', whi: 'hiwind', wqt: '1', positions: [{ val: '5', side: 'left' }] })
+  assert.deepEqual(r.payload.windows.find((e) => e.nloc === 'Partition Wall').positions, [{ val: '14', side: 'left' }])
+  has(r, /End storage room \(asked for on the website\): a partition wall 8′ in from the back end, entered as the program's End Storage \(it prices it\)\. Confirm the depth and the doors \/ windows on the storage room wall/)
+  assert.ok(!r.checks.some((c) => /storage partition,/.test(c.text))) // "not asked" no longer lists the storage partition
+  assert.ok(!r.checks.some((c) => /not closed on the design/.test(c.text))) // the storage wall takes openings; it is not an open wall
+  assert.ok(!JSON.stringify(r.payload).match(/"(total|price|tax|disc|acp)/))
+  // storage OFF on the website: nothing about a storage room, and a stray partition opening is dropped like the page drops it
+  const off = JSON.parse(JSON.stringify(row.design))
+  off.state.design.storage.on = false
+  const r2 = ok(designToQuote(off, { zip: row.zip }))
+  assert.equal(r2.payload.fields['add-end-wall'], undefined)
+  assert.ok(![...r2.payload.wtds, ...r2.payload.windows].some((e) => e.wloc === 'Partition Wall' || e.nloc === 'Partition Wall'))
+  assert.ok(r2.checks.some((c) => /storage partition,/.test(c.text)))
+  // not on a hybrid (its divider is already the split), whatever the saved state says
+  const hy = JSON.parse(JSON.stringify(webRow('hybrid-divider-doors').design))
+  hy.state.design.storage = { on: true, end: 'front', depth: 10 }
+  assert.equal(ok(designToQuote(hy, { zip: '32114' })).payload.fields['add-end-wall'], undefined)
+  // the program's read-back: a depth it moved, or a room it did not take, is listed for the rep
+  const back = JSON.parse(JSON.stringify(r.payload))
+  assert.deepEqual(restoreChecks(r.payload, back), [])
+  back.fields['aew-depth'] = '12'
+  assert.ok(restoreChecks(r.payload, back).some((c) => c.level === 'warn' && /Storage room: the program offers the partition on its truss lines, so it set 12′ \(the nearest to the 8′ the customer drew\)/.test(c.text)))
+  back.fields['add-end-wall'] = 'no'
+  assert.ok(restoreChecks(r.payload, back).some((c) => /Storage room: the design asks End Storage, the program shows none/.test(c.text)))
+})
+
+test('a website row without the 3D building (the builder could not read it) says so: no button, a reason the rep can read, an empty title', () => {
+  const row = webRow('no-state')
+  assert.equal(row.design.state, null)
+  assert.match(designQuoteReason(row.design), /The website did not send the 3D building with this one, only the spec text/)
+  assert.equal(designToQuote(row.design).ok, false)
+  assert.equal(designSummary(row.design), '')
+  assert.deepEqual(designDiff(null, row.design), [])
+  assert.match(designQuoteReason({ schema: 'ss-web-design', v: 1 }), /has no building in it/) // any other empty one keeps its wording
+})
+
+test('a design in the website wrapper builds EXACTLY the same quote as in the design link envelope (500 random page designs)', () => {
+  const R = rng(20261024)
+  let withParts = 0
+  for (let i = 0; i < 500; i++) {
+    const { d, ctx } = randomDesign(R)
+    const state = env(d, ctx)
+    const link = ok(designToQuote(state, { zip: ctx.zip }))
+    const web = ok(designToQuote(webWrap(state), { zip: ctx.zip }))
+    assert.deepEqual(web.payload, link.payload, `design ${i}`)
+    assert.equal(web.county, link.county); assert.equal(web.zip, link.zip)
+    // the same list for the rep, plus the one line that says where it came from
+    assert.deepEqual(web.checks.filter((c) => !WEB_LINE.test(c.text)), link.checks, `design ${i}`)
+    assert.equal(web.checks.length, link.checks.length + 1)
+    assert.equal(designSummary(webWrap(state)), designSummary(state))
+    assert.deepEqual(designDiff(state, webWrap(state)), [])
+    assert.equal(designQuoteReason(webWrap(state)), designQuoteReason(state))
+    if (d.openings.length && d.leanTos.length) withParts++
+    // a design link page design is read exactly as before: nothing adapted, no website line
+    assert.strictEqual(adaptDesign(d), d)
+    assert.ok(!link.checks.some((c) => WEB_LINE.test(c.text)))
+  }
+  assert.ok(withParts > 20, `only ${withParts} designs with both openings and lean-tos`)
+})
+
+test('adaptDesign / storageOf: only the website’s own fields are touched', () => {
+  const page = { type: 'garage', walls: {}, upgrades: { insulation: 'roof', frame12: true, oc4: false, panels26: false, colorScrews: false, openers: false, angle45: false } }
+  assert.strictEqual(adaptDesign(page), page) // the SAME object: a design link page design takes no new path
+  const site = adaptDesign({ type: 'carport', walls: {}, upgrades: { gauge12: true, oc4: true, vertical: true }, storage: { on: true, end: 'front', depth: 10 } })
+  assert.deepEqual(site.upgrades, { insulation: 'none', angle45: false, panels26: false, colorScrews: false, openers: false, oc4: true, frame12: true })
+  assert.ok(!('storage' in site) && !('vertical' in site.upgrades) && !('gauge12' in site.upgrades))
+  assert.equal(adaptDesign({ type: 'garage', walls: {}, upgrades: { gauge12: false, oc4: false, vertical: false } }).upgrades.frame12, false)
+  assert.equal(adaptDesign({ type: 'commercial', walls: {} }).type, 'garage') // an old saved state: the website itself settles it to an Enclosed building
+  assert.equal(designQuoteReason(env({ type: 'commercial', walls: { front: 'closed', back: 'closed', left: 'closed', right: 'closed' } })), '')
+  assert.equal(designQuoteReason(env({ type: 'barn', walls: {} })), 'This design has no building type.')
+  assert.deepEqual(adaptDesign({ type: 'garage', walls: {}, upgrades: null }), { type: 'garage', walls: {}, upgrades: null })
+  assert.equal(storageOf({ type: 'garage', storage: { on: false, end: 'front', depth: 10 } }), null)
+  assert.equal(storageOf({ type: 'combo', storage: { on: true, end: 'front', depth: 10 } }), null)
+  assert.equal(storageOf({ type: 'garage' }), null)
+  assert.deepEqual(storageOf({ type: 'garage', storage: { on: true, end: 'front', depth: 10 } }), { end: 'front', depth: 10 })
+  assert.deepEqual(storageOf({ type: 'garage', storage: { on: true, end: 'sideways', depth: 'x' } }), { end: 'back', depth: null })
+  // a storage room with no usable depth still turns End Storage on (the rep sets the depth): the program picks its default
+  const noDepth = JSON.parse(JSON.stringify(webRow('garage-with-storage-room').design))
+  noDepth.state.design.storage.depth = null
+  const r = ok(designToQuote(noDepth, { zip: '33901' }))
+  assert.deepEqual([r.payload.fields['add-end-wall'], r.payload.fields['aew-end'], r.payload.fields['aew-depth']], ['yes', 'back', undefined])
+  has(r, /End storage room \(asked for on the website\): a partition wall at the back end/)
 })

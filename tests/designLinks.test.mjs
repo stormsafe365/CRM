@@ -92,6 +92,15 @@ test('designSummary: W × L × H from the saved design', () => {
   assert.equal(designSummary(null), '')
 })
 
+test('designSummary: both shapes of design_requests.design - the design link envelope and the website wrapper (owner 10/24/26)', () => {
+  const design = { type: 'carport', width: 20, length: 40, height: 12, walls: {}, leanTos: [{}, {}] }
+  const link = { schema: 'ss-web-design', v: 1, design, ctx: { zip: '33801', county: 'Polk', impact: false } }
+  const site = { schema: 'ss-web-design', source: 'website', type: 'carport', width: 20, length: 40, height: 12, state: link }
+  assert.equal(designSummary(link), "Carport 20' × 40' × 12' (W × L × H) + 2 lean-tos")
+  assert.equal(designSummary(site), designSummary(link)) // the card title no longer reads just "Customer design"
+  assert.equal(designSummary({ ...site, state: null }), '') // the builder could not read its design: no title to build
+})
+
 test('escHtml keeps customer text out of the toast markup', () => {
   assert.equal(escHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;')
   assert.equal(escHtml(`Tom & "Jerry's"`), 'Tom &amp; &quot;Jerry&#39;s&quot;')

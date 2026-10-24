@@ -46,7 +46,17 @@ export function BuildFromDesignButton({ d, onClick, disabledReason = '' }) {
   )
 }
 
-export function DesignItem({ d, onChanged, actions = null, onBuildQuote = null }) {
+/**
+ * Why "Build quote from this design" is off, as a small line the rep can SEE (owner 10/24/26: a tooltip alone was not enough).
+ * `extra` = a reason the caller knows (the lead is in Trash ...). Nothing renders while the button works.
+ */
+export function BuildQuoteNote({ d, extra = '' }) {
+  const why = designQuoteReason(d && d.design) || extra
+  if (!why) return null
+  return <div role="note" data-testid="build-quote-note" style={{ ...MUTED, marginTop: 6, color: '#f0883e' }}>Build quote from this design is off: {why}</div>
+}
+
+export function DesignItem({ d, onChanged, actions = null, onBuildQuote = null, buildNote = null }) {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [big, setBig] = useState(false)
@@ -134,6 +144,7 @@ export function DesignItem({ d, onChanged, actions = null, onBuildQuote = null }
           {!actions && d.status === 'new' ? <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setStatus('seen')}>Mark reviewed</button> : null}
           {!actions ? <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => setStatus('dismissed')} title="Hide this design from the lead">Remove</button> : null}
         </div>
+        {onBuildQuote ? <BuildQuoteNote d={d} /> : buildNote}
         {open ? <div style={{ ...MUTED, marginTop: 8 }}>As sent from the customer’s design page (check it against the picture before quoting).</div> : null}
         {open ? (
           <pre style={{ marginTop: 8, padding: 10, background: 'var(--inset, #0B1B32)', border: '1px solid var(--line, #294059)', borderRadius: 8, whiteSpace: 'pre-wrap', fontSize: 12.5, lineHeight: 1.45, maxHeight: 360, overflow: 'auto' }}>{d.spec || '(no spec)'}</pre>

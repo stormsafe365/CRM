@@ -114,3 +114,12 @@ test('end to end: a real seed, the customer adds a lean-to and moves the door', 
   sent.design.leanTos.push({ id: 'lt1', side: 'Right Eave', width: 12, length: 30, start: 0, lowLeg: 10, pitch: '2:12', enclosure: 'open', walls: { front: 'open', back: 'open', side: 'open' }, openings: [] })
   assert.deepEqual(designDiff(r.seed, sent).map((c) => c.text), ['Moved: 10×10 roll-up door, front end: 7′ → 3′', 'Lean-to added: right side 12′ × 30′'])
 })
+
+test('a design the WEBSITE sent (wrapped one level deeper) has no seed: no changes list, no error (owner 10/24/26)', () => {
+  const sentByWebsite = { schema: 'ss-web-design', source: 'website', type: 'garage', width: 24, length: 40, height: 12, state: { schema: 'ss-web-design', v: 1, design: { ...base(), width: 30 }, ctx: { zip: null, county: null, impact: false } } }
+  assert.deepEqual(designDiff(env(base()), sentByWebsite), []) // even against a seed, the website's builder is another model: nothing to compare
+  assert.deepEqual(designDiff(null, sentByWebsite), [])
+  assert.deepEqual(designDiff(undefined, { ...sentByWebsite, state: null }), [])
+  // and the design link page's own rows are compared exactly as before
+  assert.deepEqual(designDiff(env(base()), env({ ...base(), width: 30 })).map((c) => c.text), ['Width 24′ → 30′'])
+})
