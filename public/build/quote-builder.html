@@ -722,6 +722,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div class="csw" id="swn"></div>
   </div>
   <div id="wain-print-note" class="anote hidden" style="margin:-2px 0 8px">Print panel wainscot: <strong>+25%</strong> on the wainscot price · vertical panels only · 29GA today — 26GA &amp; FL-approved versions “coming soon” per CCI memo 3/9/26.</div>
+  <div id="wain-print-warn" class="anote hidden" style="margin:-2px 0 8px;color:#991b1b"><b>⚠ Print panels come on VERTICAL wall panels only (CCI memo 3/9/26).</b> Set Wall Style to Vertical or pick a standard wainscot color — CCI does not make a print wainscot on horizontal walls. (Rep note — not printed.)</div>
   <div id="wain-cci-note" class="anote hidden" style="margin:-2px 0 8px"></div>
 </div>
 
@@ -9475,11 +9476,12 @@ function rc(){
     if(_pImpDoorLock && sel.value!=='hiwind'){ sel.dataset.preImp=sel.value; sel.value='hiwind'; }
     else if(!_pImpDoorLock && sel.dataset.preImp){ sel.value=sel.dataset.preImp; delete sel.dataset.preImp; }
   });
-  // Lee County (incl. Lehigh Acres): no corrugated siding in residential zones -> lap siding.
-  // Orange County (owner 10/15/26): CCI memo 3/9/26 p3 "Lap Siding Required - Orange County (Certain Areas Only)"; CCI permitting
-  // sheet: R-1, R-1A, R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1 and R-T-2 zoning districts. Auto-applied
-  // like Lee; the rep overrides when the site is outside those districts.
-  var _pLapReq=_pCci && (_pCo==='Lee' || _pCo==='Orange'), _pLapEl=G('lap');
+  // Lee County (incl. Lehigh Acres): no corrugated siding in residential zones -> lap siding (auto-applied + locked).
+  // Orange County: CCI memo 3/9/26 p3 "Lap Siding Required - Orange County (Certain Areas Only)"; CCI permitting sheet: R-1, R-1A,
+  // R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1 and R-T-2 zoning districts. It was auto-applied like Lee
+  // (10/15/26); since 10/27/26 (owner) the program ASKS instead: the notice below offers "apply lap siding", nothing is locked and no
+  // override flag is involved (the rep's answer is the plain Lap Siding field, saved like any other field).
+  var _pLapReq=_pCci && _pCo==='Lee', _pLapAsk=_pCci && _pCo==='Orange', _pLapEl=G('lap');
   if(_pLapEl){
     if(_pLapReq && !window._lapOvr){ if(!_pLapEl.disabled) window._lapPre=_pLapEl.value; _pLapEl.value='yes'; _pLapEl.disabled=true; }
     else if(_pLapEl.disabled){ _pLapEl.disabled=false; _pLapEl.value=window._lapPre||'no'; window._lapPre=null; }
@@ -9496,9 +9498,12 @@ function rc(){
     if(_pImpReq && !window._impOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+_pCo+' requires impact-rated components \u2014 windows are locked to Hi-Impact'+(_pImpDoor?' and walk doors to Hi-Wind Rated.':' (standard walk doors are accepted here, CCI memo 3/9/26).')+_pA("_permOvr(\'imp\',true)",'Override')+'</div>';
     else if(_pImpReq && _pGf.imp) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold with non-impact windows/doors before the 9/28/26 '+_pCo+' impact rule (kept as sold).'+_pA("_permOvr(\'imp\',false)",'Apply impact rule')+'</div>';
     else if(_pImpReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 non-impact windows/doors allowed in an impact county ('+_pCo+').'+_pA("_permOvr(\'imp\',false)",'Re-apply')+'</div>';
-    if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">'+(_pCo==='Orange'?'Orange County requires lap siding in certain residential zoning districts (R-1, R-1A, R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1, R-T-2 \u2014 CCI) \u2014 auto-applied. Override if the site is outside those districts.':'Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.')+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
-    else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the '+(_pCo==='Orange'?'10/15/26 Orange':'9/28/26 Lee')+' County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
+    if(_pLapReq && !window._lapOvr) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Lee County (incl. Lehigh Acres) requires lap siding in residential zones \u2014 auto-applied.'+_pA("_permOvr(\'lap\',true)",'Override')+'</div>';
+    else if(_pLapReq && _pGf.lap) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">GRANDFATHERED \u2014 sold without lap siding before the 9/28/26 Lee County rule (kept as sold).'+_pA("_permOvr(\'lap\',false)",'Apply lap siding')+'</div>';
     else if(_pLapReq) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:700">\u26A0 OVERRIDE ACTIVE \u2014 lap siding removed in '+_pCo+' County.'+_pA("_permOvr(\'lap\',false)",'Re-apply')+'</div>';
+    // Orange County asks (10/27/26): lap siding only in the listed residential zoning districts - the rep answers for the parcel.
+    if(_pLapAsk && _pLapEl && _pLapEl.value!=='yes') _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Orange County: CCI requires lap siding ONLY when the parcel is zoned R-1, R-1A, R-1AA, R-1AAA, R-1AAAA, R-CE, R-CE-2, R-CE-5, R-L-D, R-2, R-3, R-T-1 or R-T-2 (CCI memo 3/9/26). Check the zoning on the Orange County Property Appraiser page. Not applied.'+_pA("_lapAsk(true)",'Yes — apply lap siding')+'</div>';
+    else if(_pLapAsk) _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Orange County: lap siding applied (the parcel is in one of the residential zoning districts CCI lists).'+_pA("_lapAsk(false)",'Remove')+'</div>';
     // Palm Beach County: why the framing is locked (owner rule 10/9/26) — the lock + override live in the framing note.
     if(_pCci && _pCo==='Palm Beach'){ var _pbOc=((parseInt(G('bw').value)||0)<=24 && G('btype').value!=='widespan');
       _pH+='<div style="background:#fef3c7;color:#7c4a03;border-left:4px solid #f59e0b;border-radius:5px;padding:7px 10px;margin-bottom:6px;font-weight:600">Palm Beach County: CCI requires 4\u2019 OC + 12-gauge framing on every building size (owner rule 10/9/26)'+(window._fu14Ovr?' \u2014 <b>override active</b> on this build.':' \u2014 framing locked to 12 GA'+(_pbOc?' / 4\u2019 OC':' (4\u2019 OC is standard at this width)')+'.')+'</div>'; }
@@ -9764,6 +9769,11 @@ function rc(){
   G('pwi').textContent=wainP?fC(wainP):'—';
   var _pwk=G('pwi-k'); if(_pwk) _pwk.textContent = (wainP && wainscotPrintOpt()) ? 'Wainscot — Print Panel (+25%)' : 'Wainscot';
   var _wpn=G('wain-print-note'); if(_wpn) _wpn.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes'));
+  // Print-panel wainscot is VERTICAL wall panels only (CCI memo 3/9/26 "Only Available In Vertical"; owner 10/27/26): the four print
+  // colours are offered only when Wall Style is Vertical; on horizontal walls they are greyed out and a saved pick shows a rep warning.
+  var _wpV=((G('ws')||{}).value==='Vertical'), _wpSel=G('cwn');
+  if(_wpSel){ [].forEach.call(_wpSel.options,function(o){ if(o.getAttribute('data-print')) o.disabled=!_wpV; }); }
+  var _wpW=G('wain-print-warn'); if(_wpW) _wpW.classList.toggle('hidden', !(wainscotPrintOpt() && G('wain') && G('wain').value==='yes' && !_wpV));
   // CCI: what the wainscot line covers (rep-only; the line keeps its name).
   var _wcd=(ACTIVE_MFR==='CCI' && wainP)?cciWainscot():null, _wcn=G('wain-cci-note');
   if(_pwk) _pwk.title=(_wcd&&_wcd.covers)?('Covers: '+_wcd.covers):'';
@@ -11558,6 +11568,7 @@ function colorChartPageHTML(tiles){
 // QUOTE SAVE / LOAD
 // ══════════════════════════════════════════════════════════════════════════
 
+function _lapAsk(on){ var el=G('lap'); if(el && !el.disabled){ el.value=on?'yes':'no'; } rc(); } // Orange County: the rep's answer (10/27/26) - the plain field, no lock, no override flag
 function _permOvr(k,on){
   if(window._plGrand) window._plGrand[k]=false;
   if(k==='imp') window._impOvr=on;
@@ -18805,7 +18816,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       oc170: oc170, // 10/14/26: 170 MPH on 24' and narrower needs 4' OC (root.cci170OcRule)
       imp: cci && (IMPACT_CO.indexOf(co)>=0 || IMPACT_WIN_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
       impDoors: cci && (IMPACT_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
-      lap: cci && (co==='Lee' || co==='Orange'), // Orange 10/15/26
+      lap: cci && co==='Lee', // Orange was a locked rule 10/15/26 - 10/27/26; since then the program asks (the plain lap field, no flag)
       ns: cci && NOSVC_CO.indexOf(co)>=0
     };
   }
@@ -18846,8 +18857,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       if(opts.lock && !ov.fu14 && c.oc170 && (f['oc-spacing']||'5oc')!=='4oc' && !ov.oc170Rule){ root._fu14Ovr=true; gf.fu14=true; }
       // Triple wide Commercial / Risk Cat 2 = 12 GA (10/15/26): a save from before the rule (no com12Rule marker) at 14 GA is kept as sold.
       if(opts.lock && !ov.fu14 && c.com12 && !c.hw12 && !c.pbN && (f['framing-upgrade']||'14')!=='12' && !ov.com12Rule){ root._fu14Ovr=true; gf.fu14=true; }
-      // Orange County lap siding (10/15/26): a save from before the rule (no orangeLap marker) without lap is kept as sold.
-      if(opts.lock && !ov.lap && c.lap && c.co==='Orange' && f.lap!=='yes' && !ov.orangeLap){ root._lapOvr=true; gf.lap=true; }
+      // Orange County lap siding: locked 10/15/26 - 10/27/26, now asked (no lock). A saved quote keeps its saved lap field either way.
     } else if(opts.lock){
       // Older quotes: infer the flag wherever the saved build differs from what the
       // rule would force. Saved before the rule -> "Grandfathered", else a rep override.
@@ -18860,7 +18870,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       var t12=(c.pbN||c.oc170||(c.com12&&!c.hw12))?Infinity:((c.co==='St. Lucie')?T_PERMIT:T_HW12); // Palm Beach / 170 MPH 4' OC / triple wide Commercial: a pre-v3 save predates the 10-9b / 10-14d / 10-15c rule
       gf.fu14=root._fu14Ovr && sT<t12;
       gf.imp=root._impOvr && sT<T_PERMIT;
-      gf.lap=root._lapOvr && sT<(c.co==='Orange'?Infinity:T_PERMIT); // Orange: the 10-15c rule
+      gf.lap=root._lapOvr && sT<T_PERMIT;
       gf.ns=false; // 'pickup' did not exist before the rule: always a rep choice
     } else {
       root._fu14Ovr=false; root._impOvr=false; root._lapOvr=false; root._nsOvr=false;
