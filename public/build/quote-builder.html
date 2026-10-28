@@ -12987,6 +12987,11 @@ async function printQuote(){
   } else if(perm==='verify'){
     plansHTML='<div class="qplans">Customer will verify if plans are required.</div>';
   }
+  // Building Permit Service (owner 10/28/26, Reginald's quote): the contract prints it next to the plans; the quote never did. Same
+  // fee and wording (MFR().permitSvc: CCI $300 building; CA $100 / $225) - invoiced separately by the engineering firm, not in the total.
+  var _qSvcSel=G('permit-svc'), _qSvcV=_qSvcSel?_qSvcSel.value:'none';
+  var _qSvcDef=(MFR().permitSvc||[]).find(function(o){ return o.v===_qSvcV; });
+  if(_qSvcDef && _qSvcDef.amt>0) plansHTML+='<div class="qplans"><strong>'+(_qSvcDef.lbl||'Building Permit Service')+' &mdash; $'+_qSvcDef.amt+'</strong>. StormSafe will arrange to have your building permit pulled ('+(_qSvcV==='building-pad'?'building &amp; pad':'building only')+'). Buyer provides the site survey, signed Notice of Commencement and proof of ownership, and pays any building-department fees. Invoiced separately by the engineering firm &mdash; not included in the total above.</div>';
   var da=T.da, ad=T.ad;
   var ta=T.ta, tot=T.tot;
   var addDiscPrint=T.addDiscVal;
