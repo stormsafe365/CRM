@@ -14588,7 +14588,7 @@ async function printContract(){
   var showAD=(G('add-disc-show')&&G('add-disc-show').value==='show');
 
   // ── COLLECT WALL ITEMS for floor plan & elevations ──
-  var frontItems=[], backItems=[], rightItems=[], leftItems=[];
+  var frontItems=[], backItems=[], rightItems=[], leftItems=[], partItems=[]; // partItems: a Garage-Carport Hybrid's partition wall (10/28/26)
   document.querySelectorAll('.re').forEach(function(el){
     var loc=el.querySelector('.rloc').value;
     var sz=(el.querySelector('.rsz').value||'10x8').split('x');
@@ -14599,6 +14599,7 @@ async function printContract(){
     else if(loc==='Back Gable End') pl(backItems,W);
     else if(loc==='Left Eave Side') pl(leftItems,L);
     else if(loc==='Right Eave Side') pl(rightItems,L);
+    else if(loc==='Partition Wall') pl(partItems,W); // GCH partition: drawn on the plan's divider (10/28/26)
   });
   document.querySelectorAll('.we').forEach(function(el){
     var loc=el.querySelector('.wloc').value;
@@ -14607,6 +14608,7 @@ async function printContract(){
     else if(loc==='Back Gable End') pl(backItems,W);
     else if(loc==='Left Eave Side') pl(leftItems,L);
     else if(loc==='Right Eave Side') pl(rightItems,L);
+    else if(loc==='Partition Wall') pl(partItems,W); // GCH partition: drawn on the plan's divider (10/28/26)
   });
   document.querySelectorAll('.ne').forEach(function(el){
     var loc=el.querySelector('.nloc').value;
@@ -14616,6 +14618,7 @@ async function printContract(){
     else if(loc==='Back Gable End') pl(backItems,W);
     else if(loc==='Left Eave Side') pl(leftItems,L);
     else if(loc==='Right Eave Side') pl(rightItems,L);
+    else if(loc==='Partition Wall') pl(partItems,W); // GCH partition: drawn on the plan's divider (10/28/26)
   });
   // Framed openings from Additional Components — render on CONTRACT building views (same logic as buildingPageHTML)
   document.querySelectorAll('.ace').forEach(function(el){
@@ -14639,6 +14642,7 @@ async function printContract(){
     else if(loc==='Back Gable End') placeFOC(backItems,W);
     else if(loc==='Left Eave Side') placeFOC(leftItems,L);
     else if(loc==='Right Eave Side') placeFOC(rightItems,L);
+    else if(loc==='Partition Wall') placeFOC(partItems,W); // GCH partition (10/28/26)
   });
 
   // ── LINE ITEMS (mirror of printQuote) ──
@@ -15124,8 +15128,17 @@ async function printContract(){
       var py = by + Math.min(encL, L) * scale;          // enc measured from the BACK (top)
       s += '<line x1="'+bx+'" y1="'+py+'" x2="'+(bx+bw)+'" y2="'+py+'" stroke="#111827" stroke-width="'+wt+'" stroke-linecap="square"/>';
       // Label on a white chip so it stays readable over the divider line.
-      s += '<rect x="'+(bx+bw/2-44)+'" y="'+(py-8)+'" width="88" height="14" fill="#ffffff" stroke="none"/>';
-      s += '<text x="'+(bx+bw/2)+'" y="'+(py+2.5)+'" text-anchor="middle" font-family="Arial" font-size="8.5" font-weight="800" fill="#111827" letter-spacing="1">PARTITION WALL</text>';
+      // Its doors / windows / framed openings (10/28/26) - same codes + colours as the outer walls, x from the plan's left
+      // (as seen from the front). The chip moves onto the carport side when an opening sits under it.
+      var gStyle=function(t){ return t==='rollup'?{f:'#fff7ed',k:'#c4421e',c:'C1'}:t==='wtd'?{f:'#dbeafe',k:'#1d4ed8',c:'C3'}:t==='win'?{f:'#dcfce7',k:'#15803d',c:'C5'}:{f:'#f3f4f6',k:'#4b5563',c:'C7'}; };
+      var gly=py; partItems.forEach(function(it){ var a=bx+it.x*scale, b=a+it.w*scale; if(b>bx+bw/2-44 && a<bx+bw/2+44) gly=py+14; });
+      s += '<rect x="'+(bx+bw/2-44)+'" y="'+(gly-8)+'" width="88" height="14" fill="#ffffff" stroke="none"/>';
+      s += '<text x="'+(bx+bw/2)+'" y="'+(gly+2.5)+'" text-anchor="middle" font-family="Arial" font-size="8.5" font-weight="800" fill="#111827" letter-spacing="1">PARTITION WALL</text>';
+      partItems.forEach(function(it){
+        var st=gStyle(it.type), ix=bx+Math.max(0,Math.min(it.x,W-it.w))*scale, iw=it.w*scale, ih=10, iy=py-ih/2;
+        s += '<rect x="'+ix+'" y="'+iy+'" width="'+iw+'" height="'+ih+'" fill="'+st.f+'" stroke="'+st.k+'" stroke-width="1.4"/>';
+        s += '<text x="'+(ix+iw/2)+'" y="'+(iy+ih/2+2.5)+'" text-anchor="middle" font-family="Arial" font-size="6.8" font-weight="800" fill="'+st.k+'">'+st.c+'</text>';
+      });
     })();
 
     // ── Storage partition (End / Left / Right Storage, 10/1/26) ──────────────
