@@ -5748,6 +5748,22 @@ function cciCombo12x4(fu, oc, w, bt, l){
 // difference. Sensei puts it in the certification line; the lean's own prices
 // don't change. Called only inside the CCI 4' OC block (≤24' main) — and left
 // out where the 12GA + 4' OC combined row applies (rep note instead).
+// CCI 12-gauge framing on attached lean-tos (10/28/26): when the main building is 12 gauge the lean-to is too, and CCI charges the
+// 12'-24' wide "12 Gauge" row (Price Book 2 p2: 20' 210 / 25' 240 / 30' 270 / 35' 300 / 40' 330) at EACH lean-to's length, per
+// connected unit past 40' - CCI's own breakdown for order SS-2026-02861 (Tim, 10/28/26): 12x50 lean on a 12-gauge 30x50 = $480
+// (25'+25'); Sensei read 9/30/26: $330 on a 40' lean. Free-standing lean-tos price their own 12 gauge (fsG12). Added to the
+// 12-Gauge Framing line like the lean-to 4' OC (cciOC4Leans); published as ga12Lean for the price lock.
+function cci12GALeans(){
+  var t=0,V=[210,240,270,300,330];
+  document.querySelectorAll('.lte').forEach(function(el){
+    if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
+    var l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
+    if(!l||!(parseInt((el.querySelector('.ltw')||{}).value)>0)) return;
+    if(l>40){ t+=cciUnitSum(l,V); return; }
+    t+=V[cciColUp(l)]; // a length between two columns rounds UP, like every CCI option
+  });
+  return t;
+}
 function cciOC4Leans(){
   var t=0,S=[20,25,30,35,40],V=[300,325,350,375,400];
   document.querySelectorAll('.lte').forEach(function(el){
@@ -9572,6 +9588,9 @@ function rc(){
   }
   var _cbR=cciCombo12x4(fuVal, ocSpacingVal, w, bt3, l);
   if(_cbR!=null){ framingUpgrade=_cbR; ocUpgrade=0; ocLean=0; }
+  // 12-gauge on attached lean-tos (CCI 10/28/26, see cci12GALeans): the main's 12 gauge makes each lean-to 12 gauge too.
+  var ga12Lean=0;
+  if(ACTIVE_MFR==='CCI' && fuVal==='12' && bt3!=='fslean'){ ga12Lean=cci12GALeans(); framingUpgrade+=ga12Lean; }
   // 12GA + 4' OC combined row: Sensei's lean 4' OC was read at 14 gauge only → lean part left out, rep note.
   var _ocLtN=G('oc-lean-note'); if(_ocLtN) _ocLtN.classList.toggle('hidden', !(_cbR!=null && cciOC4Leans()>0));
   // Pitch upgrade — uses ACTIVE manufacturer's pricing formula:
@@ -9710,7 +9729,7 @@ function rc(){
   // what the Building Amount charges.
   window._qTotals=Object.assign({mode:'engine', manual:false, depPct:(window._depPct||17),
     base:base, leg:leg, walls:walls, vertWallUpg:vertWallUpg, rud:rud, wtd:wtd, win:win, sf:sf, lapP:lapP,
-    framingUpgrade:framingUpgrade, ocUpgrade:ocUpgrade, ocLean:ocLean, cb12x4:(_cbR!=null), pitchUpgrade:pitchUpgrade, pitchSelVal:pitchSelVal,
+    framingUpgrade:framingUpgrade, ocUpgrade:ocUpgrade, ocLean:ocLean, ga12Lean:ga12Lean, cb12x4:(_cbR!=null), pitchUpgrade:pitchUpgrade, pitchSelVal:pitchSelVal,
     wainP:wainP, adjP:adjP, holdP:holdP, aewP:aewP, leanToTotal:leanToTotal, connFeeTotal:connFeeTotal, addCompTotal:addCompTotal,
     insulTotal:insulTotal, overhangP:overhangP, sidePanelP:sidePanelP, anchors:anchorP, anchorP:anchorP, anchorLegs:anchorLegs,
     preSheetSub:preSheetSub, thrPre:thrPre, subPreFastener:subPreFastener, sheetFree:sheetFree, sheetUpgrade:sheetUpgrade, fastenerFree:fastenerFree, fastenerP:fastenerP,
@@ -11752,7 +11771,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -18528,6 +18547,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'no-service':  { commit:'4930a13', date:'9/28/26', text:'CCI does not service Broward / Miami-Dade / Monroe (material-only orders)', flag:'ns' },
     'lean-walls':  { commit:'20114d9 / c87e523', date:'9/30/26', text:'CCI attached lean-to walls priced like Sensei: closed side by length sections, ends keep cents, partial / panel sides with J trim' },
     'lean-oc4':    { commit:'c87e523', date:'9/30/26', text:"CCI 4' OC now also charged on each attached lean-to (Sensei)" },
+    'lean-12ga':   { commit:'10-28', date:'10/28/26', text:"CCI 12-gauge framing now also charged on each attached lean-to when the main building is 12 gauge (CCI breakdown 10/28/26, order SS-2026-02861: the 12'-24' wide 12 Gauge row at the lean length)" },
     'anchor-70':   { commit:'c87e523', date:'9/30/26', text:'Ground (mobile home) anchors $68 → $70 each (Sensei)' },
     'cci-wainscot':{ commit:'wainscot-pricing', date:'10/5/26', text:'Wainscot (Sensei per-wall rule, 10/5): CCI charges each Closed end / side wall, storage partition and lean-to wall, at every height' },
     'carport-sides':{ commit:'10-9b', date:'10/12/26', text:'Carport: a closed side was charged twice (Each Side Closed + Side Panels) — every carport quote saved 8/26–10/12/26 with a closed side. Now charged once; carport sides are set only in 4B — Side Panels' },
@@ -18712,6 +18732,12 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         cnD+=Math.max(300, Math.round(root._ltsInterp(root.LTS_CONN, ll))) - root.cciWideUnitSum(ll, root.CCI_COM_CONN);
       });
       if(cnD) out.push({ k:'leanConn', label:'Lean-to connection fees (as originally quoted)', amt:r2(cnD), rules:['lean-conn-3260'] });
+    }
+    // 1-ga12) CCI 12-gauge main with attached lean-tos: the lean-tos' 12 gauge was never charged before 10-28 (no lean12ga marker);
+    //     now the 12'-24' wide 12 Gauge row at each lean length (amt < 0: the saved price was lower)
+    if(mfr==='CCI' && !_ov3.lean12ga && (f['framing-upgrade']||'14')==='12' && bt!=='fslean' && typeof root.cci12GALeans==='function'){
+      var gaL=r2(root.cci12GALeans());
+      if(gaL) out.push({ k:'leanGa12', label:'Lean-to 12-gauge framing (as originally quoted)', amt:-gaL, rules:['lean-12ga'] });
     }
     // 1a) Walk doors / windows on a gable end (or any non-eave wall) saved with a side frame: the program kept the
     //     eave's side frame when one was moved to a gable end (hidden, still charged) - never charged since 10-15b
