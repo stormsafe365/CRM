@@ -107,7 +107,7 @@ function pairOpenings(a, b, wallOf = (o) => o.wall) {
 function diffOpenings(a, b, push, wallName) {
   const { pairs, removed, added } = pairOpenings(a || [], b || [])
   for (const o of removed) push('opening', `Removed: ${partName(o)}, ${wallName(o)}`)
-  for (const o of added) push('opening', `Added: ${partName(o)}, ${wallName(o)}`)
+  for (const o of added) push('opening', `Added: ${partName(o)}${addOns(o)}, ${wallName(o)}`)
   for (const [x, y] of pairs) {
     const name = partName(y)
     if (x.wall !== y.wall) push('opening', `Moved: ${name} ${wallName(x)} → ${wallName(y)}`)
@@ -115,7 +115,17 @@ function diffOpenings(a, b, push, wallName) {
     if (!sizeSame(x, y)) push('opening', `Changed: ${wallName(y)} ${lower(kindWord(y))} size ${dim(x.w)}×${dim(x.h)} → ${dim(y.w)}×${dim(y.h)}`)
     if (lookOf(x) !== lookOf(y)) push('opening', y.kind === 'rollup' ? `Roll-up door color (${wallName(y)}): ${lookName(x)} → ${lookName(y)}` : `Changed: ${wallName(y)} ${lower(kindWord(y))}: ${lookName(x)} → ${lookName(y)}`)
     if (x.kind === 'frame' && x.frame !== y.frame) push('opening', `Changed: ${wallName(y)} framed opening: ${x.frame} type → ${y.frame} type`)
+    // chain hoist / brush seal ticks (page 10/30/26)
+    if (y.kind === 'rollup' && x.kind === 'rollup') {
+      if ((x.hoist === true) !== (y.hoist === true)) push('opening', `${y.hoist === true ? 'Chain hoist added' : 'Chain hoist removed'}: ${name}, ${wallName(y)}`)
+      if ((x.seal === true) !== (y.seal === true)) push('opening', `${y.seal === true ? 'Brush seal added' : 'Brush seal removed'}: ${name}, ${wallName(y)}`)
+    }
   }
+}
+/** " with a chain hoist and a brush seal" on a roll-up door the customer ticked them on ('' otherwise). */
+const addOns = (o) => {
+  const w = [o.kind === 'rollup' && o.hoist === true && 'a chain hoist', o.kind === 'rollup' && o.seal === true && 'a brush seal'].filter(Boolean)
+  return w.length ? ` with ${w.join(' and ')}` : ''
 }
 const kindWord = (o) => ({ rollup: 'roll-up door', walk: 'walk door', window: 'window', frame: 'framed opening' })[o.kind] || 'opening'
 

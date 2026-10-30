@@ -54,7 +54,7 @@ import {
 import UseAsRevisionModal from './UseAsRevisionModal'
 import DesignLinkModal from './DesignLinkModal'
 import { designToQuote, applyDesignToProgram, restoreChecks, mergeChecks } from '../lib/designToQuote'
-import { designSeed } from '../lib/designLinks'
+import { designSeed, seedQuotePayload } from '../lib/designLinks'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
@@ -467,10 +467,16 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       done = true
       clearInterval(t)
       // a link started from a quote: what the page could not show from that quote (design_links.seed_notes)
-      let seed = { notes: [], quoteNumber: null }
+      let seed = { notes: [], quoteNumber: null, quoteId: null, seed: null }
       try { if (fromDesign.link_token && fromDesign.design_links?.kind !== 'shared') seed = await designSeed(supabase, fromDesign.link_token) } catch { /* no notes */ }
+      // ... and that quote as saved now: the new quote keeps what the customer could not change on the page (designCarry)
+      let seedPayload = null
+      try { if (seed.quoteId) seedPayload = await seedQuotePayload(supabase, seed.quoteId) } catch { /* the notes say what to add */ }
       if (!alive) return
-      const res = designToQuote(fromDesign.design, { zip: fromDesign.zip, leadZip: client?.zip, seedNotes: seed.notes, seedQuoteNumber: seed.quoteNumber })
+      const res = designToQuote(fromDesign.design, {
+        zip: fromDesign.zip, leadZip: client?.zip, seedNotes: seed.notes, seedQuoteNumber: seed.quoteNumber,
+        seedPayload, seedDesign: seed.seed && typeof seed.seed === 'object' ? seed.seed.design : null,
+      })
       if (!res.ok) { toast(`This design can't fill in the quote program: ${escHtml(res.reason)}`); return }
       let ok = true
       try { applyDesignToProgram(pg, res.payload) } catch (e) { ok = false; console.warn('design fill failed', e) }

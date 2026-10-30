@@ -322,9 +322,9 @@ test('designSeed: read once per link and cached; a missing column or no row mean
     from: (t) => {
       assert.equal(t, 'design_links')
       return {
-        select(cols) { assert.equal(cols, 'seed, seed_quote_number, seed_notes'); return this },
+        select(cols) { assert.equal(cols, 'seed, seed_quote_id, seed_quote_number, seed_notes'); return this },
         eq(k, v) { assert.deepEqual([k, v], ['token', TOK]); return this },
-        maybeSingle: async () => { calls++; return { data: { seed: SEED, seed_quote_number: 'SS-2026-0042', seed_notes: ['Lap siding is not on the page.', 7] }, error: null } },
+        maybeSingle: async () => { calls++; return { data: { seed: SEED, seed_quote_id: 'q-42', seed_quote_number: 'SS-2026-0042', seed_notes: ['Lap siding is not on the page.', 7] }, error: null } },
       }
     },
   }
@@ -332,7 +332,7 @@ test('designSeed: read once per link and cached; a missing column or no row mean
   const b = await designSeed(sb, TOK)
   assert.equal(calls, 1)
   assert.equal(a, b)
-  assert.deepEqual([a.seed.schema, a.quoteNumber, a.notes], ['ss-web-design', 'SS-2026-0042', ['Lap siding is not on the page.']])
+  assert.deepEqual([a.seed.schema, a.quoteNumber, a.quoteId, a.notes], ['ss-web-design', 'SS-2026-0042', 'q-42', ['Lap siding is not on the page.']])
   // a plain link: no seed (cached - the link will not grow one)
   const T2 = 'plaintk_' + 'b'.repeat(16)
   let c2 = 0
@@ -389,4 +389,15 @@ test('quote card button: a cheap reason from the row, empty when it can seed or 
   assert.match(quoteSeedReason(row({ btype: 'widespan', bw: '70', bl: '20', bh: '8' })), /60/)
   assert.match(quoteSeedReason(row({ btype: 'standard', bw: '30', bl: '250', bh: '8' })), /200/)
   assert.match(quoteSeedReason(row({ btype: 'standard', bw: '30', bl: '40', bh: '22' })), /20/)
+})
+
+import { seedQuotePayload } from '../src/lib/designLinks.js'
+test('seedQuotePayload: the seed quote as saved now; null when gone, refused (RLS) or with no saved building', async () => {
+  const sb = (data, error = null) => ({ from: (t) => { assert.equal(t, 'quotes'); return { select(c) { assert.equal(c, 'payload_json'); return this }, eq(k, v) { assert.deepEqual([k, v], ['id', 'q-1']); return this }, maybeSingle: async () => ({ data, error }) } } })
+  assert.deepEqual(await seedQuotePayload(sb({ payload_json: { fields: { bw: '24' } } }), 'q-1'), { fields: { bw: '24' } })
+  assert.equal(await seedQuotePayload(sb(null), 'q-1'), null)
+  assert.equal(await seedQuotePayload(sb(null, { message: 'denied' }), 'q-1'), null)
+  assert.equal(await seedQuotePayload(sb({ payload_json: { notes: 'x' } }), 'q-1'), null)
+  assert.equal(await seedQuotePayload(sb({ payload_json: 'junk' }), 'q-1'), null)
+  assert.equal(await seedQuotePayload(sb({}), null), null)
 })

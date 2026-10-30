@@ -117,13 +117,13 @@ test('fixture: wide span with the other maker\'s colors (nearest page color, wit
   assert.ok(settled(r.seed))
 })
 
-test('the page-side clean-up is applied: sizes snap, 6:12 -> 5:12, GCH ends, tall sizes', () => {
+test('the page-side clean-up is applied: sizes snap, 6:12 stays (on the page since 10/30/26), GCH ends, tall sizes', () => {
   const r = seedOf({ mfr: 'CCI', fields: { btype: 'standard', bw: '31', bl: '40', bh: '19', 'pitch-sel': '6:12', wfg: 'Closed', wbg: 'Closed', wle: 'Closed', wre: 'Closed', cr: '#B9BCBB', cw: '#8A8A88', ct: '#1D1E20' } })
   const d = r.seed.design
-  assert.deepEqual([d.width, d.height, d.pitch], [30, 18, '5:12'])
+  assert.deepEqual([d.width, d.height, d.pitch], [30, 18, '6:12'])
   assert.ok(r.notes.some((n) => /Width 31′ is not a page size: shown as 30′/.test(n)))
   assert.ok(r.notes.some((n) => /Height 19′ is not a page height: shown as 18′/.test(n)))
-  assert.ok(r.notes.some((n) => /Roof pitch 6:12 is not on the page: shown as 5:12/.test(n)))
+  assert.ok(!r.notes.some((n) => /Roof pitch/.test(n)))
   const g = seedOf({ mfr: 'CCI', fields: { btype: 'gch', bw: '24', bl: '40', bh: '12', wfg: 'Closed', wbg: 'Open', 'gch-enc': '2', 'gch-left': 'open', 'gch-right': 'open' } })
   assert.equal(g.seed.design.walls.front, 'open')
   assert.equal(g.seed.design.walls.back, 'closed')

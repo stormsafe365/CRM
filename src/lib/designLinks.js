@@ -437,16 +437,31 @@ const seedCache = new Map() // token -> { seed, quoteNumber, notes } (only succe
  * link (the list rows never carry it: it can be 64 KB).
  */
 export async function designSeed(sb, token) {
-  const none = { seed: null, quoteNumber: null, notes: [] }
+  const none = { seed: null, quoteNumber: null, quoteId: null, notes: [] }
   if (!token || !TOKEN_RE.test(String(token))) return none
   if (seedCache.has(token)) return seedCache.get(token)
-  const { data, error } = await sb.from('design_links').select('seed, seed_quote_number, seed_notes').eq('token', token).maybeSingle()
+  const { data, error } = await sb.from('design_links').select('seed, seed_quote_id, seed_quote_number, seed_notes').eq('token', token).maybeSingle()
   if (error) return none // before 024 (or unreadable): no seed, asked again next time
   const row = Array.isArray(data) ? data[0] : data
   const seed = row && row.seed && typeof row.seed === 'object' ? row.seed : null
-  const res = { seed, quoteNumber: (row && row.seed_quote_number) || null, notes: Array.isArray(row && row.seed_notes) ? row.seed_notes.filter((n) => typeof n === 'string') : [] }
+  const res = { seed, quoteNumber: (row && row.seed_quote_number) || null, quoteId: (row && row.seed_quote_id) || null, notes: Array.isArray(row && row.seed_notes) ? row.seed_notes.filter((n) => typeof n === 'string') : [] }
   seedCache.set(token, res)
   return res
+}
+
+/**
+ * The quote a link started on, as it is saved NOW (its payload_json), for designCarry: null when it is gone, unreadable
+ * (a rep who cannot see that lead) or has no saved building. Never cached: the rep may have changed it since.
+ */
+export async function seedQuotePayload(sb, quoteId) {
+  if (!quoteId) return null
+  try {
+    const { data, error } = await sb.from('quotes').select('payload_json').eq('id', quoteId).maybeSingle()
+    if (error) return null
+    const row = Array.isArray(data) ? data[0] : data
+    const p = row && row.payload_json
+    return p && typeof p === 'object' && p.fields && typeof p.fields === 'object' ? p : null
+  } catch { return null }
 }
 
 /**

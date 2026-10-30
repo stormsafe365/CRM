@@ -29,6 +29,7 @@
 
 import { settleDesign, parseCounty, parseZip, activeWraps } from './designSeed.js'
 import { DESIGN_SCHEMA, innerDesign, ctxOf, isWebsiteDesign, adaptDesign, storageOf } from './designShape.js'
+import { carryFromQuote, notesLeft } from './designCarry.js'
 
 export { DESIGN_SCHEMA }
 
@@ -72,6 +73,18 @@ const FO = {
   customFrame: 'Framed Opening — Custom Frame Out (Custom Size)',
 }
 const GARAGE_BUCKETS = [10, 12, 14, 16] // the widest door each catalog row takes (6'-10', 12', 14', 16')
+
+/**
+ * A CCI roll-up size that comes WITH a chain hoist (the program's cciCertHoistIncluded; the design page's hoistIncluded):
+ * 14′ / 16′ wide at any height, 12′ wide 12′+ tall, every other width 13′+ tall. The program locks those to "Included"
+ * (0 to add), so a customer's hoist tick on one is never an add-on.
+ */
+export function cciHoistIncluded(w, h) {
+  const W = parseInt(w, 10) || 0, H = parseInt(h, 10) || 0
+  if (W > 12) return true
+  if (W === 12) return H >= 12
+  return H >= 13
+}
 
 // ── words for the rep ───────────────────────────────────────────────────────────────────────────────────────────
 const WALL_NAME = { front: 'front end', back: 'back end', left: 'left side', right: 'right side', partition: 'garage/carport divider wall' }
@@ -189,7 +202,7 @@ const pick = (o, keys, dflt) => {
 
 function mainSig(o) {
   const base = `${o.kind}|${o.wall}|${numStr(o.w)}|${numStr(o.h)}`
-  if (o.kind === 'rollup') return `${base}|${o.color || 'white'}`
+  if (o.kind === 'rollup') return `${base}|${o.color || 'white'}|${o.hoist === true ? 'h' : ''}|${o.seal === true ? 's' : ''}`
   if (o.kind === 'walk') return `${base}|${pick(o, WALK_KEYS, 'std')}`
   if (o.kind === 'window') return `${base}|${pick(o, WINDOW_KEYS, 'std')}`
   return `${base}|${o.frame}|${numStr(o.sill)}`
@@ -207,8 +220,11 @@ function mainEntries(d, checks) {
       const positions = g.items.map((x) => ({ val: numStr(x.pos), side: 'left' }))
       const loc = LOC[o.wall]
       if (kind === 'rollup') {
+        // chain hoist / brush seal: the page's per-door ticks (10/30/26), a count on the program's entry (every door of a
+        // group is the same). A size that comes with a hoist saves 0 (the program shows it Included).
         out.doors.push({
-          rloc: loc, rdtype: 'rollup', rsz: `${numStr(o.w)}x${numStr(o.h)}`, rqt: n, rch: '0', rsl: '0',
+          rloc: loc, rdtype: 'rollup', rsz: `${numStr(o.w)}x${numStr(o.h)}`, rqt: n,
+          rch: o.hoist === true && !cciHoistIncluded(o.w, o.h) ? n : '0', rsl: o.seal === true ? n : '0',
           rop: u.openers ? n : '0', r45: u.angle45 ? 'yes' : 'no', rco: ROLLUP_COLOR_KEYS.includes(o.color) ? o.color : 'white', positions,
         })
       } else if (kind === 'walk') {
@@ -270,14 +286,15 @@ function leanToEntries(d, checks) {
       const walls = ltOpenWalls(lt)
       const off = ops.filter((o) => !walls.includes(o.wall))
       if (off.length) checks.push({ level: 'warn', text: `${cap(name)}: ${off.map((o) => `${partName(o)} on the ${LT_WALL_NAME[o.wall]}`).join(', ')} — that wall is not closed on the design (the page lists it but does not draw it). Entered as drawn: remove it if the customer did not mean it.` })
-      const sig = (o) => `${o.kind}|${o.wall}|${numStr(o.w)}|${numStr(o.h)}|${o.kind === 'rollup' ? o.color || 'white' : o.kind === 'walk' ? pick(o, WALK_KEYS, 'std') : o.kind === 'window' ? pick(o, WINDOW_KEYS, 'std') : `${o.frame}|${numStr(o.sill)}`}`
+      const sig = (o) => `${o.kind}|${o.wall}|${numStr(o.w)}|${numStr(o.h)}|${o.kind === 'rollup' ? `${o.color || 'white'}|${o.hoist === true ? 'h' : ''}|${o.seal === true ? 's' : ''}` : o.kind === 'walk' ? pick(o, WALK_KEYS, 'std') : o.kind === 'window' ? pick(o, WINDOW_KEYS, 'std') : `${o.frame}|${numStr(o.sill)}`}`
       for (const g of groupRuns(ops, sig, (o) => ltQtyCap(d, lt, o))) {
         const o = g.items[0]
         const a = { 'lt-acc-type': LT_TYPE[o.kind], 'lt-acc-qty': String(g.items.length), 'lt-acc-loc': o.wall, 'lt-acc-pos': 'offset', offs: g.items.map((x) => numStr(x.pos)) }
         if (o.kind === 'rollup') {
           a['lt-acc-size'] = `${numStr(o.w)}x${numStr(o.h)}`
           a['lt-acc-color'] = ROLLUP_COLOR_KEYS.includes(o.color) ? o.color : 'white'
-          a['lt-acc-ch'] = '0'; a['lt-acc-sl'] = '0'
+          a['lt-acc-ch'] = o.hoist === true && !cciHoistIncluded(o.w, o.h) ? String(g.items.length) : '0'
+          a['lt-acc-sl'] = o.seal === true ? String(g.items.length) : '0'
           ltRollups += g.items.length
         } else if (o.kind === 'walk') a['lt-acc-wtd-hi'] = pick(o, WALK_KEYS, 'std')
         else if (o.kind === 'window') a['lt-acc-win-hi'] = pick(o, WINDOW_KEYS, 'std')
@@ -304,6 +321,8 @@ const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1)
  * envelope = design_requests.design ({ schema:'ss-web-design', v, design, ctx }) or a bare design.
  * opts: zip = the ZIP the customer typed on the send form (design_requests.zip); leadZip = the lead's ZIP (fallback);
  *       seedNotes / seedQuoteNumber = what the page could not show from the quote the link started on (design_links.seed_notes).
+ *       seedPayload / seedDesign = that quote's payload_json (as saved now) and the design the link opened on
+ *       (design_links.seed.design): the new quote KEEPS what the customer could not change (designCarry.js, owner 10/30/26).
  * -> { ok:true, payload, checks:[{level:'warn'|'info', text}], county, zip } | { ok:false, reason }
  */
 export function designToQuote(envelope, opts = {}) {
@@ -394,18 +413,32 @@ export function designToQuote(envelope, opts = {}) {
   if (d.colors.roof === 'galvalume' && d.colors.walls === 'pewter-gray' && d.colors.trim === 'black') checks.push({ level: 'info', text: 'Colors are the design page’s starting colors (Galvalume roof, Pewter Gray walls, Black trim): confirm the customer really picked them.' })
 
   const seedNotes = Array.isArray(opts.seedNotes) ? opts.seedNotes.filter((n) => typeof n === 'string' && n.trim()) : []
-  if (seedNotes.length) checks.push({ level: 'warn', text: `This design started from ${opts.seedQuoteNumber ? 'quote #' + opts.seedQuoteNumber : 'the quote the link was made from'}, which had things the design page cannot show — add them again if they still apply: ${seedNotes.join(' ')}` })
+  const seedQ = opts.seedQuoteNumber ? 'quote #' + opts.seedQuoteNumber : 'the quote the link was made from'
+  const carryOn = isObj(opts.seedPayload) && isObj(opts.seedPayload.fields)
   if (storage) {
     const where = `${storage.depth ? `${ftIn(storage.depth)} in from` : 'at'} the ${storage.end} end`
     checks.push({ level: 'info', text: `End storage room (asked for on the website): a partition wall ${where}, entered as the program's End Storage (it prices it). Confirm the depth${d.openings.some((o) => o.wall === 'partition') ? ' and the doors / windows on the storage room wall' : ''} with the customer.` })
   }
-  if (site) checks.push({ level: 'info', text: 'This design came from the website’s builder, which does not ask about insulation, 26-gauge wall panels, color-match fasteners, roll-up door openers or the 45° angle cut: the program’s defaults are used — set them with the customer.' })
-  checks.push({ level: 'info', text: `Not asked on the design page (the program’s defaults are used — set them with the customer): property type / tax exemption, permits / plans, foundation, delivery, chain hoists, brush seals, lap siding, roof overhang, ${storage ? '' : 'storage partition, '}other additional components (gutters, cupolas, skylights, trim upgrades), discount.` })
-
-  const payload = { version: 3, fields: f, mfr: 'CCI', ovl: 1, doors: mains.doors, wtds: mains.wtds, windows: mains.windows, addcomps: mains.addcomps, leantos }
+  if (site) checks.push({ level: 'info', text: 'This design came from the website’s builder, which does not ask about insulation, 26-gauge wall panels, color-match fasteners, roll-up door openers, chain hoists, brush seals or the 45° angle cut: the program’s defaults are used — set them with the customer.' })
+  let payload = { version: 3, fields: f, mfr: 'CCI', ovl: 1, doors: mains.doors, wtds: mains.wtds, windows: mains.windows, addcomps: mains.addcomps, leantos }
   if (wraps.length) payload.ltWraps = wraps.join(',')
+
+  // a link started from a quote: the new quote keeps what the customer could not change (designCarry.js)
+  let carried = false
+  if (carryOn) {
+    const c = carryFromQuote(payload, { seedPayload: opts.seedPayload, seedDesign: isObj(opts.seedDesign) ? opts.seedDesign : null, design: d, zipSame: !!zip && parseZip(opts.seedPayload.fields.zip) === zip })
+    payload = c.payload
+    carried = c.carried
+    if (c.kept.length) checks.push({ level: 'info', text: `Kept from ${seedQ} (the customer could not change these on the design page): ${c.kept.join('; ')}.` })
+    if (c.notKept.length) checks.push({ level: 'warn', text: `Not kept from ${seedQ} — add again if it still applies: ${c.notKept.join('; ')}.` })
+  }
+  const leftNotes = carryOn && String(opts.seedPayload.mfr || '').toUpperCase() === 'CCI' ? notesLeft(seedNotes) : seedNotes
+  if (leftNotes.length) checks.push({ level: 'warn', text: `This design started from ${seedQ}, which had things the design page cannot show — add them again if they still apply: ${leftNotes.join(' ')}` })
+  checks.push(carryOn && String(opts.seedPayload.mfr || '').toUpperCase() === 'CCI'
+    ? { level: 'info', text: `Not asked on the design page — kept from ${seedQ} where it had them, the program’s defaults otherwise (check them with the customer): property type / tax exemption, permits / plans, foundation, delivery, lap siding, roof overhang, ${storage ? '' : 'storage partition, '}other additional components. Discounts and typed prices are never copied.` }
+    : { level: 'info', text: `Not asked on the design page (the program’s defaults are used — set them with the customer): property type / tax exemption, permits / plans, foundation, delivery, lap siding, roof overhang, ${storage ? '' : 'storage partition, '}other additional components (gutters, cupolas, skylights, trim upgrades), discount.` })
   checks.sort((a, b) => (a.level === b.level ? 0 : a.level === 'warn' ? -1 : 1))
-  return { ok: true, payload, checks, county, zip: zip || null }
+  return { ok: true, payload, checks, county, zip: zip || null, carried }
 }
 
 /** A copy of a design without the `chosen` pick on its parts (see designToQuote: the website keeps none). */
@@ -465,21 +498,23 @@ const FIELD_LABEL = {
   'gch-left': 'Left side (carport part)', 'gch-right': 'Right side (carport part)', 'gch-enc': 'Garage (enclosed) length',
   'framing-upgrade': 'Framing gauge', 'oc-spacing': 'Truss spacing', 'sheeting-upgrade': 'Wall panel gauge', 'insul-sel': 'Insulation',
   wain: 'Wainscot', cr: 'Roof color', cw: 'Wall color', ct: 'Trim color', cwn: 'Wainscot color', lap: 'Lap siding', 'delivery-type': 'Delivery',
-  'add-end-wall': 'Storage room', 'aew-end': 'Storage room end', 'aew-depth': 'Storage room depth',
+  'add-end-wall': 'Storage room', 'aew-end': 'Storage room end', 'aew-depth': 'Storage room depth', 'aew-width': 'Storage room width',
+  // kept from the quote a link started on (designCarry.js)
+  pt: 'Property type', perm: 'Permitting', 'plans-sel': 'Plans', 'permit-svc': 'Permitting service', foundation: 'Foundation', 'overhang-sel': 'Roof overhang',
 }
 const VALUE_WORDS = {
   'framing-upgrade': { 14: '14-gauge', 12: '12-gauge' }, 'oc-spacing': { '5oc': '5′ on center', '4oc': '4′ on center' },
   'sheeting-upgrade': { standard: 'standard', upgrade: '26-gauge' }, 'insul-sel': { none: 'none', roof: 'roof', 'roof-walls': 'roof + walls' },
   lap: { no: 'no', yes: 'yes' }, wain: { no: 'no', yes: 'yes' }, rs: { 'Boxed Eve': 'Boxed Eave' },
-  'add-end-wall': { no: 'none', yes: 'End Storage' }, 'aew-end': { front: 'front end', back: 'back end' },
+  'add-end-wall': { no: 'none', yes: 'End Storage', left: 'Left Storage', right: 'Right Storage' }, 'aew-end': { front: 'front end', back: 'back end' },
 }
 // part fields in the rep's words
 const KEY_WORDS = {
-  rloc: 'wall', rsz: 'size', rqt: 'quantity', rco: 'color', rop: 'openers', r45: '45° cut', wloc: 'wall', whi: 'type', wqt: 'quantity',
+  rloc: 'wall', rsz: 'size', rqt: 'quantity', rco: 'color', rch: 'chain hoists', rsl: 'brush seals', rop: 'openers', r45: '45° cut', wloc: 'wall', whi: 'type', wqt: 'quantity',
   nloc: 'wall', ntp: 'type', nqt: 'quantity', act: 'type', acq: 'quantity', 'fo-loc': 'wall', 'fo-cw': 'width', 'fo-ch': 'height',
   lts: 'side', ltw: 'width', ltl2: 'length', ltoff: 'starts at', lth: 'low leg', ltp: 'pitch', 'lt-type': 'type', 'lt-wm': 'sides & ends',
   'lt-wall-front': 'front end', 'lt-wall-back': 'back end', 'lt-wall-side': 'side wall',
-  'lt-acc-type': 'part', 'lt-acc-size': 'size', 'lt-acc-color': 'color', 'lt-acc-wtd-hi': 'walk door type', 'lt-acc-win-hi': 'window type', 'lt-acc-qty': 'quantity',
+  'lt-acc-type': 'part', 'lt-acc-size': 'size', 'lt-acc-color': 'color', 'lt-acc-ch': 'chain hoists', 'lt-acc-sl': 'brush seals', 'lt-acc-wtd-hi': 'walk door type', 'lt-acc-win-hi': 'window type', 'lt-acc-qty': 'quantity',
   'lt-acc-loc': 'wall', 'lt-acc-pos': 'position', 'lt-acc-fo-type': 'frame-out type', 'lt-acc-fo-w': 'width', 'lt-acc-fo-h': 'height',
 }
 const kw = (k) => KEY_WORDS[k] || k
@@ -532,11 +567,14 @@ export function restoreChecks(payload, collected, { T = null, county = null } = 
     const want = f[k], got = g[k]
     if (/^c(r|w|t|wn)$/.test(k) ? sameHex(want, got) : sameVal(want, got)) continue
     const r = why(k, want, got, T, county)
-    out.push(r || { level: 'warn', text: `${FIELD_LABEL[k]}: the design asks ${words(k, want)}, the program shows ${words(k, got)} — it could not take that value here. Check it.` })
+    const fromQuote = ['pt', 'perm', 'plans-sel', 'permit-svc', 'foundation', 'overhang-sel'].includes(k)
+    out.push(r || { level: 'warn', text: fromQuote ? `${FIELD_LABEL[k]}: kept from the quote as ${words(k, want)}, the program shows ${words(k, got)} (its rules here). Check it.` : `${FIELD_LABEL[k]}: the design asks ${words(k, want)}, the program shows ${words(k, got)} — it could not take that value here. Check it.` })
   }
   // rule-driven fields the design never sets: the program's defaults are lap 'no', delivery 'installed'
-  if (g.lap === 'yes') out.push(why('lap', 'no', 'yes', T, county))
-  if (g['delivery-type'] && g['delivery-type'] !== 'installed') out.push(why('delivery-type', 'installed', g['delivery-type'], T, county))
+  // (lap siding / delivery kept from a seed quote are the quote's own, not a county rule: only a change from what was handed in)
+  if (g.lap === 'yes' && f.lap !== 'yes') out.push(why('lap', 'no', 'yes', T, county))
+  if (f.lap === 'yes' && g.lap !== 'yes') out.push({ level: 'warn', text: 'Lap siding: kept from the quote, but the program does not show it on this building. Check it.' })
+  if (g['delivery-type'] && g['delivery-type'] !== (f['delivery-type'] || 'installed')) out.push(why('delivery-type', f['delivery-type'] || 'installed', g['delivery-type'], T, county))
   if (f.fastenerAdd === true && g.fastenerAdd !== true) {
     out.push(T && T.fastenerFree ? { level: 'info', text: 'Color-match fasteners: included free by the program (order over its free-upgrade amount).' } : { level: 'warn', text: 'Color-match fasteners: the design asks for them, the program does not show them ticked. Check it.' })
   }
@@ -565,7 +603,7 @@ export function restoreChecks(payload, collected, { T = null, county = null } = 
       })
     })
   }
-  cmpList('doors', ['rloc', 'rsz', 'rqt', 'rco', 'rop', 'r45'], (e) => `Roll-up door ${e.rsz || ''} (${e.rloc || ''})`)
+  cmpList('doors', ['rloc', 'rsz', 'rqt', 'rco', 'rch', 'rsl', 'rop', 'r45'], (e) => `Roll-up door ${e.rsz || ''} (${e.rloc || ''})`)
   cmpList('wtds', ['wloc', 'whi', 'wqt'], (e) => `Walk door (${e.wloc || ''})`, 'whi')
   cmpList('windows', ['nloc', 'ntp', 'nqt'], (e) => `Window (${e.nloc || ''})`, 'ntp')
   cmpList('addcomps', ['act', 'acq', 'fo-loc', 'fo-cw', 'fo-ch'], (e) => `${String(e.act || 'Framed opening').replace('Framed Opening — ', 'Framed opening ')} (${e['fo-loc'] || ''})`)
@@ -584,7 +622,7 @@ export function restoreChecks(payload, collected, { T = null, county = null } = 
     aa.forEach((a, j) => {
       const b = ab[j]
       if (!b) return
-      for (const key of ['lt-acc-type', 'lt-acc-size', 'lt-acc-color', 'lt-acc-wtd-hi', 'lt-acc-win-hi', 'lt-acc-qty', 'lt-acc-loc', 'lt-acc-pos', 'lt-acc-fo-type', 'lt-acc-fo-w', 'lt-acc-fo-h']) {
+      for (const key of ['lt-acc-type', 'lt-acc-size', 'lt-acc-color', 'lt-acc-ch', 'lt-acc-sl', 'lt-acc-wtd-hi', 'lt-acc-win-hi', 'lt-acc-qty', 'lt-acc-loc', 'lt-acc-pos', 'lt-acc-fo-type', 'lt-acc-fo-w', 'lt-acc-fo-h']) {
         if (!(key in a) || sameVal(a[key], b[key])) continue
         if ((key === 'lt-acc-wtd-hi' || key === 'lt-acc-win-hi') && /^(hiwind|hi|hi3036)$/.test(String(b[key]))) {
           const wd = key === 'lt-acc-wtd-hi'

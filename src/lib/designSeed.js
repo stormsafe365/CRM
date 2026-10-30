@@ -158,8 +158,11 @@ function fitRollup(w, h, fits) {
 
 function normalizeParts(o, impact, maxW, maxH, rollFits) {
   const out = { ...o }
-  delete out.style; delete out.chosen; delete out.color; delete out.frame
+  delete out.style; delete out.chosen; delete out.color; delete out.frame; delete out.hoist; delete out.seal
   if (o.kind === 'rollup') {
+    // chain hoist / brush seal (page 10/30/26): kept only as a plain yes
+    if (o.hoist === true) out.hoist = true
+    if (o.seal === true) out.seal = true
     const s = fitRollup(num(o.w, 10), num(o.h, 8), rollFits)
     out.w = s.w; out.h = s.h; out.sill = 0
     out.color = ROLLUP_COLOR_KEYS.includes(o.color) ? o.color : 'white'
@@ -236,7 +239,7 @@ export function settleDesign(input, impact, opts = {}) {
   out.enclosedLength = clamp(Math.round(num(d.enclosedLength, 20)), 5, out.length - 5)
   const wide = out.width >= 32
   out.roofStyle = out.length > 35 || wide ? 'Vertical' : oneOf(d.roofStyle, ['Vertical', 'Boxed Eave', 'Regular'], 'Vertical')
-  out.pitch = oneOf(d.pitch, ['standard', '4:12', '5:12'], 'standard')
+  out.pitch = oneOf(d.pitch, ['standard', '4:12', '5:12', '6:12'], 'standard')
   out.panels = wide ? 'Vertical' : oneOf(d.panels, ['Horizontal', 'Vertical'], 'Horizontal')
   const w = d.walls ?? { front: 'closed', back: 'closed', left: 'closed', right: 'closed' }
   if (out.type === 'combo') {
@@ -411,22 +414,25 @@ function mainUnits(payload, f, mfr, notes) {
     const qty = parseInt(e.rqt) || 1
     const color = mfr === 'CA' ? 'white' : ROLLUP_COLOR_KEYS.includes(e.rco) ? e.rco : 'white'
     if (mfr === 'CA' && e.rco && e.rco !== 'white') notes.add('Roll-up door colors other than white are not on the page (shown white).')
-    if (e.rch && e.rch !== '0' && e.rch !== 0) notes.add('Door options (chain hoist, brush seal, side frames, opener choice) are not on the page.')
-    if (e.rsl && e.rsl !== '0' && e.rsl !== 0) notes.add('Door options (chain hoist, brush seal, side frames, opener choice) are not on the page.')
-    units.push({ t: 'rollup', e, qty, w, h, sill: 0, loc: e.rloc, ...wallOf(e.rloc), kind: 'rollup', color, rows: rows(e) })
+    // chain hoists / brush seals are counts on the entry (0..qty): the first that many of its doors get one on the page
+    // (10/30/26). A size that comes with a hoist saves 0 and the page shows it as included.
+    const hoists = Math.min(qty, parseInt(e.rch) || 0), seals = Math.min(qty, parseInt(e.rsl) || 0)
+    const opens = parseInt(e.rop) || 0
+    if (opens > 0 && opens < qty) notes.add('Roll-up door openers: the page has one yes/no for all roll-up doors (the quote has openers on some of them).')
+    units.push({ t: 'rollup', e, qty, w, h, sill: 0, loc: e.rloc, ...wallOf(e.rloc), kind: 'rollup', color, hoists, seals, rows: rows(e) })
   }
   for (const e of Array.isArray(payload.wtds) ? payload.wtds : []) {
     if (!isObj(e)) continue
     const raw = e.whi ?? e.wtype
     const style = mfr === 'CA' ? (raw === 'hi' ? 'hiwind' : 'std') : WALK_KEYS.includes(raw) ? raw : 'std'
-    if (e.wsf && e.wsf !== '0' && e.wsf !== 0) notes.add('Door options (chain hoist, brush seal, side frames, opener choice) are not on the page.')
+    if (e.wsf && e.wsf !== '0' && e.wsf !== 0) notes.add('Side frames on walk doors / windows are not on the page.')
     units.push({ t: 'wtd', e, qty: parseInt(e.wqt) || 1, w: 3, h: q8(6.67), sill: 0, loc: e.wloc, ...wallOf(e.wloc), kind: 'walk', style, rows: rows(e) })
   }
   for (const e of Array.isArray(payload.windows) ? payload.windows : []) {
     if (!isObj(e)) continue
     const raw = e.ntp ?? e.ntype
     const style = Object.prototype.hasOwnProperty.call(WINDOWS, raw) ? raw : 'std'
-    if (e.nsf && e.nsf !== '0' && e.nsf !== 0) notes.add('Door options (chain hoist, brush seal, side frames, opener choice) are not on the page.')
+    if (e.nsf && e.nsf !== '0' && e.nsf !== 0) notes.add('Side frames on walk doors / windows are not on the page.')
     const sill = pf(e.nsill)
     if (Number.isFinite(sill) && Math.abs(sill - WINDOW_SILL) > 1 / 96 + 1e-9) notes.add('Window height off the floor is fixed at 4′2″ on the page.')
     units.push({ t: 'win', e, qty: parseInt(e.nqt) || 1, w: 2.5, h: WINDOWS[style][1] / 12, sill: WINDOW_SILL, loc: e.nloc, ...wallOf(e.nloc), kind: 'window', style, rows: rows(e) })
@@ -508,8 +514,8 @@ export function quoteToSeed(payload, { layout = null, quote = null, contact = nu
   } else enclosedLength = Math.min(20, length - 5)
   const rsWant = ({ Vertical: 'Vertical', 'Boxed Eve': 'Boxed Eave', Regular: 'Regular' })[f.rs] ?? 'Vertical'
   const pitchRaw = f['pitch-sel']
-  if (pitchRaw === '6:12') notes.add('Roof pitch 6:12 is not on the page: shown as 5:12.')
-  const pitch = ({ standard: 'standard', '4:12': '4:12', '5:12': '5:12', '6:12': '5:12' })[pitchRaw] ?? 'standard'
+  // 6:12 is on the page since 10/30/26 (CCI). A CA quote has no 6:12 (the program hides it there).
+  const pitch = ({ standard: 'standard', '4:12': '4:12', '5:12': '5:12', '6:12': '6:12' })[pitchRaw] ?? 'standard'
   const panels = f.ws === 'Vertical' ? 'Vertical' : 'Horizontal'
 
   // walls
@@ -596,8 +602,11 @@ export function quoteToSeed(payload, { layout = null, quote = null, contact = nu
       }
       used.n += 1
       const o = { id: `o${used.n}`, kind: u.kind, wall: u.web, w: u.w, h: u.h, sill: u.sill, pos }
-      if (u.kind === 'rollup') o.color = u.color
-      else if (u.kind === 'walk' || u.kind === 'window') o.style = u.style
+      if (u.kind === 'rollup') {
+        o.color = u.color
+        if (i < u.hoists) o.hoist = true
+        if (i < u.seals) o.seal = true
+      } else if (u.kind === 'walk' || u.kind === 'window') o.style = u.style
       else o.frame = u.frame
       mains.push(o)
     }
@@ -794,6 +803,8 @@ function convertLeanTos(payload, mfr, lay, Wd, L, notes, loCount) {
         const c = a['lt-acc-color']
         extra = { color: mfr === 'CA' ? 'white' : ROLLUP_COLOR_KEYS.includes(c) ? c : 'white' }
         if (mfr === 'CA' && c && c !== 'white') notes.add('Roll-up door colors other than white are not on the page (shown white).')
+        extra.hoists = parseInt(a['lt-acc-ch']) || 0
+        extra.seals = parseInt(a['lt-acc-sl']) || 0
       } else if (t === 'wtd') {
         const raw = a['lt-acc-wtd-hi']
         kind = 'walk'; w = 3; h = q8(80 / 12)
@@ -811,9 +822,8 @@ function convertLeanTos(payload, mfr, lay, Wd, L, notes, loCount) {
           if (Number.isFinite(sl) && Math.abs(sl - WINDOW_SILL) > 1 / 96 + 1e-9) notes.add('Window height off the floor is fixed at 4′2″ on the page.')
         }
       } else continue
-      if ((a['lt-acc-sf'] && a['lt-acc-sf'] !== '0') || (a['lt-acc-ch'] && a['lt-acc-ch'] !== '0') || (a['lt-acc-sl'] && a['lt-acc-sl'] !== '0')) {
-        notes.add('Door options (chain hoist, brush seal, side frames, opener choice) are not on the page.')
-      }
+      if (a['lt-acc-sf'] && a['lt-acc-sf'] !== '0') notes.add('Side frames on walk doors / windows are not on the page.')
+      const { hoists = 0, seals = 0, ...look } = extra
       const wallLen = loc === 'outer' ? (parseInt(e.ltl2) || 0) : (parseInt(e.ltw) || 0)
       const n = parseInt(a['lt-acc-qty']) || 1
       if (!progXs && String(a['lt-acc-pos'] || 'auto') !== 'offset') autoGuess = true
@@ -821,7 +831,10 @@ function convertLeanTos(payload, mfr, lay, Wd, L, notes, loCount) {
       for (let i = 0; i < Math.min(qty, n); i++) {
         if (lt.openings.length >= MAX_LEANTO_OPENINGS) { cappedLt = true; break }
         loCount.n += 1
-        lt.openings.push({ id: `lo${loCount.n}`, kind, wall: loc, w, h, sill: kind === 'window' ? WINDOW_SILL : 0, pos: xs[i], ...extra })
+        const o = { id: `lo${loCount.n}`, kind, wall: loc, w, h, sill: kind === 'window' ? WINDOW_SILL : 0, pos: xs[i], ...look }
+        if (kind === 'rollup' && i < hoists) o.hoist = true
+        if (kind === 'rollup' && i < seals) o.seal = true
+        lt.openings.push(o)
       }
     }
   }
