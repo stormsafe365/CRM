@@ -22,7 +22,14 @@
 //     only where the customer left the page's value as the link showed it; a door's details only on a door the customer
 //     left as it was (same wall, size and count).
 //
+// Review 10/30/26 (independent, six defects fixed): size-, type- and opening-dependent things are kept only on the same
+// building (type, width, length, height, program building type) with the same doors / windows / lean-tos; lap siding
+// only on the same ZIP (it is a county rule in places); a choice the rep changed on the quote AFTER the link went out
+// is the customer's (what they saw), not the newer quote value; whatever is not kept is said.
+//
 // Plain JS (node-testable).
+
+import { quoteToSeed } from './designSeed.js'
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -72,7 +79,7 @@ const ACC_KEY = (a) => {
   return `${t}|${str(a['lt-acc-loc'] || 'outer')}|${look}|${int(a['lt-acc-qty']) || 1}`
 }
 
-export function carryFromQuote(payload, { seedPayload, seedDesign = null, design = null, zipSame = false } = {}) {
+export function carryFromQuote(payload, { seedPayload, seedDesign = null, design = null, zipSame = false, seedNotes = [] } = {}) {
   const kept = [], notKept = []
   if (!isObj(payload) || !isObj(payload.fields) || !isObj(seedPayload) || !isObj(seedPayload.fields)) return { payload, kept, notKept, carried: false }
   if (str(seedPayload.mfr).toUpperCase() !== 'CCI') {
@@ -85,6 +92,17 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
   const sd = isObj(seedDesign) ? seedDesign : null
   const list = (p, k) => (Array.isArray(p[k]) ? p[k].filter(isObj) : [])
   const gch = f.btype === 'gch', seedGch = sf.btype === 'gch'
+  // the same building: type, size and the program's building type (a 30′ carport is 'carport', 32′+ is 'widespan')
+  const sameShell = !!sd && d.type === sd.type && d.width === sd.width && d.length === sd.length && d.height === sd.height && f.btype === sf.btype
+  // the same doors / windows / lean-tos (kind, wall, size; lean-to side, size, low leg)
+  const partsSig = (x) => `${allOpenings(x).map((o) => `${o.kind}|${o.wall}|${o.w}|${o.h}`).sort().join(';')}#${(Array.isArray(x.leanTos) ? x.leanTos : []).map((l) => `${l.side}|${l.width}|${l.length}|${l.lowLeg}`).sort().join(';')}`
+  const sameParts = !!sd && partsSig(d) === partsSig(sd)
+  // the quote as saved NOW through the same quote -> page mapping: where it no longer gives what the link showed, the rep
+  // changed the quote after sending the link, and the customer's design (what they saw) stands for that choice
+  let cd = null
+  try { const r = quoteToSeed(seedPayload); if (r && r.ok) cd = r.seed.design } catch { cd = null }
+  const quoteSame = (fn) => { try { return !!cd && !!sd && JSON.stringify(fn(cd)) === JSON.stringify(fn(sd)) } catch { return false } }
+  const later = [] // choices the rep changed on the quote after the link went out
 
   // ── job settings the page never asks ───────────────────────────────────────────────────────────────────────
   const job = []
@@ -103,13 +121,17 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
   if (job.length) kept.push(job.join(', '))
 
   // ── building extras the page cannot show ───────────────────────────────────────────────────────────────────
-  if (sf.lap === 'yes' && f.lap !== 'yes') { f.lap = 'yes'; kept.push('lap siding') }
+  if (sf.lap === 'yes' && f.lap !== 'yes') {
+    // lap siding is a county rule in places (the program adds it there): the same job site only
+    if (zipSame) { f.lap = 'yes'; kept.push('lap siding') } else notKept.push('lap siding (it can be a county rule and the job site’s ZIP is not the quote’s: set it for this county)')
+  }
   if (str(sf['overhang-sel']) && sf['overhang-sel'] !== 'none' && !('overhang-sel' in f)) { f['overhang-sel'] = sf['overhang-sel']; kept.push('the roof overhang') }
   const seedStorage = !seedGch && str(sf['add-end-wall']) && sf['add-end-wall'] !== 'no'
   let storageKept = false
   if (seedStorage) {
     if (gch) notKept.push('the storage section (the building is a garage + carport now)')
     else if ('add-end-wall' in f) notKept.push('the quote’s storage section (the customer drew a storage room of their own)')
+    else if (!sameShell) notKept.push('the storage section (the building’s type or size changed: add it again for the new building)')
     else {
       ['add-end-wall', 'aew-end', 'aew-depth', 'aew-width'].forEach(copy)
       storageKept = true
@@ -131,7 +153,11 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
   // other additional components (gutters, trim, 45° cut charges ...): priced by the program, never a typed price
   const others = list(seedPayload, 'addcomps').filter((e) => !isFO(e.act) || isCharge(e.act))
   const priced = others.filter((e) => typedPrice(e) || e.act === 'Custom — see notes')
-  const take = others.filter((e) => !priced.includes(e) && str(e.act))
+  const unpriced = others.filter((e) => !priced.includes(e) && str(e.act))
+  // many go by the building's size or its doors (gutters per 10′, gable-end charges by width, 45° cuts / J-channel per
+  // opening, door upcharges): only on the same building with the same doors and windows
+  const take = sameShell && sameParts ? unpriced : []
+  if (unpriced.length && !take.length) notKept.push(`${unpriced.map((e) => `${str(e.act).replace('Framed Opening — ', '')}${int(e.acq) > 1 ? ` ×${int(e.acq)}` : ''}`).join(', ')} (the building or its doors / windows changed: add again for the new building)`)
   if (take.length) {
     out.addcomps = [...list(out, 'addcomps'), ...take.map((e) => { const c = clone(e); delete c.acp; return c })]
     kept.push(take.map((e) => `${str(e.act).replace('Framed Opening — ', '')}${int(e.acq) > 1 ? ` ×${int(e.acq)}` : ''}`).join(', '))
@@ -149,29 +175,40 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
   const looks = []
   if (sd) {
     if (d.pitch === sd.pitch && str(sf['pitch-sel']) && sf['pitch-sel'] !== f['pitch-sel'] && ['standard', '4:12', '5:12', '6:12'].includes(sf['pitch-sel'])) {
-      f['pitch-sel'] = sf['pitch-sel']
-      kept.push(`the ${sf['pitch-sel'] === 'standard' ? 'standard' : sf['pitch-sel']} roof pitch`)
+      // a link made before 6:12 was on the page (10/30/26) showed a 6:12 quote as 5:12 (its note says so)
+      const old612 = (Array.isArray(seedNotes) ? seedNotes : []).some((n) => /^Roof pitch 6:12 is not on the page/.test(String(n)))
+      if (quoteSame((x) => x.pitch) || (old612 && cd && cd.pitch === '6:12' && sd.pitch === '5:12')) {
+        f['pitch-sel'] = sf['pitch-sel']
+        kept.push(`the ${sf['pitch-sel'] === 'standard' ? 'standard' : sf['pitch-sel']} roof pitch`)
+      } else later.push('the roof pitch')
     }
     const dc = isObj(d.colors) ? d.colors : {}, sc = isObj(sd.colors) ? sd.colors : {}
     for (const [k, role] of [['cr', 'roof'], ['cw', 'walls'], ['ct', 'trim']]) {
-      if (dc[role] === sc[role] && hex(sf[k]) && str(sf[k]).toUpperCase() !== str(f[k]).toUpperCase()) { f[k] = sf[k]; looks.push(role) }
+      if (dc[role] === sc[role] && hex(sf[k]) && str(sf[k]).toUpperCase() !== str(f[k]).toUpperCase()) {
+        if (quoteSame((x) => x.colors && x.colors[role])) { f[k] = sf[k]; looks.push(role) } else later.push(`the ${role} color`)
+      }
     }
-    if (d.wainscot && sd.wainscot && sf.wain === 'yes' && dc.wainscot === sc.wainscot && hex(sf.cwn) && str(sf.cwn).toUpperCase() !== str(f.cwn).toUpperCase()) { f.cwn = sf.cwn; looks.push('wainscot') }
+    if (d.wainscot && sd.wainscot && sf.wain === 'yes' && dc.wainscot === sc.wainscot && hex(sf.cwn) && str(sf.cwn).toUpperCase() !== str(f.cwn).toUpperCase()) {
+      if (quoteSame((x) => [x.wainscot, x.colors && x.colors.wainscot])) { f.cwn = sf.cwn; looks.push('wainscot') } else later.push('the wainscot color')
+    }
     if (looks.length) kept.push(`the quote’s exact ${looks.join(' / ')} color${looks.length === 1 ? '' : 's'}`)
     // walls: same building type, the wall left as shown (a side's panel bands go by the wall height, so a side also
     // needs the same height)
-    if (d.type === sd.type && isObj(d.walls) && isObj(sd.walls)) {
+    // (the program's building type too: a carport's sides are sp-left / sp-right, a wide span's wle / wre)
+    if (d.type === sd.type && f.btype === sf.btype && isObj(d.walls) && isObj(sd.walls)) {
       const sides = []
       const take2 = (pageKey, keys) => {
         if (d.walls[pageKey] !== sd.walls[pageKey]) return
         if ((pageKey === 'left' || pageKey === 'right') && d.height !== sd.height) return
-        let changed = false
-        for (const k of keys) if (str(sf[k]) !== '' && str(sf[k]) !== str(f[k])) { f[k] = sf[k]; changed = true }
-        if (changed) sides.push(pageKey === 'left' ? 'left side' : pageKey === 'right' ? 'right side' : `${pageKey} end`)
+        if (!keys.some((k) => str(sf[k]) !== '' && str(sf[k]) !== str(f[k]))) return
+        const name = pageKey === 'left' ? 'left side' : pageKey === 'right' ? 'right side' : `${pageKey} end`
+        if (!quoteSame((x) => x.walls && x.walls[pageKey])) { later.push(`the ${name} wall`); return }
+        for (const k of keys) if (str(sf[k]) !== '') f[k] = sf[k]
+        sides.push(name)
       }
       if (gch) {
         take2('left', ['gch-left', 'wle']); take2('right', ['gch-right', 'wre']); take2('front', ['wfg']); take2('back', ['wbg'])
-        if (d.length === sd.length && d.enclosedLength === sd.enclosedLength) for (const k of ['gch-enc', 'gch-open']) if (str(sf[k]) !== '' && str(sf[k]) !== str(f[k])) f[k] = sf[k]
+        if (d.length === sd.length && d.enclosedLength === sd.enclosedLength && quoteSame((x) => [x.length, x.enclosedLength])) for (const k of ['gch-enc', 'gch-open']) if (str(sf[k]) !== '' && str(sf[k]) !== str(f[k])) f[k] = sf[k]
       } else if (f.btype === 'carport') {
         take2('left', ['sp-left']); take2('right', ['sp-right']); take2('front', ['wfg']); take2('back', ['wbg'])
       } else {
@@ -183,10 +220,14 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
 
   // ── details on the doors / windows the customer left as they were ──────────────────────────────────────────
   const shown = allOpenings(sd)
-  const linkHadHoist = shown.some((o) => o && o.hoist === true)
-  const linkHadSeal = shown.some((o) => o && o.seal === true)
-  const openersSame = !!sd && !!(d.upgrades && d.upgrades.openers) === !!(sd.upgrades && sd.upgrades.openers)
-  const cutSame = !!sd && !!(d.upgrades && d.upgrades.angle45) === !!(sd.upgrades && sd.upgrades.angle45)
+  // a link made before the page had hoists / seals (10/30/26) showed none; when the customer ticked none either (they
+  // did not answer that question), the quote's own stay. One tick anywhere = they answered: their ticks stand.
+  const sent = allOpenings(d)
+  const oldHoists = !shown.some((o) => o && o.hoist === true) && !sent.some((o) => o && o.hoist === true)
+  const oldSeals = !shown.some((o) => o && o.seal === true) && !sent.some((o) => o && o.seal === true)
+  const up = (x, k) => !!(x && x.upgrades && x.upgrades[k])
+  const openersSame = !!sd && up(d, 'openers') === up(sd, 'openers') && quoteSame((x) => up(x, 'openers'))
+  const cutSame = !!sd && up(d, 'angle45') === up(sd, 'angle45') && quoteSame((x) => up(x, 'angle45'))
   let details = 0
   const lost = []
   const setIf = (e, k, v) => { if (str(v) !== '' && str(e[k]) !== str(v)) { e[k] = v; return true } return false }
@@ -198,13 +239,12 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
     let did = false
     if (openersSame && str(s.rop) !== '') did = setIf(e, 'rop', capQ(s.rop, e.rqt)) || did
     if (cutSame && str(s.r45) !== '') did = setIf(e, 'r45', s.r45) || did
-    // a link made before the page had hoists / seals (10/30/26) showed none: the quote's own stay
-    if (!linkHadHoist && int(s.rch) > 0 && str(e.rch) === '0') did = setIf(e, 'rch', capQ(s.rch, e.rqt)) || did
-    if (!linkHadSeal && int(s.rsl) > 0 && str(e.rsl) === '0') did = setIf(e, 'rsl', capQ(s.rsl, e.rqt)) || did
+    if (oldHoists && int(s.rch) > 0 && str(e.rch) === '0') did = setIf(e, 'rch', capQ(s.rch, e.rqt)) || did
+    if (oldSeals && int(s.rsl) > 0 && str(e.rsl) === '0') did = setIf(e, 'rsl', capQ(s.rsl, e.rqt)) || did
     if (did) details++
   }
   for (const s of r1.unused) {
-    const what = [(!linkHadHoist && int(s.rch) > 0) && 'chain hoist', (!linkHadSeal && int(s.rsl) > 0) && 'brush seal', int(s.rop) > 0 && int(s.rop) < (int(s.rqt) || 1) && 'openers on some doors'].filter(Boolean)
+    const what = [(oldHoists && int(s.rch) > 0) && 'chain hoist', (oldSeals && int(s.rsl) > 0) && 'brush seal', int(s.rop) > 0 && int(s.rop) < (int(s.rqt) || 1) && 'openers on some doors'].filter(Boolean)
     if (what.length) lost.push(`${sizeKey(s.rsz)} roll-up (${str(s.rloc).replace(/ (Gable End|Eave Side)$/, '').toLowerCase()}): ${what.join(', ')}`)
   }
   const r2 = pairUp(list(out, 'wtds').filter((e) => e.wloc !== PART_LOC), list(seedPayload, 'wtds').filter((e) => e.wloc !== PART_LOC), WALK_KEY)
@@ -245,25 +285,36 @@ export function carryFromQuote(payload, { seedPayload, seedDesign = null, design
     if (str(e['lt-type']) === 'freestanding') continue
     const s = seedLts.find((x) => str(x['lt-type'] || 'attached') !== 'freestanding' && x.lts === e.lts)
     if (!s) continue
-    const sameSize = pf(e.ltw) === pf(s.ltw) && int(e.ltl2) === int(s.ltl2)
-    if (sameSize && (s['lt-stor'] === 'front' || s['lt-stor'] === 'back') && !e['lt-stor']) { e['lt-stor'] = s['lt-stor']; if (str(s['lt-stor-len']) !== '') e['lt-stor-len'] = s['lt-stor-len']; kept.push(`the ${str(e.lts).replace(/ (Gable|Eave)$/, '').toLowerCase()} lean-to’s storage section`) }
-    // its walls as quoted (4 / 5 panels from the top showed as closed) when the customer left them as shown
+    const ltName = `the ${str(e.lts).replace(/ (Gable|Eave)$/, '').toLowerCase()} lean-to`
+    const sameSize = pf(e.ltw) === pf(s.ltw) && int(e.ltl2) === int(s.ltl2) && int(e.lth) === int(s.lth)
+    if ((s['lt-stor'] === 'front' || s['lt-stor'] === 'back') && !e['lt-stor']) {
+      if (sameSize) { e['lt-stor'] = s['lt-stor']; if (str(s['lt-stor-len']) !== '') e['lt-stor-len'] = s['lt-stor-len']; kept.push(`${ltName}’s storage section`) }
+      else notKept.push(`${ltName}’s storage section (the lean-to’s size changed: add it again for the new size)`)
+    }
+    // its walls as quoted (4 / 5 panels from the top showed as closed) when the customer left the lean-to as shown
     const dl = Array.isArray(d.leanTos) ? d.leanTos.find((l) => l && l.side === e.lts) : null
     const sl = ltShown.find((l) => l && l.side === e.lts)
-    if (dl && sl && dl.enclosure === sl.enclosure && JSON.stringify(dl.walls) === JSON.stringify(sl.walls) && e['lt-wm'] === s['lt-wm']) {
+    if (dl && sl && sameSize && dl.width === sl.width && dl.lowLeg === sl.lowLeg && dl.enclosure === sl.enclosure && JSON.stringify(dl.walls) === JSON.stringify(sl.walls) && e['lt-wm'] === s['lt-wm']) {
       for (const k of ['lt-wall-front', 'lt-wall-back', 'lt-wall-side']) if (k in s && setIf(e, k, s[k])) details++
     }
     const ra = pairUp(Array.isArray(e.accs) ? e.accs.filter(isObj) : [], Array.isArray(s.accs) ? s.accs.filter(isObj) : [], ACC_KEY)
     for (const [a, b] of ra.pairs) {
       let did = false
       if (int(b['lt-acc-sf']) > 0) did = setIf(a, 'lt-acc-sf', b['lt-acc-sf']) || did
-      if (!linkHadHoist && int(b['lt-acc-ch']) > 0 && str(a['lt-acc-ch']) === '0') did = setIf(a, 'lt-acc-ch', b['lt-acc-ch']) || did
-      if (!linkHadSeal && int(b['lt-acc-sl']) > 0 && str(a['lt-acc-sl']) === '0') did = setIf(a, 'lt-acc-sl', b['lt-acc-sl']) || did
+      if (oldHoists && int(b['lt-acc-ch']) > 0 && str(a['lt-acc-ch']) === '0') did = setIf(a, 'lt-acc-ch', capQ(b['lt-acc-ch'], a['lt-acc-qty'])) || did
+      if (oldSeals && int(b['lt-acc-sl']) > 0 && str(a['lt-acc-sl']) === '0') did = setIf(a, 'lt-acc-sl', capQ(b['lt-acc-sl'], a['lt-acc-qty'])) || did
       const sill = pf(b['lt-acc-fo-sill'])
       if ('lt-acc-fo-sill' in a && Number.isFinite(sill) && Math.abs(sill - WINDOW_SILL) > 1 / 96 + 1e-9) did = setIf(a, 'lt-acc-fo-sill', b['lt-acc-fo-sill']) || did
       if (did) details++
     }
+    for (const b of ra.unused) {
+      const sill = pf(b['lt-acc-fo-sill'])
+      const t = str(b['lt-acc-type'] || 'rollup')
+      const what = [int(b['lt-acc-sf']) > 0 && 'side frame', (oldHoists && int(b['lt-acc-ch']) > 0) && 'chain hoist', (oldSeals && int(b['lt-acc-sl']) > 0) && 'brush seal', Number.isFinite(sill) && Math.abs(sill - WINDOW_SILL) > 1 / 96 + 1e-9 && `height off the floor ${b['lt-acc-fo-sill']}′`].filter(Boolean)
+      if (what.length) lost.push(`${ltName} ${t === 'rollup' ? 'roll-up' : t === 'wtd' ? 'walk door' : t === 'win' ? 'window' : 'framed opening'}: ${what.join(', ')}`)
+    }
   }
+  if (later.length) notKept.push(`the quote’s newer ${later.join(', ')} (the quote was changed after the link went out: the design shows what the customer saw — check which one stands)`)
   if (details) kept.push(`door / window details (chain hoists, brush seals, side frames, openers, 45° cuts, heights off the floor) on ${details} part${details === 1 ? '' : 's'} the customer left as they were`)
   if (lost.length) notKept.push(`details on doors / windows the customer changed or removed — ${lost.join('; ')}`)
 

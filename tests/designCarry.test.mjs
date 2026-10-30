@@ -224,3 +224,89 @@ test('what changed from the quote: hoist / seal ticks are listed', () => {
   assert.match(lines, /Brush seal added: 10×10 roll-up door/)
   assert.match(lines, /Added: 10×10 roll-up door with a brush seal/)
 })
+
+// ── review 10/30/26: one test per defect found ────────────────────────────────────────────────────────────────────
+const CARPORT_Q = () => ({
+  mfr: 'CCI', fields: { btype: 'carport', bw: '30', bl: '30', bh: '10', rs: 'Vertical', 'pitch-sel': 'standard', ws: 'Horizontal', zip: '33411', county: 'Palm Beach',
+    wfg: 'Open', wbg: 'Open', wle: 'Open', wre: 'Open', 'sp-left': '2panel', 'sp-right': 'closed', cr: '#B9BCBB', cw: '#8A8A88', ct: '#1D1E20',
+    lap: 'yes' },
+  doors: [], wtds: [], windows: [], addcomps: [{ act: 'Gutter (per 10ft)', acq: '6' }], leantos: [],
+})
+const seedOf = (q) => { const r = quoteToSeed(q); assert.ok(r.ok, r.reason); return r }
+
+test('review 1: a 30′ carport made 40′ wide (wide span) does not get the carport\'s hidden Open sides', () => {
+  const r0 = seedOf(CARPORT_Q()), sd = r0.seed.design
+  const d = settleDesign({ ...JSON.parse(JSON.stringify(sd)), width: 40 }, false)
+  const r = ok(designToQuote(env(d), { zip: '33411', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.equal(r.payload.fields.btype, 'widespan')
+  assert.equal(r.payload.fields.wle, '2panel')
+  assert.equal(r.payload.fields.wre, 'Closed')
+})
+
+test('review 2: size / door dependent components are kept only on the same building with the same doors', () => {
+  const r0 = seedOf(CARPORT_Q()), sd = r0.seed.design
+  const same = ok(designToQuote(env(JSON.parse(JSON.stringify(sd))), { zip: '33411', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.ok(same.payload.addcomps.some((e) => /Gutter/.test(e.act) && e.acq === '6'))
+  const longer = ok(designToQuote(env(settleDesign({ ...JSON.parse(JSON.stringify(sd)), length: 50 }, false)), { zip: '33411', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.ok(!longer.payload.addcomps.some((e) => /Gutter/.test(e.act)))
+  assert.match(text(longer), /Gutter \(per 10ft\) ×6 \(the building or its doors \/ windows changed/)
+  const d2 = JSON.parse(JSON.stringify(sd)); d2.walls.front = 'closed'
+  d2.openings = [{ id: 'o1', kind: 'rollup', wall: 'front', w: 10, h: 8, sill: 0, pos: 10, color: 'white' }]
+  const door = ok(designToQuote(env(settleDesign(d2, false)), { zip: '33411', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.ok(!door.payload.addcomps.some((e) => /Gutter/.test(e.act)))
+})
+
+test('review 3: lap siding only on the same job site (a county rule in places)', () => {
+  const r0 = seedOf(CARPORT_Q()), sd = r0.seed.design
+  const same = ok(designToQuote(env(JSON.parse(JSON.stringify(sd))), { zip: '33411', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.equal(same.payload.fields.lap, 'yes')
+  const other = ok(designToQuote(env(JSON.parse(JSON.stringify(sd)), { zip: '33901', county: 'Lee', impact: false }), { zip: '33901', seedPayload: CARPORT_Q(), seedDesign: sd }))
+  assert.ok(!('lap' in other.payload.fields))
+  assert.match(text(other), /lap siding \(it can be a county rule/)
+})
+
+test('review 4: the storage section and its doors are kept only on the same building', () => {
+  const { sd } = oldLink()
+  const d = settleDesign({ ...JSON.parse(JSON.stringify(sd)), width: 20, height: 10 }, false)
+  const r = ok(designToQuote(env(d), { zip: '33411', seedPayload: SEED_Q(), seedDesign: sd }))
+  assert.ok(!('add-end-wall' in r.payload.fields))
+  assert.ok(!r.payload.doors.some((e) => e.rloc === 'Partition Wall'))
+  assert.match(text(r), /the storage section \(the building’s type or size changed/)
+  assert.match(text(r), /the doors \/ windows on the storage wall/)
+})
+
+test('review 5: a choice the rep changed on the quote after the link went out stays as the customer saw it', () => {
+  const q0 = SEED_Q(); q0.fields['pitch-sel'] = '4:12'; q0.fields.wle = 'Closed'
+  const sd = seedOf(q0).seed.design // the link showed 4:12 and a closed left side
+  const now = SEED_Q(); now.fields['pitch-sel'] = '5:12'; now.fields.wle = 'Open' // the rep edited the quote later
+  const r = ok(designToQuote(env(JSON.parse(JSON.stringify(sd))), { zip: '33411', seedPayload: now, seedDesign: sd }))
+  assert.equal(r.payload.fields['pitch-sel'], '4:12')
+  assert.equal(r.payload.fields.wle, 'Closed')
+  assert.match(text(r), /the quote’s newer the roof pitch, the left side wall \(the quote was changed after the link went out/)
+})
+
+test('review 6: a resized lean-to says its storage section was not kept; changed lean-to door details are listed', () => {
+  const q = SEED_Q()
+  q.leantos = [{ lts: 'Right Eave', ltw: '12', ltl2: '30', ltoff: '0', lth: '10', ltp: '2:12', 'lt-type': 'attached', 'lt-wm': 'enclosed', 'lt-stor': 'back', 'lt-stor-len': '10',
+    accs: [{ 'lt-acc-type': 'rollup', 'lt-acc-size': '8x7', 'lt-acc-color': 'white', 'lt-acc-qty': '1', 'lt-acc-loc': 'outer', 'lt-acc-pos': 'offset', 'lt-acc-sf': '1', 'lt-acc-ch': '0', 'lt-acc-sl': '0', offs: ['10'] }] }]
+  const sd = seedOf(q).seed.design
+  const d = JSON.parse(JSON.stringify(sd))
+  d.leanTos[0].width = 14
+  d.leanTos[0].openings[0].w = 9
+  const r = ok(designToQuote(env(settleDesign(d, false)), { zip: '33411', seedPayload: q, seedDesign: sd }))
+  assert.ok(!r.payload.leantos[0]['lt-stor'])
+  assert.match(text(r), /the right lean-to’s storage section \(the lean-to’s size changed/)
+  assert.match(text(r), /the right lean-to roll-up: side frame/)
+  // left as it was: the storage section is kept
+  const same = ok(designToQuote(env(JSON.parse(JSON.stringify(sd))), { zip: '33411', seedPayload: q, seedDesign: sd }))
+  assert.equal(same.payload.leantos[0]['lt-stor'], 'back')
+})
+
+test('an old link where the customer ticked a hoist on another door: they answered, the quote\'s hoists do not come back', () => {
+  const { sd } = oldLink()
+  const d = JSON.parse(JSON.stringify(sd))
+  d.openings.push({ id: 'o99', kind: 'rollup', wall: 'back', w: 8, h: 8, sill: 0, pos: 2, color: 'white', hoist: true })
+  const r = ok(designToQuote(env(settleDesign(d, false)), { zip: '33411', seedPayload: SEED_Q(), seedDesign: sd }))
+  const front = r.payload.doors.find((e) => e.rloc === 'Front Gable End')
+  assert.deepEqual([front.rch, front.rsl], ['0', '1']) // no seal ticked anywhere: the quote's seal stays
+})

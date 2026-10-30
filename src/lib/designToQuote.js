@@ -426,7 +426,7 @@ export function designToQuote(envelope, opts = {}) {
   // a link started from a quote: the new quote keeps what the customer could not change (designCarry.js)
   let carried = false
   if (carryOn) {
-    const c = carryFromQuote(payload, { seedPayload: opts.seedPayload, seedDesign: isObj(opts.seedDesign) ? opts.seedDesign : null, design: d, zipSame: !!zip && parseZip(opts.seedPayload.fields.zip) === zip })
+    const c = carryFromQuote(payload, { seedPayload: opts.seedPayload, seedDesign: isObj(opts.seedDesign) ? opts.seedDesign : null, design: d, zipSame: !!zip && parseZip(opts.seedPayload.fields.zip) === zip, seedNotes })
     payload = c.payload
     carried = c.carried
     if (c.kept.length) checks.push({ level: 'info', text: `Kept from ${seedQ} (the customer could not change these on the design page): ${c.kept.join('; ')}.` })
