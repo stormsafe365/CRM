@@ -14230,10 +14230,39 @@ function dimSpacingPageHTML(theme){
     html+=card('Lean-to '+l.n+' · Storage Partition — '+l.stor.len+'′ storage at the '+l.stor.end+' end','ltpart:'+l.n,
       dimElevSVG(g.len,g.low,0,false,pItems,false,null,null,{ends:g.lowAtZero?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],lt:{n:l.n,lowAtZero:!!g.lowAtZero},prof:function(xx){return ltPartWallH(g,xx);}}));
   });
+  // Frame & clearances (owner 10/30/26: "peak height, interior clearance height
+  // and the knee brace info"). Peak, leg and the CCI center clearance are this
+  // page's own figures (the ones the elevations print); the knee brace and the
+  // clear height at the wall under it are the 3D's (window.__ssFrameInfo, the
+  // numbers on its knee-brace chip; the manufacturer's length where a truss chord
+  // cuts the drawn brace short). Without the 3D those two are left off.
+  var fi=null;
+  try{ var _fif=(window.parent&&window.parent!==window&&window.parent.__ssFrameInfo)||window.__ssFrameInfo; if(typeof _fif==='function') fi=_fif(); }catch(e){ fi=null; }
+  var kb=fi&&fi.kneeBrace, mono=!!(fi&&fi.monoDropFt>0.01), tiles=[], cc=mono?null:clr; // CCI's center figure is for a gable
+  var kbSame=function(f){ return Math.abs(f(kb.left)-f(kb.right))<1/192; };
+  var kbVal=function(f){ return kbSame(f)?_dimFtIn(f(kb.left)):_dimFtIn(f(kb.left))+' / '+_dimFtIn(f(kb.right)); };
+  if(mono) tiles.push(['High side',_dimFtIn(fi.peakFt),'low side '+_dimFtIn(fi.legFt)+' · single slope']);
+  else {
+    tiles.push(['Peak height',clr?'≈ '+_dimFtIn(clr.peak):_dimFtIn(peakH),clr?'top of '+(clr.to||'truss')+' · '+pitch+':12 · CCI approx.':pitch+':12 roof pitch']);
+    tiles.push(['Leg height',_dimFtIn(H),'at the eave']);
+  }
+  if(kb){
+    var _side=(kbSame(function(k){return k.footY;})&&kbSame(function(k){return k.dropFt;})&&kbSame(function(k){return k.reachFt;}))?'':(mono?'high / low side · ':'left / right · ');
+    tiles.push(['Interior clearance',kbVal(function(k){return k.footY;}),_side+'at the wall, under the knee brace'+(cc?'<br>center ≈ '+_dimFtIn(cc.center)+' (CCI approx.)':'')]);
+    var kbCut=kb.left.lengthFt<kb.left.ruleFt-1/192||kb.right.lengthFt<kb.right.ruleFt-1/192; // a truss chord stops the DRAWN brace (CA box eave): print the rule length, no reach
+    tiles.push(['Knee brace',kbVal(function(k){return k.ruleFt;})+' @ 45°',_side+kbVal(function(k){return k.dropFt;})+' down the leg'+(kbCut?'':' · '+kbVal(function(k){return k.reachFt;})+' in from the wall')]);
+  } else if(cc) tiles.push(['Interior clearance','≈ '+_dimFtIn(cc.center),'center, under the braces · CCI approx.']);
+  if(fi&&!kb) tiles.push(['Knee brace','None','ladder legs']);
+  var strip=tiles.length?'<div style="break-inside:avoid;page-break-inside:avoid;margin-bottom:12px;border:1px solid '+DIM_C.edge+';border-radius:6px;overflow:hidden;background:'+DIM_C.panel+'">'+
+    '<div style="background:'+DIM_C.band+';color:#fff;font-size:9pt;font-weight:700;letter-spacing:1.8px;text-align:center;padding:6px;text-transform:uppercase">Frame &amp; Clearances</div>'+
+    '<div style="display:flex">'+tiles.map(function(t,k){ return '<div style="flex:1;min-width:0;padding:8px 12px;'+(k?'border-left:1px solid rgba(255,255,255,.08)':'')+'">'+
+      '<div style="font-size:7pt;font-weight:600;letter-spacing:1.5px;color:'+DIM_C.dim+';text-transform:uppercase">'+t[0]+'</div>'+
+      '<div style="font-size:13pt;font-weight:700;color:'+DIM_C.text+';margin-top:2px;white-space:nowrap">'+t[1]+'</div>'+
+      '<div style="font-size:7.5pt;color:'+DIM_C.dim+';margin-top:2px;line-height:1.35">'+t[2]+'</div></div>'; }).join('')+'</div></div>':'';
   return '<div data-dim-page="1" style="page-break-before:always;background:'+(dark?DIM_C.page:'#ffffff')+';min-height:100vh;padding:24px;box-sizing:border-box;font-family:'+DIM_C.font+';color:'+(dark?DIM_C.text:'#0f1b2d')+'">'+
     '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">'+
     '<div style="font-size:11pt;font-weight:700;letter-spacing:2px;color:'+(dark?'#1fcec4':'#0D1B2A')+';margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid '+(dark?'#1fcec4':'#1B8A8A')+';text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
-    html+
+    strip+html+
     '<div style="margin-top:4px;font-size:8pt;color:'+(dark?'#8aa3b5':'#64748b')+';text-align:center">All dimensions measured along grade from the wall corners.'+(clr?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
   '</div>';
 }
