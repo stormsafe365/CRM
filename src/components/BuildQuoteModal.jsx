@@ -43,6 +43,7 @@ import {
 } from '../lib/saveAsNew'
 import PriceChangeConfirm from './PriceChangeConfirm'
 import { closeAsk } from '../lib/closeAsk'
+import { trimProgramButtons } from '../lib/builderTrim'
 import ContractClauseAsk from './ContractClauseAsk'
 import { applyClauseToProgram, clauseFields, clauseFromProgram, clauseLabel, sameClause } from '../lib/contractClause'
 import MarkSignedModal from './MarkSignedModal'
@@ -1180,6 +1181,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     const tick = () => {
       const pg = getProgramWindow()
       if (!pg || !pg.document) return
+      trimProgramButtons(pg.document) // the summary's buttons: Save / Print PDF, Generate Contract, Use as Revision only (owner 11/2/26)
       const btns = [...pg.document.querySelectorAll('button')].filter((b) =>
         /printContract/.test(b.getAttribute('onclick') || '') || /generate contract/i.test(b.textContent || ''),
       )

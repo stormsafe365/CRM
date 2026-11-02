@@ -124,7 +124,7 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
           <span className="qcard-creator">{userIcon} Created by {creator !== '—' ? creator : 'you'}</span>
           <div className="qcard-actions">
             {onDuplicate && <button className="qcard-btn" onClick={() => onDuplicate(q)}>Duplicate</button>}
-            {onCreateLink && <button className="qcard-btn" style={{ color: 'var(--teal, #22d3c8)' }} disabled={!!quoteSeedReason(q)} title={quoteSeedReason(q) || 'Make the customer design link for this quote’s building'} onClick={() => onCreateLink(q)}>Create link</button>}
+            {onCreateLink && <button className="qcard-btn qcard-link" style={{ color: 'var(--teal, #22d3c8)' }} disabled={!!quoteSeedReason(q)} aria-label="Create design link" title={quoteSeedReason(q) || 'Create link: the customer design link for this quote’s building'} onClick={() => onCreateLink(q)}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button>}
             <button className="qcard-btn primary" onClick={() => onOpen(q)}>Open / Edit</button>
             <button className="qcard-btn" data-menu-anchor onClick={(e) => openMenu(e.currentTarget, 'Documents', [
               ...(q.pdf_snapshot_url ? [{ id: 'pdf', label: 'View PDF', onClick: () => onViewPdf(q.pdf_snapshot_url) }] : []),

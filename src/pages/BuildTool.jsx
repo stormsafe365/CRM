@@ -15,6 +15,7 @@ import SaveToLeadPicker from '../components/SaveToLeadPicker'
 import DesignLinkModal from '../components/DesignLinkModal'
 import QuoteStyleToggle from '../components/QuoteStyleToggle'
 import { toast } from '../lib/uiFx'
+import { trimProgramButtons } from '../lib/builderTrim'
 
 export default function BuildTool() {
   // Cache-bust build.html per tab-open so a freshly synced builder shows up
@@ -30,6 +31,13 @@ export default function BuildTool() {
     const hook = () => setDesignLink(true)
     window.__ssSendDesignLink = hook
     return () => { if (window.__ssSendDesignLink === hook) delete window.__ssSendDesignLink }
+  }, [])
+
+  // The summary's buttons: Save / Print PDF, Generate Contract, Use as Revision only (owner 11/2/26; lib/builderTrim)
+  useEffect(() => {
+    const t = setInterval(() => { try { trimProgramButtons(getProgramWindow()?.document) } catch { /* ignore */ } }, 700)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // The QTEPRO program lives in build.html's LEFT-pane iframe (same-origin).

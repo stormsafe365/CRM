@@ -4844,3 +4844,6 @@ a.brand { text-decoration: none; color: inherit; }
 
 .lead-table th .th-sort { background: none; border: 0; padding: 0; margin: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
 .lead-table th .th-sort:hover, .lead-table th .th-sort:focus-visible { color: var(--fg); }
+/* the quote card's design link button: a link icon (owner 11/2/26: "instead of ... 'create link' have the button be a link icon") */
+.qcard-link { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; padding-left: 9px; padding-right: 9px; }
+.qcard-link:disabled { opacity: .45; cursor: not-allowed; }
