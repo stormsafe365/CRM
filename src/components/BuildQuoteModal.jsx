@@ -28,6 +28,9 @@
 // is open the save button is a split button — Update this quote (as before), Save as a new quote (lib/saveAsNew:
 // a NEW row for the lead, priced like any new quote at today's pricing, the original row never written; the
 // builder then carries on with the new quote), Done — close without saving (asks when something changed).
+// Owner 11/2/26: that button is now "Done ▾" and only opens the menu (Update this quote / Save as a new quote / Close
+// without saving, which asks "Are you sure?"); the Done button left of it became an X in the top right corner that asks
+// "Continue without saving?" when something would be lost (lib/closeAsk).
 
 import { useEffect, useRef, useState } from 'react'
 import SaveToLeadPicker from './SaveToLeadPicker'
@@ -36,9 +39,10 @@ import { useAuth } from '../context/AuthContext'
 import { promoteToWorking } from '../lib/promoteLead'
 import {
   buildSignature, finishProgramForNewQuote, prepareProgramForNewQuote, saveAsNewBlocker, saveAsNewConfirm, saveAsNewProblems,
-  saveAsNewRow, unsavedCheck, unsavedMessage,
+  saveAsNewRow, unsavedCheck,
 } from '../lib/saveAsNew'
 import PriceChangeConfirm from './PriceChangeConfirm'
+import { closeAsk } from '../lib/closeAsk'
 import ContractClauseAsk from './ContractClauseAsk'
 import { applyClauseToProgram, clauseFields, clauseFromProgram, clauseLabel, sameClause } from '../lib/contractClause'
 import MarkSignedModal from './MarkSignedModal'
@@ -322,7 +326,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         if (merged && quoteRef.current && quoteRef.current.id === id) quoteRef.current = { ...quoteRef.current, payload_json: merged }
         toast(`Quote #${escHtml(quoteRef.current?.quote_number || '')}: ${escHtml(clauseLabel(ans, county))} — kept on the quote.`, 'success')
       } catch (e) {
-        toast('The conditional clause is on this contract, but it could not be kept on the saved quote (Update Quote keeps it): ' + escHtml(e.message || e))
+        toast('The conditional clause is on this contract, but it could not be kept on the saved quote (Done ▾ › Update this quote keeps it): ' + escHtml(e.message || e))
         return
       }
     }
@@ -828,11 +832,18 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     catch (e) { toast('The contract could not be saved to the Doc Hub: ' + escHtml(e.message || e)); return false }
     finally { setStatus('') }
   }
-  // Done with a generated contract still unsaved: ask (OK = save it, Cancel = leave it out)
-  // Done on a saved quote with changes not saved yet (owner 10/24/26): ask first (OK = close and lose them)
-  async function closeBuilder() {
-    const u = savingRef.current ? null : unsavedNow() // (mid-save: closes as it always did)
-    if (u && u.dirty && !window.confirm(unsavedMessage({ quoteNumber: quoteRef.current?.quote_number || null, check: u }))) return
+  // Closing the builder (owner 11/2/26): the X (top right; it replaced the Done button) asks "Continue without saving?"
+  // only when something would be lost - a saved quote with changes not saved yet, or a new quote with a building in it;
+  // Done ▾ › Close without saving always asks "Are you sure?" (lib/closeAsk). A generated contract still unsaved: ask
+  // (OK = save it to the Doc Hub, Cancel = leave it out).
+  async function requestClose(via = 'x') {
+    if (status) return // mid-save / mid-contract: the bar says what is happening
+    const cur = quoteRef.current
+    const u = savingRef.current ? null : unsavedNow()
+    let hasBuild = false
+    try { const d = getProgramWindow()?.document; hasBuild = !!(d && d.getElementById('bw')?.value && d.getElementById('bl')?.value) } catch { /* ignore */ }
+    const ask = closeAsk({ via, quoteNumber: cur?.quote_number || null, saved: !!cur?.id, check: u, hasBuild })
+    if (ask && !(await askConfirm(ask))) return
     if (pendingContract && window.confirm(`Contract ${pendingContract.num} was generated but not saved to the Doc Hub. OK = save it there first, Cancel = close without saving it.`)) {
       if (await savePendingContract()) onClose() // otherwise the builder stays open with the bar (the toast says why)
       return
@@ -1228,7 +1239,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
                 {revisionChanges
                   ? <>Place the added components on the building, then hit <b>✓ Finish Revision</b> — saves the Revision Order + Revised Contract.</>
                   : hasQuote
-                  ? <>Adjust the build, then <b>Update Quote</b> — or <b>▾ Save as a new quote</b> to keep both versions.</>
+                  ? <>Adjust the build, then <b>Done ▾</b> › <b>Update this quote</b> — or <b>Save as a new quote</b> to keep both versions.</>
                   : fromDesign
                   ? <>Filled in from the customer&rsquo;s design: check the list below, then <b>Save to Lead</b>.</>
                   : client?.id
@@ -1242,25 +1253,28 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
               </button>
             )}
             <a className="btn-secondary" href={SRC} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>Open in new tab</a>
-            <button type="button" className="btn-secondary" onClick={closeBuilder}>Done</button>
             <QuoteStyleToggle getProgramWindow={getProgramWindow} />
             {hasQuote ? (
               <SaveSplitButton
-                label={status ? 'Saving…' : '💾 Update Quote'}
-                onMain={saveToLead}
+                menuOnly
+                label={status ? 'Saving…' : 'Done'}
                 disabled={!!status}
                 mainStyle={SAVE_BTN}
-                menuLabel="More save options"
+                menuLabel="Done: update this quote, save as a new quote, or close without saving"
                 items={[
                   { id: 'update', label: `Update this quote${curNo ? ` (#${curNo})` : ''}`, hint: 'Saves your changes over this quote', onSelect: saveToLead },
                   { id: 'new', label: 'Save as a new quote', tone: 'accent', hint: `Keeps ${curNo ? '#' + curNo : 'this quote'} exactly as it is — your changes become a new quote (today’s pricing)`, disabled: !!newBlock, disabledReason: newBlock, onSelect: saveAsNew },
-                  { id: 'done', label: 'Done — close without saving', hint: 'Asks first if something changed', onSelect: closeBuilder },
+                  { id: 'close', label: 'Close without saving', hint: 'Asks “Are you sure?” first', onSelect: () => requestClose('menu') },
                 ]}
               />
             ) : (
               <button type="button" className="btn-primary" style={SAVE_BTN} onClick={saveToLead} disabled={!!status}>{status ? 'Saving…' : '💾 Save to Lead'}</button>
             )}
           </div>
+          {/* the X (owner 11/2/26: it replaced the Done button; asks first when something would be lost) */}
+          <button type="button" className="qb-x" aria-label="Close the builder" title="Close" onClick={() => requestClose('x')} disabled={!!status}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+          </button>
         </div>
         {designChecks && (
           <div className={`qb-lock ${checkWarn ? 'qb-lock-warn' : 'qb-lock-ok'} qb-design-checks`} role="region" aria-label="Check these before quoting">

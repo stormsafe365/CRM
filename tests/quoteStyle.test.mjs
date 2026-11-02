@@ -51,12 +51,14 @@ test('the CRM and its embedded program use the same key and setter', () => {
 })
 
 // ── 10/12 verification fixes ──
-test('a narrower window shows one word per option; the tooltip keeps the full wording', () => {
+test('one switch (owner 11/2/26: "replace the dark mode & light mode buttons with a toggle"); the tooltip keeps the full wording', () => {
   assert.deepEqual(QUOTE_STYLES.map((o) => o.short), ['Dark', 'White'])
   for (const o of QUOTE_STYLES) assert.ok(o.title.startsWith(o.label + ':'), o.title)
   const jsx = readFileSync(new URL('../src/components/QuoteStyleToggle.jsx', import.meta.url), 'utf8')
-  assert.match(jsx, /<span className="qb-style-long">\{o\.label\}<\/span>\s*<span className="qb-style-short">\{o\.short\}<\/span>/)
-  assert.match(jsx, /title=\{o\.title\}/)
+  assert.match(jsx, /role="switch"\s+aria-checked=\{white\}/)
+  assert.match(jsx, /onClick=\{\(\) => pick\(white \? 'dark' : 'white'\)\}/)
+  assert.match(jsx, /title=\{`\$\{now\.title\}\. Click for \$\{next\.label\}\.`\}/)
+  assert.match(jsx, /\{white \? 'White' : 'Dark'\}/)
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
   assert.match(css, /\.qb-style-short \{ display: none; \}/)
   assert.match(css, /@media \(max-width: 1440px\) \{\s*\.qb-style-long \{ display: none; \}\s*\.qb-style-short \{ display: inline; \}\s*\}/)

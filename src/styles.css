@@ -1833,6 +1833,42 @@ svg.chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .qb-split-item.is-disabled:hover { background: transparent; border-color: transparent; }
 .qb-split-item.is-disabled:hover .qb-split-label { color: var(--fg-3, #8598AC); }
 @media (prefers-reduced-motion: reduce) { .qb-split-caret svg { transition: none; } }
+/* Done ▾ (owner 11/2/26): one button that only opens the menu */
+.qb-split-solo-btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.qb-split-solo-caret { display: inline-flex; padding-left: 8px; margin-left: 2px; border-left: 1px solid rgba(8, 18, 29, .28); }
+.qb-split-solo-caret svg { transition: transform .14s; }
+.qb-split.is-open .qb-split-solo-caret svg { transform: rotate(180deg); }
+.qb-split-solo-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+/* the X: closes the builder (top right corner; asks first when something would be lost) */
+.qb-x {
+  flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; margin-left: 2px;
+  border-radius: 8px; border: 1px solid var(--line-2); background: var(--inset); color: var(--txt-2); cursor: pointer;
+}
+.qb-x:hover:not(:disabled) { color: var(--txt); border-color: var(--cyan-dim); background: var(--acc-bg); }
+.qb-x:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.qb-x:disabled { opacity: .5; cursor: not-allowed; }
+/* Quote PDF: one switch (owner 11/2/26) - moon = Dark (on-screen), sun = White (print-friendly) */
+.qb-sw {
+  position: relative; flex: none; width: 58px; height: 30px; padding: 0; border-radius: 999px; cursor: pointer;
+  background: #081b24; border: 1.5px solid var(--acc-bd); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .55);
+  transition: background .18s, border-color .18s;
+}
+.qb-sw:hover { border-color: var(--cyan-dim); }
+.qb-sw:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.qb-sw-ico { position: absolute; top: 50%; transform: translateY(-50%); display: inline-flex; opacity: .5; }
+.qb-sw-ico-moon { left: 8px; color: var(--cyan); }
+.qb-sw-ico-sun { right: 8px; color: var(--txt-2); }
+.qb-sw-knob {
+  position: absolute; top: 2px; left: 2px; width: 23px; height: 23px; border-radius: 50%;
+  display: grid; place-items: center; background: #0d2a36; color: var(--cyan);
+  border: 1.5px solid var(--cyan); box-shadow: 0 2px 6px rgba(0, 0, 0, .5), 0 0 8px rgba(0, 217, 217, .25);
+  transition: transform .2s ease, background .18s, color .18s, border-color .18s;
+}
+.qb-sw.is-white { background: #dfe8ec; border-color: #b9c9d1; box-shadow: inset 0 1px 3px rgba(8, 27, 36, .25); }
+.qb-sw.is-white .qb-sw-knob { transform: translateX(28px); background: #ffffff; color: #081b24; border-color: #081b24; box-shadow: 0 2px 6px rgba(8, 27, 36, .35); }
+.qb-sw.is-white .qb-sw-ico-moon { color: #081b24; }
+.qb-style-now { font-size: 11.5px; font-weight: 700; color: var(--txt-2); min-width: 34px; }
+@media (prefers-reduced-motion: reduce) { .qb-sw, .qb-sw-knob, .qb-split-solo-caret svg { transition: none; } }
 @media (max-width: 1440px) {
   .qb-style-long { display: none; }
   .qb-style-short { display: inline; }

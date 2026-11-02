@@ -7,7 +7,9 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 
-export default function SaveSplitButton({ label, onMain, disabled = false, mainStyle = undefined, items = [], menuLabel = 'More save options' }) {
+// menuOnly (owner 11/2/26: "make the button with the drop down say 'Done' ... & the options be the same"): ONE button that
+// only opens the menu (no action of its own), so a click never saves over a quote by itself.
+export default function SaveSplitButton({ label, onMain, disabled = false, mainStyle = undefined, items = [], menuLabel = 'More save options', menuOnly = false }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
   const caretRef = useRef(null)
@@ -62,16 +64,30 @@ export default function SaveSplitButton({ label, onMain, disabled = false, mainS
   }
 
   itemRefs.current = []
+  const caretSvg = <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
   return (
-    <div className={`qb-split${open ? ' is-open' : ''}`} ref={wrapRef}>
-      <button type="button" className="btn-primary qb-split-main" style={mainStyle} onClick={onMain} disabled={disabled}>{label}</button>
-      <button
-        type="button" ref={caretRef} className="btn-primary qb-split-caret" style={mainStyle} disabled={disabled}
-        aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={menuLabel} title={menuLabel}
-        onClick={() => (open ? close(false) : openAt('first'))} onKeyDown={onCaretKey}
-      >
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </button>
+    <div className={`qb-split${menuOnly ? ' qb-split-solo' : ''}${open ? ' is-open' : ''}`} ref={wrapRef}>
+      {menuOnly ? (
+        <button
+          type="button" ref={caretRef} className="btn-primary qb-split-solo-btn" style={mainStyle} disabled={disabled}
+          aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} title={menuLabel}
+          onClick={() => (open ? close(false) : openAt('first'))} onKeyDown={onCaretKey}
+        >
+          <span>{label}</span>
+          <span className="qb-split-solo-caret">{caretSvg}</span>
+        </button>
+      ) : (
+        <>
+          <button type="button" className="btn-primary qb-split-main" style={mainStyle} onClick={onMain} disabled={disabled}>{label}</button>
+          <button
+            type="button" ref={caretRef} className="btn-primary qb-split-caret" style={mainStyle} disabled={disabled}
+            aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={menuLabel} title={menuLabel}
+            onClick={() => (open ? close(false) : openAt('first'))} onKeyDown={onCaretKey}
+          >
+            {caretSvg}
+          </button>
+        </>
+      )}
       {open && (
         <div className="qb-split-menu" role="menu" id={menuId} aria-label={menuLabel} onKeyDown={onMenuKey}>
           {items.map((it, i) => (
