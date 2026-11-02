@@ -101,6 +101,16 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 .summary-toggle .arrow{font-size:15px;transition:transform .25s}
 .summary-toggle.open .arrow{transform:rotate(180deg)}
 .mobile-summary-panel{display:none}
+/* TOTAL ▾ (owner 11/2/26): a compact button at the top right; the summary drops down over the form with its own scroll */
+@media(max-width:768px){
+.summary-toggle{width:fit-content;margin:8px 10px 6px auto;top:6px;padding:7px 12px 7px 14px;gap:10px;justify-content:flex-start;border-radius:9px;background:#081b24;color:#e6eef1;border:1.5px solid var(--t);box-shadow:0 6px 18px rgba(0,0,0,.4);font-size:11px;letter-spacing:.14em}
+.summary-toggle:hover{background:#0b2430}
+.summary-toggle:focus-visible{outline:2px solid var(--t);outline-offset:2px}
+.summary-toggle .st-l{color:var(--t);font-weight:800}
+.summary-toggle #mob-total{font-size:15px;font-weight:800;letter-spacing:0;color:#e6eef1;font-variant-numeric:tabular-nums}
+.summary-toggle .arrow{color:var(--t);font-size:12px}
+.mobile-summary-panel.open{position:fixed;left:8px;right:8px;top:var(--sum-top,56px);max-height:calc(100vh - var(--sum-top,56px) - 10px);overflow:auto;overscroll-behavior:contain;z-index:250;border:1.5px solid var(--t);border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+}
 .pt-card{background:var(--d3);border:1px solid var(--bv);border-radius:8px;padding:14px;margin-bottom:12px}
 .pt-title{font-family:var(--h);font-size:13px;font-weight:600;color:var(--t);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
 .pt-sub{font-size:15px;color:var(--mt);margin-bottom:10px}
@@ -176,10 +186,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <span class="hdr-d" id="hdr-d" style="margin-left:8px"></span>
 </div>
 
-<!-- Mobile: sticky summary toggle -->
-<button class="summary-toggle" id="summary-toggle" type="button" onclick="toggleMobileSummary()">
-  <span>VIEW QUOTE SUMMARY &nbsp;<span id="mob-total" style="opacity:.8"></span></span>
-  <span class="arrow">&#9660;</span>
+<!-- Narrow layout (the CRM's 3D Builder pane, phones): TOTAL $ &#9662; drops the quote summary down over the form (owner 11/2/26) -->
+<button class="summary-toggle" id="summary-toggle" type="button" onclick="toggleMobileSummary()" aria-expanded="false" aria-controls="mobile-summary-panel" title="Quote summary, price breakdown, PDF and contract">
+  <span class="st-l">TOTAL</span><span id="mob-total">&mdash;</span>
+  <span class="arrow">&#9662;</span>
 </button>
 
 <!-- Mobile: collapsible summary panel (copy of right panel content) -->
@@ -752,7 +762,10 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 <div class="sec">
   <div class="st">13 — Pricing & Notes</div>
   <div class="row"><label>Discount (%)</label>
-    <div class="pct"><input id="disc" type="number" value="0" min="0" max="100" step="0.5" oninput="rc()"></div>
+    <div style="min-width:0">
+      <div class="pct"><input id="disc" type="number" value="0" min="0" max="100" step="0.5" oninput="discManual();rc()"></div>
+      <div id="disc-sale-note" style="display:none;font-size:11px;margin-top:4px;line-height:1.4;color:#94a3b8"></div>
+    </div>
   </div>
   <div class="row"><label>Additional Discount</label>
     <div style="display:flex;gap:5px;align-items:center">
@@ -9084,6 +9097,7 @@ function rcManual(){
   var holdRowM=G('hold-summary-row'); if(holdRowM) holdRowM.style.display='none'; // never held in INPUT mode (gHold()=0)
   qAdjRow(adjP);
   // Discount / tax / deposit — the SAME money pass as rc() (qMoney)
+  discAutoApply(sub); // CCI sale (a new quote's automatic %)
   var M=qMoney(sub);
   var disc=M.disc, tax=M.tax, agEx=M.agEx, da=M.da, ad=M.ad, ta=M.ta, tot=M.tot;
   var dep=M.dep, bal=M.bal, adjTot=M.adjTot;
@@ -9108,7 +9122,7 @@ function rcManual(){
     if(paySplitOn(ad,bal)){ var half=Math.round(bal/2); pbalSplitEl.innerHTML='\u26A0 Split: '+fD(half)+' at scheduling, '+fD(bal-half)+(_delivOnly()?' at delivery':' after install'); pbalSplitEl.style.display='block'; }
     else { pbalSplitEl.style.display='none'; }
   }
-  var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?('\u2014 '+fD(adjTot)):'';
+  var mobTot=G('mob-total'); if(mobTot) mobTot.textContent=adjTot?fD(adjTot):'\u2014';
   // Plan note from THIS subtotal (it used to keep the last engine pass's figure).
   qPlanNote(pl);
   if(window.PriceLock&&PriceLock.on) PriceLock.afterRc();
@@ -9159,6 +9173,33 @@ function paySplitIntro(){
   return 'Orders with a remaining balance over $15,000 are split into two payments:';
 }
 
+// ── CCI sale (CCI letter 8/6/26 "Updated Sale Information"; owner 11/2/26) ──
+// The Discount % follows the building total before tax (the pre-discount subtotal): over $5K 5%, over $10K 10%,
+// over $15K 15%, over $20K 20%. Automatic on a NEW quote until the rep types a % (then it is theirs). A saved quote
+// reopens with its saved % (the price lock solves on it) and the note offers the sale % when it differs.
+var CCI_SALE=[[20000,20],[15000,15],[10000,10],[5000,5]];
+function cciSalePct(sub){ for(var i=0;i<CCI_SALE.length;i++){ if(sub>CCI_SALE[i][0]) return CCI_SALE[i][1]; } return 0; }
+window._discAuto=true;
+function discManual(){ window._discAuto=false; }
+function discUseSale(){ window._discAuto=true; rc(); }
+function discAutoApply(sub){
+  var el=G('disc'); if(!el) return;
+  var pct=cciSalePct(sub);
+  var cci=(ACTIVE_MFR==='CCI');
+  var held=!!(window.PriceLock&&PriceLock.on);
+  if(window._discAuto && !held){
+    var want=cci?pct:0; // a CCI sale % set by this rule never carries over to another manufacturer
+    if((parseFloat(el.value)||0)!==want) el.value=String(want);
+  }
+  var n=G('disc-sale-note'); if(!n) return;
+  if(!cci){ n.style.display='none'; n.innerHTML=''; return; }
+  var tier=pct?(pct+'% (building over $'+(function(){ for(var i=0;i<CCI_SALE.length;i++){ if(CCI_SALE[i][1]===pct) return (CCI_SALE[i][0]/1000)+'K'; } return ''; })()+')'):'no discount (building $5,000 or less)';
+  var cur=parseFloat(el.value)||0;
+  n.style.display='block';
+  if(window._discAuto && !held){ n.style.color='#94a3b8'; n.innerHTML='CCI sale: <strong style="color:#cbd5e1">'+tier+'</strong> — set automatically from the building total before tax. Type another % to change it.'; }
+  else if(cur!==pct){ n.style.color='#f0883e'; n.innerHTML='CCI sale for this building: <strong>'+tier+'</strong>. <button type="button" onclick="discUseSale()" style="margin-left:4px;font-size:11px;padding:1px 8px;border:1px solid currentColor;border-radius:4px;background:transparent;color:inherit;cursor:pointer;font-weight:700">Use '+pct+'%</button>'; }
+  else { n.style.color='#94a3b8'; n.innerHTML='CCI sale: '+tier+'.'; }
+}
 function qMoney(sub){
   var disc=parseFloat(G('disc').value)||0;
   var tax=parseFloat(G('tax').value)||0;
@@ -9352,6 +9393,11 @@ function cpAdoptSavedEaves(f){
   if(took.length && typeof updateSidePanelNote==='function') updateSidePanelNote();
   return took;
 }
+// Is a reopened carport old enough to hold a side only on the Section-4 row? Only a save from before v3 (9/30/26): v3
+// began inside 8/26–10/12/26, when every save copied 4B into the rows, and since 10/12 the rows are hidden - so on a v3
+// save a row that differs from 4B is stale. Taking it in brought back a side the rep had set to Open in 4B on a quote
+// first saved before 10/12 (found 11/2/26). data.version survives the CRM's Duplicate (its rule overrides do not).
+function cpAdoptWanted(data){ return !((+(data && data.version) || 0) >= 3); }
 // GCH: a Section-4 eave-row choice forwards to the open extension's side panels (gch-left/gch-right). Carport: nothing —
 // its sides are set in 4B only (owner 10/12/26; 8/26–10/12/26 this copied the row into 4B, so one click set both).
 function cpWallChanged(wallId, spId){
@@ -9724,6 +9770,7 @@ function rc(){
   var freightP=cciWideOn(w)?Math.round(sub*3)/100:0;
   sub+=freightP;
   if(holdP) sub+=holdP; // reopened-quote price lock (0 unless PriceLock.on)
+  discAutoApply(sub); disc=parseFloat(G('disc').value)||0; // CCI sale (a new quote's automatic %)
   var M=qMoney(sub);
   var da=M.da, ad=M.ad, ta=M.ta, tot=M.tot, grossDep=M.grossDep;
   var addDiscVal=M.addDiscVal, addDiscType=M.addDiscType, addDiscAmount=M.addDiscAmount;
@@ -9934,7 +9981,7 @@ function rc(){
 
   // Update mobile total in toggle button
   var mobTot=G('mob-total');
-  if(mobTot) mobTot.textContent=adjTot?('— '+fD(adjTot)):'';
+  if(mobTot) mobTot.textContent=adjTot?fD(adjTot):'\u2014';
   // Re-sync mobile summary if it's open
   // mobile summary shows actual .right panel - no sync needed
 
@@ -12433,8 +12480,9 @@ function _restoreQuoteDataImpl(data, opts){
   if(f.rs===undefined){ var _rsR=G('rs'); if(_rsR) _rsR.value='Vertical'; }
 
   // Carport sides: ONE control, 4B — Side Panels (owner 10/12/26). A side an older save kept only on the Section-4 eave
-  // row is taken into 4B (cpAdoptSavedEaves); the hidden rows stay as saved (never read on a carport).
-  window._cpTook=(G('btype').value==='carport')?cpAdoptSavedEaves(f):[];
+  // row is taken into 4B (cpAdoptSavedEaves); the hidden rows stay as saved (never read on a carport). Only a save from
+  // before v3 can need that (cpAdoptWanted, 11/2/26).
+  window._cpTook=(G('btype').value==='carport' && cpAdoptWanted(data))?cpAdoptSavedEaves(f):[];
   // J-trim (10/12/26): a carport quote reopens as saved - ticked only when it was saved ticked (quotes saved before had
   // no J-trim); any other type keeps the default (ON) for a later switch to carport.
   var _jtR=G('sp-jtrim'); if(_jtR) _jtR.checked=(G('btype').value==='carport')?!!f['sp-jtrim']:true;
@@ -12445,6 +12493,8 @@ function _restoreQuoteDataImpl(data, opts){
   // Conditional clause (11/2/26): a quote saved without one has none (never carried over from the quote loaded before)
   if(f['ct-cond']===undefined){ var _ccR=G('ct-cond'), _cwR=G('ct-cond-why'); if(_ccR) _ccR.value=''; if(_cwR) _cwR.value=''; }
   if(typeof ctCondUi==='function') ctCondUi();
+  // CCI sale: automatic only for a build that comes without a saved % (a quote saved with one keeps it exactly)
+  window._discAuto=(f.disc===undefined||f.disc===null||String(f.disc)==='');
   // Step 2b: fslean custom-walls sub-panel visibility follows the restored mode
   if(G('btype').value==='fslean' && typeof fsWallsModeChanged==='function'){
     var _fsm=G('fs-walls-mode');
@@ -16152,6 +16202,7 @@ function resetAll(){
   _rvClear(); // a new quote never inherits the previous one's revision state
   ['cn','cp','ce','rep','notes'].forEach(function(id){ G(id).value=''; });
   ['ct-cond','ct-cond-why'].forEach(function(id){ var e=G(id); if(e) e.value=''; }); if(typeof ctCondUi==='function') ctCondUi();
+  window._discAuto=true; // a new quote: the CCI sale % again
   G('disc').value='0'; G('tax').value='6';
   G('city').textContent='—'; G('county').textContent='—'; G('state').textContent='FL';
   ['pt','perm','btype'].forEach(function(id){ G(id).value=''; });
@@ -16207,6 +16258,7 @@ function toggleMobileSummary(){
   if(isOpen){
     panel.classList.remove('open');
     btn.classList.remove('open');
+    btn.setAttribute('aria-expanded','false');
     // Move .right back to its original position (inside .main)
     var mainEl=document.querySelector('.main');
     if(right && mainEl) mainEl.appendChild(right);
@@ -16214,11 +16266,26 @@ function toggleMobileSummary(){
     // Move the actual .right panel into the summary panel (no cloning = no duplicate IDs)
     if(right && panel) panel.appendChild(right);
     right.style.display='block';
+    // TOTAL ▾ (owner 11/2/26): it drops down under the button, over the form - the form keeps its place (no scroll)
+    var r=btn.getBoundingClientRect();
+    panel.style.setProperty('--sum-top', Math.max(8, Math.round(r.bottom+6))+'px');
+    panel.scrollTop=0;
     panel.classList.add('open');
     btn.classList.add('open');
-    panel.scrollIntoView({behavior:'smooth',block:'start'});
+    btn.setAttribute('aria-expanded','true');
   }
 }
+// a click outside the summary (or Esc) folds it back up; clicks inside it (its buttons, the breakdown) do not
+document.addEventListener('mousedown', function(e){
+  var panel=G('mobile-summary-panel'), btn=G('summary-toggle');
+  if(!panel || !panel.classList.contains('open')) return;
+  if(panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+  toggleMobileSummary();
+}, true);
+document.addEventListener('keydown', function(e){
+  var panel=G('mobile-summary-panel');
+  if(e.key==='Escape' && panel && panel.classList.contains('open')){ toggleMobileSummary(); var b=G('summary-toggle'); if(b) b.focus(); }
+});
 
 function syncMobileSummary(){
   // No-op: mobile summary now shows the actual .right panel (no innerHTML copy)
