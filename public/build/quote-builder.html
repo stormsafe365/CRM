@@ -846,6 +846,15 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="No">No</option>
     </select>
   </div>
+  <div class="row"><label>Conditional Clause</label>
+    <select id="ct-cond" onchange="ctCondUi();sy()">
+      <option value="">None (standard: deposits are non-refundable)</option>
+      <option value="permit">Conditional upon permit approval</option>
+      <option value="other">Conditional upon something else (type it below)</option>
+    </select>
+  </div>
+  <div class="row hidden" id="ct-cond-why-row"><label>Conditional upon</label><input id="ct-cond-why" placeholder="e.g. the buyer's financing being approved by the bank" maxlength="160" oninput="sy()"></div>
+  <div id="ct-cond-note" class="hidden" style="font-size:11px;color:#f0883e;margin:2px 0 6px;line-height:1.4">The contract gets an <strong>Addendum A — Conditional Clause</strong> page (signed by the buyer and you): the deposit is refunded in full if the condition is not met (a permit: only a written denial by the county). Pages 1 and 3 point to it.</div>
   <div class="row"><label>Honor Signed Pricing — Original Building Subtotal ($)</label>
     <input type="number" id="ct-honor" step="0.01" min="0" placeholder="Blank = current pricing" onchange="rc()">
   </div>
@@ -11628,6 +11637,8 @@ function collectQuoteData(){
     'fs-pitch','fs-walls-mode','fs-wf','fs-wb','fs-wt','fs-wl2','fs-orient',
     // Section 1 notes + contract page inputs — were missing, so they didn't persist.
     'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref',
+    // Conditional clause (11/2/26): the reason + the "conditional upon" text (other)
+    'ct-cond','ct-cond-why',
     // v3: Roof Style was never saved ('brs' above is a dead id, kept for old readers) —
     // every Regular / Boxed Eve quote reopened as Vertical.
     'rs',
@@ -12431,6 +12442,9 @@ function _restoreQuoteDataImpl(data, opts){
   // Garage partial sides (10/14/26): reopens as saved when it applies (quotes saved before had no J-trim); otherwise ON.
   var _jtWR=G('w-jtrim'); if(_jtWR){ _jtWR.checked=true; if(G('btype').value==='standard' && cpJTrim(true)>0) _jtWR.checked=!!f['w-jtrim']; }
 
+  // Conditional clause (11/2/26): a quote saved without one has none (never carried over from the quote loaded before)
+  if(f['ct-cond']===undefined){ var _ccR=G('ct-cond'), _cwR=G('ct-cond-why'); if(_ccR) _ccR.value=''; if(_cwR) _cwR.value=''; }
+  if(typeof ctCondUi==='function') ctCondUi();
   // Step 2b: fslean custom-walls sub-panel visibility follows the restored mode
   if(G('btype').value==='fslean' && typeof fsWallsModeChanged==='function'){
     var _fsm=G('fs-walls-mode');
@@ -14451,6 +14465,58 @@ function _execWatermark(LOGO){
     '<div style="font-family:Arial;font-weight:900;font-size:40pt;color:#15803d;letter-spacing:8px;border:5px solid #15803d;border-radius:12px;padding:6px 26px;opacity:.16">DEPOSIT PAID</div>'+
     '</div></div>';
 }
+// ── Conditional clause (owner 11/2/26) ──
+// The pick in Section 14 (ct-cond: '' | 'permit' | 'other', ct-cond-why = what it is conditional upon for 'other').
+function ctCondPick(){
+  var k=(G('ct-cond')&&G('ct-cond').value)||'';
+  var why=((G('ct-cond-why')&&G('ct-cond-why').value)||'').replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
+  if(k==='other' && !why) return null; // nothing typed: no clause (printContract says so)
+  return (k==='permit'||k==='other') ? {kind:k, why:why} : null;
+}
+function ctCondUi(){
+  var k=(G('ct-cond')&&G('ct-cond').value)||'';
+  var r=G('ct-cond-why-row'), n=G('ct-cond-note');
+  if(r) r.classList.toggle('hidden', k!=='other');
+  if(n) n.classList.toggle('hidden', !k);
+}
+// The clause's words. o = {kind, why, county, deposit (formatted), plans:{label,cost}|null, permSvc:{label,amt}|null}
+// -> {title, summary (page 1), items:[[heading, text]]}. Plain text (the contract escapes it).
+function ctCondTerms(o){
+  var cty=(o.county&&o.county!=='—'&&o.county!=='-')?(o.county.replace(/\s+County$/i,'')+' County'):'the county building department';
+  var fees=[];
+  if(o.plans) fees.push('the '+o.plans.label+' ($'+o.plans.cost+')');
+  if(o.permSvc) fees.push('the '+o.permSvc.label+' ($'+o.permSvc.amt+')');
+  var feeWho=fees.join(' and ').replace(/^t/,'T'), feeAre=fees.length>1?'are':'is';
+  var feeText=fees.length?(feeWho+' '+feeAre+' invoiced separately by the engineering firm, '+feeAre+' used to apply for the permit, and '+feeAre+' not refunded. '):'';
+  var controls=['This Addendum controls.', 'For the situation described in this Addendum only, this Addendum controls over any conflicting term of the Agreement, including every statement that deposits or payments are non-refundable (on page 1, in the Terms & Conditions and in the Acknowledgment on page 3). All other terms of the Agreement stay the same.'];
+  if(o.kind==='permit'){
+    return { title:'Conditional upon permit approval',
+      summary:'CONDITIONAL UPON PERMIT APPROVAL: if '+cty+' denies the building permit, the deposit is refunded as set out in Addendum A (attached).',
+      items:[
+        ['Conditional upon permitting.', 'This Agreement is conditional upon '+cty+' issuing a building permit for this building at the jobsite.'],
+        ['Deposit refund if the permit is denied.', 'If '+cty+' denies the building permit in writing, Buyer may cancel this Agreement by giving Seller written notice with a copy of the County\'s denial. Seller will then refund Buyer\'s deposit in full ('+o.deposit+') within 30 days of receiving that notice.'],
+        ['Only a written denial counts.', 'Approval of the permit with conditions or required changes (for example to the building\'s size, its location on the lot, or added engineering) is not a denial. In that case this Agreement continues; any change to the building is made by a written change order, and any resulting price difference is Buyer\'s responsibility.'],
+        ['Not refunded.', feeText+'Any fees charged by the building department remain Buyer\'s responsibility.'],
+        ['Buyer\'s part.', 'Buyer will provide the documents needed to apply for the permit (site survey, signed Notice of Commencement and proof of property ownership) within 30 days of signing, and will respond promptly to any request from the County. If Buyer does not, or withdraws the application, this condition ends. A denial caused by Buyer not providing required documents or information does not qualify for a refund.'],
+        ['How long this lasts.', 'This condition stays in effect until '+cty+' issues or denies the permit. Once the permit is issued, the condition is satisfied and the deposit is non-refundable as stated in the Agreement.'],
+        ['Order placed at signing.', 'Seller places the order with the manufacturer after signing'+(o.plans?' so the engineered plans needed for the permit application can be prepared':'')+'. This does not change Buyer\'s refund under section 2.'],
+        controls
+      ] };
+  }
+  var why=o.why;
+  var items=[
+    ['Conditional upon.', 'This Agreement is conditional upon '+why.replace(/\.$/,'')+'.'],
+    ['Deposit refund if the condition is not met.', 'If this condition is not met, Buyer may cancel this Agreement by giving Seller written notice with written proof (for example a denial letter). Seller will then refund Buyer\'s deposit in full ('+o.deposit+') within 30 days of receiving that notice.']
+  ];
+  if(fees.length) items.push(['Not refunded.', feeWho+' '+feeAre+' invoiced separately by the engineering firm and '+feeAre+' not refunded.']);
+  items.push(['Buyer\'s part.', 'Buyer will act promptly and in good faith to meet this condition and will tell Seller in writing as soon as Buyer knows whether it is met. A condition not met because of Buyer\'s own delay or choice does not qualify for a refund.']);
+  items.push(['How long this lasts.', 'This condition stays in effect until it is met or Buyer gives the notice in section 2. Once it is met, the deposit is non-refundable as stated in the Agreement.']);
+  items.push(['Order placed at signing.', 'Seller places the order with the manufacturer after signing. This does not change Buyer\'s refund under section 2.']);
+  items.push(controls);
+  return { title:'Conditional upon '+why.replace(/\.$/,''),
+    summary:'CONDITIONAL UPON '+why.replace(/\.$/,'').toUpperCase()+': if this condition is not met, the deposit is refunded as set out in Addendum A (attached).',
+    items:items };
+}
 async function printContract(){
   var _ssCtNo=window._ctNo?String(window._ctNo):'', _ssRvDoc=window._rvDoc||null, _ssRvForce=(window._rvForce===true); // CRM hand-off for THIS print (read before the 3D capture await)
   if(!G('bw').value||!G('bl').value){ toast('Please select building dimensions first','err'); return; }
@@ -15516,6 +15582,12 @@ async function printContract(){
     // Footer
     '.c-foot{margin-top:10px;padding-top:6px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:6.8pt;color:#94a3b8}'+
     '.c-foot strong{color:#64748b}'+
+    // Conditional clause (11/2/26)
+    '.c-cond-note{margin-top:6px;font-size:7.8pt;font-weight:800;color:#c4421e;line-height:1.35}'+
+    '.c-cond-intro{font-size:9pt;color:#111827;line-height:1.5;margin:6px 0 10px}'+
+    '.c-cond-list{margin:0 0 12px;padding-left:20px;font-size:8.6pt;color:#111827;line-height:1.5}'+
+    '.c-cond-list li{margin-bottom:6px}'+
+    '.c-cond-list strong{font-weight:800}'+
 
     // Building views page
     '.c-views-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}'+
@@ -15597,6 +15669,11 @@ async function printContract(){
   }
 
   var _rvSumPage=!!(_rvMode&&_ssRvDoc&&(_ssRvDoc.lines||[]).length>RV_BOX_MAX); var TOTAL_PAGES = 4+(_rvSumPage?1:0);
+  // Conditional clause (11/2/26): Addendum A, the last page
+  var _ccPick=ctCondPick();
+  var _cc=_ccPick?ctCondTerms({kind:_ccPick.kind, why:_ccPick.why, county:county, deposit:fD(dep),
+    plans:_hasPlansC?{label:_planLabelC, cost:_planCostC}:null, permSvc:_hasPermSvcC?{label:_permSvcLblC, amt:_permSvcAmtC}:null}):null;
+  if(_cc) TOTAL_PAGES+=1;
 
   // ── PAGE 1: Order Summary ──
   var page1 =
@@ -15724,8 +15801,9 @@ async function printContract(){
 
     '<div class="c-ack">'+
       'By signing below, Buyer acknowledges receipt of this Agreement and agrees to be bound by the Terms &amp; Conditions set forth on the following pages. '+
-      '<span class="c-ack-warn">All deposits are non-refundable. Building dimensions are final after signing.</span>'+
+      '<span class="c-ack-warn">'+(_cc?'All deposits are non-refundable, except as set out in Addendum A (Conditional Clause).':'All deposits are non-refundable.')+' Building dimensions are final after signing.</span>'+
     '</div>'+
+    (_cc?'<div class="c-cond-note">'+_esc(_cc.summary)+'</div>':'')+
 
     '<div class="c-sig-block">'+
       '<div class="c-sig-row r2">'+
@@ -15887,7 +15965,7 @@ async function printContract(){
     '</div>'+
 
     '<div class="c-ack" style="margin-top:10px">'+
-      '<strong>ACKNOWLEDGMENT &mdash;</strong> I HAVE READ AND AGREED TO ALL THE TERMS AND CONDITIONS STATED ABOVE AS RELATING TO THE PURCHASE OF SAID STRUCTURE FROM '+(isCCI?'CAROLINA CARPORTS':'STORMSAFE STEEL')+'. I UNDERSTAND AND ACKNOWLEDGE THAT <strong>ALL PAYMENTS ARE NON-REFUNDABLE</strong> AND THAT <strong>NO CHANGES TO BUILDING DIMENSIONS ARE PERMITTED AFTER SIGNING THIS AGREEMENT.</strong>'+
+      '<strong>ACKNOWLEDGMENT &mdash;</strong> I HAVE READ AND AGREED TO ALL THE TERMS AND CONDITIONS STATED ABOVE AS RELATING TO THE PURCHASE OF SAID STRUCTURE FROM '+(isCCI?'CAROLINA CARPORTS':'STORMSAFE STEEL')+'. I UNDERSTAND AND ACKNOWLEDGE THAT <strong>ALL PAYMENTS ARE NON-REFUNDABLE</strong>'+(_cc?' (EXCEPT AS SET OUT IN ADDENDUM A &mdash; CONDITIONAL CLAUSE, ATTACHED)':'')+' AND THAT <strong>NO CHANGES TO BUILDING DIMENSIONS ARE PERMITTED AFTER SIGNING THIS AGREEMENT.</strong>'+
     '</div>'+
 
     '<div class="c-sig-block">'+
@@ -15945,7 +16023,7 @@ async function printContract(){
     '</div>'+
 
     '<div class="c-sig-block">'+
-      '<div style="font-size:8pt;color:#64748b;line-height:1.5;margin-bottom:10px"><strong style="color:#111827">Final Acknowledgment:</strong> Buyer\'s signature below confirms the full Agreement is binding upon execution.</div>'+
+      '<div style="font-size:8pt;color:#64748b;line-height:1.5;margin-bottom:10px"><strong style="color:#111827">Final Acknowledgment:</strong> Buyer\'s signature below confirms the full Agreement'+(_cc?', including Addendum A (Conditional Clause),':'')+' is binding upon execution.</div>'+
       '<div class="c-sig-row r3">'+
         '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Buyer Signature</div></div>'+
         '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Printed Name</div></div>'+
@@ -15972,6 +16050,22 @@ async function printContract(){
     page1+pageViews+page2+page3+page4+
     ((G('pdf-dims')&&G('pdf-dims').checked) ? dimSpacingPageHTML() : '')+
     (_rvSumPage?'<div class="page">'+_header('Change Summary','')+rvSummaryHTML({doc:_ssRvDoc, origTot:_rvOrigTot, revTot:tot-addDiscAmountPrint})+_footer(5, TOTAL_PAGES)+'</div>':'')+
+    (_cc?'<div class="page">'+_header('Conditional Clause','Addendum A')+
+      '<div class="c-cond-intro">This Addendum is part of Purchase Agreement <strong>'+orderNum+'</strong> between <strong>StormSafe Steel</strong> ("Seller") and <strong>'+_esc(cn)+'</strong> ("Buyer") for the '+W+'\' &times; '+L+'\' &times; '+H+'\' building at '+_esc((siteStreet?siteStreet+', ':'')+cityLine)+'.</div>'+
+      '<ol class="c-cond-list">'+_cc.items.map(function(it){ return '<li><strong>'+_esc(it[0])+'</strong> '+_esc(it[1])+'</li>'; }).join('')+'</ol>'+
+      '<div class="c-ack">By signing below, Buyer and Seller agree to this Addendum as part of Purchase Agreement '+orderNum+'. <span class="c-ack-warn">The deposit is refundable only as set out above.</span></div>'+
+      '<div class="c-sig-block">'+
+        '<div class="c-sig-row r3">'+
+          '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Buyer Signature</div></div>'+
+          '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Printed Name</div></div>'+
+          '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Date</div></div>'+
+        '</div>'+
+        '<div class="c-sig-row r2">'+
+          '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Seller / StormSafe Rep ('+_esc(rep)+')</div></div>'+
+          '<div><div class="c-sig-line"></div><div class="c-sig-lbl">Date</div></div>'+
+        '</div>'+
+      '</div>'+
+      _footer(TOTAL_PAGES, TOTAL_PAGES)+'</div>':'')+
     (EXEC_COPY?_execWatermark(LOGO):'')+
     '</body></html>';
 
@@ -16057,6 +16151,7 @@ function resetAll(){
   if(window.PriceLock) PriceLock.reset();
   _rvClear(); // a new quote never inherits the previous one's revision state
   ['cn','cp','ce','rep','notes'].forEach(function(id){ G(id).value=''; });
+  ['ct-cond','ct-cond-why'].forEach(function(id){ var e=G(id); if(e) e.value=''; }); if(typeof ctCondUi==='function') ctCondUi();
   G('disc').value='0'; G('tax').value='6';
   G('city').textContent='—'; G('county').textContent='—'; G('state').textContent='FL';
   ['pt','perm','btype'].forEach(function(id){ G(id).value=''; });

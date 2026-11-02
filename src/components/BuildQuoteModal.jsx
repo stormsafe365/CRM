@@ -39,6 +39,8 @@ import {
   saveAsNewRow, unsavedCheck, unsavedMessage,
 } from '../lib/saveAsNew'
 import PriceChangeConfirm from './PriceChangeConfirm'
+import ContractClauseAsk from './ContractClauseAsk'
+import { applyClauseToProgram, clauseFields, clauseFromProgram, clauseLabel, sameClause } from '../lib/contractClause'
 import MarkSignedModal from './MarkSignedModal'
 import QuoteStyleToggle from './QuoteStyleToggle'
 import { uploadClientDocBlob } from '../lib/storage'
@@ -59,7 +61,7 @@ import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
 import {
-  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, pdfNameFor, signedContractOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, newDetailOf, nextRevNo,
+  agreementRootOf, agreementSignedDayDb, contractFileBase, executedOf, pdfNameFor, signedContractOf, contractNumberFor, contractNumberFromHtml, executedToast, markExecuted, markQuote, setQuoteFields, newDetailOf, nextRevNo,
   paidOf, revisedBalance, revisedContractNumber, revisionDocFor, revisionsAfterRedo,
 } from '../lib/contractDocs'
 
@@ -130,6 +132,8 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const [pendingContract, setPendingContract] = useState(null) // { html, num, quoteId }: a contract generated to LOOK at, not saved yet
   const [ask, setAsk] = useState(null)             // the confirm dialog's writeCheck()
   const askResolveRef = useRef(null)
+  const [clauseAsk, setClauseAsk] = useState(null) // Generate Contract: the conditional clause question
+  const clauseResolveRef = useRef(null)
   const [uar, setUar] = useState(false)            // Use as revision: pick the signed quote + how
   const [needDay, setNeedDay] = useState(null)     // { node, number, retry } — the agreement's signed day, asked before a revised contract
   const [uarManual, setUarManual] = useState(null) // {original, info}: Use as revision → type the changes
@@ -279,6 +283,50 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     askResolveRef.current = null
     setAsk(null)
     if (r) r(yes === 'preview' ? 'preview' : !!yes)
+  }
+
+  // ── Conditional clause (owner 11/2/26: "once we click generate contract there should be an option to 'add conditional
+  // clause' & then why its conditional") ──
+  // Asked at every Generate Contract (not a revised contract, which keeps the signed one's); the program prints Addendum A.
+  // A changed answer is kept on the saved quote, so a later Executed Copy / revision prints the same Addendum.
+  // Resolves true = go on, false = Cancel. A program without the option (older build) is not asked.
+  function askContractClause(pg) {
+    const cur = clauseFromProgram(pg)
+    if (!cur) return Promise.resolve(true)
+    let county = ''
+    try { county = (pg.document.getElementById('county')?.textContent || '').trim() } catch { /* ignore */ }
+    return new Promise((resolve) => {
+      if (clauseResolveRef.current) clauseResolveRef.current(null)
+      clauseResolveRef.current = async (ans) => {
+        if (!ans) { resolve(false); return }
+        if (!sameClause(cur, ans)) await keepContractClause(pg, ans, county)
+        resolve(true)
+      }
+      setClauseAsk({ initial: cur, county })
+    })
+  }
+  function answerClause(ans) {
+    const r = clauseResolveRef.current
+    clauseResolveRef.current = null
+    setClauseAsk(null)
+    if (r) r(ans)
+  }
+  async function keepContractClause(pg, ans, county) {
+    let wasClean = false
+    try { wasClean = !!baselineRef.current && baselineRef.current === buildSignature(pg.collectQuoteData()) } catch { /* ignore */ }
+    applyClauseToProgram(pg, ans)
+    const id = quoteRef.current?.id
+    if (id) {
+      try {
+        const merged = await setQuoteFields(supabase, id, clauseFields(ans))
+        if (merged && quoteRef.current && quoteRef.current.id === id) quoteRef.current = { ...quoteRef.current, payload_json: merged }
+        toast(`Quote #${escHtml(quoteRef.current?.quote_number || '')}: ${escHtml(clauseLabel(ans, county))} — kept on the quote.`, 'success')
+      } catch (e) {
+        toast('The conditional clause is on this contract, but it could not be kept on the saved quote (Update Quote keeps it): ' + escHtml(e.message || e))
+        return
+      }
+    }
+    if (wasClean) takeBaseline() // the clause alone is not an unsaved change
   }
 
   async function saveToLead() {
@@ -793,6 +841,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   }
   async function saveContractThenPrint(pg, { confirmed = false, number = null, rvDoc = null } = {}) {
     if (!pg) return
+    if (!rvDoc && !(await askContractClause(pg))) { setStatus(''); return }
     if (!confirmed && client?.id && !(await confirmWrite('contract'))) { setStatus(''); return }
     const autoSave = !!rvDoc
     const cur = quoteRef.current || initialQuote || null
@@ -1274,6 +1323,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
         />
       )}
       {ask && <PriceChangeConfirm check={ask} onAnswer={answer} />}
+      {clauseAsk && <ContractClauseAsk initial={clauseAsk.initial} county={clauseAsk.county} onAnswer={answerClause} />}
       {needDay && (
         <MarkSignedModal
           mode="date" clientId={client?.id} quotes={[needDay.node]} presetQuoteId={needDay.node.id} createMark createNumber={needDay.number}

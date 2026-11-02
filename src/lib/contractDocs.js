@@ -366,6 +366,23 @@ export async function markQuote(sb, id, patch) {
   return next
 }
 
+// Saved quote fields: merge `patch` into payload_json.fields (the contract's conditional clause, kept on the quote after
+// Generate Contract asked it - lib/contractClause). Returns the new payload_json (null = no such quote / no payload).
+export async function setQuoteFields(sb, id, patch) {
+  if (!id) return null
+  let cur = null
+  try {
+    const { data } = await sb.from('quotes').select('payload_json').eq('id', id).single()
+    const row = Array.isArray(data) ? data[0] : data
+    cur = row?.payload_json || null
+  } catch { /* fall through */ }
+  if (!cur || typeof cur !== 'object') return null
+  const next = { ...cur, fields: { ...(cur.fields && typeof cur.fields === 'object' ? cur.fields : {}), ...patch } }
+  const { error } = await sb.from('quotes').update({ payload_json: next }).eq('id', id)
+  if (error) throw error
+  return next
+}
+
 // ── The revised contract hand-off (window._rvDoc for the program) ─────────
 // lines: Use-as-revision lines (auto: diffBuilds/priceChanges; manual: typed) or
 // the Revision Order rows ({desc, kind:'Add'|'Remove'|'Modify', amount}).

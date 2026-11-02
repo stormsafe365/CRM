@@ -28,7 +28,7 @@ const str = (v) => (v == null ? '' : String(v).trim())
 // page, the price lock's own hidden fields, display-only switches).
 const FIELD_IGNORE = new Set([
   'cn', 'cp', 'ce', 'notes', 'rep', 'brs', 'fastener-add',
-  'ct-billaddr', 'ct-siteaddr', 'ct-pay', 'ct-elec', 'ct-prim', 'ct-ready', 'ct-honor', 'ct-honor-ref',
+  'ct-billaddr', 'ct-siteaddr', 'ct-pay', 'ct-elec', 'ct-prim', 'ct-ready', 'ct-honor', 'ct-honor-ref', 'ct-cond', 'ct-cond-why',
   'hold-amt', 'hold-ref', 'hold-src', 'hold-dec', 'add-disc-valid', 'zoning-show', 'adj-note',
   'city', 'county', 'state', // shown with the ZIP (they follow it)
 ])
