@@ -19388,8 +19388,11 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     st.source=S.src; st.saved={ total:r2(S.totals.total), deposit:r2(S.totals.deposit), balance:r2(S.totals.balance) };
     // CCI freight as saved (11/3/26): the snapshot's own (frt); a save by this program without one (a CRM revision's held
-    // price) = today's; an older save = $0 (its 62'-100' freight sits in its saved building price - see 1-frtIn).
-    root._frtHold=(pr && pr.frt!=null)?+pr.frt:((data.overrides && data.overrides.frtSep)?null:0);
+    // price) = today's. An older save (made before freight was its own charge): a SOLD one (verbal accept / deposit paid /
+    // revised) = $0, as signed; a CCI 62'-100' one = $0 (its freight sits in its saved building price - see 1-frtIn); any
+    // other = today's rule (owner 11/3/26: Laura Rincon's contract, generated from her saved quote, showed no freight).
+    // Freight is a separate charge: the held building price is untouched either way.
+    root._frtHold=(pr && pr.frt!=null)?+pr.frt:((data.overrides && data.overrides.frtSep)?null:((st.sold || (typeof root.cciWideOn==='function' && root.cciWideOn(parseInt(((root.G && root.G('bw'))||{}).value)||0)))?0:null));
     // 2) Deposit % / free-upgrade threshold as saved
     if(S.depPct && S.depPct!==(root._depPct||17)){ pinVar('depPct', S.depPct); st.notes.push('Deposit % held at '+S.depPct+'% (as saved).'); }
     if(S.freeThresh && S.freeThresh!==(root._freeThresh||10000)) pinVar('freeThresh', S.freeThresh);
