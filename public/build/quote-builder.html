@@ -8267,6 +8267,7 @@ function ltPartRefreshAll(){
 }
 
 function addLTAcc(entry){
+  var _auto=_rudAuto(); // a lean-to roll-up's chain hoist + brush seal: on when NEW (rudAddonsAuto), as saved when restored
   var list=entry.querySelector('.lt-acc-list');
   var d=document.createElement('div');
   d.className='lt-acc-e entry';
@@ -8293,11 +8294,11 @@ function addLTAcc(entry){
     '<div class="row lt-acc-fo-sill-row" style="display:none"><label>Sill Height (ft)</label>'+
     '<input type="number" class="lt-acc-fo-sill" value="4.17" min="0" max="30" step="0.25" oninput="rc()" title="Bottom of the window opening off the ground — standard 4&#39;2&#34; (4.17 ft)" style="border:1px solid #cbd5e1;border-radius:5px;padding:6px 8px;font-size:12px;color:#1C3557;font-weight:600;background:#fff;width:100%"></div>'+
     '<div class="row lt-acc-rud-ch-row" style="display:none"><label>Chain Hoist</label>'+
-    '<select class="lt-acc-ch" onchange="rc()">'+
+    '<select class="lt-acc-ch" data-auto="'+_auto+'" onchange="this.setAttribute(\'data-auto\',\'0\');rc()">'+
     '<option value="0">None</option><option value="1">1 (+$325)</option>'+
     '</select></div>'+
     '<div class="row lt-acc-rud-sl-row" style="display:none"><label>Brush Seal (Tops &amp; Sides)</label>'+
-    '<select class="lt-acc-sl" onchange="rc()">'+
+    '<select class="lt-acc-sl" data-auto="'+_auto+'" onchange="this.setAttribute(\'data-auto\',\'0\');rc()">'+
     '<option value="0">None</option><option value="1">1</option>'+
     '</select></div>'+
     '<div class="row lt-acc-wtd-row" style="display:none"><label>WTD Type</label>'+
@@ -8404,6 +8405,7 @@ function refreshLTAccChSl(e){
     }
     slEl.value=Math.min(curSl,qty)||0;
   }
+  rudAddonsAuto(e); // a lean-to roll-up: hoist + seal on by default (owner 11/3/26)
 }
 function updLTAccPos(sel){
   var e=sel.closest('.lt-acc-e');
@@ -10115,6 +10117,7 @@ function mkRm(cls){
 }
 
 function aRUD(){
+  var _auto=_rudAuto(); // chain hoist + brush seal on for a NEW door (rudAddonsAuto); a restored door keeps its saved values
   var h=parseInt(G('bh').value)||6;
   var d=document.createElement('div');
   d.className='re entry';
@@ -10138,11 +10141,11 @@ function aRUD(){
     '<option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>'+
     '</select></div>'+
     '<div class="row rch-row"><label>Chain Hoist</label>'+
-    '<select class="rch" onchange="rc()">'+
+    '<select class="rch" data-auto="'+_auto+'" onchange="this.setAttribute(\'data-auto\',\'0\');rc()">'+
     '<option value="0">None</option><option value="1">1 (+$325)</option>'+
     '</select></div>'+
     '<div class="row rsl-row"><label>Brush Seal (Tops &amp; Sides)</label>'+
-    '<select class="rsl" onchange="rc()">'+
+    '<select class="rsl" data-auto="'+_auto+'" onchange="this.setAttribute(\'data-auto\',\'0\');rc()">'+
     '<option value="0">None</option><option value="1">1</option>'+
     '</select></div>'+
     // Automatic opener — CCI only, $1,100 per roll-up door
@@ -10342,6 +10345,24 @@ function refreshAllRUDSizes(){
   });
 }
 
+// Roll-up chain hoist + brush seal ON by default (owner 11/3/26: "I never dont include a brush seal or chain hoist on a roll
+// up door so make it automatically add those two onto any door size if not already included, and i can switch it to none
+// if i want"). A NEW roll-up (main building or a lean-to's) is created with data-auto="1" on its hoist + seal dropdowns:
+// they are set to one per door (the door quantity) whenever the program rebuilds them (size, quantity, type) — skipped
+// where the size already includes the hoist ("Included ✓": no such option) or the row is hidden. Picking a number yourself
+// (None included) turns that dropdown's auto off for good. A restored quote is created with data-auto="0": its saved
+// values stay exactly as saved (a reopen never adds them).
+function rudAddonsAuto(entry){
+  if(!entry) return;
+  var q=parseInt(((entry.querySelector('.rqt')||entry.querySelector('.lt-acc-qty'))||{}).value)||1;
+  [entry.querySelector('.rch')||entry.querySelector('.lt-acc-ch'), entry.querySelector('.rsl')||entry.querySelector('.lt-acc-sl')].forEach(function(sel){
+    if(!sel||sel.getAttribute('data-auto')!=='1'||sel.disabled) return;
+    var row=sel.closest('.row'); if(row&&row.style.display==='none') return;
+    var v=String(q);
+    if(Array.prototype.some.call(sel.options,function(o){ return o.value===v; })) sel.value=v;
+  });
+}
+function _rudAuto(){ return (typeof _ovlRestoring!=='undefined'&&_ovlRestoring)?'0':'1'; }
 function chkDoorLift(szSel){
   var entry=szSel.closest('.re');
   var dtype=entry.querySelector('.rdtype').value;
@@ -10400,6 +10421,7 @@ function chkDoorLift(szSel){
     }
     slEl.value=Math.min(curSl,qty)||0;
   }
+  rudAddonsAuto(entry); // hoist + seal on by default (owner 11/3/26)
   rc();
 }
 
@@ -10478,6 +10500,7 @@ function syncQtyOpts(qtyEl){
     var dtypeEl=entry.querySelector('.rdtype');
     if(dtypeEl) updateRUDSizes(dtypeEl);
   }
+  rudAddonsAuto(entry); // hoist + seal follow the quantity while on by default (owner 11/3/26)
   rc();
 }
 
