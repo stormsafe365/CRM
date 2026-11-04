@@ -10,6 +10,7 @@ import ReplacedBadge, { ContractSentTag, cardBalanceOf } from './ReplacedBadge'
 import { StarBadge, StarButton } from './QuoteStar'
 import { usd } from '../lib/money'
 import { quoteSeedReason } from '../lib/designLinks'
+import { cardFreightOf } from '../lib/cardFreight'
 
 const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 const mfrLabel = (m) => (m === 'ca' ? 'CA' : m === 'cci' ? 'CCI' : null)
@@ -58,6 +59,7 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
   if (!n) return null
   const q = quotes[Math.min(idx, n - 1)]
   const c = q.payload_json?.card || {}
+  const frt = cardFreightOf(q) // CCI freight: Building Cost / Freight Fee / Total Cost (owner 11/3/26)
   const thumb = q.payload_json?.rendering_thumb || null
   const colors = [c.roofColor, c.wallColor].filter(Boolean).join(' / ') || null
   const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
@@ -108,10 +110,22 @@ export default function QuoteDeck({ quotes, users, onToggleStar, starBusy, onOpe
               </>
             )}
 
-            <div className="qcard-total">
-              <span className="qcard-total-l">Quote Total</span>
-              <span className="qcard-total-v num">{money(q.total_amount) || '—'}</span>
-            </div>
+            {frt && frt.total != null ? (
+              <div className="qcard-frt">
+                <div className="qcard-frt-row"><span>Building Cost</span><span className="num">{money(frt.building)}</span></div>
+                <div className="qcard-frt-row"><span>Freight Fee <em>3%, due at install</em></span><span className="num">{money(frt.freight)}</span></div>
+                <div className="qcard-total">
+                  <span className="qcard-total-l">Total Cost</span>
+                  <span className="qcard-total-v num">{money(frt.total)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="qcard-total">
+                <span className="qcard-total-l">{frt ? 'Building Cost' : 'Quote Total'}</span>
+                <span className="qcard-total-v num">{money(q.total_amount) || '—'}</span>
+              </div>
+            )}
+            {frt && frt.pending && <div className="qcard-frt-note">+ 3% CCI freight (due at install), added when you open this quote</div>}
           </div>
 
           {n > 1 && <>

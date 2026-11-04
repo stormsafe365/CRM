@@ -3047,6 +3047,16 @@ body {
 .qcard-total { display: flex; align-items: baseline; justify-content: space-between; margin-top: auto; padding-top: 16px; }
 .qcard-total-l { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--fg-3); }
 .qcard-total-v { font-family: var(--font-head); font-size: 28px; color: var(--cyan); }
+/* CCI freight on a quote card: Building Cost / Freight Fee / Total Cost (owner 11/3/26) */
+.qcard-frt { margin-top: auto; padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.qcard-frt::before { content: ""; height: 1px; background: var(--line-soft); margin-bottom: 8px; }
+.qcard-frt .qcard-total { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.qcard-frt-row, .q-frt-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13.5px; color: var(--fg-2); }
+.qcard-frt-row .num, .q-frt-row .num { font-size: 15px; color: var(--fg); }
+.qcard-frt-row em, .q-frt-row em { font-style: normal; font-size: 11.5px; color: var(--fg-3); margin-left: 6px; }
+.qcard-frt-note, .q-frt-note { margin-top: 6px; font-size: 12px; color: var(--fg-3); text-align: right; }
+.q-frt-row + .q-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.q-frt-row + .q-frt-row { margin-top: 4px; }
 .qcard-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 999px;
   display: grid; place-items: center; background: rgba(8,15,22,.72); border: 1px solid var(--line-2); color: var(--fg);
   font-size: 20px; line-height: 1; cursor: pointer; transition: background .15s ease, border-color .15s ease; z-index: 3; }

@@ -25,6 +25,7 @@ import { updateQuoteRow } from '../lib/builderSave'
 import { applyStar, sortStarredFirst, starSupported } from '../lib/layoutFromQuote'
 import { StarBadge, StarButton } from './QuoteStar'
 import { usd } from '../lib/money'
+import { cardFreightOf } from '../lib/cardFreight'
 
 const money = usd // $33,521.50 with cents, $5,351 whole (lib/money)
 
@@ -579,6 +580,7 @@ function QuoteSpread({ onCreateLink, quotes, onToggleStar, starBusy, onOpen, onV
 function SpreadCard({ onCreateLink, q, onToggleStar, starBusy, onOpen, onViewPdf, onDelete, onDuplicate, onGenerateContract, onExecutedCopy, onRevisionForm, onReceipt, onColorSheet }) {
   const thumb = q.payload_json?.rendering_thumb || null
   const canContract = !!(q.payload_json && (q.payload_json.fields || q.payload_json.source === '3d-builder'))
+  const frt = cardFreightOf(q) // CCI freight: Building Cost / Freight Fee / Total Cost (owner 11/3/26)
   return (
     <div className={`spread-card${q.starred === true ? ' is-starred' : ''}`} onClick={(e) => { if (e.target.closest('button')) return; onOpen(q) }}>
       {thumb && <div className="q-thumb"><img src={thumb} alt="3D rendering" /></div>}
@@ -602,7 +604,12 @@ function SpreadCard({ onCreateLink, q, onToggleStar, starBusy, onOpen, onViewPdf
         <div className="q-fig"><div className="l">Balance</div><div className="n num">{money(cardBalanceOf(q) ? cardBalanceOf(q).balance : q.balance_amount) || '—'}</div></div>
       </div>
       <div className="q-divider" />
-      <div className="q-total"><div className="l">Total</div><div className="v num">{money(q.total_amount) || '—'}</div></div>
+      {frt && frt.total != null ? <>
+        <div className="q-frt-row"><span>Building Cost</span><span className="num">{money(frt.building)}</span></div>
+        <div className="q-frt-row"><span>Freight Fee <em>3%, due at install</em></span><span className="num">{money(frt.freight)}</span></div>
+        <div className="q-total"><div className="l">Total Cost</div><div className="v num">{money(frt.total)}</div></div>
+      </> : <div className="q-total"><div className="l">{frt ? 'Building Cost' : 'Total'}</div><div className="v num">{money(q.total_amount) || '—'}</div></div>}
+      {frt && frt.pending && <div className="q-frt-note">+ 3% CCI freight (due at install), added when you open this quote</div>}
       <div className="q-actions">
         {onDuplicate && <button className="btn btn-ghost" onClick={() => onDuplicate(q)}>Duplicate</button>}
         {onCreateLink && <button className="btn btn-ghost qcard-link" style={{ color: 'var(--teal, #22d3c8)' }} disabled={!!quoteSeedReason(q)} aria-label="Create design link" title={quoteSeedReason(q) || 'Create link: the customer design link for this quote’s building'} onClick={() => onCreateLink(q)}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></button>}
