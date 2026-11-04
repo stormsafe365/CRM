@@ -77,7 +77,7 @@ begin
     raise exception 'No admin login found. Set the admins first (see 023_rep_access.sql), then run this again.';
   end if;
   insert into web_lead_settings (id, key_hash, rep_id)
-  values (1, '2c49195968e25830e532df58b2bc0c01a80579a41c35d741412909871222e9b7', v_rep)
+  values (1, '06e852c852a083e271012ac2f82b9a8cfe0b53ef2df66fb06c4fe49cf8ef7fa2', v_rep)
   on conflict (id) do update set key_hash = excluded.key_hash, updated_at = now();
 end;
 $$;
