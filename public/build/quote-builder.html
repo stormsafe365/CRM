@@ -5307,6 +5307,14 @@ function getTrussInfo(){
 // quote printed the old wide-span rate while the engine used the new one).
 // `attachedSide` = .lts value, `connLen` = the lean-to length running along the
 // attached wall (same for eave or gable connections).
+// CCI Triple Wide main = 26'-30' wide, not a wide span. Its attached lean-tos are priced like Sensei (owner 11/5/26 "Both":
+// the size premium + the 26'-30' height chart in ltUnit, + $200 on the side connection fee) - release 10-14 "A2" (side fee,
+// Triple Wide part only) and "A3" again, which were reverted 10/14 until CCI confirmed.
+function cciTripleMain(){
+  if(ACTIVE_MFR!=='CCI') return false;
+  var mw=parseInt((G('bw')||{}).value)||0, bt=G('btype')?G('btype').value:'';
+  return mw>=26 && mw<=30 && bt!=='widespan';
+}
 function connFeeFor(attachedSide, connLen){
   var bw=parseInt(G('bw').value)||0;
   var bt=G('btype')?G('btype').value:'';
@@ -5319,7 +5327,10 @@ function connFeeFor(attachedSide, connLen){
   // gable $700 + $25/5', Triple Wide side + $200) is REVERTED until CCI confirms (owner 10/14/26; CCI corrected Sensei's
   // lean-to prices 7/24/26 - leans are never calibrated to Sensei): a GABLE lean-to keeps its rule from before 10-14
   // ($700 + $25 per 5' past 21', below) and a Triple Wide side lean-to pays the book side fee (no + $200).
-  if(ACTIVE_MFR==='CCI' && !isWS && !isGable) return 100+Math.ceil(Math.max(0,connLen-21)/5)*25;
+  // Owner 11/5/26 ("Both" - Sensei's prices on 26'-30' mains, connection fee included): a Triple Wide (26'-30') SIDE lean-to
+  // pays the book side fee + $200 again, = Sensei (30x50 main $450 at 50', 10/12/26; 26x30 main $350 at 30', 11/5/26). A
+  // gable lean-to already pays Sensei's Triple Wide end rule ($700 + $25 per 5' past 21' = $750 at 30', below).
+  if(ACTIVE_MFR==='CCI' && !isWS && !isGable) return 100+Math.ceil(Math.max(0,connLen-21)/5)*25+((typeof cciTripleMain==='function'&&cciTripleMain())?200:0);
   if(ACTIVE_MFR==='CCI' && !isGable){
     // CCI eave connection — per lean, by lean length. Manufacturer-corrected
     // 2026-07-24: two 60' leans → $600 total ($300 each, check-marked by
@@ -5736,6 +5747,20 @@ function _ltLegTxt(el){
     return t?t+' Legs | ':'';
   }
   return low?_ltFtIn(low)+' Low Leg | ':'';
+}
+// Itemized lean-to rows on the quote PDF / contract (owner 11/5/26: show the size, the leg height and the connection fee
+// as their own lines, like Sensei). Leg-height row label = the legs text without its separator ("8' Low Leg").
+function _ltLegLbl(el){ return _ltLegTxt(el).replace(/ \| $/,'') || 'Leg Height'; }
+// Walls row label: "Fully Enclosed", or each wall that is not open with its option text ("Side: Closed, Back: 1/2 Closed").
+function _ltWallsTxt(el){
+  var w=getLTWalls(el);
+  if(w.mode==='enclosed') return 'Fully Enclosed';
+  var opt=function(cls){ var s=el.querySelector(cls), o=s&&s.options[s.selectedIndex]; return o?o.textContent:''; };
+  var p=[];
+  if(w.side!=='open') p.push('Side: '+opt('.lt-wall-side'));
+  if(w.front!=='open') p.push('Front: '+opt('.lt-wall-front'));
+  if(w.back!=='open') p.push('Back: '+opt('.lt-wall-back'));
+  return p.join(', ')||'Walls';
 }
 // Roof rise per 12 for DRAWINGS, read from the pitch the quote displays
 // (3:12 standard, 2:12 over 31' wide, or an upgrade). Was hard-coded 3/12.
@@ -7282,6 +7307,8 @@ function ltWrapUI(){
 // wallsOvr (optional, lean-to storage only): price the SAME lean-to with other
 // wall settings (a getLTWalls-shaped object from ltWallsAs). Every normal
 // caller passes one argument → walls come from getLTWalls(el), unchanged.
+// _ltNoTriple: true only while ltTripleExtra() prices the same lean-to WITHOUT the Triple Wide rule (owner 11/5/26).
+var _ltNoTriple=false;
 function ltUnit(el, wallsOvr){
   var w=parseInt(el.querySelector('.ltw').value)||0;
   var l=parseInt(el.querySelector('.ltl2').value)||0;
@@ -7316,6 +7343,16 @@ function ltUnit(el, wallsOvr){
     // per unit to the lean-to size and priced its height from the 26'-30' chart) is REVERTED until CCI confirms (owner
     // 10/14/26; Dealer Handbook p27 extra bows on 26'+ mains are priced only by "See Attachment"). A lean-to prices as
     // half of the 2W building on every main width, as before 10-14. "A4" (lengths round UP, connected units) stays.
+    // Owner 11/5/26 ("Both": Sensei's prices on 26'-30' mains) - "A3" is back. On a Triple Wide main (cciTripleMain) Sensei
+    // adds, per connected unit, half of (Boxed-Eave 30' - Vertical 24') at the unit's tier: 20' $250, 25' $300, 30' $350,
+    // 35' $450, 40' $500 (Sensei, all exact: 12x30 $2,497.50 on a 26' main 11/5/26 and on a 30' main, 12x50 $4,195, wrapped
+    // 42' $3,795, 62' $5,445, 10/12/26); the same for every lean-to width (only 12'-wide lean-tos were read in Sensei).
+    var _tripleLT=(!(typeof _ltNoTriple!=='undefined'&&_ltNoTriple) && typeof cciTripleMain==='function' && cciTripleMain()), _tripleP=0;
+    if(_tripleLT&&wi>=0){
+      var _i30=WIDTHS.indexOf(30), _i24=WIDTHS.indexOf(24);
+      for(var tj=0;tj<secs.length;tj++) _tripleP+=(((PB[secs[tj]]||[])[_i30]||0)-((PV[secs[tj]]||[])[_i24]||0))/2;
+      bp+=_tripleP;
+    }
     // Commercial / widespan main → the lean itself must be 170-certified and
     // prices off CCI's certified chart ("170 14g" on the corrected quote):
     // +$5.50/ft, single-point anchor (12x100 → +$550) pending CCI's
@@ -7326,7 +7363,9 @@ function ltUnit(el, wallsOvr){
     // Height: half of the (2W)-wide leg-height chart over the SAME length
     // sections (10'/60' → $490 and 12'/100' → $1,195, both exact).
     if(h>6){
-      var huT3=(vw<=24?HU_N:(vw<=30?HU_M:HU)); // the 2W chart on every main width (10-14 "A3" reverted, owner 10/14/26)
+      // the 2W chart; on a Triple Wide main the 26'-30' chart (owner 11/5/26, "A3" back: Sensei 8' x 30' $155, 12' x 30'
+      // $570, 12' x 50' $995 - exact). Lean-tos over 15' wide (2W past 30') keep their own chart, so never a lower price.
+      var huT3=(_tripleLT&&vw<=30)?HU_M:(vw<=24?HU_N:(vw<=30?HU_M:HU));
       var hk3=h<=16?h:(h<=18?18:20);
       var huRow=huT3[hk3]||huT3[16]||[];
       var huSum=0;
@@ -7397,6 +7436,24 @@ function ltUnit(el, wallsOvr){
   if(ltErr) _ltU.err=ltErr; // only an unpriced lean-to carries the key
   if(_wr) _ltU.wrapLen=_wr; // wrapped (CCI): the length its size, height and side wall were priced at
   return _ltU;
+}
+// What the Triple Wide rule (owner 11/5/26) adds to this build's attached lean-tos: size premium + the 26'-30' height chart
+// (ltUnit with and without the rule) + $200 per side connection. 0 off a Triple Wide main. Used by the reopened-quote price
+// lock to name the change on a quote saved before it.
+function ltTripleExtra(){
+  if(!cciTripleMain()) return 0;
+  var t=0;
+  document.querySelectorAll('.lte').forEach(function(el){
+    if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
+    var w=parseInt((el.querySelector('.ltw')||{}).value)||0, l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
+    if(!w||!l) return;
+    var now=ltUnit(el);
+    _ltNoTriple=true; var before; try{ before=ltUnit(el); } finally { _ltNoTriple=false; }
+    t+=(now.bp+now.heightAdj)-(before.bp+before.heightAdj);
+    var ls=(el.querySelector('.lts')||{}).value||'';
+    if(ls!=='Front Gable' && ls!=='Back Gable') t+=200;
+  });
+  return Math.round(t*100)/100;
 }
 function gLT(){
   var t=0;
@@ -7723,18 +7780,25 @@ function updateLTPriceNote(entry){
 }
 // Rep-only note (never printed): CCI attached lean-to sizes where Sensei's
 // lean end / base / height prices don't follow the half-of-2W method (round 3,
-// table C/D) — lean widths 6 and 13-24, any lean on a 26-30' (Triple Wide)
-// main, and widths 7 / 8 (Sensei's base is the 18-wide chart there: ours is
-// $100 / $50 lower at 40'). Prices are NOT changed (open CCI question); the
-// storage side part is right in all of these cases.
+// table C/D) — lean widths 6 and 13-24, and widths 7 / 8 (Sensei's base is the
+// 18-wide chart there: ours is $100 / $50 lower at 40'). Prices are NOT changed
+// (open CCI question); the storage side part is right in all of these cases.
+// (A lean on a 26-30' Triple Wide main was flagged here until 11/5/26, when the
+// owner had it priced like Sensei - cciTripleMain.)
 function ltSenseiDiffers(entry){
   if(ACTIVE_MFR!=='CCI') return '';
   if(((entry.querySelector('.lt-type')||{}).value)==='freestanding') return '';
   var w=parseInt((entry.querySelector('.ltw')||{}).value)||0, l=parseInt((entry.querySelector('.ltl2')||{}).value)||0;
   if(!w||!l) return '';
-  var mw=parseInt((G('bw')||{}).value)||0, why=[];
+  var why=[];
   if(w<9||w>12) why.push(w+"' wide lean-to");
-  if(mw>=26&&mw<=30) why.push("on a "+mw+"' (Triple Wide) main");
+  // 26'-30' (Triple Wide) main: size, leg height and connection fee are Sensei's since 11/5/26 (owner "Both"), but a closed
+  // or partial END wall still prices differently in Sensei there (round 3 item 7: 10x12 end $767.50 vs $700, 12x10 end $855
+  // vs $717.50 - no rule found yet), so a lean-to with one (or a storage room, which closes the back) keeps the note.
+  if(typeof cciTripleMain==='function' && cciTripleMain()){
+    var _wl=getLTWalls(entry), _stor=(typeof ltStorOn==='function' && ltStorOn(entry));
+    if(_wl.front!=='open' || _wl.back!=='open' || _stor) why.push("closed end on a "+(parseInt((G('bw')||{}).value)||0)+"' (Triple Wide) main");
+  }
   return why.join(', ');
 }
 function updateLTSenseiNote(entry){
@@ -9911,9 +9975,11 @@ function rc(){
   // Lean-to storage rooms get their own row (the Lean-Tos row shows the rest,
   // so the two still add up to what gLT charges). None → row hidden, Lean-Tos unchanged.
   var ltStorTotal=gLTStorage(), ltLeanOnly=Math.round((leanToTotal-ltStorTotal)*100)/100;
-  var _ltUnpriced=0, _ltJT=0; document.querySelectorAll('.lte').forEach(function(el){ var _u=ltUnit(el); if(_u.err) _ltUnpriced++; else if(_u.jTrim) _ltJT+=_u.jTrim; });
-  // CCI partial side: Sensei's automatic Side J Trim is inside the lean-to price — named here.
-  var pltK=G('plt-k'); if(pltK) pltK.textContent='Lean-Tos'+(_ltJT?' (incl. J trim '+fCD(_ltJT)+')':'');
+  var _ltUnpriced=0, _ltJT=0, _ltLH=0; document.querySelectorAll('.lte').forEach(function(el){ var _u=ltUnit(el); if(_u.err) _ltUnpriced++; else { if(_u.jTrim) _ltJT+=_u.jTrim; if(_u.w&&_u.l&&_u.heightAdj) _ltLH+=_u.heightAdj; } });
+  // CCI partial side: Sensei's automatic Side J Trim is inside the lean-to price — named here. So is the leg height
+  // (owner 11/5/26: "i dont see pricing for the 8' leg height").
+  var _ltIncl=[]; if(_ltLH) _ltIncl.push('leg height '+fCD(Math.round(_ltLH*100)/100)); if(_ltJT) _ltIncl.push('J trim '+fCD(_ltJT));
+  var pltK=G('plt-k'); if(pltK) pltK.textContent='Lean-Tos'+(_ltIncl.length?' (incl. '+_ltIncl.join(', ')+')':'');
   var pltEl=G('plt');
   if(pltEl){
     pltEl.textContent=_ltUnpriced ? ('⚠ '+_ltUnpriced+' not priced'+(ltLeanOnly?' · '+fCD(ltLeanOnly):'')) : (ltLeanOnly?fCD(ltLeanOnly):'—');
@@ -11898,7 +11964,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, tripleLean:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -12799,7 +12865,7 @@ function _restoreQuoteDataImpl(data, opts){
       else delete _aeM.dataset.aewUnset;
     }
   }
-  sy();
+  sy();
   // Re-run the building pass so size-driven rows (OC Spacing, fslean badges) match the restored quote.
   try{ if(typeof _prevOcWidth!=='undefined') _prevOcWidth=parseInt(G('bw').value)||0; doBld(); }catch(e){}
   rc();
@@ -13334,7 +13400,7 @@ async function printQuote(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */ if(_luJ.heightAdj) rows+=row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj); if(_luJ.encAdj) rows+=row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsQ=ltStorage(el); if(_lsQ.valid&&_lsQ.total) rows+=row('  '+ltStorageLabel(_lsQ),null,null,_lsQ.total);
       // Lean-to accessories
@@ -15064,8 +15130,10 @@ async function printContract(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */
       window._rvHlCur=_wHl; // a wrap added / changed since the order highlights the lean-to row only
+      if(_luJ.heightAdj) row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj);
+      if(_luJ.encAdj) row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsC=ltStorage(el);
       if(_lsC.valid&&_lsC.total){
@@ -18823,7 +18891,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'cci-freight-sep': { commit:'11-03', date:'11/3/26', text:"CCI freight is a separate charge - 3% of the building price before discounts on 62'-100' wide and on any CCI building of $60,000 or more; not discounted, not taxed, not in the deposit, due at installation (CCI by phone to the owner, 11/3/26)" },
-    'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
+    'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" },
+    'triple-lean': { commit:'11-05', date:'11/5/26', text:"CCI 26'-30' wide (Triple Wide) main: attached lean-tos priced like Sensei - size premium, the 26'-30' leg-height chart and +$200 on each side connection fee (owner 11/5/26)" }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
   // Customer-facing wording when a rule change is applied at no charge.
@@ -19003,6 +19072,14 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(mfr==='CCI' && !_ov3.lean12ga && (f['framing-upgrade']||'14')==='12' && bt!=='fslean' && typeof root.cci12GALeans==='function'){
       var gaL=r2(root.cci12GALeans());
       if(gaL) out.push({ k:'leanGa12', label:'Lean-to 12-gauge framing (as originally quoted)', amt:-gaL, rules:['lean-12ga'] });
+    }
+    // 1-tw) CCI Triple Wide (26'-30') main with attached lean-tos, saved before 11-05 (no tripleLean marker): the lean-tos were
+    //     priced without the Sensei Triple Wide rule (owner 11/5/26) - except saves made while release 10-14 had the same rule
+    //     live (10/14 17:00 - 10/15 11:04, reverted by 10-14d) (amt < 0: the saved price was lower)
+    var _t23=(savedT>=tms('2026-10-14T17:00:00-04:00') && savedT<tms('2026-10-15T11:05:00-04:00'));
+    if(mfr==='CCI' && !_ov3.tripleLean && !_t23 && rcl && !rcl.manual && typeof root.ltTripleExtra==='function'){
+      var twX=r2(root.ltTripleExtra());
+      if(twX) out.push({ k:'leanTriple', label:'Lean-to pricing (as originally quoted)', amt:-twX, rules:['triple-lean'] });
     }
     // 1-frtIn) CCI 62'-100' wide saved before 11-03: the 3% freight was inside the saved building price (it is a separate
     //     line now, held at $0 on such a quote) (amt > 0: the saved building price carried it)
