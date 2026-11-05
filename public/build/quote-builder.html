@@ -5737,6 +5737,20 @@ function _ltLegTxt(el){
   }
   return low?_ltFtIn(low)+' Low Leg | ':'';
 }
+// Itemized lean-to rows on the quote PDF / contract (owner 11/5/26: show the size, the leg height and the connection fee
+// as their own lines, like Sensei). Leg-height row label = the legs text without its separator ("8' Low Leg").
+function _ltLegLbl(el){ return _ltLegTxt(el).replace(/ \| $/,'') || 'Leg Height'; }
+// Walls row label: "Fully Enclosed", or each wall that is not open with its option text ("Side: Closed, Back: 1/2 Closed").
+function _ltWallsTxt(el){
+  var w=getLTWalls(el);
+  if(w.mode==='enclosed') return 'Fully Enclosed';
+  var opt=function(cls){ var s=el.querySelector(cls), o=s&&s.options[s.selectedIndex]; return o?o.textContent:''; };
+  var p=[];
+  if(w.side!=='open') p.push('Side: '+opt('.lt-wall-side'));
+  if(w.front!=='open') p.push('Front: '+opt('.lt-wall-front'));
+  if(w.back!=='open') p.push('Back: '+opt('.lt-wall-back'));
+  return p.join(', ')||'Walls';
+}
 // Roof rise per 12 for DRAWINGS, read from the pitch the quote displays
 // (3:12 standard, 2:12 over 31' wide, or an upgrade). Was hard-coded 3/12.
 function _pitchRise(){ var t=(G('pitch')||{}).textContent||''; var r=parseFloat(String(t).split(':')[0]); return r>0?r:3; }
@@ -9911,9 +9925,11 @@ function rc(){
   // Lean-to storage rooms get their own row (the Lean-Tos row shows the rest,
   // so the two still add up to what gLT charges). None → row hidden, Lean-Tos unchanged.
   var ltStorTotal=gLTStorage(), ltLeanOnly=Math.round((leanToTotal-ltStorTotal)*100)/100;
-  var _ltUnpriced=0, _ltJT=0; document.querySelectorAll('.lte').forEach(function(el){ var _u=ltUnit(el); if(_u.err) _ltUnpriced++; else if(_u.jTrim) _ltJT+=_u.jTrim; });
-  // CCI partial side: Sensei's automatic Side J Trim is inside the lean-to price — named here.
-  var pltK=G('plt-k'); if(pltK) pltK.textContent='Lean-Tos'+(_ltJT?' (incl. J trim '+fCD(_ltJT)+')':'');
+  var _ltUnpriced=0, _ltJT=0, _ltLH=0; document.querySelectorAll('.lte').forEach(function(el){ var _u=ltUnit(el); if(_u.err) _ltUnpriced++; else { if(_u.jTrim) _ltJT+=_u.jTrim; if(_u.w&&_u.l&&_u.heightAdj) _ltLH+=_u.heightAdj; } });
+  // CCI partial side: Sensei's automatic Side J Trim is inside the lean-to price — named here. So is the leg height
+  // (owner 11/5/26: "i dont see pricing for the 8' leg height").
+  var _ltIncl=[]; if(_ltLH) _ltIncl.push('leg height '+fCD(Math.round(_ltLH*100)/100)); if(_ltJT) _ltIncl.push('J trim '+fCD(_ltJT));
+  var pltK=G('plt-k'); if(pltK) pltK.textContent='Lean-Tos'+(_ltIncl.length?' (incl. '+_ltIncl.join(', ')+')':'');
   var pltEl=G('plt');
   if(pltEl){
     pltEl.textContent=_ltUnpriced ? ('⚠ '+_ltUnpriced+' not priced'+(ltLeanOnly?' · '+fCD(ltLeanOnly):'')) : (ltLeanOnly?fCD(ltLeanOnly):'—');
@@ -13334,7 +13350,7 @@ async function printQuote(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */ if(_luJ.heightAdj) rows+=row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj); if(_luJ.encAdj) rows+=row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsQ=ltStorage(el); if(_lsQ.valid&&_lsQ.total) rows+=row('  '+ltStorageLabel(_lsQ),null,null,_lsQ.total);
       // Lean-to accessories
@@ -15064,8 +15080,10 @@ async function printContract(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch"+_ljTxt,null,null,lp);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */
       window._rvHlCur=_wHl; // a wrap added / changed since the order highlights the lean-to row only
+      if(_luJ.heightAdj) row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj);
+      if(_luJ.encAdj) row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsC=ltStorage(el);
       if(_lsC.valid&&_lsC.total){
