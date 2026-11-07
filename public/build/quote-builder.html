@@ -814,7 +814,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div class="row" style="border-top:1px solid #e5e7eb;padding-top:8px;margin-top:4px">
     <label>Zoning Checklist &amp; Color Chart</label>
     <select id="zoning-show" style="display:none"><option value="show">Show on Quote</option><option value="hide">Hide from Quote</option></select>
-    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Always included as the last two pages of every quote PDF: the Pre-Order Zoning Checklist, then the manufacturer's color chart (CCI or CA).</div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:3px">Included as the last two pages of every quote PDF: the Pre-Order Zoning Checklist (left out when Permitting is No), then the manufacturer's color chart (CCI or CA).</div>
   </div>
   <div class="row"><label>Sales Tax (%)</label>
     <div class="pct"><input id="tax" type="number" value="6" min="0" max="15" step="0.25" oninput="rc()"></div>
@@ -11588,7 +11588,10 @@ function buildingPageHTML(prefixHTML){
 // elevations or the 3D rendering (the 3D page used to drop it). Returns '' when
 // the user hasn't enabled it (#zoning-show !== 'show').
 function zoningChecklistHTML(){
-  // Always included (owner 9/29/26: every quote ends with this + the color page).
+  // Always included (owner 9/29/26: every quote ends with this + the color page) - EXCEPT when Permitting is No (owner
+  // 11/7/26: "no plans needed, no permit needed - then the zoning check list isn't needed on the quotes"). Yes, Customer
+  // Will Verify and not picked yet keep it; the color page stays either way.
+  if(((G('perm')||{}).value)==='no') return '';
   // Same visual language as colorChartPageHTML so the last two pages read as a pair.
   var label='font-size:7.5pt;font-weight:800;letter-spacing:1.2px;color:#8aa3b5;text-transform:uppercase';
   var line='<div style="height:17px;border-bottom:1px solid #2a4258"></div>';
