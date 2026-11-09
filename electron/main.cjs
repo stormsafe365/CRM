@@ -33,6 +33,33 @@ const cleanPdfName = (name) => {
   return /\.pdf$/i.test(n) ? n : n + '.pdf';
 };
 
+// Where the Save dialog opens (owner 11/9/26: "id like if it opened to that persons file"): Desktop\QUOTES\<client>\,
+// the client being the part of the file name before "-StormSafe Steel " (the program names files "Client Name-StormSafe
+// Steel QTE (11.9)"). An existing folder with that name (any upper / lower case) is used; a new client gets a new folder,
+// which is removed again if the save is cancelled or goes elsewhere and the folder is still empty. No Desktop\QUOTES
+// folder: the file name only, as before (Windows opens the folder used last time); no client name: Desktop\QUOTES.
+function clientSavePath(fileName) {
+  const out = { defaultPath: fileName, made: null };
+  try {
+    const quotes = path.join(app.getPath('desktop'), 'QUOTES');
+    if (!fs.existsSync(quotes) || !fs.statSync(quotes).isDirectory()) return out;
+    const i = fileName.indexOf('-StormSafe Steel ');
+    const client = (i > 0 ? fileName.slice(0, i) : '').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+    if (!client) { out.defaultPath = path.join(quotes, fileName); return out; }
+    const key = client.toLowerCase();
+    const hit = fs.readdirSync(quotes, { withFileTypes: true })
+      .find((d) => d.isDirectory() && d.name.replace(/\s+/g, ' ').trim().toLowerCase() === key);
+    const dir = path.join(quotes, hit ? hit.name : client);
+    if (!hit) { fs.mkdirSync(dir); out.made = dir; }
+    out.defaultPath = path.join(dir, fileName);
+  } catch { /* keep the file name only */ }
+  return out;
+}
+function dropIfEmpty(dir) {
+  if (!dir) return;
+  try { if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir); } catch { /* ignore */ }
+}
+
 // Default file name for the NEXT PDF the user downloads from a viewer, set by
 // renderPdf (kept for other callers; the quote/contract buttons use savePdf).
 let pendingPdfName = null;
@@ -46,18 +73,20 @@ ipcMain.handle('ss:render-pdf', async (_evt, html, name) => {
 // real Windows Save dialog PRE-FILLED with e.g. "Tarek Gabra-StormSafe Steel QTE
 // (9.29).pdf" (the PDF viewer's own save button can't be pre-filled — it showed
 // a blank name), then open the saved file in an in-app viewer for preview.
-// defaultPath is just the file name, so Windows opens the folder used last time.
+// The dialog opens in the client's Desktop\QUOTES folder (clientSavePath, owner 11/9/26).
 ipcMain.handle('ss:save-pdf', async (evt, { html, suggestedName } = {}) => {
   try {
     const pdf = await htmlToPdfBuffer(html);
     const parent = BrowserWindow.fromWebContents(evt.sender) || BrowserWindow.getFocusedWindow() || undefined;
+    const where = clientSavePath(cleanPdfName(suggestedName));
     const { canceled, filePath } = await dialog.showSaveDialog(parent, {
       title: 'Save PDF',
-      defaultPath: cleanPdfName(suggestedName),
+      defaultPath: where.defaultPath,
       filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
     });
-    if (canceled || !filePath) return { ok: false, canceled: true };
+    if (canceled || !filePath) { dropIfEmpty(where.made); return { ok: false, canceled: true }; }
     fs.writeFileSync(filePath, pdf);
+    if (where.made && path.dirname(filePath).toLowerCase() !== where.made.toLowerCase()) dropIfEmpty(where.made);
     try {
       const viewer = new BrowserWindow({ width: 1100, height: 900, title: path.basename(filePath), webPreferences: { plugins: true } });
       viewer.setMenuBarVisibility(false);
