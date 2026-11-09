@@ -1007,6 +1007,13 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <input type="checkbox" id="pdf-dims" style="width:auto;margin:0;cursor:pointer">
     <label for="pdf-dims" style="font-weight:600;cursor:pointer">Add dimensioned spacing page (exact placement &amp; distances)</label>
   </div>
+  <div style="margin-top:6px;display:flex;align-items:center;gap:7px;font-size:11px;color:#8aa3b5">
+    <label for="dim-units" style="font-weight:600;white-space:nowrap">Opening sizes:</label>
+    <select id="dim-units" style="flex:1;border:1px solid var(--bv);border-radius:5px;padding:5px 8px;font-size:11px;color:var(--tx);font-weight:600;background:var(--d4)">
+      <option value="ftin" selected>Feet &amp; inches (3'0&#188;&quot; &#215; 5'2&#188;&quot;)</option>
+      <option value="in">Inches (36&#188;&quot; &#215; 62&#188;&quot;) - quote + contract</option>
+    </select>
+  </div>
   <div class="qstyle" role="radiogroup" aria-label="Quote style for SAVE / PRINT PDF">
     <span class="qstyle-l">Quote style:</span>
     <span class="qstyle-o">
@@ -11843,6 +11850,8 @@ function collectQuoteData(){
     'notes','ct-billaddr','ct-siteaddr','ct-pay','ct-elec','ct-prim','ct-ready','ct-honor','ct-honor-ref',
     // Conditional clause (11/2/26): the reason + the "conditional upon" text (other)
     'ct-cond','ct-cond-why',
+    // Spacing page opening sizes in inches (owner 11/9/26) - the contract and a reopened quote print the same
+    'dim-units',
     // v3: Roof Style was never saved ('brs' above is a dead id, kept for old readers) —
     // every Regular / Boxed Eve quote reopened as Vertical.
     'rs',
@@ -12129,7 +12138,7 @@ function printRevisionForm(fromUse){
     var sizeNote='';
     if(comp.indexOf('(Custom Size)')>=0){
       var s=foCustomFeet(el);
-      var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
+      var du=el.querySelector('.fo-disp-unit'); var dispIn=(du&&du.value==='in')||dimUnitsIn();
       if(dispIn) sizeNote=' ('+_dimIn(s.w)+' x '+_dimIn(s.h)+')';
       else sizeNote=' ('+_dimFtIn(s.w)+' x '+_dimFtIn(s.h)+')'; // one dimension formatter (10/6/26)
     }
@@ -12301,7 +12310,8 @@ async function printRevisedLayout(){
         var side=posRows[i].querySelector('.pos-toggle button.active');
         if(inp&&inp.value) pos=posDescribe(loc, inp.value, side?side.dataset.side:'left');
       }
-      walls[wallKey(loc)].push({tag:tagNum++, type:'Roll-Up Door', size:sz.replace('x',"' × ")+"'", pos:pos});
+      var _rz=String(sz).split('x');
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Roll-Up Door', size:(dimUnitsIn()&&parseFloat(_rz[0])>0&&parseFloat(_rz[1])>0)?(_dimIn(parseFloat(_rz[0]))+' × '+_dimIn(parseFloat(_rz[1]))):(sz.replace('x',"' × ")+"'"), pos:pos});
     }
   });
   document.querySelectorAll('.we').forEach(function(el){
@@ -12315,7 +12325,7 @@ async function printRevisedLayout(){
         var side=posRows[i].querySelector('.pos-toggle button.active');
         if(inp&&inp.value) pos=posDescribe(loc, inp.value, side?side.dataset.side:'left');
       }
-      walls[wallKey(loc)].push({tag:tagNum++, type:'Walk-Through Door', size:_dimFtIn(3)+' × '+_dimFtIn(80/12), pos:pos});
+      walls[wallKey(loc)].push({tag:tagNum++, type:'Walk-Through Door', size:(dimUnitsIn()?_dimIn(3)+' × '+_dimIn(80/12):_dimFtIn(3)+' × '+_dimFtIn(80/12)), pos:pos});
     }
   });
   document.querySelectorAll('.ne').forEach(function(el){
@@ -12342,10 +12352,10 @@ async function printRevisedLayout(){
     var sizeNote='';
     if(comp.indexOf('(Custom Size)')>=0){
       var s=foCustomFeet(el);
-      var du=el.querySelector('.fo-disp-unit'); var dispIn=du&&du.value==='in';
+      var du=el.querySelector('.fo-disp-unit'); var dispIn=(du&&du.value==='in')||dimUnitsIn();
       if(dispIn) sizeNote=_dimIn(s.w)+' × '+_dimIn(s.h);
       else sizeNote=_dimFtIn(s.w)+' × '+_dimFtIn(s.h);
-    } else { var _fd=ovlFoDims(el,comp); if(_fd) sizeNote=_dimFtIn(_fd.w)+' × '+_dimFtIn(_fd.h); } // stock framed openings: their size too
+    } else { var _fd=ovlFoDims(el,comp); if(_fd) sizeNote=dimUnitsIn()?(_dimIn(_fd.w)+' × '+_dimIn(_fd.h)):(_dimFtIn(_fd.w)+' × '+_dimFtIn(_fd.h)); } // stock framed openings: their size too
     var posRows=el.querySelectorAll('.pos-row');
     for(var i=0;i<qty;i++){
       var pos='Auto-spaced';
@@ -14122,6 +14132,8 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
   o+='</svg>';
   return o;
 }
+// Owner 11/9/26: every opening's W×H + sill on the spacing page in inches (#dim-units, saved with the quote).
+function dimUnitsIn(){ var e=(typeof G==='function')?G('dim-units'):null; return !!(e&&e.value==='in'); }
 // One dimensioned elevation (SVG). `items` = {type,x,w,h,yo?,dispUnit?} from
 // collectElevItems (or the lean-to partition's ltPartLayout). `x` extras:
 // {pitch, ends:[left,right], sideLeans:[{l,onLeft,closed}], foot:[{l,x0}],
@@ -14217,7 +14229,7 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   sorted.forEach(function(it){
     var yo=it.yo||0; blocks.push({x0:X(it.x),x1:X(it.x+it.w),y0:Y(yo+it.h),y1:Y(yo)});
     // its W×H label as the opening loop below draws it — a narrow door's text is wider than its rectangle
-    var lf=(it.type==='fo'&&it.dispUnit==='in')?_dimIn:_dimFtIn, ln=(lf(it.w)+'×'+lf(it.h)).length, ls=(it.w*s<56)?8:9.5, lb=(it.h*s>=26)?Y(yo+it.h)+13:Y(yo+it.h)+it.h*s/2+3, lcx=X(it.x+it.w/2);
+    var lf=((typeof dimUnitsIn==='function'&&dimUnitsIn())||(it.type==='fo'&&it.dispUnit==='in'))?_dimIn:_dimFtIn, ln=(lf(it.w)+'×'+lf(it.h)).length, ls=(it.w*s<56)?8:9.5, lb=(it.h*s>=26)?Y(yo+it.h)+13:Y(yo+it.h)+it.h*s/2+3, lcx=X(it.x+it.w/2);
     blocks.push({x0:lcx-ln*ls*0.3-2,x1:lcx+ln*ls*0.3+2,y0:lb-ls,y1:lb+3});
     if(yo>0.1){ var scx=X(it.x+it.w/2), scy=(Y(0)+Y(yo))/2; blocks.push({x0:scx-28,x1:scx+28,y0:scy-6,y1:scy+8}); } // its sill label
   });
@@ -14351,7 +14363,7 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   // spacing chain, overall and leg height below always stay in feet-inches).
   sorted.forEach(function(it){
     var yo=it.yo||0, fo=(it.type==='fo'), k=DIM_K[it.type]?it.type:'fo', col=DIM_K[k];
-    var rx=X(it.x), ry=Y(yo+it.h), rw=it.w*s, rh=it.h*s, _f=(fo&&it.dispUnit==='in')?_dimIn:_dimFtIn;
+    var rx=X(it.x), ry=Y(yo+it.h), rw=it.w*s, rh=it.h*s, _f=((typeof dimUnitsIn==='function'&&dimUnitsIn())||(fo&&it.dispUnit==='in'))?_dimIn:_dimFtIn; // #dim-units (11/9/26)
     o+='<rect x="'+rx+'" y="'+ry+'" width="'+rw.toFixed(1)+'" height="'+rh.toFixed(1)+'" fill="url(#'+id+k+')" stroke="'+col+'" stroke-width="1.1"'+(fo?' stroke-dasharray="5 3"':'')+'/>';
     if(it.type==='win') o+='<line x1="'+(rx+rw/2).toFixed(1)+'" y1="'+ry+'" x2="'+(rx+rw/2).toFixed(1)+'" y2="'+(ry+rh).toFixed(1)+'" stroke="'+col+'" stroke-opacity=".45" stroke-width=".8"/><line x1="'+rx+'" y1="'+(ry+rh/2).toFixed(1)+'" x2="'+(rx+rw).toFixed(1)+'" y2="'+(ry+rh/2).toFixed(1)+'" stroke="'+col+'" stroke-opacity=".45" stroke-width=".8"/>';
     if(it.type==='wtd') o+='<circle cx="'+(rx+rw*.8).toFixed(1)+'" cy="'+(ry+rh*.55).toFixed(1)+'" r="'+Math.max(1.5,s*.12).toFixed(1)+'" fill="'+col+'"/>';
@@ -14541,7 +14553,7 @@ function dimSpacingPageHTML(theme){
     '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">'+
     '<div style="font-size:11pt;font-weight:700;letter-spacing:2px;color:'+(dark?'#1fcec4':'#0D1B2A')+';margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid '+(dark?'#1fcec4':'#1B8A8A')+';text-transform:uppercase">Dimensioned Layout &amp; Spacing</div>'+
     strip+html+
-    '<div style="margin-top:4px;font-size:8pt;color:'+(dark?'#8aa3b5':'#64748b')+';text-align:center">All dimensions measured along grade from the wall corners.'+(clr?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
+    '<div style="margin-top:4px;font-size:8pt;color:'+(dark?'#8aa3b5':'#64748b')+';text-align:center">All dimensions measured along grade from the wall corners.'+(dimUnitsIn()?' &nbsp;Opening sizes and sills in inches.':'')+(clr?' &nbsp;Center &amp; peak clearances are CCI approximate figures (Dealer Handbook).':'')+' &nbsp;Building '+W+"' W × "+L+"' L × "+H+"' H.</div>"+
   '</div>';
 }
 
@@ -15593,6 +15605,7 @@ async function printContract(){
       return {fill:'#f3f4f6', stroke:'#4b5563', code:'C7'};
     }
     function sizeLabel(it){
+      if(typeof dimUnitsIn==='function'&&dimUnitsIn()) return _dimIn(it.w)+'\u00D7'+_dimIn(it.h); // #dim-units (11/9/26): every opening in inches
       if(it.type==='wtd' || it.type==='win') return _dimIn(it.w)+'\u00D7'+_dimIn(it.h); // the real size (a 30×36 window too)
       // rollup: w × h, formatted
       var wl = (Math.abs(it.w - Math.round(it.w)) < 0.01) ? Math.round(it.w)+"'" : fmtFt(it.w);
@@ -17385,7 +17398,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
       //   - LARGE  (fow > 28 px AND foh > 22 px): two-line "16'×12'" + "FRAMED OPENING"
       //   - MEDIUM (fow > 16 px AND foh > 10 px): single-line size only
       //   - TINY:   just "F.O." (label can't fit any size)
-      function _foD(v){ return _dimFtIn(v); } // one dimension formatter (10/6/26)
+      function _foD(v){ return (typeof dimUnitsIn==='function'&&dimUnitsIn())?_dimIn(v):_dimFtIn(v); } // one dimension formatter (10/6/26); #dim-units (11/9/26)
       var _sizeLbl = _foD(it.w) + "\u00D7" + _foD(it.h);
       var _bigSz = Math.max(7, Math.min(16, fow * 0.10));
       var _smSz  = Math.max(4.5, Math.min(8, fow * 0.055));
