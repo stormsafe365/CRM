@@ -45,6 +45,9 @@ export default function ReceiptModal({ client, quote, onClose }) {
   })
   // Remaining auto-tracks total − amount until the rep types their own number
   // (earlier payments may already be in — the math can't know that).
+  // CCI orders: name Carolina Carports on the bill of sale? Owner 11/9/26: "Its our bill of sale for the deposit, i dont
+  // think its necessary ... it should give the option - list manufacturer - yes/no" -> default No (StormSafe's own).
+  const [listMfr, setListMfr] = useState(false)
   const remTouched = useRef(false)
   const autoRemaining = useMemo(() => {
     const amt = Number(form.amount)
@@ -73,6 +76,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
           appliedTo: form.appliedTo,
           remaining: Number(remaining) || 0,
           note: form.note.trim(),
+          listMfr: isCCI && listMfr,
         },
       })
       const blob = await renderQuotePdf(html)
@@ -110,8 +114,18 @@ export default function ReceiptModal({ client, quote, onClose }) {
         <h2 style={{ margin: '2px 0 4px', fontSize: 17 }}>{docLabel}</h2>
         <p style={{ margin: '0 0 6px', color: 'var(--fg-3, #8598AC)', fontSize: 13 }}>
           {client?.name || 'Client'}{quote?.quote_number ? ` · Quote #${quote.quote_number}` : ''}{total ? ` · Total ${usd(total)}` : ''}
-          {isCCI ? ' · Seller: Carolina Carports, Inc.' : ''}
+          {isCCI && listMfr ? ' · Seller: Carolina Carports, Inc.' : ''}
         </p>
+
+        {isCCI && (
+          <>
+            <label style={LBL}>List manufacturer on the bill of sale</label>
+            <select style={FIELD} value={listMfr ? 'yes' : 'no'} onChange={(e) => setListMfr(e.target.value === 'yes')}>
+              <option value="no">No — StormSafe Steel only</option>
+              <option value="yes">Yes — name Carolina Carports, Inc. (seller / manufacturer)</option>
+            </select>
+          </>
+        )}
 
         <label style={LBL}>Amount Received ($) *</label>
         <input style={FIELD} type="number" min="0" step="0.01" value={form.amount} autoFocus

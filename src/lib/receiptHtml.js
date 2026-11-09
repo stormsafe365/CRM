@@ -28,7 +28,10 @@ const fmtDate = (iso) => {
  *   client: { name, email, phone, city, state },
  *   quote:  { quote_number, building_size, building_summary, total_amount },
  *   receipt: { number, date (yyyy-mm-dd), amount, method, reference,
- *              appliedTo, remaining, note }
+ *              appliedTo, remaining, note, listMfr }
+ *   listMfr (CCI orders): true = name Carolina Carports as seller / manufacturer (as before 11/9/26);
+ *   anything else = StormSafe's own bill of sale, no manufacturer named (owner 11/9/26: "Its our bill of sale
+ *   for the deposit ... it should give the option - list manufacturer - yes/no").
  * }
  */
 export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
@@ -39,6 +42,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   // is their BILL OF SALE (same liability treatment as the CCI contract), with
   // StormSafe as the authorized dealer.
   const isCCI = String(quote.manufacturer || '').toLowerCase() === 'cci'
+  const named = isCCI && receipt.listMfr === true // name the manufacturer (the rep's choice; default No)
   const docTitle = isCCI ? 'Bill of Sale' : 'Payment Receipt'
   const rows = [
     ['Payment Date', fmtDate(receipt.date)],
@@ -46,15 +50,15 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     receipt.reference ? ['Reference #', receipt.reference] : null,
     ['Applied To', receipt.appliedTo || 'Deposit'],
     quote.quote_number ? ['Quote / Order #', quote.quote_number] : null,
-    isCCI ? ['Seller', 'Carolina Carports, Inc.'] : null,
-    isCCI ? ['Dealer', 'StormSafe Steel'] : null,
+    named ? ['Seller', 'Carolina Carports, Inc.'] : null,
+    named ? ['Dealer', 'StormSafe Steel'] : null,
   ].filter(Boolean)
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>${esc(receipt.number || docTitle)} — ${isCCI ? 'Carolina Carports, Inc.' : 'StormSafe Steel'}</title>
+<title>${esc(receipt.number || docTitle)} — ${named ? 'Carolina Carports, Inc.' : 'StormSafe Steel'}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -123,7 +127,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     <div>
       <div class="wordmark">Storm<span class="safe">Safe</span> Steel</div>
       <div class="tagline">Hurricane-Rated Steel Buildings · West Palm Beach, FL</div>
-      ${isCCI ? '<div class="seller">Building manufactured &amp; sold by <b>Carolina Carports, Inc.</b> — StormSafe Steel, Authorized Dealer</div>' : ''}
+      ${named ? '<div class="seller">Building manufactured &amp; sold by <b>Carolina Carports, Inc.</b> — StormSafe Steel, Authorized Dealer</div>' : ''}
     </div>
     <div class="doc-type">
       <div class="t">${docTitle}</div>
@@ -155,7 +159,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     </div>
   </div>
 
-  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div>${isCCI ? '<div class="d" style="color:#64748b;font-size:9pt;margin-top:3px">Manufacturer: Carolina Carports, Inc. (CCI)</div>' : ''}</div>` : ''}
+  ${building ? `<div class="bldg"><h3>Building</h3><div class="d">${esc(building)}</div>${named ? '<div class="d" style="color:#64748b;font-size:9pt;margin-top:3px">Manufacturer: Carolina Carports, Inc. (CCI)</div>' : ''}</div>` : ''}
 
   <table class="acct">
     <tr><th>Account Summary</th><th>Amount</th></tr>
@@ -175,12 +179,16 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
       (561) 771-5555 · ops@stormsafesteel.com · stormsafesteel.com
     </div>
     <div class="legal">
-      ${isCCI
+      ${named
         ? `This bill of sale confirms receipt of the payment shown above toward
       the building described, manufactured and sold by Carolina Carports, Inc.
       (CCI). StormSafe Steel is an authorized Carolina Carports dealer.
       Remaining balances are due per your signed Carolina Carports purchase
       agreement and its terms &amp; conditions.`
+        : isCCI
+        ? `This bill of sale confirms receipt of the payment shown above toward
+      the building described. Remaining balances are due per your signed
+      purchase agreement and its terms &amp; conditions.`
         : `This document confirms receipt of the payment shown above and is not an
       invoice. Remaining balances are due per your signed purchase agreement.
       Prices subject to change based on steel market conditions and local
