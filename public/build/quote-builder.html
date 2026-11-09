@@ -6367,6 +6367,34 @@ function insulEndAdd(w){
   }
   return add;
 }
+// CCI "Roof & Walls" insulation next to a FULLY ENCLOSED eave lean-to (CCI 11/9/26 on order SS-2026-69096, Michael Bescript:
+// walls 2,100 sq ft = left building wall 16' x 70 (open lean-to: nothing changes) + the right enclosed lean-to's outer wall at its
+// 10' low leg + the 4' of building wall above its roof (16' - 12'4" high side, rounded UP to the foot); owner 11/9/26: "Match CCI
+// exactly" - the lean-to's roof and end walls are not added). Returns the change in side-wall sq ft (0 or less) for the main
+// building's insulation: each fully enclosed (side + both ends Closed) Left / Right Eave lean-to replaces the building wall it
+// covers (its length, up to the building length) with its low leg + the strip above it (a continuous lean-to meets the eave:
+// no strip). Free-standing, gable and partly open lean-tos: 0. window._insEncOff (price lock only): 0 = the rule before 11/9/26.
+function cciInsulEncLeanAdj(h, L){
+  if(ACTIVE_MFR!=='CCI' || window._insEncOff || !(h>0) || !(L>0)) return 0;
+  var d=0, cov={};
+  document.querySelectorAll('.lte').forEach(function(el){
+    if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
+    var side=(el.querySelector('.lts')||{}).value||'';
+    if(side!=='Left Eave' && side!=='Right Eave') return;
+    var wl=getLTWalls(el);
+    if(!(wl.sideClosed && wl.frontClosed && wl.backClosed)) return;
+    var lw=parseFloat((el.querySelector('.ltw')||{}).value)||0, ll=parseFloat((el.querySelector('.ltl2')||{}).value)||0;
+    var cont=((el.querySelector('.ltst')||{}).value==='cont');
+    var low=parseFloat(((cont?el.querySelector('.lth-cont'):null)||el.querySelector('.lth')||{}).value)||0;
+    var pn=((el.querySelector('.ltp')||{}).value==='3:12')?3:2;
+    if(!(lw>0) || !(ll>0) || !(low>0) || low>=h) return;
+    var len=Math.min(ll, L-(cov[side]||0)); if(!(len>0)) return;
+    cov[side]=(cov[side]||0)+len;
+    var strip=cont?0:Math.max(0, Math.ceil(h-(low+lw*pn/12)-1e-9));
+    d+=len*(Math.min(h, low+strip)-h);
+  });
+  return Math.round(d*100)/100;
+}
 function gInsul(){
   var insulSel=G('insul-sel');
   if(!insulSel||insulSel.value==='none') return 0;
@@ -6391,7 +6419,7 @@ function gInsul(){
   var roofCost=Math.round((w+2)*insulL*INSUL_RATE);
   var wallCost=0;
   if(insulSel.value==='roof-walls'){
-    var sideWall=Math.round(insulL*h*2*INSUL_RATE);
+    var sideWall=Math.round((insulL*h*2+(bt==='gch'?0:cciInsulEncLeanAdj(h, insulL)))*INSUL_RATE); // enclosed lean-to: its outer wall (CCI 11/9/26)
     // End walls: + 2' for the gable section; CCI 32'-60' wide (10/14/26, audit F31): Dealer Handbook p22 "For 32' - 50'
     // Wide Buildings, add 3' to the end wall height / For 52' - 60' Wide Buildings, add 4'" (Sensei 40x60x14 $8,340).
     var _iAdd=insulEndAdd(w); // same add as the on-screen note (insulEndAdd); CCI pitch chart 10/22/26
@@ -10020,8 +10048,9 @@ function rc(){
         if(gchEncL>0 && gchEncL<il){ insulDisplayL=gchEncL; gchNote=' (enclosed '+gchEncL+"\' only)"; }
       }
       var roofCost2=Math.round((iw+2)*insulDisplayL*INSUL_RATE);
-      var wallCost2=insulSel2.value==='roof-walls'?Math.round(insulDisplayL*ih*2*INSUL_RATE)+Math.round(iw*(ih+insulEndAdd(iw))*2*INSUL_RATE):0;
-      insulNoteEl.textContent='Roof: '+(iw+2)+'\' × '+insulDisplayL+'\' = '+((iw+2)*insulDisplayL).toLocaleString()+' sqft ($'+roofCost2.toLocaleString()+')'+(wallCost2?' + Walls: $'+wallCost2.toLocaleString():'')+gchNote;
+      var _encAdj2=(insulSel2.value==='roof-walls' && G('btype').value!=='gch')?cciInsulEncLeanAdj(ih, insulDisplayL):0; // CCI 11/9/26
+      var wallCost2=insulSel2.value==='roof-walls'?Math.round((insulDisplayL*ih*2+_encAdj2)*INSUL_RATE)+Math.round(iw*(ih+insulEndAdd(iw))*2*INSUL_RATE):0;
+      insulNoteEl.textContent='Roof: '+(iw+2)+'\' × '+insulDisplayL+'\' = '+((iw+2)*insulDisplayL).toLocaleString()+' sqft ($'+roofCost2.toLocaleString()+')'+(wallCost2?' + Walls: $'+wallCost2.toLocaleString()+(_encAdj2?' (enclosed lean-to side: its outer wall, not the building wall inside it)':''):'')+gchNote;
     }
   }
   // Sheeting upgrade line in breakdown
@@ -11957,7 +11986,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, wideLean:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, wideLean:1, insulLean:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -18885,6 +18914,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'cci-freight-sep': { commit:'11-03', date:'11/3/26', text:"CCI freight is a separate charge - 3% of the building price before discounts on 62'-100' wide and on any CCI building of $60,000 or more; not discounted, not taxed, not in the deposit, due at installation (CCI by phone to the owner, 11/3/26)" },
+    'insul-enc-lean': { commit:'11-09d', date:'11/9/26', text:"CCI Roof & Walls insulation next to a fully enclosed eave lean-to: the lean-to's outer wall (low leg) + the building wall above its roof (rounded up), not the building wall inside it (CCI on order SS-2026-69096, 11/9/26)" },
     'wide-lean-1109': { commit:'11-09c', date:'11/9/26', text:"CCI 13'-15' (14') lean-to: priced as its own carport unit at the CCI column (14' = 18'): full size, full end walls, the 12'-24' leg-height chart halved, and its own 12 gauge row (170 MPH 4' centers row at 4' centers) - CCI's corrections on order SS-2026-69096 (11/9/26)" },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
   };
@@ -19072,6 +19102,14 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(mfr==='CCI' && !_ov3.wideLean && bt!=='fslean' && typeof root.cciWideLtDrift==='function'){
       var wlD=r2(root.cciWideLtDrift(!!_ov3.lean12ga && (f['framing-upgrade']||'14')==='12'));
       if(wlD) out.push({ k:'wideLean', label:'Lean-tos (as originally quoted)', amt:wlD, rules:['wide-lean-1109'] });
+    }
+    // 1-ins) CCI Roof & Walls insulation saved before 11/9/26 (no insulLean marker) next to a fully enclosed eave lean-to: the
+    //     building wall inside the lean-to was insulated; now the lean-to's outer wall + the strip above it (amt > 0: saved higher)
+    if(mfr==='CCI' && !_ov3.insulLean && f['insul-sel']==='roof-walls' && bt!=='fslean' && bt!=='gch' && typeof root.cciInsulEncLeanAdj==='function' && typeof root.gInsul==='function'){
+      var inNow=root.gInsul(), inOld=inNow;
+      root._insEncOff=true; try{ inOld=root.gInsul(); } finally { root._insEncOff=false; }
+      var inD=r2(inOld-inNow);
+      if(inD) out.push({ k:'insulLean', label:'Insulation (as originally quoted)', amt:inD, rules:['insul-enc-lean'] });
     }
     // 1-frtIn) CCI 62'-100' wide saved before 11-03: the 3% freight was inside the saved building price (it is a separate
     //     line now, held at $0 on such a quote) (amt > 0: the saved building price carried it)
