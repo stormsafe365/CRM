@@ -5791,23 +5791,54 @@ function cciCombo12x4(fu, oc, w, bt, l){
 // connected unit past 40' - CCI's own breakdown for order SS-2026-02861 (Tim, 10/28/26): 12x50 lean on a 12-gauge 30x50 = $480
 // (25'+25'); Sensei read 9/30/26: $330 on a 40' lean. Free-standing lean-tos price their own 12 gauge (fsG12). Added to the
 // 12-Gauge Framing line like the lean-to 4' OC (cciOC4Leans); published as ga12Lean for the price lock.
+// CCI LEAN-TOS WIDER THAN 12' (CCI 11/9/26, hand corrections on order SS-2026-69096, Michael Bescript: two 14x70 lean-tos on
+// a 30x70x16 12-gauge, Palm Beach; owner 11/9/26: "Yes, all over 12'"). CCI's widest standard lean-to is 12' (Dealer Handbook
+// p24), so a wider attached lean-to prices as its OWN carport unit at the CCI width column - see ltUnit and cci12GALeanOf.
+// window._ltWideOff (set only by the price lock's cciWideLtDrift) prices them the way they were before 11/9/26.
+function cciWideLean(w){ return !window._ltWideOff && w>12; }
+// The CCI width column for a lean-to over 12': 14' and 16' are not CCI widths -> the 18' column (the 10-9b rule, 13'-17' = 18');
+// odd widths price as the next even width.
+function cciLeanCol(w){ var c=(w%2)?w+1:w; return c<18?18:c; }
+// The building is framed at 4' centers: the 4' OC option, or a 26'+ wide / wide-span main (they come with 4' centers or less).
+function cciLean4C(){ var mw=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||''; return ((G('oc-spacing')||{}).value==='4oc') || mw>24 || bt==='widespan'; }
+// The 12 gauge of ONE attached lean-to (0 when free-standing / not sized): 12' and under = the 12'-24' "12G 5' Centers" row at
+// its length (10-28b, above); over 12' (cciWideLean) = its own unit's row - "12G 170mph 4' Centers" 360/480/600/720/840 when
+// the building is at 4' centers (CCI 11/9/26: 14x70 = 720 + 720 = $1,440), else the 5' row. Per connected unit past 40'.
+function cciLeanGa4(el){ return cciWideLean(parseInt((el.querySelector('.ltw')||{}).value)||0) && cciLean4C(); }
+function cci12GALeanOf(el){
+  if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return 0;
+  var l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
+  if(!l||!(parseInt((el.querySelector('.ltw')||{}).value)>0)) return 0;
+  var V=cciLeanGa4(el)?[360,480,600,720,840]:[210,240,270,300,330];
+  return l>40 ? cciUnitSum(l,V) : V[cciColUp(l)]; // a length between two columns rounds UP, like every CCI option
+}
 function cci12GALeans(){
-  var t=0,V=[210,240,270,300,330];
-  document.querySelectorAll('.lte').forEach(function(el){
-    if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
-    var l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
-    if(!l||!(parseInt((el.querySelector('.ltw')||{}).value)>0)) return;
-    if(l>40){ t+=cciUnitSum(l,V); return; }
-    t+=V[cciColUp(l)]; // a length between two columns rounds UP, like every CCI option
-  });
+  var t=0;
+  document.querySelectorAll('.lte').forEach(function(el){ t+=cci12GALeanOf(el); });
   return t;
 }
-function cciOC4Leans(){
+// Price lock (detector 'wide-lean-1109'): the lean-tos over 12' priced the way they were before 11/9/26 minus today (old - new;
+// size, leg height, walls, storage). withGa: their 12 gauge too (a 12-gauge main saved with the 10-28 lean-to 12 gauge).
+function cciWideLtDrift(withGa){
+  if(ACTIVE_MFR!=='CCI') return 0;
+  var d=0;
+  document.querySelectorAll('.lte').forEach(function(el){
+    if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
+    if(!cciWideLean(parseInt((el.querySelector('.ltw')||{}).value)||0)) return;
+    var nowU=ltUnit(el).total+ltStorage(el).total+(withGa?cci12GALeanOf(el):0), oldU=nowU;
+    window._ltWideOff=true;
+    try{ oldU=ltUnit(el).total+ltStorage(el).total+(withGa?cci12GALeanOf(el):0); } finally { window._ltWideOff=false; }
+    d+=oldU-nowU;
+  });
+  return Math.round(d*100)/100;
+}
+function cciOC4Leans(narrowOnly){ // narrowOnly: lean-tos of 12' and under only (the 12GA + 4' OC rep note)
   var t=0,S=[20,25,30,35,40],V=[300,325,350,375,400];
   document.querySelectorAll('.lte').forEach(function(el){
     if(((el.querySelector('.lt-type')||{}).value)==='freestanding') return;
     var l=parseInt((el.querySelector('.ltl2')||{}).value)||0;
     if(!l||!(parseInt((el.querySelector('.ltw')||{}).value)>0)) return;
+    if(narrowOnly && cciWideLean(parseInt((el.querySelector('.ltw')||{}).value)||0)) return;
     if(l>40){ t+=cciUnitSum(l,V); return; }
     t+=V[cciColUp(l)]; // a length between two columns rounds UP (audit PB-9; owner 10/14/26 - was rounding down)
   });
@@ -5835,7 +5866,7 @@ function cciLadder12(w, h, bt){ return ACTIVE_MFR==='CCI' && w>24 && w<=30 && h>
 function cciTripleWide12GA(w, h, l, bt){ return cciLadder12(w, h, bt) ? cciCom12GA(l) : cci12GA(l); }
 // The breakdown row's name follows the documents: "12-Gauge Framing (commercial ladder legs)" when the commercial row priced
 // the line (_qTotals.ladder12), else "12GA Framing Upgrade" as before. NEWTOOL's Quote tab / Sales Quote prints this name.
-function _pfrLabel(lad){ var e=G('pfr'), k=e&&e.parentNode&&e.parentNode.querySelector('.pk'); if(!k) return; var t=lad?'12-Gauge Framing (commercial ladder legs)':'12GA Framing Upgrade'; if(k.textContent!==t) k.textContent=t; }
+function _pfrLabel(lad, gl){ var e=G('pfr'), k=e&&e.parentNode&&e.parentNode.querySelector('.pk'); if(!k) return; var t=lad?'12-Gauge Framing (commercial ladder legs)':'12GA Framing Upgrade'; if(+gl>0) t+=' (incl. lean-tos '+fC(+gl)+')'; if(k.textContent!==t) k.textContent=t; }
 function winRowLabel(v){
   var arr=(MFR().winTypes||[]);
   for(var i=0;i<arr.length;i++){ if(arr[i].v===v) return arr[i].label+' Window'; }
@@ -7317,15 +7348,20 @@ function ltUnit(el, wallsOvr){
     // Verified line-for-line against CCI's corrected 12x60-continuous and
     // 12x100-step-down quotes; continuous and step-down price identically.
     var vw=2*w; if(vw%2) vw++;
+    // CCI 11/9/26 (hand corrections on order SS-2026-69096; owner 11/9/26: every lean-to over 12'): a lean-to WIDER than 12'
+    // prices as its OWN carport unit at the CCI column (cciLeanCol: 14' / 16' = 18'): the FULL size (18x35 $3,595 x 2 = $7,190
+    // for 14x70), FULL end walls (18' wide, 10' tall $980 + vertical $270 = $1,250 each), and the leg height from the 12'-24'
+    // chart, halved (one row of legs: 12' $840 / 10' $590 on 70'). Its 12 gauge: cci12GALeanOf. 12' and under: unchanged.
+    var _wideLt=cciWideLean(w), cw=_wideLt?cciLeanCol(w):vw;
     var T=(G('rs')&&G('rs').value==='Regular')?PR:((G('rs')&&G('rs').value==='Boxed Eave')?PB:PV);
-    var wi=WIDTHS.indexOf(vw);
+    var wi=WIDTHS.indexOf(cw);
     // Length sections (owner 10/14/26, the 10-9b main-building rule): the FRAME
     // length rounds UP to the next 5' column (20' minimum; 26' prices as 30') and
     // past 40' is priced as connected units (handbook p6: 41'-45' = 20'+25',
     // 52' = 30'+25'), each at its roof tier - wrapped (at the wrapped length) or not.
     var secs=cciUnits(_wr||l).map(function(u){ return Math.max(20,u)+1; });
     bp=0;
-    if(wi>=0){ for(var sj=0;sj<secs.length;sj++) bp+=((T[secs[sj]]||[])[wi]||0); bp=bp/2; }
+    if(wi>=0){ for(var sj=0;sj<secs.length;sj++) bp+=((T[secs[sj]]||[])[wi]||0); if(!_wideLt) bp=bp/2; } // over 12': the full unit (CCI 11/9/26)
     // Release 10-14 "A3" (Sensei-calibrated: a Triple Wide (26'-30') main added half of (Boxed-Eave 30' - Vertical 24')
     // per unit to the lean-to size and priced its height from the 26'-30' chart) is REVERTED until CCI confirms (owner
     // 10/14/26; Dealer Handbook p27 extra bows on 26'+ mains are priced only by "See Attachment"). A lean-to prices as
@@ -7340,7 +7376,7 @@ function ltUnit(el, wallsOvr){
     // Height: half of the (2W)-wide leg-height chart over the SAME length
     // sections (10'/60' → $490 and 12'/100' → $1,195, both exact).
     if(h>6){
-      var huT3=(vw<=24?HU_N:(vw<=30?HU_M:HU)); // the 2W chart on every main width (10-14 "A3" reverted, owner 10/14/26)
+      var huT3=((_wideLt||vw<=24)?HU_N:(vw<=30?HU_M:HU)); // the 2W chart on every main width (10-14 "A3" reverted, owner 10/14/26); over 12': the 12'-24' chart (CCI 11/9/26)
       var hk3=h<=16?h:(h<=18?18:20);
       var huRow=huT3[hk3]||huT3[16]||[];
       var huSum=0;
@@ -7351,12 +7387,13 @@ function ltUnit(el, wallsOvr){
     // Ends: pair = ecLookup(2W, legH) + VERT_END[2W] when vertical; each
     // closed end is half the pair ($1,435 H and $2,150 V pairs, both exact).
     var _hzF=ltPanelsHorizontal();
-    var endPairS=ecLookup(vw,h)+(_hzF?0:vertEndUpcharge(vw));
+    var endPairS=ecLookup(cw,h)+(_hzF?0:vertEndUpcharge(cw)), _endDiv=_wideLt?1:2; // over 12': the FULL end of its own unit (CCI 11/9/26)
     // Partial ends price as fractions of the chart-derived closed end
     // (1/4=25%, 1/2=50%, 3/4=75%, Half End=50%); Gable Only keeps its flat rate.
     // Cents kept like Sensei (a 12' lean at 10' closes an end for $717.50).
     var LT_END_FRAC={closed:1, q3:0.75, q2:0.5, halfEnd:0.5, q1:0.25};
-    var endP=function(v){ return v==='gable'?112.5:Math.round(endPairS/2*(LT_END_FRAC[v]||0)*100)/100; };
+    // Gable Only over 12': the full certified gable end $225 (Price Book 2 p2) - follows the full-unit rule, not on CCI's 11/9 marks.
+    var endP=function(v){ return v==='gable'?(_wideLt?225:112.5):Math.round(endPairS/_endDiv*(LT_END_FRAC[v]||0)*100)/100; };
     var sideV=ltWalls2.side, sideP=0;
     if(sideV==='closed'){
       sideP=cciLtSideClosed(h,_wr||l,!_hzF);
@@ -7747,8 +7784,10 @@ function ltSenseiDiffers(entry){
   var w=parseInt((entry.querySelector('.ltw')||{}).value)||0, l=parseInt((entry.querySelector('.ltl2')||{}).value)||0;
   if(!w||!l) return '';
   var mw=parseInt((G('bw')||{}).value)||0, why=[];
-  if(w<9||w>12) why.push(w+"' wide lean-to");
-  if(mw>=26&&mw<=30) why.push("on a "+mw+"' (Triple Wide) main");
+  // 13'-15': priced the way CCI corrected it (11/9/26, a 14' lean-to on a 30' main) - no note. 16'+: the same rule (owner 11/9/26),
+  // but CCI has only checked a 14' and Sensei prices 16'+ higher (9/30/26: 16x40 size $5,295 vs $4,095) - keep the note.
+  if(w<9||w>15) why.push(w+"' wide lean-to");
+  if(mw>=26&&mw<=30&&w<=12) why.push("on a "+mw+"' (Triple Wide) main");
   return why.join(', ');
 }
 function updateLTSenseiNote(entry){
@@ -9704,7 +9743,7 @@ function rc(){
   var ga12Lean=0;
   if(ACTIVE_MFR==='CCI' && fuVal==='12' && bt3!=='fslean'){ ga12Lean=cci12GALeans(); framingUpgrade+=ga12Lean; }
   // 12GA + 4' OC combined row: Sensei's lean 4' OC was read at 14 gauge only → lean part left out, rep note.
-  var _ocLtN=G('oc-lean-note'); if(_ocLtN) _ocLtN.classList.toggle('hidden', !(_cbR!=null && cciOC4Leans()>0));
+  var _ocLtN=G('oc-lean-note'); if(_ocLtN) _ocLtN.classList.toggle('hidden', !(_cbR!=null && cciOC4Leans(true)>0)); // a lean-to over 12' carries its own "12G 170mph 4' Centers" row (CCI 11/9/26)
   // Pitch upgrade — uses ACTIVE manufacturer's pricing formula:
   //   CA: 50% of base building price
   //   CCI: tier-based table by width × length (much lower than CA's formula)
@@ -9880,7 +9919,7 @@ function rc(){
   G('plg').textContent=leg?fC(leg):'—';
   // Framing upgrade display
   var pfrEl=G('pfr'); if(pfrEl) pfrEl.textContent=framingUpgrade?fC(framingUpgrade):'—';
-  _pfrLabel(!!(window._qTotals||{}).ladder12);
+  _pfrLabel(!!(window._qTotals||{}).ladder12, (window._qTotals||{}).ga12Lean);
   var framingNoteEl=G('framing-note'); if(framingNoteEl) framingNoteEl.classList.toggle('hidden',!framingUpgrade);
   // 4' OC (main + attached leans) and ground anchors get their own rows, so the
   // breakdown adds up to the Building Price like the quote PDF / contract rows.
@@ -11917,7 +11956,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, wideLean:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -13092,7 +13131,7 @@ async function printQuote(){
   var lv=parseInt(l)||0;
   var lapP=T.lapP;
   var bt3p=bt2;
-  var framingUpgP=T.framingUpgrade;
+  var framingUpgP=T.framingUpgrade-(+T.ga12Lean||0); // the lean-tos' 12 gauge prints under each lean-to (owner 11/9/26)
   var wallsVert=G('ws').value==='Vertical';
   var wPrint=parseInt(G('bw').value)||0;
   var ocUpgradeP=T.ocUpgrade;
@@ -13353,7 +13392,7 @@ async function printQuote(){
     if(lw&&ll){
       // Printed line = EXACTLY what the pricing engine charges for this lean-to
       var _luJ=ltUnit(el), lp=_luJ.total, _ljTxt=_luJ.jTrim?(' (incl. J trim '+fCD(_luJ.jTrim)+')'):'';
-    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */ if(_luJ.heightAdj) rows+=row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj); if(_luJ.encAdj) rows+=row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
+    var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; rows+=row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */ if(_luJ.heightAdj) rows+=row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj); var _lg12=(+T.ga12Lean>0&&!ltIsFree)?cci12GALeanOf(el):0; if(_lg12) rows+=row('  Lean-To: 12-Gauge Framing'+(cciLeanGa4(el)?" w/ 4' Centers":''),null,null,_lg12); if(_luJ.encAdj) rows+=row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsQ=ltStorage(el); if(_lsQ.valid&&_lsQ.total) rows+=row('  '+ltStorageLabel(_lsQ),null,null,_lsQ.total);
       // Lean-to accessories
@@ -14766,7 +14805,7 @@ async function printContract(){
   var lv=parseInt(l)||0;
   var lapP=T.lapP;
   var bt3p=bt2;
-  var framingUpgP=T.framingUpgrade;
+  var framingUpgP=T.framingUpgrade-(+T.ga12Lean||0); // the lean-tos' 12 gauge prints under each lean-to (owner 11/9/26)
   var wallsVert=G('ws').value==='Vertical';
   var wPrint=parseInt(G('bw').value)||0;
   var ocUpgradeP=T.ocUpgrade;
@@ -15086,6 +15125,7 @@ async function printContract(){
     var ltStEl3=el.querySelector(".ltst"),ltIsCont3=ltStEl3&&ltStEl3.value==="cont"; var ltPitch3=el.querySelector(".ltp")?el.querySelector(".ltp").value:"2:12"; var _wHl=window._rvHlCur; if(!_wHl&&_rvMode&&(el.dataset.rvWrap||'')!==String(ltWrapOf(el).len||'')) window._rvHlCur=true; row((ltIsFree?"Free-Standing Single Slope":"Lean-To")+" ("+lw+"' \xD7 "+ll+"'"+_ltWrapTxt(el)+") — "+ls+" | "+_ltLegTxt(el)+ltPitch3+" Pitch",null,null,_luJ.bp); /* itemized (owner 11/5/26): size, leg height, walls - they add up to lp */
       window._rvHlCur=_wHl; // a wrap added / changed since the order highlights the lean-to row only
       if(_luJ.heightAdj) row('  Lean-To: Leg Height ('+_ltLegLbl(el)+')',null,null,_luJ.heightAdj);
+      var _lg12=(+T.ga12Lean>0&&!ltIsFree)?cci12GALeanOf(el):0; if(_lg12) row('  Lean-To: 12-Gauge Framing'+(cciLeanGa4(el)?" w/ 4' Centers":''),null,null,_lg12); // owner 11/9/26
       if(_luJ.encAdj) row('  Lean-To: Walls ('+_ltWallsTxt(el)+')'+_ljTxt,null,null,_luJ.encAdj);
       // Storage room: EXACTLY what gLT adds for it (partition + walls closing it)
       var _lsC=ltStorage(el);
@@ -18844,6 +18884,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'cci-freight-sep': { commit:'11-03', date:'11/3/26', text:"CCI freight is a separate charge - 3% of the building price before discounts on 62'-100' wide and on any CCI building of $60,000 or more; not discounted, not taxed, not in the deposit, due at installation (CCI by phone to the owner, 11/3/26)" },
+    'wide-lean-1109': { commit:'11-09c', date:'11/9/26', text:"CCI lean-to wider than 12': priced as its own carport unit at the CCI column (14'/16' = 18'): full size, full end walls, the 12'-24' leg-height chart halved, and its own 12 gauge row (170 MPH 4' centers row at 4' centers) - CCI's corrections on order SS-2026-69096 (11/9/26)" },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
@@ -19024,6 +19065,12 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(mfr==='CCI' && !_ov3.lean12ga && (f['framing-upgrade']||'14')==='12' && bt!=='fslean' && typeof root.cci12GALeans==='function'){
       var gaL=r2(root.cci12GALeans());
       if(gaL) out.push({ k:'leanGa12', label:'Lean-to 12-gauge framing (as originally quoted)', amt:-gaL, rules:['lean-12ga'] });
+    }
+    // 1-wlt) CCI lean-to over 12' saved before 11/9/26 (no wideLean marker): half of a 2W building (+ the 5' 12-gauge row when it
+    //     was saved with the 10-28 lean-to 12 gauge); now its own unit at the CCI column (cciWideLtDrift; amt < 0: the saved price was lower)
+    if(mfr==='CCI' && !_ov3.wideLean && bt!=='fslean' && typeof root.cciWideLtDrift==='function'){
+      var wlD=r2(root.cciWideLtDrift(!!_ov3.lean12ga && (f['framing-upgrade']||'14')==='12'));
+      if(wlD) out.push({ k:'wideLean', label:'Lean-tos (as originally quoted)', amt:wlD, rules:['wide-lean-1109'] });
     }
     // 1-frtIn) CCI 62'-100' wide saved before 11-03: the 3% freight was inside the saved building price (it is a separate
     //     line now, held at $0 on such a quote) (amt > 0: the saved building price carried it)
