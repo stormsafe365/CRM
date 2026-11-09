@@ -14017,6 +14017,36 @@ function _dimWrapCorners(lts){
 }
 // How far a lean-to's wrap reaches past its own end at corner k (0 = that end isn't wrapped).
 function _dimWrapW(l,k){ var m=((l.wrap&&l.wrap.meets)||[]).filter(function(x){ return x.k===k; })[0]; return m?m.w:0; }
+// The openings on an EAVE lean-to's outer wall and end walls (owner 11/9/26, Michael Bescript: "Dimensions & Spacing pages dont
+// reflect all the windows ... on the lean-to"). Spots = ltAccXs, the no-overlap model the 3D draws from (geometry.ts: an outer
+// wall x runs from the lean-to's FRONT end; an end wall x from min(inner, outer) = the outer post on a Right Eave lean-to, the
+// main wall on a Left Eave one - ltPartGeom). x3 = that frame (the plans); x = the card's frame, standing outside the wall:
+// outer wall like that eave's card (Right Eave: front on the left; Left Eave: back on the left), front end seen from the front,
+// back end seen from behind. Only what the 3D draws (leanToFixtures rendersLeanToFixture): a frame-out always; a door / window
+// on an outer wall that is not open (or inside the storage section), on an end that is Closed.
+function _dimLtWallItems(l){
+  var out={outer:[],front:[],back:[]};
+  if(!l||!l.eave||typeof ltAccXs!=='function'||typeof ltPartDims!=='function') return out;
+  var R=(l.side==='Right Eave'), Lo=l.ll, Wd=l.w;
+  var seg=l.stor?(l.stor.end==='front'?[0,l.stor.len]:[Lo-l.stor.len,Lo]):null;
+  l.el.querySelectorAll('.lt-acc-e').forEach(function(ae){
+    var loc=((ae.querySelector('.lt-acc-loc')||{}).value)||'outer'; if(!out[loc]) return;
+    var t=((ae.querySelector('.lt-acc-type')||{}).value)||'rollup';
+    var dm=ltPartDims(ae); if(!dm||!(dm.w>0)||!(dm.h>0)) return;
+    var xs=null; try{ xs=ltAccXs(ae); }catch(e){ xs=null; }
+    if(!xs||!xs.length) return;
+    var len=(loc==='outer')?Lo:Wd;
+    xs.forEach(function(x3){
+      if(t!=='frameout'){
+        if(loc==='outer'){ var c=x3+dm.w/2; if(l.walls.side==='open' && !(seg && c>=seg[0]-1e-6 && c<=seg[1]+1e-6)) return; }
+        else if(l.walls[loc]!=='closed') return;
+      }
+      var xd=(loc==='outer')?(R?x3:len-x3-dm.w):(loc==='front'?len-x3-dm.w:x3);
+      out[loc].push({type:(t==='frameout'?'fo':t), x:dimQ(xd), x3:x3, w:dm.w, h:dm.h, yo:dm.sill});
+    });
+  });
+  return out;
+}
 // Small top-down plan for one wall card (the demo's renderPlan): building
 // outline (open walls dashed), attached lean-tos (dashed when their outer side
 // is open) with their storage partition, the GCH divider / storage partition
@@ -14043,6 +14073,16 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
     if(l.stor){
       var d=bk?(W-l.stor.at):l.stor.at, ln=l.eave?[r[0],py(d),r[0]+w,py(d)]:[px(d),r[1],px(d),r[1]+w];
       o+='<line x1="'+ln[0].toFixed(1)+'" y1="'+ln[1].toFixed(1)+'" x2="'+ln[2].toFixed(1)+'" y2="'+ln[3].toFixed(1)+'" stroke="'+(hl?DIM_C.teal:DIM_K.lt)+'" stroke-opacity="'+(hl?'1':'.7')+'" stroke-width="'+(hl?'2.6':'1')+'"'+(hl?'':' stroke-dasharray="2 2"')+' stroke-linecap="round"/>';
+    }
+    if(l.eave){ // the lean-to's own walls (11/9/26): the card's wall in teal + an opening tick on each wall
+      var lw=_dimLtWallItems(l), Rt=(l.k==='right'), xo=Rt?r[0]+w:r[0], xi=Rt?r[0]:r[0]+w, yF=py(a), yB=py(e), dir=Rt?1:-1;
+      var px3=function(v){ return Rt?xo-v*s:xi-v*s; }; // end-wall x3 (outer post on a Right Eave lean-to, main wall on a Left Eave one) -> plan x
+      var hlw=function(loc,x1,y1,x2,y2){ if(sel==='ltwall:'+l.n+':'+loc) o+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="'+DIM_C.teal+'" stroke-width="3.2" stroke-linecap="square"/>'; };
+      hlw('outer',xo,yB,xo,yF); hlw('front',xo,yF,xi,yF); hlw('back',xo,yB,xi,yB);
+      var tk=function(u,x1,y1,x2,y2){ o+='<line x1="'+(+x1).toFixed(1)+'" y1="'+(+y1).toFixed(1)+'" x2="'+(+x2).toFixed(1)+'" y2="'+(+y2).toFixed(1)+'" stroke="'+(DIM_K[u.type]||DIM_K.fo)+'" stroke-width="3.2"/>'; };
+      lw.outer.forEach(function(u){ tk(u, xo+dir*6, py(a+u.x3), xo+dir*6, py(a+u.x3+u.w)); });
+      lw.front.forEach(function(u){ tk(u, px3(u.x3), yF+6, px3(u.x3+u.w), yF+6); });
+      lw.back.forEach(function(u){ tk(u, px3(u.x3), yB-6, px3(u.x3+u.w), yB-6); });
     }
     o+=_dimT(r[0]+r[2]/2, r[1]+r[3]/2+3, 'LT'+l.n, {anchor:'middle',size:8,fill:DIM_K.ltText});
   });
@@ -14450,6 +14490,23 @@ function dimSpacingPageHTML(theme){
     if(!pItems.length) return;
     html+=card('Lean-to '+l.n+' · Storage Partition — '+l.stor.len+'′ storage at the '+l.stor.end+' end','ltpart:'+l.n,
       dimElevSVG(g.len,g.low,0,false,pItems,false,null,null,{ends:g.lowAtZero?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],lt:{n:l.n,lowAtZero:!!g.lowAtZero},prof:function(xx){return ltPartWallH(g,xx);}}));
+  });
+  // Lean-to walls with openings (owner 11/9/26: "Dimensions & Spacing pages dont reflect all the windows ... on the lean-to"):
+  // each eave lean-to's front end (seen from the front), outer wall, back end (seen from behind) - the openings where the 3D
+  // draws them (_dimLtWallItems), measured from that wall's ends; the end walls slope like the partition card (ltPartGeom).
+  lts.forEach(function(l){
+    if(!l.eave) return;
+    var lw=_dimLtWallItems(l), R=(l.side==='Right Eave'), nm='Lean-to '+l.n+' ('+l.side+')';
+    var endCard=function(loc){
+      if(!lw[loc].length||typeof ltPartGeom!=='function') return;
+      var g=ltPartGeom(l.el), lowZ=(loc==='front')?!R:R, gd={len:g.len,low:g.low,slope:g.slope,lowAtZero:lowZ};
+      html+=card(nm+' \u00b7 '+(loc==='front'?'Front End \u00b7 seen from the front':'Back End \u00b7 seen from behind'),'ltwall:'+l.n+':'+loc,
+        dimElevSVG(g.len,g.low,0,false,lw[loc],false,null,null,{ends:lowZ?['OUTER POST','MAIN WALL']:['MAIN WALL','OUTER POST'],lt:{n:l.n,lowAtZero:lowZ},prof:function(xx){ return ltPartWallH(gd,xx); }}));
+    };
+    endCard('front');
+    if(lw.outer.length) html+=card(nm+' \u00b7 Outer Wall','ltwall:'+l.n+':outer',
+      dimElevSVG(l.ll,l.low,0,false,lw.outer,false,null,null,{ends:R?['FRONT END','BACK END']:['BACK END','FRONT END']}));
+    endCard('back');
   });
   // Frame & clearances (owner 10/30/26: "peak height, interior clearance height
   // and the knee brace info"). Peak, leg and the CCI center clearance are this
