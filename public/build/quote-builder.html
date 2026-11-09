@@ -5791,18 +5791,19 @@ function cciCombo12x4(fu, oc, w, bt, l){
 // connected unit past 40' - CCI's own breakdown for order SS-2026-02861 (Tim, 10/28/26): 12x50 lean on a 12-gauge 30x50 = $480
 // (25'+25'); Sensei read 9/30/26: $330 on a 40' lean. Free-standing lean-tos price their own 12 gauge (fsG12). Added to the
 // 12-Gauge Framing line like the lean-to 4' OC (cciOC4Leans); published as ga12Lean for the price lock.
-// CCI LEAN-TOS WIDER THAN 12' (CCI 11/9/26, hand corrections on order SS-2026-69096, Michael Bescript: two 14x70 lean-tos on
-// a 30x70x16 12-gauge, Palm Beach; owner 11/9/26: "Yes, all over 12'"). CCI's widest standard lean-to is 12' (Dealer Handbook
-// p24), so a wider attached lean-to prices as its OWN carport unit at the CCI width column - see ltUnit and cci12GALeanOf.
+// CCI 14' LEAN-TOS (CCI 11/9/26, hand corrections on order SS-2026-69096, Michael Bescript: two 14x70 lean-tos on a 30x70x16
+// 12-gauge, Palm Beach). CCI's widest standard lean-to is 12' (Dealer Handbook p24), so a 13'-15' (the 14' option) attached
+// lean-to prices as its OWN carport unit at the CCI width column - see ltUnit and cci12GALeanOf. 16' and wider: priced as before
+// (owner 11/9/26: "Keep as today" - CCI has priced a 14' only, and Sensei and this rule disagree on 16'+; rep note stays).
 // window._ltWideOff (set only by the price lock's cciWideLtDrift) prices them the way they were before 11/9/26.
-function cciWideLean(w){ return !window._ltWideOff && w>12; }
-// The CCI width column for a lean-to over 12': 14' and 16' are not CCI widths -> the 18' column (the 10-9b rule, 13'-17' = 18');
+function cciWideLean(w){ return !window._ltWideOff && w>12 && w<16; }
+// The CCI width column for a 13'-15' lean-to: 14' is not a CCI width -> the 18' column (the 10-9b rule, 13'-17' = 18');
 // odd widths price as the next even width.
 function cciLeanCol(w){ var c=(w%2)?w+1:w; return c<18?18:c; }
 // The building is framed at 4' centers: the 4' OC option, or a 26'+ wide / wide-span main (they come with 4' centers or less).
 function cciLean4C(){ var mw=parseInt((G('bw')||{}).value)||0, bt=(G('btype')||{}).value||''; return ((G('oc-spacing')||{}).value==='4oc') || mw>24 || bt==='widespan'; }
 // The 12 gauge of ONE attached lean-to (0 when free-standing / not sized): 12' and under = the 12'-24' "12G 5' Centers" row at
-// its length (10-28b, above); over 12' (cciWideLean) = its own unit's row - "12G 170mph 4' Centers" 360/480/600/720/840 when
+// its length (10-28b, above); 13'-15' (cciWideLean) = its own unit's row - "12G 170mph 4' Centers" 360/480/600/720/840 when
 // the building is at 4' centers (CCI 11/9/26: 14x70 = 720 + 720 = $1,440), else the 5' row. Per connected unit past 40'.
 function cciLeanGa4(el){ return cciWideLean(parseInt((el.querySelector('.ltw')||{}).value)||0) && cciLean4C(); }
 function cci12GALeanOf(el){
@@ -5817,7 +5818,7 @@ function cci12GALeans(){
   document.querySelectorAll('.lte').forEach(function(el){ t+=cci12GALeanOf(el); });
   return t;
 }
-// Price lock (detector 'wide-lean-1109'): the lean-tos over 12' priced the way they were before 11/9/26 minus today (old - new;
+// Price lock (detector 'wide-lean-1109'): the 13'-15' lean-tos priced the way they were before 11/9/26 minus today (old - new;
 // size, leg height, walls, storage). withGa: their 12 gauge too (a 12-gauge main saved with the 10-28 lean-to 12 gauge).
 function cciWideLtDrift(withGa){
   if(ACTIVE_MFR!=='CCI') return 0;
@@ -7348,8 +7349,8 @@ function ltUnit(el, wallsOvr){
     // Verified line-for-line against CCI's corrected 12x60-continuous and
     // 12x100-step-down quotes; continuous and step-down price identically.
     var vw=2*w; if(vw%2) vw++;
-    // CCI 11/9/26 (hand corrections on order SS-2026-69096; owner 11/9/26: every lean-to over 12'): a lean-to WIDER than 12'
-    // prices as its OWN carport unit at the CCI column (cciLeanCol: 14' / 16' = 18'): the FULL size (18x35 $3,595 x 2 = $7,190
+    // CCI 11/9/26 (hand corrections on order SS-2026-69096; owner 11/9/26): a 13'-15' lean-to (the 14' option; 16'+ as before)
+    // prices as its OWN carport unit at the CCI column (cciLeanCol: 14' = 18'): the FULL size (18x35 $3,595 x 2 = $7,190
     // for 14x70), FULL end walls (18' wide, 10' tall $980 + vertical $270 = $1,250 each), and the leg height from the 12'-24'
     // chart, halved (one row of legs: 12' $840 / 10' $590 on 70'). Its 12 gauge: cci12GALeanOf. 12' and under: unchanged.
     var _wideLt=cciWideLean(w), cw=_wideLt?cciLeanCol(w):vw;
@@ -7784,8 +7785,8 @@ function ltSenseiDiffers(entry){
   var w=parseInt((entry.querySelector('.ltw')||{}).value)||0, l=parseInt((entry.querySelector('.ltl2')||{}).value)||0;
   if(!w||!l) return '';
   var mw=parseInt((G('bw')||{}).value)||0, why=[];
-  // 13'-15': priced the way CCI corrected it (11/9/26, a 14' lean-to on a 30' main) - no note. 16'+: the same rule (owner 11/9/26),
-  // but CCI has only checked a 14' and Sensei prices 16'+ higher (9/30/26: 16x40 size $5,295 vs $4,095) - keep the note.
+  // 13'-15': priced the way CCI corrected it (11/9/26, a 14' lean-to on a 30' main) - no note. 16'+: priced as before (owner
+  // 11/9/26 "Keep as today"; Sensei 9/30/26: 16x40 size $5,295 vs our $6,797.50) - keep the note until CCI prices one.
   if(w<9||w>15) why.push(w+"' wide lean-to");
   if(mw>=26&&mw<=30&&w<=12) why.push("on a "+mw+"' (Triple Wide) main");
   return why.join(', ');
@@ -18884,7 +18885,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'lap-vertical': { commit:'10-15c', date:'10/15/26', text:"CCI lap siding is priced as vertical walls (the vertical upgrade formula; $0 when the walls are already vertical, wide span, open or 17'+) - it was 10% of the base price" },
     'gable-side-frames': { commit:'10-15b', date:'10/15/26', text:'Walk door / window side frames are charged on eave walls only: one moved from an eave to a gable end kept a hidden $150 side frame' },
     'cci-freight-sep': { commit:'11-03', date:'11/3/26', text:"CCI freight is a separate charge - 3% of the building price before discounts on 62'-100' wide and on any CCI building of $60,000 or more; not discounted, not taxed, not in the deposit, due at installation (CCI by phone to the owner, 11/3/26)" },
-    'wide-lean-1109': { commit:'11-09c', date:'11/9/26', text:"CCI lean-to wider than 12': priced as its own carport unit at the CCI column (14'/16' = 18'): full size, full end walls, the 12'-24' leg-height chart halved, and its own 12 gauge row (170 MPH 4' centers row at 4' centers) - CCI's corrections on order SS-2026-69096 (11/9/26)" },
+    'wide-lean-1109': { commit:'11-09c', date:'11/9/26', text:"CCI 13'-15' (14') lean-to: priced as its own carport unit at the CCI column (14' = 18'): full size, full end walls, the 12'-24' leg-height chart halved, and its own 12 gauge row (170 MPH 4' centers row at 4' centers) - CCI's corrections on order SS-2026-69096 (11/9/26)" },
     'gable-12-30': { commit:'10-9b', date:'10/12/26', text:"CCI gable-only end: $225 (12'-24') / $300 (26'-30') + vertical gable add $50 / $85 (Price Book 2 p2/p4; was $300 + the vertical end upcharge)" }
   };
   var FLAG_RULE = { fu14:'hw-12ga', imp:'impact', lap:'lee-lap', ns:'no-service' };
