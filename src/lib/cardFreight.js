@@ -45,3 +45,24 @@ export function cardFreightOf(q) {
   if (wide || (Number.isFinite(sub) && sub >= FREIGHT_AT)) return { building: c2(building), pending: true }
   return null
 }
+
+// The freight for a Bill of Sale (owner 11/9/26, Laura Rincon: "What about the freight fee???" - her quote was saved before
+// freight was its own charge, so it has no saved amount and its card shows none, while her contract charges it).
+//   { freight, source: 'saved' }            the amount saved with the quote (exact - the card / contract number)
+//   { freight, source: 'estimate', sub }    no amount saved: the quote program's own rule on the saved building price before
+//                                           discounts (quote-builder.html cciFreightOn / freightP: CCI, $60,000+ -> 3%) -
+//                                           Laura: 3% of $64,475 = $1,934.25 = her contract; the rep checks it
+//   { freight: 0, source: 'none' }          nothing to go on (not CCI, under $60,000, or a 61'-100' wide one saved before
+//                                           11-03, whose freight sits inside its building price)
+export function receiptFreightOf(q) {
+  const f = cardFreightOf(q)
+  if (f && f.freight > 0) return { freight: f.freight, source: 'saved' }
+  if (!q || q.manufacturer !== 'cci') return { freight: 0, source: 'none' }
+  const p = q.payload_json || {}
+  const sub = num(p.priced && p.priced.sub)
+  const savedFrt = num(p.priced && p.priced.frt)
+  if (Number.isFinite(savedFrt)) return { freight: 0, source: 'none' } // priced since 11-03: it charged none
+  if (cciWide(p.fields && p.fields.bw) && !(p.overrides && p.overrides.frtSep)) return { freight: 0, source: 'none' }
+  if (Number.isFinite(sub) && sub >= FREIGHT_AT) return { freight: c2(Math.round(sub * 3) / 100), source: 'estimate', sub: c2(sub) }
+  return { freight: 0, source: 'none' }
+}

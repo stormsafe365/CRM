@@ -60,3 +60,20 @@ test('wide = 61 to 100 feet', () => {
   assert.equal(cciWide('101'), false)
   assert.equal(cciWide(''), false)
 })
+
+// Bill of Sale freight (owner 11/9/26, Laura Rincon): saved amount, else the program's rule on the saved building price.
+import { receiptFreightOf } from '../src/lib/cardFreight.js'
+test('receiptFreightOf: the saved freight when there is one', () => {
+  assert.deepEqual(receiptFreightOf(q({ payload: { priced: { frt: 1934.25, sub: 64475 } } })), { freight: 1934.25, source: 'saved' })
+})
+test('receiptFreightOf: a sold quote saved before 11-03 (no frt): 3% of the saved building price before discounts (Laura: $1,934.25)', () => {
+  const r = receiptFreightOf(q({ row: { status: 'deposit_paid' }, payload: { priced: { sub: 64475 } } }))
+  assert.deepEqual(r, { freight: 1934.25, source: 'estimate', sub: 64475 })
+})
+test('receiptFreightOf: none when the program charged none, under $60,000, not CCI, or an old 61-100 wide one', () => {
+  assert.deepEqual(receiptFreightOf(q({ payload: { priced: { frt: 0, sub: 64475 } } })), { freight: 0, source: 'none' })
+  assert.deepEqual(receiptFreightOf(q({ row: { status: 'deposit_paid' }, payload: { priced: { sub: 59999 } } })), { freight: 0, source: 'none' })
+  assert.deepEqual(receiptFreightOf({ ...q({ payload: { priced: { sub: 64475 } } }), manufacturer: 'ca' }), { freight: 0, source: 'none' })
+  assert.deepEqual(receiptFreightOf(q({ row: { status: 'deposit_paid' }, payload: { fields: { bw: '70' }, priced: { sub: 90000 } } })), { freight: 0, source: 'none' })
+  assert.deepEqual(receiptFreightOf(q({ payload: {} })), { freight: 0, source: 'none' })
+})
