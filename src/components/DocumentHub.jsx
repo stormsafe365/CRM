@@ -22,6 +22,7 @@ import { promoteToWorking } from '../lib/promoteLead'
 import { useAuth } from '../context/AuthContext'
 import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
+import ReceiptModal from './ReceiptModal'
 import MarkSignedModal, { quoteLine } from './MarkSignedModal'
 import {
   clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted, revOf,
@@ -84,6 +85,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [layoutOpen, setLayoutOpen] = useState(false)
   const [markFor, setMarkFor] = useState(null) // { file, presetQuoteId, justUploaded } — Mark as signed
   const [dateFor, setDateFor] = useState(null) // quote id — change the signed date / contract number
+  const [receiptFor, setReceiptFor] = useState(null) // signed quote row — Bill of Sale / receipt straight from the contract
   const [open, setOpen] = useState(() => new Set()) // folded groups the rep opened
   const [stamping, setStamping] = useState(null)
   const [query, setQuery] = useState('')
@@ -291,6 +293,13 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => triggerUpload('contract', q.id) })
     if (s.stampedFile) items.push({ id: 'stamped', label: 'See the DEPOSIT PAID copy', onClick: () => onView(s.stampedFile.path) })
     else if (s.signedFile) items.push({ id: 'stamp', label: 'Make the DEPOSIT PAID copy', onClick: () => makeStamped(s) })
+    // Owner 11/9/26: "shouldnt i be able to generate bill of sale directly from signed contract & not have to manually fill
+    // anything in" - opens the Bill of Sale box filled from this signed quote (total, deposit, freight, the contract's
+    // payment method, the signed day); the rep only checks it and presses Generate.
+    items.push({
+      id: 'bos', label: String(q.manufacturer || '').toLowerCase() === 'cci' ? 'Generate the Bill of Sale (deposit)…' : 'Generate the payment receipt (deposit)…',
+      onClick: () => setReceiptFor(q),
+    })
     if (latest) {
       items.push({ sep: true })
       items.push({
@@ -599,6 +608,10 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         />
       )}
       {layoutOpen && <LayoutSheetModal client={client || { id: clientId, name: clientName }} onSaved={refresh} onClose={() => setLayoutOpen(false)} />}
+      {receiptFor && (
+        <ReceiptModal key={receiptFor.id} client={client || { id: clientId, name: clientName }} quote={receiptFor} fromContract
+          onClose={() => setReceiptFor(null)} />
+      )}
     </section>
   )
 }

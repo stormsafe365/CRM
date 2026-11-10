@@ -12,8 +12,9 @@ import { buildReceiptHtml, makeReceiptNumber, orderTotalOf } from '../lib/receip
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
 import { receiptFreightOf } from '../lib/cardFreight'
+import { receiptDefaults, RECEIPT_METHODS } from '../lib/receiptPrefill'
 
-const METHODS = ['Credit / Debit Card', 'Check', 'Cash', 'ACH / Bank Transfer', 'Wire Transfer', 'Financing', 'Other']
+const METHODS = RECEIPT_METHODS
 const APPLIED = ['Deposit', 'Progress Payment', 'Final Balance', 'Paid in Full']
 
 const FIELD = {
@@ -29,7 +30,10 @@ const isoToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function ReceiptModal({ client, quote, onClose }) {
+export default function ReceiptModal({ client, quote, onClose, fromContract = false }) {
+  // the contract's payment method; opened from the signed contract (Doc Hub) -> dated the day it was signed (owner 11/9/26:
+  // "generate bill of sale directly from signed contract & not have to manually fill anything in")
+  const defs = useMemo(() => receiptDefaults(quote, { fromContract, today: isoToday() }), [quote, fromContract])
   // Order total (= the contract's Grand Total): the card's total_amount, else the grand total saved with the quote
   // (orderTotalOf) - a contract / copy card can lack total_amount (Laura Rincon SS-2026-01418 printed "Order Total $0.00",
   // owner 11/9/26: "its not lining up"). Editable; the remaining balance follows it.
@@ -44,8 +48,8 @@ export default function ReceiptModal({ client, quote, onClose }) {
     // the card's deposit, else the deposit saved with the quote's price (the contract's "Deposit due now"), editable
     amount: quote?.deposit_amount != null ? String(quote.deposit_amount)
       : (Number(quote?.payload_json?.priced?.money?.dep) > 0 ? String(quote.payload_json.priced.money.dep) : ''),
-    date: isoToday(),
-    method: METHODS[0],
+    date: defs.date,
+    method: defs.method,
     reference: '',
     appliedTo: 'Deposit',
     remaining: '',

@@ -55,12 +55,13 @@ export function cardFreightOf(q) {
 //   { freight: 0, source: 'none' }          nothing to go on (not CCI, under $60,000, or a 61'-100' wide one saved before
 //                                           11-03, whose freight sits inside its building price)
 export function receiptFreightOf(q) {
-  const f = cardFreightOf(q)
-  if (f && f.freight > 0) return { freight: f.freight, source: 'saved' }
-  if (!q || q.manufacturer !== 'cci') return { freight: 0, source: 'none' }
-  const p = q.payload_json || {}
-  const sub = num(p.priced && p.priced.sub)
+  // the saved amount straight from the quote - not via cardFreightOf, which needs the card's total_amount (a contract /
+  // copy card can lack it, and its saved freight then read as none: found 11/10/26 with the Bill of Sale from a contract)
+  const p = (q && q.payload_json) || {}
   const savedFrt = num(p.priced && p.priced.frt)
+  if (Number.isFinite(savedFrt) && savedFrt > 0) return { freight: c2(savedFrt), source: 'saved' }
+  if (!q || q.manufacturer !== 'cci') return { freight: 0, source: 'none' }
+  const sub = num(p.priced && p.priced.sub)
   if (Number.isFinite(savedFrt)) return { freight: 0, source: 'none' } // priced since 11-03: it charged none
   if (cciWide(p.fields && p.fields.bw) && !(p.overrides && p.overrides.frtSep)) return { freight: 0, source: 'none' }
   if (Number.isFinite(sub) && sub >= FREIGHT_AT) return { freight: c2(Math.round(sub * 3) / 100), source: 'estimate', sub: c2(sub) }
