@@ -28,7 +28,7 @@ const fmtDate = (iso) => {
  *   client: { name, email, phone, city, state },
  *   quote:  { quote_number, building_size, building_summary, total_amount },
  *   receipt: { number, date (yyyy-mm-dd), amount, method, reference,
- *              appliedTo, remaining, note, listMfr, freight }
+ *              appliedTo, remaining, note, listMfr, freight, orderTotal }
  *   freight: the CCI freight still due at installation (3%, not taxed - cardFreightOf / the contract's Freight line);
  *   > 0 adds a Freight row and "Total Still Due" under the remaining balance (owner 11/9/26: "What about the freight fee???").
  *   listMfr (CCI orders): true = name Carolina Carports as seller / manufacturer (as before 11/9/26);
@@ -37,6 +37,9 @@ const fmtDate = (iso) => {
  * }
  */
 export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
+  // The order total the rep confirmed in the box (receipt.orderTotal), else the quote's; never a $0.00 line (owner 11/9/26,
+  // Laura Rincon's bill of sale from her contract card printed 'Order Total $0.00': that card has no total_amount).
+  const orderTotal = Number(receipt.orderTotal != null && receipt.orderTotal !== '' ? receipt.orderTotal : quote.total_amount) || 0
   const frt = Math.max(0, Number(receipt.freight) || 0)
   const stillDue = Math.round(((Number(receipt.remaining) || 0) + frt) * 100) / 100
   const paidInFull = (receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0) && !(frt > 0)
@@ -169,7 +172,7 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
 
   <table class="acct">
     <tr><th>Account Summary</th><th>Amount</th></tr>
-    ${isFinite(Number(quote.total_amount)) ? `<tr><td>Order Total</td><td>${money(quote.total_amount)}</td></tr>` : ''}
+    ${orderTotal > 0 ? `<tr><td>Order Total</td><td>${money(orderTotal)}</td></tr>` : ''}
     <tr class="pay"><td>This Payment — ${esc(receipt.appliedTo || 'Deposit')}</td><td>&minus; ${money(receipt.amount)}</td></tr>
     <tr class="rem"><td>Remaining Balance</td><td>${paidInFull ? 'PAID IN FULL' : money(receipt.remaining)}</td></tr>
     ${frt > 0 ? `<tr class="frt"><td>Freight &mdash; 3% (not taxed, due at installation)</td><td>${money(frt)}</td></tr>
@@ -205,6 +208,18 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   </div>
 </body>
 </html>`
+}
+
+/** The order (grand) total of a quote for its bill of sale: total_amount, else the grand total the quote program saved with it
+ *  (payload_json.priced.money.adjTot = the contract's Grand Total - the card's total_amount comes from the same pass), else null.
+ *  A card can lack total_amount (a copy / contract card never saved to the lead) - Laura Rincon SS-2026-01418, 11/9/26. */
+export function orderTotalOf(quote) {
+  const t = Number(quote && quote.total_amount)
+  if (quote && quote.total_amount != null && quote.total_amount !== '' && Number.isFinite(t) && t > 0) return { total: Math.round(t * 100) / 100, source: 'card' }
+  const m = quote && quote.payload_json && quote.payload_json.priced && quote.payload_json.priced.money
+  const a = Number(m && m.adjTot)
+  if (m && m.adjTot != null && Number.isFinite(a) && a > 0) return { total: Math.round(a * 100) / 100, source: 'saved-price' }
+  return { total: null, source: 'none' }
 }
 
 /** Document number: BOS (CCI bill of sale) / RCPT + quote number, date-stamped. */

@@ -8,7 +8,7 @@ import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { uploadClientDocBlob } from '../lib/storage'
 import { renderQuotePdf } from '../lib/builderSave'
-import { buildReceiptHtml, makeReceiptNumber } from '../lib/receiptHtml'
+import { buildReceiptHtml, makeReceiptNumber, orderTotalOf } from '../lib/receiptHtml'
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
 import { receiptFreightOf } from '../lib/cardFreight'
@@ -30,13 +30,20 @@ const isoToday = () => {
 }
 
 export default function ReceiptModal({ client, quote, onClose }) {
-  const total = Number(quote?.total_amount) || 0
+  // Order total (= the contract's Grand Total): the card's total_amount, else the grand total saved with the quote
+  // (orderTotalOf) - a contract / copy card can lack total_amount (Laura Rincon SS-2026-01418 printed "Order Total $0.00",
+  // owner 11/9/26: "its not lining up"). Editable; the remaining balance follows it.
+  const totInfo = useMemo(() => orderTotalOf(quote), [quote])
+  const [orderTotal, setOrderTotal] = useState(totInfo.total != null ? String(totInfo.total) : '')
+  const total = Number(orderTotal) || 0
   // CCI orders generate a Carolina Carports BILL OF SALE (seller = CCI,
   // StormSafe = authorized dealer); everything else is a StormSafe receipt.
   const isCCI = String(quote?.manufacturer || '').toLowerCase() === 'cci'
   const docLabel = isCCI ? 'Bill of Sale' : 'Payment Receipt'
   const [form, setForm] = useState({
-    amount: quote?.deposit_amount != null ? String(quote.deposit_amount) : '',
+    // the card's deposit, else the deposit saved with the quote's price (the contract's "Deposit due now"), editable
+    amount: quote?.deposit_amount != null ? String(quote.deposit_amount)
+      : (Number(quote?.payload_json?.priced?.money?.dep) > 0 ? String(quote.payload_json.priced.money.dep) : ''),
     date: isoToday(),
     method: METHODS[0],
     reference: '',
@@ -85,6 +92,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
           note: form.note.trim(),
           listMfr: isCCI && listMfr,
           freight: Math.max(0, Number(freight) || 0),
+          orderTotal: total > 0 ? total : null,
         },
       })
       const blob = await renderQuotePdf(html)
@@ -133,6 +141,17 @@ export default function ReceiptModal({ client, quote, onClose }) {
               <option value="yes">Yes — name Carolina Carports, Inc. (seller / manufacturer)</option>
             </select>
           </>
+        )}
+
+        <label style={LBL}>Order Total — the contract&apos;s Grand Total ($)</label>
+        <input style={FIELD} type="number" min="0" step="0.01" value={orderTotal} placeholder="0.00"
+          onChange={(e) => setOrderTotal(e.target.value)} />
+        {totInfo.source !== 'card' && (
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-3, #8598AC)' }}>
+            {totInfo.source === 'saved-price'
+              ? 'Not on this card — taken from the price saved with the quote. Check it matches the contract.'
+              : 'Not saved on this card — type the Grand Total from the contract.'}
+          </p>
         )}
 
         <label style={LBL}>Amount Received ($) *</label>

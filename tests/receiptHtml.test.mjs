@@ -54,3 +54,21 @@ test('building paid in full but freight still due: not "PAID IN FULL"; the freig
   assert.doesNotMatch(h, /PAID IN FULL/)
   assert.match(h, /Total Still Due \(incl\. freight\)<\/td><td>\$1,934\.25/)
 })
+
+// Order total (owner 11/9/26, "its not lining up": Laura's bill of sale from her contract card SS-2026-01418 printed
+// "Order Total $0.00" - that card has no total_amount).
+import { orderTotalOf } from '../src/lib/receiptHtml.js'
+test('orderTotalOf: the card total, else the grand total saved with the quote, else none', () => {
+  assert.deepEqual(orderTotalOf(cci), { total: 54056, source: 'card' })
+  assert.deepEqual(orderTotalOf({ ...cci, total_amount: null, payload_json: { priced: { money: { adjTot: 54056, tot: 54933 } } } }), { total: 54056, source: 'saved-price' })
+  assert.deepEqual(orderTotalOf({ ...cci, total_amount: null }), { total: null, source: 'none' })
+  assert.deepEqual(orderTotalOf({ ...cci, total_amount: 0, payload_json: {} }), { total: null, source: 'none' })
+})
+test('never an "Order Total $0.00" line; the confirmed order total wins over the card', () => {
+  const noTotal = { ...cci, total_amount: null }
+  assert.doesNotMatch(buildReceiptHtml({ client, quote: noTotal, receipt: { ...base } }), /<td>Order Total<\/td>/)
+  const h = buildReceiptHtml({ client, quote: noTotal, receipt: { ...base, orderTotal: 54056, freight: 1934.25 } })
+  assert.match(h, /<td>Order Total<\/td><td>\$54,056\.00<\/td>/)
+  assert.match(h, /Remaining Balance<\/td><td>\$46,164\.00/)
+  assert.match(h, /Total Still Due \(incl\. freight\)<\/td><td>\$48,098\.25/)
+})
