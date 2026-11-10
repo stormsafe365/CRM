@@ -650,6 +650,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
 <div class="sec">
   <div class="st">6 — Walk-Through Doors</div>
   <div id="wl"></div>
+  <div id="cci-walk-warn" style="display:none;margin:4px 0 6px;padding:6px 9px;background:#fee2e2;color:#991b1b;border-left:3px solid #dc2626;border-radius:0 4px 4px 0;font-size:11px;line-height:1.4;font-weight:600"></div>
   <button class="ab" type="button" onclick="aWTD()">+ Add Walk-Through Door</button>
 </div>
 
@@ -6145,6 +6146,40 @@ function cciCertHoistIncluded(size){
   if(w===12) return h>=12;    // 12' wide — 12'-16'
   return h>=13;               // 6'/8'/9'/10' wide — 13'-16'
 }
+// CCI garage-door latches (CCI's sheet, emailed to the owner 11/10/26). CERTIFIED doors: no outside locks, kick locks
+// inside on the bottom, and "Must Have Walk In Doors On Any Building with Certified Roll Up Doors". (Uncertified doors:
+// 1 outside slide lock up to 8x8, 2 on 9x8 or larger, none with a chain hoist or motor - the program sells CCI certified
+// doors only - main, lean-to and partition - so that half is not used.) Wording + a print check only: no price changes.
+function cciDoorCertified(type){ return ACTIVE_MFR==='CCI' && type!=='standard'; }
+function cciLatchNote(type){ return cciDoorCertified(type) ? ' \u00B7 Kick Locks Inside (No Outside Locks)' : ''; }
+// Roll-up doors and walk-in doors on the whole quote (main building, lean-tos, partitions).
+function cciDoorCounts(){
+  var ru=0, wd=0;
+  document.querySelectorAll('.re').forEach(function(el){
+    var z=el.querySelector('.rsz'), t=el.querySelector('.rdtype');
+    if(z && z.value && cciDoorCertified(t?t.value:'rollup')) ru+=parseInt((el.querySelector('.rqt')||{}).value)||1;
+  });
+  document.querySelectorAll('.we').forEach(function(el){ wd+=parseInt((el.querySelector('.wqt')||{}).value)||1; });
+  document.querySelectorAll('.lt-acc-e').forEach(function(ae){
+    var t=(ae.querySelector('.lt-acc-type')||{}).value||'rollup', q=parseInt((ae.querySelector('.lt-acc-qty')||{}).value)||1;
+    if(t==='rollup'){ var z=ae.querySelector('.lt-acc-size'); if(z && z.value && cciDoorCertified('rollup')) ru+=q; }
+    else if(t==='wtd') wd+=q;
+  });
+  return {rollup:ru, walk:wd};
+}
+var CCI_WALK_MSG='CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so every building with certified roll-up doors must have a walk-in door. Add a walk-through door.';
+function cciWalkMissing(){
+  if(ACTIVE_MFR!=='CCI' || (typeof INPUT_MODE!=='undefined' && INPUT_MODE)) return false;
+  var c=cciDoorCounts(); return c.rollup>0 && c.walk<1;
+}
+// The red flag in Section 6 (Walk-Through Doors); never changes a value - no price effect.
+function cciWalkRefresh(){
+  var box=G('cci-walk-warn'); if(!box) return;
+  var on=cciWalkMissing();
+  box.style.display=on?'block':'none';
+  if(on && box.textContent!=='\u26A0 '+CCI_WALK_MSG+' The quote, contract, revised layout, text quote and send-to-client are blocked until one is added.')
+    box.textContent='\u26A0 '+CCI_WALK_MSG+' The quote, contract, revised layout, text quote and send-to-client are blocked until one is added.';
+}
 function doorHasChainIncluded(type, size){
   // CA Master Price Book catalog: m750 none · m3652 included above 10x10 ·
   // m3100 / m3100im always included.
@@ -11330,7 +11365,14 @@ function ovlPrintIssue(){
 }
 function ovlPrintBlock(){
   var msg=''; try { msg=ovlPrintIssue(); } catch(e){ console.warn('opening fit check failed:', e); }
-  if(!msg) return false;
+  if(!msg){
+    // CCI: certified roll-up doors need a walk-in door (CCI latch sheet 11/10/26) - same documents blocked
+    var _cw=false; try { _cw=cciWalkMissing(); } catch(e){ console.warn('walk-in door check failed:', e); }
+    if(!_cw) return false;
+    toast(CCI_WALK_MSG,'err');
+    var _wl=G('wl'); if(_wl){ try{ _wl.scrollIntoView({block:'center'}); }catch(e){} }
+    return true;
+  }
   toast('Openings clash — fix it first: '+msg,'err');
   return true;
 }
@@ -13357,7 +13399,7 @@ async function printQuote(){
                                                  typeLabel='Roll-Up w/ Chain Hoist';
     else                                         typeLabel='Roll Up Door';
     var unitP=rudBilledUnit(dtype,sz); // = the price gRUD billed
-    if(unitP) rows+=row(sz+' '+typeLabel,qty,unitP,unitP*qty);
+    if(unitP) rows+=row(sz+' '+typeLabel+cciLatchNote(dtype),qty,unitP,unitP*qty);
     var hoistEl=el.querySelector('.rch');
     var _showHoist = hoistEl && parseInt(hoistEl.value)>0 &&
                      (dtype==='standard' || (dtype==='rollup' && !doorHasChainIncluded(dtype, sz)));
@@ -13446,7 +13488,7 @@ async function printQuote(){
           // Merged Roll-Up tier — matches gLT (CCI = certified chart)
           var ap=getDoorPrice('rollup',asz);
           var _achIncl=doorHasChainIncluded('rollup',asz);
-          rows+=row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')',aqty,ap,ap*aqty);
+          rows+=row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')'+cciLatchNote('rollup'),aqty,ap,ap*aqty);
           // Door color upcharge (CCI flat / CA % of door price)
           var acoEl2=ae.querySelector('.lt-acc-color');
           if(acoEl2 && MFR().rudColors){
@@ -15163,7 +15205,7 @@ async function printContract(){
     else if(dtype==='chain' || (dtype==='rollup' && doorHasChainIncluded(dtype, sz))) typeLabel='Roll-Up w/ Chain Hoist';
     else typeLabel='Roll Up Door';
     var unitP=rudBilledUnit(dtype,sz); // = the price gRUD billed
-    if(unitP) row(sz+' '+typeLabel,qty,unitP,unitP*qty);
+    if(unitP) row(sz+' '+typeLabel+cciLatchNote(dtype),qty,unitP,unitP*qty);
     var hoistEl=el.querySelector('.rch');
     var _showHoist = hoistEl && parseInt(hoistEl.value)>0 && (dtype==='standard' || (dtype==='rollup' && !doorHasChainIncluded(dtype, sz)));
     if(_showHoist){ var hq=parseInt(hoistEl.value); var cp=window._chain||325; row('Chain Hoist',hq,cp,hq*cp); }
@@ -15245,7 +15287,7 @@ async function printContract(){
           // Merged Roll-Up tier — matches gLT (CCI = certified chart)
           var ap=getDoorPrice('rollup',asz);
           var _achIncl=doorHasChainIncluded('rollup',asz);
-          row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')',aqty,ap,ap*aqty);
+          row('  Lean-To: '+asz+' Roll-Up Door'+(_achIncl?' (Chain Hoist Included)':'')+' ('+alocLabel+')'+cciLatchNote('rollup'),aqty,ap,ap*aqty);
           // Door color upcharge (CCI flat / CA % of door price)
           var acoEl2=ae.querySelector('.lt-acc-color');
           if(acoEl2 && MFR().rudColors){
@@ -18402,7 +18444,7 @@ function textQuote(){
   if(T.anchors>0) optLines.push('Mobile Home Anchors \u2014 Ground Install');
   else if(T.mode!=='input' && T.anchorLegs>0) optLines.push('Mobile Home Anchors \u2014 Ground Install (included)'); // CCI: included (10/14/26)
   var doorLines=[];
-  document.querySelectorAll('.re').forEach(function(el){var sz=el.querySelector('.rsz').value,qty=parseInt(el.querySelector('.rqt').value)||1;var loc=el.querySelector('.rloc').value.replace(' Gable End','').replace(' Eave Side','');doorLines.push(qty+'x '+sz+' Roll-Up ('+loc+')');});
+  document.querySelectorAll('.re').forEach(function(el){var sz=el.querySelector('.rsz').value,qty=parseInt(el.querySelector('.rqt').value)||1;var loc=el.querySelector('.rloc').value.replace(' Gable End','').replace(' Eave Side','');var _dt=el.querySelector('.rdtype');doorLines.push(qty+'x '+sz+' Roll-Up ('+loc+')'+cciLatchNote(_dt?_dt.value:'standard'));});
   document.querySelectorAll('.we').forEach(function(el){var qty=parseInt(el.querySelector('.wqt').value)||1;var loc=el.querySelector('.wloc').value.replace(' Gable End','').replace(' Eave Side','');doorLines.push(qty+'x Walk Door ('+loc+')');});
   document.querySelectorAll('.ne').forEach(function(el){var qty=parseInt(el.querySelector('.nqt')?el.querySelector('.nqt').value:1)||1;var loc=el.querySelector('.nloc').value.replace(' Gable End','').replace(' Eave Side','');doorLines.push(qty+'x Window ('+loc+')');});
   var insText='None';var iSel=G('insul-sel');
@@ -18804,6 +18846,8 @@ rc = function(){
   try { ltPartRefreshAll(); } catch(e){ console.warn('ltPartRefreshAll failed:', e); }
   // No-overlap flags + qty lists (ovlRefresh). Never changes a value — no price effect.
   try { ovlRefresh(); } catch(e){ console.warn('ovlRefresh failed:', e); }
+  // CCI walk-in door rule flag (cciWalkRefresh). Never changes a value - no price effect.
+  try { cciWalkRefresh(); } catch(e){ console.warn('cciWalkRefresh failed:', e); }
   _origRC2();
   } finally { _ovlPassDepth--; if(!_ovlPassDepth) _ovlPassModel=null; }
 };
@@ -20530,6 +20574,7 @@ function refresh(){
   $('s5-empty').textContent=cards.length?'Nothing on the '+w.add+' yet.':'Nothing added yet — pick a wall, then use the buttons above.';
   $('s5-hidden').textContent=hiddenN?(hiddenN+' item'+(hiddenN>1?'s':'')+' on other walls (or the whole building) hidden — untick “This wall only” to see '+(hiddenN>1?'them':'it')+'.'):'';
   paintGch();
+  paintWalk();
   paintSum();
 }
 
@@ -20542,6 +20587,16 @@ function paintGch(){
   if(!miss) return;
   var txt=window.INPUT_MODE?'⚠ GCH: the Enclosed Storage length isn’t picked yet (Section 3).'
     :'⚠ GCH: pick the Enclosed Storage length (Section 3) — until then its walls, sides and divider aren’t priced and the quote PDF / contract / text quote won’t generate.';
+  var tx=box.querySelector('.s5-gcht'); if(tx.textContent!==txt) tx.textContent=txt;
+}
+/* CCI walk-in door rule (CCI latch sheet 11/10/26 - the program's cciWalkMissing; its own red note sits under the classic
+   Walk-Through Doors list). Repeated here on one line; display only: the program does the blocking. */
+function paintWalk(){
+  var box=$('s5-walkw'), miss=false; if(!box) return;
+  try{ miss=typeof window.cciWalkMissing==='function'&&!!window.cciWalkMissing(); }catch(e){}
+  box.hidden=!miss;
+  if(!miss) return;
+  var txt='\u26A0 CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so this building needs a walk-in door \u2014 add a Walk-Through Door. Until then the quote PDF / contract / text quote won\u2019t generate.';
   var tx=box.querySelector('.s5-gcht'); if(tx.textContent!==txt) tx.textContent=txt;
 }
 function goGchEnc(){
@@ -20774,6 +20829,7 @@ function build(){
   var sec=D.createElement('div'); sec.className='sec s5'; sec.id='s5-sec';
   sec.innerHTML='<div class="st">5 — Doors, Windows &amp; Add-ons</div>'+
     '<div class="s5-gchw" id="s5-gchw" aria-live="polite" hidden><span class="s5-gcht"></span><button type="button" class="s5-mmb" data-act="gchenc">Go to it</button></div>'+
+    '<div class="s5-gchw" id="s5-walkw" aria-live="polite" hidden><span class="s5-gcht"></span></div>'+
     '<p class="s5-lede">Pick a wall, add to it, then open a card to fine-tune it.</p>'+
     '<div class="s5-tiles" role="radiogroup" aria-label="Wall">'+WALLS.map(tileHTML).join('')+'</div>'+
     '<div class="s5-addto">Add to <b id="s5-addw">front gable</b></div>'+
