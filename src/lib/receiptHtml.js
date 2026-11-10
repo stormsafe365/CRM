@@ -28,14 +28,18 @@ const fmtDate = (iso) => {
  *   client: { name, email, phone, city, state },
  *   quote:  { quote_number, building_size, building_summary, total_amount },
  *   receipt: { number, date (yyyy-mm-dd), amount, method, reference,
- *              appliedTo, remaining, note, listMfr }
+ *              appliedTo, remaining, note, listMfr, freight }
+ *   freight: the CCI freight still due at installation (3%, not taxed - cardFreightOf / the contract's Freight line);
+ *   > 0 adds a Freight row and "Total Still Due" under the remaining balance (owner 11/9/26: "What about the freight fee???").
  *   listMfr (CCI orders): true = name Carolina Carports as seller / manufacturer (as before 11/9/26);
  *   anything else = StormSafe's own bill of sale, no manufacturer named (owner 11/9/26: "Its our bill of sale
  *   for the deposit ... it should give the option - list manufacturer - yes/no").
  * }
  */
 export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
-  const paidInFull = receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0
+  const frt = Math.max(0, Number(receipt.freight) || 0)
+  const stillDue = Math.round(((Number(receipt.remaining) || 0) + frt) * 100) / 100
+  const paidInFull = (receipt.appliedTo === 'Paid in Full' || Number(receipt.remaining) === 0) && !(frt > 0)
   const remainColor = paidInFull ? '#059669' : '#0f172a'
   const building = [quote.building_size, quote.building_summary].filter(Boolean).join(' — ')
   // CCI orders: the building is sold by Carolina Carports, Inc. — the document
@@ -111,6 +115,8 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
   table.acct tr.pay td { color: #0d9488; }
   table.acct tr.rem td { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 11.5pt; border-bottom: 0; padding-top: 12px; }
   table.acct tr.rem td:last-child { color: ${remainColor}; }
+  table.acct tr.frt td { color: #475569; }
+  table.acct tr.due td { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 11.5pt; border-bottom: 0; padding-top: 10px; }
 
   .note { background: #f0fdfa; border-left: 3px solid #0d9488; border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 9.5pt; color: #334155; margin-bottom: 22px; }
 
@@ -166,6 +172,8 @@ export function buildReceiptHtml({ client = {}, quote = {}, receipt = {} }) {
     ${isFinite(Number(quote.total_amount)) ? `<tr><td>Order Total</td><td>${money(quote.total_amount)}</td></tr>` : ''}
     <tr class="pay"><td>This Payment — ${esc(receipt.appliedTo || 'Deposit')}</td><td>&minus; ${money(receipt.amount)}</td></tr>
     <tr class="rem"><td>Remaining Balance</td><td>${paidInFull ? 'PAID IN FULL' : money(receipt.remaining)}</td></tr>
+    ${frt > 0 ? `<tr class="frt"><td>Freight &mdash; 3% (not taxed, due at installation)</td><td>${money(frt)}</td></tr>
+    <tr class="due"><td>Total Still Due (incl. freight)</td><td>${money(stillDue)}</td></tr>` : ''}
   </table>
 
   ${receipt.note ? `<div class="note">${esc(receipt.note)}</div>` : ''}

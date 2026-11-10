@@ -35,3 +35,22 @@ test('not CCI: a Payment Receipt, never a manufacturer (listMfr ignored)', () =>
   assert.match(makeReceiptNumber(ca), /^RCPT-/)
   assert.match(makeReceiptNumber(cci), /^BOS-/)
 })
+
+// Freight (owner 11/9/26, Laura Rincon: "What about the freight fee???"): CCI freight is its own charge, due at installation.
+test('freight > 0: a Freight row and the Total Still Due under the remaining balance (Laura Rincon: 46,164 + 1,934.25)', () => {
+  const h = buildReceiptHtml({ client, quote: cci, receipt: { ...base, freight: 1934.25 } })
+  assert.match(h, /<tr class="rem"><td>Remaining Balance<\/td><td>\$46,164\.00<\/td><\/tr>/)
+  assert.match(h, /<tr class="frt"><td>Freight &mdash; 3% \(not taxed, due at installation\)<\/td><td>\$1,934\.25<\/td><\/tr>/)
+  assert.match(h, /<tr class="due"><td>Total Still Due \(incl\. freight\)<\/td><td>\$48,098\.25<\/td><\/tr>/)
+})
+test('no freight (0 / missing): no freight rows, as before', () => {
+  for (const f of [0, undefined, '']) {
+    const h = buildReceiptHtml({ client, quote: cci, receipt: { ...base, freight: f } })
+    assert.doesNotMatch(h, /class="frt"|Total Still Due/)
+  }
+})
+test('building paid in full but freight still due: not "PAID IN FULL"; the freight is what is left', () => {
+  const h = buildReceiptHtml({ client, quote: cci, receipt: { ...base, amount: 54056, remaining: 0, appliedTo: 'Paid in Full', freight: 1934.25 } })
+  assert.doesNotMatch(h, /PAID IN FULL/)
+  assert.match(h, /Total Still Due \(incl\. freight\)<\/td><td>\$1,934\.25/)
+})

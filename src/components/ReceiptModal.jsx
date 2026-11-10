@@ -11,6 +11,7 @@ import { renderQuotePdf } from '../lib/builderSave'
 import { buildReceiptHtml, makeReceiptNumber } from '../lib/receiptHtml'
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
+import { cardFreightOf } from '../lib/cardFreight'
 
 const METHODS = ['Credit / Debit Card', 'Check', 'Cash', 'ACH / Bank Transfer', 'Wire Transfer', 'Financing', 'Other']
 const APPLIED = ['Deposit', 'Progress Payment', 'Final Balance', 'Paid in Full']
@@ -48,6 +49,11 @@ export default function ReceiptModal({ client, quote, onClose }) {
   // CCI orders: name Carolina Carports on the bill of sale? Owner 11/9/26: "Its our bill of sale for the deposit, i dont
   // think its necessary ... it should give the option - list manufacturer - yes/no" -> default No (StormSafe's own).
   const [listMfr, setListMfr] = useState(false)
+  // CCI freight (3%, not taxed, due at installation - its own charge, never in total_amount): the amount saved with the
+  // quote, the same one its card and contract print (cardFreightOf). Owner 11/9/26: "What about the freight fee???"
+  // Editable (0 = already paid / waived); a quote whose freight is only added when it is opened has no number yet.
+  const frtInfo = useMemo(() => cardFreightOf(quote), [quote])
+  const [freight, setFreight] = useState(frtInfo && frtInfo.freight > 0 ? String(frtInfo.freight) : '')
   const remTouched = useRef(false)
   const autoRemaining = useMemo(() => {
     const amt = Number(form.amount)
@@ -77,6 +83,7 @@ export default function ReceiptModal({ client, quote, onClose }) {
           remaining: Number(remaining) || 0,
           note: form.note.trim(),
           listMfr: isCCI && listMfr,
+          freight: Math.max(0, Number(freight) || 0),
         },
       })
       const blob = await renderQuotePdf(html)
@@ -164,6 +171,19 @@ export default function ReceiptModal({ client, quote, onClose }) {
           <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-3, #8598AC)' }}>
             Auto-calculated from the quote total — edit if earlier payments were already made.
           </p>
+        )}
+
+        {frtInfo && (
+          <>
+            <label style={LBL}>Freight — 3%, due at installation ($)</label>
+            <input style={FIELD} type="number" min="0" step="0.01" value={freight} placeholder="0.00"
+              onChange={(e) => setFreight(e.target.value)} />
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-3, #8598AC)' }}>
+              {frtInfo.pending
+                ? 'This quote adds its freight when it is opened — open and save the quote once, or type the freight from the contract.'
+                : 'From the quote (not taxed, not in the deposit). Shows under the remaining balance with the total still due — set 0 if already paid.'}
+            </p>
+          </>
         )}
 
         <label style={LBL}>Note (shows on the receipt)</label>
