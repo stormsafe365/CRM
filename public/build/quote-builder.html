@@ -6451,9 +6451,7 @@ function insulScope(){
     if(L>0) cciInsulEncLeanAdj(h, L, sides);
   }
   if(!sides.length) return 'main building only, not lean-tos';
-  var u=sides.filter(function(v,i){ return sides.indexOf(v)===i; });
-  var who=u.length>1?'Left & Right lean-to outer walls':(u[0]==='Left Eave'?'Left':'Right')+(sides.length>1?' lean-to outer walls':' lean-to outer wall');
-  return 'incl. '+who+' only'; // kept short: the row must stay on ONE line on the quote PDF / contract (page 1 fit)
+  return ''; // an enclosed lean-to's outer wall is insulated: no note (owner 11/11/26 "remove that verbiage")
 }
 function insulRowLabel(){
   var iSel=G('insul-sel'), sc=insulScope();
