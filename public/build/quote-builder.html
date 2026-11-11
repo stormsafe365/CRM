@@ -9522,7 +9522,8 @@ function gHoldRows(h){
   if(!h) return [];
   var parts=[]; try{ parts=JSON.parse((G('hold-ref')||{}).value||'{}').parts||[]; }catch(e){ parts=[]; }
   var out=[], s=0;
-  parts.forEach(function(p){ var a=Math.round((+p.amt||0)*100)/100; if(a){ out.push({label:String(p.label||'Pricing as originally quoted').replace(/[<>]/g,''), amt:a}); s+=a; } });
+  // Owner 11/11/26: the rows read "Lean-tos", "Insulation", ... - no " (as originally quoted)" (saved hold-refs keep the long label).
+  parts.forEach(function(p){ var a=Math.round((+p.amt||0)*100)/100; if(a){ out.push({label:String(p.label||'Pricing as originally quoted').replace(/[<>]/g,'').split(' (as originally quoted)').join(''), amt:a}); s+=a; } });
   var rest=Math.round((h-s)*100)/100;
   if(rest) out.push({label:'Pricing as originally quoted', amt:rest});
   return out;
