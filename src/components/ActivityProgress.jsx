@@ -5,7 +5,7 @@
 // the full history.
 //
 // Milestones are derived ONLY from real data we store (sales status, project
-// stage, payment_cleared, whether a quote exists). We don't invent finer steps
+// stage, payment_cleared) - a saved quote alone no longer ticks "Quote Sent" (11/16/26). We don't invent finer steps
 // (e.g. "Customer opened quote") that we have no tracking for.
 
 import { useEffect, useState } from 'react'
@@ -16,6 +16,7 @@ import { agoLabel, fmtLong, fmtTime } from '../lib/followups'
 import { cadenceSeeded, seedPostQuoteCadence, POST_QUOTE_CADENCE } from '../lib/quoteCadence'
 import ActivityComposer from './ActivityComposer'
 import { toast } from '../lib/uiFx'
+import { buildMilestones, STEP_PATCH } from '../lib/progressSteps'
 
 const TYPE_META = {
   call: { icon: '📞', label: 'Call' },
@@ -29,98 +30,41 @@ const TYPE_META = {
   follow_up_completed: { icon: '✓', label: 'Follow-up cleared' },
 }
 
-const PROJ_ORDER = ['engineering', 'permitting', 'scheduling', 'installed']
-
-const STEP_LABELS = [
-  'Lead Created', 'Attempting to Contact', 'Quote Sent', 'Contract Sent',
-  'Contract Signed', 'Deposit Received', 'Engineering', 'Permitting',
-  'Scheduling', 'Installed',
-]
-
-// How far down the linear stepper each sales status sits. Legacy/side values
-// fold onto the nearest step so old rows still render sensibly.
-const STATUS_RANK = {
-  new_lead: 0,
-  contacted: 1,
-  working: 2, quoted: 2, follow_up: 2, working_hot: 2, deposit_pending: 2,
-  contract_sent: 3,
-  ordered: 4,
-}
-
-// One linear rank for where the client actually is, derived from the SAME
-// fields the stepper clicks write (status / project_stage / payment_cleared).
-// This keeps click → visible advance in lockstep: clicking a node writes the
-// status, and the node then reads as done because its rank is reached.
-function reachedRank(client, hasQuote) {
-  let rank = STATUS_RANK[client.status] ?? 1
-  if (hasQuote && rank < 2) rank = 2 // a saved quote means at least "Quote Sent"
-  if (client.status === 'ordered') {
-    rank = client.payment_cleared ? 5 : 4
-    const idx = PROJ_ORDER.indexOf(client.project_stage)
-    if (idx >= 0) rank = 6 + idx // engineering=6 … installed=9
-  }
-  return rank
-}
-
-function buildMilestones(client, hasQuote) {
-  const rank = reachedRank(client, hasQuote)
-  return STEP_LABELS.map((label, i) => ({ label, done: i <= rank }))
-}
+// The stepper's rules (status ranks, milestones, what each click writes) are in ../lib/progressSteps.js.
 
 export default function ActivityProgress({ client, showAudience = false, onMarkOrdered, onPatched }) {
   const { users } = useUsers()
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
   const [acts, setActs] = useState([])
-  const [hasQuote, setHasQuote] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [a, q] = await Promise.all([
-        supabase.from('activities').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
-        supabase.from('quotes').select('id').eq('client_id', client.id).limit(1),
-      ])
+      const a = await supabase.from('activities').select('*').eq('client_id', client.id).order('created_at', { ascending: false })
       if (cancelled) return
       setActs(a.data ?? [])
-      setHasQuote((q.data ?? []).length > 0)
       setLoading(false)
     }
     load()
     const ch = supabase
       .channel(`actprog-${client.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activities', filter: `client_id=eq.${client.id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes', filter: `client_id=eq.${client.id}` }, () => load())
       .subscribe()
     return () => { cancelled = true; supabase.removeChannel(ch) }
   }, [client.id])
 
-  const milestones = buildMilestones(client, hasQuote)
+  const milestones = buildMilestones(client) // follows the stage that is set (a saved quote alone does not tick "Quote Sent")
   const currentIdx = milestones.findIndex(m => !m.done)
   const last = acts[0]
   const nextAction = client.follow_up_date
     ? `Follow up ${fmtLong(client.follow_up_date)}${client.follow_up_time ? ` · ${fmtTime(client.follow_up_time)}` : ''}`
     : 'No follow-up scheduled'
 
-  // Clicking a step advances the client to that milestone. Maps the design's
-  // linear stepper onto the app's real status / project_stage fields. The
-  // 'Lead Created' step is fixed (always done), so it isn't clickable.
-  // Each step also moves the lead-temperature gauge to its matching stop, so
-  // the stepper, the Stage pill and the thermometer stay in lockstep (same
-  // 3-way coupling as Mark-as-Ordered).
-  const STEP_PATCH = [
-    null,                                                                  // 0 Lead Created (fixed)
-    { status: 'contacted', lead_temperature: 'warm' },                     // 1 Attempting to Contact
-    { status: 'working', lead_temperature: 'working' },                    // 2 Quote Sent → Working Leads
-    { status: 'contract_sent', lead_temperature: 'ready' },                // 3 Contract Sent
-    { status: 'ordered' },                                                 // 4 Contract Signed
-    { status: 'ordered', payment_cleared: true },                          // 5 Deposit Received
-    { status: 'ordered', project_stage: 'engineering' },                   // 6 Engineering
-    { status: 'ordered', project_stage: 'permitting' },                    // 7 Permitting
-    { status: 'ordered', project_stage: 'scheduling' },                    // 8 Scheduling
-    { status: 'ordered', project_stage: 'installed' },                     // 9 Installed
-  ]
+  // Clicking a step moves the client to that milestone (STEP_PATCH, progressSteps.js) - "Lead Created" included: it
+  // sets the lead back to New Lead (owner 11/16/26). Each step also moves the lead-temperature gauge to its matching
+  // stop, so the stepper, the Stage pill and the thermometer stay in lockstep (same 3-way coupling as Mark-as-Ordered).
   async function setMilestone(i) {
     const patch = STEP_PATCH[i]
     if (!patch) return
@@ -173,9 +117,9 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
       <div className="stepper">
         {milestones.map((m, i) => (
           <div key={m.label} className={`step${m.done ? ' done' : ''}${i === currentIdx ? ' current' : ''}`}
-            onClick={() => setMilestone(i)} role={i === 0 ? undefined : 'button'}
-            title={i === 0 ? undefined : `Set stage to “${m.label}”`}
-            style={{ cursor: i === 0 ? 'default' : 'pointer' }}>
+            onClick={() => setMilestone(i)} role="button"
+            title={i === 0 ? 'Set back to New Lead' : `Set stage to “${m.label}”`}
+            style={{ cursor: 'pointer' }}>
             <div className="step-node">
               {m.done
                 ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
