@@ -267,7 +267,7 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
   <div id="perm-yes" class="hidden">
     <div class="row"><label>Plans Required</label>
       <select id="plans-sel" onchange="rc()">
-        <option value="As Built Plans">As Built Stamped Plans — $400/500/750</option>
+        <option value="As Built Plans">As Built Stamped Plans — $500/600/900</option>
         <option value="Generic Plans">Generic Stamped Plans — $250</option>
         <option value="Master Files">Master Files — $250</option>
         <option value="No Permit Required">No Permit Required — $0</option>
@@ -277,8 +277,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
     <div class="row"><label>Permitting Service</label>
       <select id="permit-svc" onchange="rc()">
         <option value="none">None — Buyer pulls own permit</option>
-        <option value="building">Building Only — $100</option>
-        <option value="building-pad">Building &amp; Pad — $225</option>
+        <option value="building">Building Only — $350</option>
+        <option value="building-pad">Building &amp; Pad — $450</option>
       </select></div>
     <div class="row"><label>Certify Wind Load To</label>
       <select id="cert-ovr" onchange="doPerm();rc()">
@@ -3102,6 +3102,7 @@ var MANUFACTURERS = {
     // (The book's M3100 hoist-included line is not offered in the menu.)
     rudCatalog: {
       rollup: {label:'Roll-Up Doors — Certified', hoist:'small-add', prices:{"8x8":1325,"8x9":1425,"8x10":1500,"8x12":1650,"8x14":1850,"9x8":1400,"9x9":1475,"9x10":1575,"9x12":1775,"9x14":1950,"10x8":1475,"10x9":1550,"10x10":1650,"10x12":1825,"10x14":2025,"12x8":1550,"12x9":1650,"12x10":1725,"12x12":1950,"12x14":2175,"14x8":1675,"14x9":1775,"14x10":1900,"14x12":2100,"14x14":2350,"16x8":1825,"16x9":1950,"16x10":2050,"16x12":2300,"16x14":2600,"18x8":1950,"18x9":2075,"18x10":2175,"18x12":2475,"18x14":2675,'18x16':4520}},
+      windlock: {label:'Roll-Up Doors — Certified Heavy-Duty (Hoist Incl.)', hoist:'incl', prices:{"8x8":1425,"8x9":1550,"8x10":1625,"8x12":1800,"8x14":2050,"8x16":2200,"8x18":2375,"9x8":1525,"9x9":1600,"9x10":1725,"9x12":1950,"9x14":2150,"9x16":2375,"9x18":2575,"10x8":1600,"10x9":1700,"10x10":1800,"10x12":2025,"10x14":2250,"10x16":2450,"10x18":2650,"12x8":1700,"12x9":1800,"12x10":1925,"12x12":2175,"12x14":2425,"12x16":2850,"12x18":2925,"14x8":1825,"14x9":1975,"14x10":2125,"14x12":2375,"14x14":2675,"14x16":2900,"14x18":3100,"16x8":2025,"16x9":2150,"16x10":2300,"16x12":2600,"16x14":2950,"16x16":3200,"18x8":2200,"18x9":2325,"18x10":2475,"18x12":2825,"18x14":3075,"20x8":2500,"20x9":2675,"20x10":2850,"20x12":3200,"20x14":3600}}, // book 7/16/26 §1C M3100 Certified Commercial Windlock (chain hoist on all sizes)
       noncert: {label:'Roll-Up Doors — Non-Certified', hoist:'none', prices:{"6x6":750,"6x7":770,"6x8":790,"8x7":825,"8x8":950,"8x9":1000,"8x10":1200,"9x8":1025,"9x9":1075,"9x10":1200,"10x7":950,"10x8":1100,"10x9":1100,"10x10":1250}},
       hiimpact: {label:'High-Impact Roll-Up Doors', hoist:'incl', prices:{"8x8":1600,"8x9":1650,"8x10":1810,"8x12":2000,"8x14":2275,"8x16":2400,"8x18":2450,"9x8":1720,"9x9":1725,"9x10":1900,"9x12":2150,"9x14":2375,"9x16":2550,"9x18":2675,"10x8":1740,"10x9":1800,"10x10":1920,"10x12":2225,"10x14":2410,"10x16":2650,"10x18":2850,"12x8":1880,"12x9":1925,"12x10":2120,"12x12":2350,"12x14":2650,"12x16":3000,"12x18":3050,"14x8":2030,"14x9":2100,"14x10":2300,"14x12":2600,"14x14":2890,"14x16":3100,"14x18":3240,"16x8":2150,"16x9":2300,"16x10":2425,"16x12":2750,"16x14":3100,"16x16":3350,"16x18":3575,"18x8":2200,"18x9":2350,"18x10":2500,"18x12":2850,"18x14":3125,"18x16":3500,"18x18":3900,"20x8":2525,"20x9":2700,"20x10":2875,"20x12":3225,"20x14":3650,"20x16":3950,"20x18":4250}},
     },
@@ -3137,36 +3138,36 @@ var MANUFACTURERS = {
     },
     // ── Wainscot column buckets ───────────────────────────────────────────────
     wainscotBuckets: function(w) {
-      return { cols:[20,24,28,32,36,40,44,48,52], vals:[300,350,400,450,500,550,600,650,700] };
+      return { cols:[20,25,30,35,40], vals:[300,350,400,450,500] }; // book 7/16/26 §4H (the 4' grid was the withdrawn 7/15/26 32'-60' sheet)
     },
-    // ── Vertical side wall: CA charges per-side individually ─────────────────
-    vertSideCombined: false,
+    // ── Vertical side wall: book 7/16/26 §4E "Vertical Siding (both sides, 12–30', by length)" = the pair (one side = half) ─
+    vertSideCombined: true, // was false: each closed side paid the both-sides price (double)
     // ── Wide-span SH / BSC index axis ────────────────────────────────────────
     shIndexByLength: false, shExtThresh: 44,
     // ── Plan config ──────────────────────────────────────────────────────────
     defaultPlan: 'As Built Plans',
     autoHighPlan: 'As Built Plans',
-    autoHighBadge: 'Auto: As Built Stamped Plans — $750 Required',
+    autoHighBadge: 'Auto: As Built Stamped Plans — $900 Required',
     dynamicPlanLabels: true,
     planCostFn: function(planType, sub, isCom) {
       if(planType==='No Permit Required') return 0;
       if(planType==='Generic Plans' || planType==='Master Files') return 250;
-      // As Built Plans: $400 (≤40W res), $500 (>40W res), $750 (commercial)
-      if(isCom) return 750;
+      // As Built Plans - book 7/16/26 §5B: As-Built Plan 1 $500 (≤40W res), As-Built Plan 2 $600 (>40W res - the 40W split is CA's earlier sheet, not confirmed), Commercial / Residential Risk 2 $900
+      if(isCom) return 900;
       var w = parseInt((typeof G==='function'&&G('bw'))?G('bw').value:0)||0;
-      return w > 40 ? 500 : 400;
+      return w > 40 ? 600 : 500;
     },
-    plans: {'Generic Plans':250,'As Built Plans':400,'Master Files':250,'No Permit Required':0},
+    plans: {'Generic Plans':250,'As Built Plans':500,'Master Files':250,'No Permit Required':0},
     planLabels: {
       'Generic Plans':'Generic Stamped Plans — $250',
-      'As Built Plans':'As Built Stamped Plans — $400 (≤40W) / $500 (>40W) / $750 (com)',
+      'As Built Plans':'As Built Stamped Plans — $500 (≤40W) / $600 (>40W) / $900 (com)',
       'Master Files':'Master Files — $250',
       'No Permit Required':'No Permit Required — $0'
     },
-    planOptions: '<option value="As Built Plans">As Built Stamped Plans — $400/500/750</option><option value="Generic Plans">Generic Stamped Plans — $250</option><option value="Master Files">Master Files — $250</option><option value="No Permit Required">No Permit Required — $0</option>',
+    planOptions: '<option value="As Built Plans">As Built Stamped Plans — $500/600/900</option><option value="Generic Plans">Generic Stamped Plans — $250</option><option value="Master Files">Master Files — $250</option><option value="No Permit Required">No Permit Required — $0</option>',
     permitSvc: [
-      {v:'building',     label:'Building Only — $100',    amt:100, lbl:'Building Only'},
-      {v:'building-pad', label:'Building &amp; Pad — $225', amt:225, lbl:'Building & Pad'}
+      {v:'building',     label:'Building Only — $350',    amt:350, lbl:'Building Only'}, // book 7/16/26 §5A Liaison Fees: Building Only $350
+      {v:'building-pad', label:'Building &amp; Pad — $450', amt:450, lbl:'Building & Pad'} // §5A Building & Concrete $450
     ],
     planDisplayFn: function(planType, planCost) {
       return planType + ' — $' + planCost;
@@ -4311,7 +4312,7 @@ function doPT(){
     for(var oi2=0;oi2<pSel2.options.length;oi2++){
       var opt2=pSel2.options[oi2];
       var w2=parseInt((G('bw')&&G('bw').value)||0)||0;
-      var ab2=isCom2?750:(w2>40?500:400);
+      var ab2=MFR().planCostFn('As Built Plans',0,isCom2);
       if(opt2.value==='As Built Plans') opt2.text='As Built Stamped Plans — $'+ab2;
       if(opt2.value==='Master Files')   opt2.text='Master Files — $250';
     }
@@ -4349,7 +4350,8 @@ function doPerm(){
     if(_cciTall || _cciWideP) planType = 'Site Specific Plans';
     var _paNote = G('plans-auto-note'); if(_paNote) _paNote.classList.toggle('hidden', !_cciTall);
     var _pwNote = G('plans-wide-note'); if(_pwNote) _pwNote.classList.toggle('hidden', !_cciWideP);
-    var _paSel = G('plans-sel'); if(_paSel) _paSel.disabled = (_cciTall || _cciWideP);
+    var _caAB = _caAsBuiltReq(); if(_caAB) planType = 'As Built Plans'; // CA book §6: as-built plans on every order 30' wide and over
+    var _paSel = G('plans-sel'); if(_paSel) _paSel.disabled = (_cciTall || _cciWideP || _caAB);
     G('plans-sel').value = planType;
     G('cert-req').textContent = certLabel(cert); // "Up to 170 MPH" (owner 10/9/26)
     // CA: update As Built/Master Files label to show correct price for property type
@@ -4360,7 +4362,7 @@ function doPerm(){
         for(var oi=0;oi<pSel.options.length;oi++){
           var opt=pSel.options[oi];
           var w3=parseInt((G('bw')&&G('bw').value)||0)||0;
-          var ab3=isCom2?750:(w3>40?500:400);
+          var ab3=MFR().planCostFn('As Built Plans',0,isCom2);
           if(opt.value==='As Built Plans') opt.text='As Built Stamped Plans — $'+ab3;
           if(opt.value==='Master Files')   opt.text='Master Files — $250';
         }
@@ -4898,6 +4900,41 @@ function nearestStd(l){
   for(var i=0;i<STD_TIERS.length;i++){ if(STD_TIERS[i]>=l) return STD_TIERS[i]; }
   return STD_TIERS[STD_TIERS.length-1];
 }
+// CA (Carports Anywhere) - Master Price Book Dealer Edition, Revised 7/16/26 (owner 11/16/26: "CA pricing is NOT up to date").
+// CA prices the ROOF length = frame + 1' (CA intake 11/14/26: a 36' building has a 37' roof = the x41 row). The book's building
+// rows (x21, x26 ... on 12'-30'; x21, x25 ... on 32'-60') are roof lengths, so a frame takes the first row at or above frame + 1.
+// nearestStd / nearestWS compared the FRAME with the roof rows: frames ending in 1 or 6 (12'-30') and 21/25/29 ... (32'-60')
+// read the row below. The option columns (side height, sides, vertical, 12 GA, wainscot) are FRAME lengths, rounded UP.
+function caRoofTier(tiers, l){ for(var i=0;i<tiers.length;i++){ if(tiers[i]>=l+1) return tiers[i]; } return tiers[tiers.length-1]; }
+function caColUp(cols, l){ for(var i=0;i<cols.length;i++){ if(cols[i]>=l) return i; } return cols.length-1; }
+// CA 32'-60' longer than the book's 52' column: the SAME sections the base price uses (wideSpanCombinations - e.g. 56' = 28' + 28'),
+// each section's option at its own frame length (an estimate: the book prints options to 52' only). null = within the book.
+function caWideUnits(l){
+  if(!(l>52)) return null;
+  var c=((typeof MANUFACTURERS!=='undefined'&&MANUFACTURERS.CA)||{}).wideSpanCombinations||{}, ks=Object.keys(c).map(Number).sort(function(a,b){return a-b;});
+  for(var i=0;i<ks.length;i++){ if(ks[i]>=l) return c[ks[i]].map(function(r){ return r-1; }); }
+  return null;
+}
+function caWideUnitSum(l, row, cols){ var u=caWideUnits(l); if(!u) return null; var s=0; for(var i=0;i<u.length;i++) s+=row[caColUp(cols,u[i])]||0; return s; }
+// Roll-up brush seal for one door: CA book 1E "Roll-up door brush seals $9.85/ft" - the seal runs the top AND both sides,
+// so CA = (width + 2 x height) ft (it was width only, under the "Tops & Sides" label). CCI: width x its rate, unchanged.
+function rudSealUnit(sz){ var p=String(sz||'').replace('*','').split('x'), w=parseInt(p[0])||0, h=parseInt(p[1])||0; return Math.round((ACTIVE_MFR==='CA'?w+2*h:w)*(window._seal||9.85)); }
+// CA freight (book §6 "Freight Charge Policy"): every order over 43' wide and/or over 100' long, and any custom roof pitch, carries
+// a minimum freight charge of $1,750 or 3% of the building cost (pre-tax) - read as whichever is MORE (not confirmed with CA).
+// §8: freight is not taxable and cannot be added into the building price - the same separate line as CCI freight (not discounted,
+// not taxed, not in the deposit, due at installation). Building cost = the price before discounts less connection fees (§8).
+var CA_FREIGHT_MIN=1750;
+function caFreightOn(){
+  if(ACTIVE_MFR!=='CA' || (typeof INPUT_MODE!=='undefined' && INPUT_MODE)) return false;
+  var w=parseInt((G('bw')||{}).value)||0, l=parseInt((G('bl')||{}).value)||0; if(w%2===1) w++;
+  var ps=((G('pitch-sel')||{}).value)||'standard';
+  return w>43 || l>100 || (ps==='4:12' || ps==='5:12' || ps==='6:12');
+}
+// CA: as-built engineering plans are required on all orders 30' wide and over (book §6 "As-Built Requirement") - permit or not.
+function _caAsBuiltReq(){ if(ACTIVE_MFR!=='CA' || (typeof INPUT_MODE!=='undefined' && INPUT_MODE)) return false; var w=parseInt((G('bw')||{}).value)||0; if(w%2===1) w++; return w>=30; }
+// The plan charged even without a permit: CCI 62'-100' wide = Site Specific (CCI 4/30/26), CA 30'+ wide = As Built. '' = none.
+function _alwaysPlan(){ if(_cciWidePlans()) return 'Site Specific Plans'; if(_caAsBuiltReq()) return 'As Built Plans'; return ''; }
+function _plCom(){ var p=((G('pt')||{}).value)||''; return p==='com'||p==='rc2r'; }
 // Wide span tiers (CA sheet: 21,25,29,33,37,41,45,49,53)
 var WS_TIERS=[21,25,29,33,37,41,45,49,53];
 function nearestWS(l){
@@ -5105,13 +5142,13 @@ function gBase(){
     for(var _ci=0;_ci<_cu.length;_ci++) _cs+=(T[Math.max(20,_cu[_ci])+1]||[])[_cwi]||0; // under 20' = the 20' column
     if(_cs>0) return _cs;
   }
-  if(l<=51&&!isWS){
+  if((ACTIVE_MFR==='CA'?l<=50:l<=51)&&!isWS){ // CA: a 51' frame has a 52' roof - past the x51 row (combinations)
     // Standard: use CA standard tiers [21,26,31,36,41,46,51]
-    var pl=nearestStd(l);
+    var pl=(ACTIVE_MFR==='CA')?caRoofTier(STD_TIERS,l):nearestStd(l); // CA: roof length = frame + 1' (book 7/16/26)
     return (T[pl]||[])[wi]||0;
-  } else if(l<=53&&isWS){
+  } else if((ACTIVE_MFR==='CA'?l<=52:l<=53)&&isWS){
     // Wide span: use CA wide span tiers [21,25,29,33,37,41,45,49,53]
-    var pl=nearestWS(l);
+    var pl=(ACTIVE_MFR==='CA')?caRoofTier(WS_TIERS,l):nearestWS(l); // CA: roof length = frame + 1' (book 7/16/26)
     return (T[pl]||[])[wi]||0;
   }
   // ── Standard 12'-30' wide, L > 51' — use COMBINATIONS (industry standard) ──
@@ -5122,7 +5159,7 @@ function gBase(){
     var keys = Object.keys(combos).map(Number).sort(function(a,b){return a-b;});
     var targetKey = null;
     for(var ck = 0; ck < keys.length; ck++){
-      if(keys[ck] >= l){ targetKey = keys[ck]; break; }
+      if(keys[ck] >= (ACTIVE_MFR==='CA'?l+1:l)){ targetKey = keys[ck]; break; } // CA: the keys are combined ROOF lengths (56 = 31' + 26' roofs = 30' + 25' frames)
     }
     if(targetKey){
       var parts = combos[targetKey];
@@ -5202,6 +5239,14 @@ function gLeg(){
              16:[2450,2895,3340,3785,4235,4680,5125,5575,6020],
              18:[3360,3840,4320,4800,5280,5760,6240,6720,7200],
              20:[3790,4470,5115,5830,6510,7190,7865,8545,9225]};
+    // CA 32'-60' (book 7/16/26 §4B "Side Height — 32–60' Wide (14GA, by length)"): the column is the FRAME LENGTH rounded UP
+    // (it was indexed by WIDTH); 8' is the base height (§2C "8'–20' Tall") = no charge (it read the 10' row); 9' reads the 10' row.
+    // Past the 52' column: per section, like the base (caWideUnitSum).
+    if(ACTIVE_MFR==='CA' && w>=32 && w<=60){
+      if(h<=8) return 0;
+      var _caLR=SHT[hk]||SHT[16], _caLU=caWideUnitSum(l, _caLR, SHC);
+      return (_caLU!=null) ? _caLU : (_caLR[caColUp(SHC,l)]||0);
+    }
     // CCI 32'-60' wide, EVERY length: connected units (CCI Dealer Handbook p6 "32W-60W
     // Combinations" — 56 = 28+28 … 104 = 52+52, 108 = 36+36+36 … 120 = 40+40+40;
     // cciWideUnits), each unit on the SIDE HEIGHT chart above (Price Book 2 p6; 10/9/26).
@@ -5269,11 +5314,11 @@ function gLeg(){
   var hk2=h<=16?h:(h<=18?18:20);
   var huT=(w<=24?HU_N:(w<=30?HU_M:HU));
   if(l<=40){
-    var pls=nearestStd(l); var lis=LENGTHS.indexOf(pls); if(lis<0) return 0;
+    var pls=(ACTIVE_MFR==='CA')?([20,25,30,35,40][caColUp([20,25,30,35,40],l)]+1):nearestStd(l); var lis=LENGTHS.indexOf(pls); if(lis<0) return 0; // CA: book 4A column = frame length rounded UP
     return (huT[hk2]||huT[16]||[])[lis]||0;
   }
   // For l>40: use EXT_SH_30 for w=30, extrapolate for others
-  if(w===30 && EXT_SH_30[hk2]){
+  if(w===30 && ACTIVE_MFR!=='CA' && EXT_SH_30[hk2]){ // CA: book 4A is ONE chart for 12'-30' - a 30' wide prices like 26'/28'
     var extRow30=EXT_SH_30[hk2];
     var bestI30=extRow30.length-1;
     for(var ei30=0;ei30<EXT_L.length;ei30++){if(EXT_L[ei30]>=l){bestI30=ei30;break;}}
@@ -5292,7 +5337,7 @@ function gLeg(){
   var sh40s=(huT[hk2]||huT[16]||[])[LENGTHS.indexOf(41)]||0;
   var sh20s=(huT[hk2]||huT[16]||[])[LENGTHS.indexOf(21)]||0;
   if(!sh40s||!sh20s) return 0;
-  var lEffLeg = (l<=51) ? nearestStd(l) : l;
+  var lEffLeg = (ACTIVE_MFR==='CA') ? Math.ceil(l/5)*5 : ((l<=51) ? nearestStd(l) : l); // CA past 40' (no book column): the 20'-40' rate per 5', frame rounded UP
   return Math.round(sh40s + (sh40s-sh20s)/20*(lEffLeg-40));
 }
 function getSqFt(){
@@ -5468,6 +5513,12 @@ function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' only — 
              16:[2040,2450,2855,3265,3670,4080,4490,4895,5305],
              18:[2470,2970,3460,3955,4450,4945,5440,5935,6425],
              20:[2905,3485,4065,4645,5225,5810,6390,6970,7550]};
+    // CA 32'-60' (book 7/16/26 §4D "Both Sides Closed — 32–60' Wide (vertical paneling incl., by length)"): the column is the
+    // FRAME LENGTH rounded UP (it was indexed by WIDTH); past 52' per section like the base. One side = half of the pair.
+    if(ACTIVE_MFR==='CA' && w2>=32 && w2<=60){
+      var _caSR=BSC[hk]||BSC[16], _caSP=caWideUnitSum(l, _caSR, SH_COLS); if(_caSP==null) _caSP=_caSR[caColUp(SH_COLS,l)]||0;
+      return pair ? _caSP : Math.round(_caSP/2);
+    }
     // CCI 32'-60' wide, EVERY length: connected units (CCI Dealer Handbook p6;
     // cciWideUnits), each unit on the BOTH SIDES CLOSED chart above (Price Book 2 p6;
     // 10/9/26) — the pair straight from the chart, one side = half. This replaces, for
@@ -5529,7 +5580,7 @@ function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' only — 
   }
   // Standard (12-30ft): use SC table for l<=40, EXT_BSC_30 for w=30 l>40
   var SC_COLS=[20,25,30,35,40];
-  if(l>40 && w2===30 && EXT_BSC_30[hk]){
+  if(l>40 && w2===30 && ACTIVE_MFR!=='CA' && EXT_BSC_30[hk]){ // CA: book 4C is one chart for 12'-30'
     var ebr30=EXT_BSC_30[hk];
     var ebi30=ebr30.length-1;
     for(var ei30s=0;ei30s<EXT_L.length;ei30s++){if(EXT_L[ei30s]>=l){ebi30=ei30s;break;}}
@@ -5542,18 +5593,21 @@ function scLookup(h,l,w,pair){ // pair = true: BOTH sides (CCI 32'-60' only — 
   }
   var sc_ci=SC_COLS.length-1;
   for(var sci=0;sci<SC_COLS.length;sci++){if(SC_COLS[sci]>=l){sc_ci=sci;break;}}
-  var scVal=((SC[hk]||SC[16])[SC_COLS[sc_ci]]||0);
+  // CA: the building's OWN height row (book 4C rows 6', 7', 8'-9', 10', 11'-12', 13', 14', 15', 16' - SC holds them); the even key
+  // read 6'/7' as 8', 13' as 14' and 15' as 16' (over-charged $110-$430 per building).
+  var _scRow=(ACTIVE_MFR==='CA')?(SC[Math.max(6,Math.min(16,h))]||SC[16]):(SC[hk]||SC[16]);
+  var scVal=(_scRow[SC_COLS[sc_ci]]||0);
   if(l>40){
     // Side-closing chart tops out at 40' and CCI builds in 5' tiers (…40,45,50),
     // so a 42' bills as 45'. Round the length UP to the next 5' tier before
     // extrapolating (the literal length under-charged in-between lengths).
-    var scBase=((SC[hk]||SC[16])[20]||0);
-    var sc40v=((SC[hk]||SC[16])[40]||0);
+    var scBase=(_scRow[20]||0);
+    var sc40v=(_scRow[40]||0);
     var scRate=(sc40v-scBase)/20;
     var lEffSc = (l<=50) ? Math.ceil(l/5)*5 : l;
     scVal=Math.round(sc40v+scRate*(lEffSc-40));
   }
-  return Math.round(scVal/2);
+  return (pair && ACTIVE_MFR==='CA') ? scVal : Math.round(scVal/2); // CA: the pair straight from the chart (no $1 drift)
 }
 // Both eave sides closed. CCI 62'-100' prices the PAIR from its chart (the sides
 // chart is both sides) — 2 x the rounded half drifts $1 on odd totals (70x110x20:
@@ -5564,6 +5618,7 @@ function scPairLookup(h,l,w){
   if(ACTIVE_MFR==='CCI' && w2>=62 && w2<=100) return cciWideSCBothSides(h, l);
   if(ACTIVE_MFR==='CCI' && w2>=32 && w2<=60) return scLookup(h,l,w,true); // units: the pair from the chart, no $1 rounding drift
   if(ACTIVE_MFR==='CCI' && w2<=30) return scLookup(h,l,w,true); // 12'-30': the pair from the chart (audit O3; 17'+ too, 10/12/26)
+  if(ACTIVE_MFR==='CA') return scLookup(h,l,w,true); // CA: the pair from the chart (12'-60')
   return scLookup(h,l,w)*2;
 }
 // Vertical wall upgrade — CA "VERTICAL OR LAP SIDING" tables
@@ -6043,9 +6098,10 @@ function gWainscot(){
   if(!w||!l) return 0;
   // CCI: Sensei per-wall rule (10/5/26) for every height — see cciWainscot().
   if(ACTIVE_MFR==='CCI') return cciWainscot().total;
-  var _wb=MFR().wainscotBuckets(w), _wc=0;
-  for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;}
-  return Math.round(_wb.vals[_wc]*(wainscotPrintOpt()?1.25:1));
+  var _wb=MFR().wainscotBuckets(w), _wc=0, _wv;
+  if(ACTIVE_MFR==='CA'){ _wv=(l<=40)?_wb.vals[caColUp(_wb.cols,l)]:500+50*Math.ceil((l-40)/5); } // CA: frame rounded UP; past 40' +$50 per 5' (estimate - no book column)
+  else { for(var _wi=0;_wi<_wb.cols.length;_wi++){if(_wb.cols[_wi]<=l)_wc=_wi;else break;} _wv=_wb.vals[_wc]; }
+  return Math.round(_wv*(wainscotPrintOpt()?1.25:1));
 }
 function gWalls(){
   if(G('btype').value==='fslean') return fsWalls();
@@ -6305,7 +6361,7 @@ function gRUD(){
     var sealEl=el.querySelector('.rsl');
     var sealQty=sealEl?parseInt(sealEl.value)||0:0;
     var sealDw=parseInt((sz||'').split('x')[0])||0;
-    t+=sealQty*Math.round(sealDw*(window._seal||9.85));
+    t+=sealQty*rudSealUnit(sz);
     // Automatic opener — CCI only: $1,100/door, $1,200 for 12'+ doors
     var opnEl=el.querySelector('.rop');
     var opnQty=opnEl?parseInt(opnEl.value)||0:0;
@@ -7570,7 +7626,7 @@ function gLT(){
         // Header seal add-on
         var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
         var sealDw=parseInt((asz||'').split('x')[0])||0;
-        accAdj+=asl*Math.round(sealDw*(window._seal||9.85));
+        accAdj+=asl*rudSealUnit(asz);
         // Eave header — ALWAYS required for a roll-up on the outer wall of an
         // eave-attached lean-to: framing runs every 4'/5' OC and the smallest
         // roll-up is 6' wide, so it can't miss a truss. Same width-bucketed
@@ -8540,7 +8596,7 @@ function refreshLTAccChSl(e){
     var curSl=parseInt(slEl.value)||0;
     var szEl=e.querySelector('.lt-acc-size');
     var sealDw=szEl?(parseInt((szEl.value||'').split('x')[0])||0):0;
-    var sealUnit=Math.round(sealDw*(window._seal||9.85));
+    var sealUnit=rudSealUnit(szEl?szEl.value:'');
     slEl.innerHTML='<option value="0">None</option>';
     for(var i=1;i<=qty;i++){
       var o=document.createElement('option');
@@ -9348,7 +9404,7 @@ function liftContractLine(){
 // in the deposit - due at installation together with the remaining balance: it never enters sub / qMoney.
 var CCI_FREIGHT_AT=60000;
 function cciFreightOn(w, sub){ return cciWideOn(w) || (ACTIVE_MFR==='CCI' && sub>=CCI_FREIGHT_AT); }
-function cciFreightLabel(){ return 'Freight \u2014 3% (not taxed, due at installation)'; }
+function cciFreightLabel(){ return ACTIVE_MFR==='CA' ? 'Freight \u2014 min. $1,750 or 3% (not taxed, due at installation)' : 'Freight \u2014 3% (not taxed, due at installation)'; }
 // The remaining balance in two payments (paySplitOn): half when installation is scheduled, the rest after install - plus
 // the freight, which is due at installation. One rule for the screen note, the quote PDF and the contract.
 function balSplit(bal, frt){ var sched=Math.round(bal/2); return { sched:sched, after:bal-sched+(+frt||0) }; }
@@ -9413,10 +9469,10 @@ function qMoney(sub){
 // 5% of the full retail cost, max $6,500) — whatever the permit field says (audit W62-1/M11, 10/9/26).
 function _cciWidePlans(){ return ACTIVE_MFR==='CCI' && cciWideOn(parseInt((G('bw')||{}).value)||0); }
 function qPlan(sub){
-  if(_cciWidePlans() && !(G('perm')&&G('perm').value==='yes')) return {planType:'Site Specific Plans', planCost:MFR().planCostFn('Site Specific Plans',sub,false), always:true};
+  var _apT=_alwaysPlan(); if(_apT && !(G('perm')&&G('perm').value==='yes')) return {planType:_apT, planCost:MFR().planCostFn(_apT,sub,(_apT==='As Built Plans')&&_plCom()), always:true};
   if(!G('perm')||G('perm').value!=='yes') return {planType:'', planCost:0};
   var plansSel=G('plans-sel');
-  var planType=plansSel?plansSel.value:MFR().defaultPlan;
+  var planType=plansSel?plansSel.value:MFR().defaultPlan; if(_caAsBuiltReq()) planType='As Built Plans'; // CA 30'+ wide (book §6)
   var pt=G('pt')?G('pt').value:'';
   return {planType:planType, planCost:MFR().planCostFn(planType,sub,pt==='com'||pt==='rc2r')};
 }
@@ -9424,7 +9480,7 @@ function qPlan(sub){
 function qPlanNote(pl){
   var pn=G('plnote'); if(!pn) return;
   var perm=G('perm').value;
-  if(pl && pl.always){ pn.textContent='Engineering Plans: '+MFR().planDisplayFn(pl.planType,pl.planCost)+' | CCI 62\'-100\' wide: always charged, permit or not (CCI 4/30/26) | Invoiced separately after deposit. Not included in total above.'; pn.className='pnote'; return; }
+  if(pl && pl.always){ pn.textContent='Engineering Plans: '+MFR().planDisplayFn(pl.planType,pl.planCost)+(ACTIVE_MFR==='CA'?' | CA 30\'+ wide: as-built plans required on every order (CA price book 7/16/26)':' | CCI 62\'-100\' wide: always charged, permit or not (CCI 4/30/26)')+' | Invoiced separately after deposit. Not included in total above.'; pn.className='pnote'; return; }
   if(perm==='yes'){
     if(pl.planType==='No Permit Required'){
       pn.textContent='No permit required for this county.';
@@ -9799,7 +9855,8 @@ function rc(){
       // Wide span: fixed CA price by length column
       var GA12C=[20,25,30,35,40,44,48,52],GA12V=[360,480,600,720,840,1560,1680,1800];
       var gci=0; for(var gi=0;gi<GA12C.length;gi++){if(GA12C[gi]<=l)gci=gi;else break;}
-      framingUpgrade=GA12V[gci];
+      var _ca12=(ACTIVE_MFR==='CA')?caWideUnitSum(l,GA12V,GA12C):null; // CA: book 4H columns are frame lengths, rounded UP; past 52' per section
+      framingUpgrade=(_ca12!=null)?_ca12:((ACTIVE_MFR==='CA')?GA12V[caColUp(GA12C,l)]:GA12V[gci]);
     } else {
       // Standard/carport: fixed CA price by length column (width-dependent)
       var GA12S=[20,25,30,35,40];
@@ -9813,7 +9870,7 @@ function rc(){
         var ga12rate=(GA12SV[4]-GA12SV[3])/5;
         framingUpgrade=(ACTIVE_MFR==='CCI')?cciUnitSum(l,GA12SV):Math.round(GA12SV[4]+ga12rate*(l-40));
       } else {
-        framingUpgrade=(ACTIVE_MFR==='CCI')?GA12SV[cciColUp(l)]:GA12SV[gcis]; // CCI: round UP (audit PB-9); CA as before
+        framingUpgrade=GA12SV[(ACTIVE_MFR==='CCI')?cciColUp(l):caColUp(GA12S,l)]; // round UP - CCI (audit PB-9) and CA (book 4H, 11/16/26)
       }
     }
   }
@@ -9958,7 +10015,7 @@ function rc(){
   // Since 11/3/26 (CCI by phone): also every CCI building of $60,000 or more before discounts, and a SEPARATE charge - not
   // discounted, not taxed, not in the deposit (it is not added to sub); due at installation. A price-locked reopen shows the
   // freight it was saved with (PriceLock: _frtHold).
-  var freightP=cciFreightOn(w,sub)?Math.round(sub*3)/100:0;
+  var freightP=cciFreightOn(w,sub)?Math.round(sub*3)/100:(caFreightOn()?Math.max(CA_FREIGHT_MIN, Math.round((sub-connFeeTotal)*3)/100):0); // CA: book §6 (caFreightOn)
   if(window._frtHold!=null && window.PriceLock && PriceLock.on) freightP=window._frtHold;
   if(holdP) sub+=holdP; // reopened-quote price lock (0 unless PriceLock.on)
   discAutoApply(sub); disc=parseFloat(G('disc').value)||0; // CCI sale (a new quote's automatic %)
@@ -9983,7 +10040,7 @@ function rc(){
     sheet26:(bt3==='widespan'||sheetFree||sheetUpgrade>0)}, M, pl);
   if(freightP) window._qTotals.freightP=freightP; // CCI 62'-100' freight (key only when charged)
   if(framingUpgrade>0 && fuVal==='12' && _cbR==null && cciLadder12(w,h,bt3)) window._qTotals.ladder12=true; // documents: "12-Gauge Framing (commercial ladder legs)" (key only when it applies)
-  var _frtRow=G('freight-summary-row'); if(_frtRow) _frtRow.style.display=freightP?'':'none';
+  var _frtRow=G('freight-summary-row'); if(_frtRow){ _frtRow.style.display=freightP?'':'none'; if(_frtRow.cells&&_frtRow.cells[0]) _frtRow.cells[0].textContent=(ACTIVE_MFR==='CA'?'Freight \u2014 min. $1,750 or 3% (not taxed, due at install)':'Freight \u2014 3% (not taxed, due at install)'); }
   var _frtEl=G('pfrt'); if(_frtEl) _frtEl.textContent=freightP?fD(freightP):'—';
   var _frtTR=G('freight-total-row'); if(_frtTR) _frtTR.style.display=freightP?'':'none';
   var _frtT=G('pfrttot'); if(_frtT) _frtT.textContent=freightP?fD(M.adjTot+freightP):'\u2014';
@@ -10558,7 +10615,7 @@ function chkDoorLift(szSel){
   var slEl=entry.querySelector('.rsl');
   if(slEl){
     var dw=parseInt((sz||'').split('x')[0])||0;
-    var sealUnit=Math.round(dw*(window._seal||9.85));
+    var sealUnit=rudSealUnit(sz);
     var curSl=parseInt(slEl.value)||0;
     var qty=parseInt(((entry.querySelector('.rqt'))||{value:'1'}).value)||1;
     slEl.innerHTML='<option value="0">None</option>';
@@ -10620,7 +10677,7 @@ function syncQtyOpts(qtyEl){
     var curSl=parseInt(slEl.value)||0;
     var rszEl=entry.querySelector('.rsz');
     var sealDw=rszEl?(parseInt((rszEl.value||'').split('x')[0])||0):0;
-    var sealUnit=Math.round(sealDw*(window._seal||9.85));
+    var sealUnit=rudSealUnit(rszEl?rszEl.value:'');
     slEl.innerHTML='<option value="0">None</option>';
     for(var i=1;i<=qty;i++){
       var o=document.createElement('option');
@@ -13218,8 +13275,8 @@ async function printQuote(){
   var planType='', planDisplayName='', planCost=0;
   if(perm==='yes'){
     var plansSel=G('plans-sel');
-    planType=plansSel?plansSel.value:MFR().defaultPlan;
-  } else if(_cciWidePlans()) planType='Site Specific Plans'; // CCI 62'-100': always (audit W62-1)
+    planType=plansSel?plansSel.value:MFR().defaultPlan; if(_caAsBuiltReq()) planType='As Built Plans'; // CA 30'+ wide (book §6)
+  } else if(_alwaysPlan()) planType=_alwaysPlan(); // CCI 62'-100' Site Specific (audit W62-1) / CA 30'+ As Built (book §6): always
 
   var needsLift=liftNeeded();
 
@@ -13263,7 +13320,7 @@ async function printQuote(){
   var holdPQ=T.holdP||0; // reopened-quote price lock: already inside T.sub (rc's pass)
 
   // Plans HTML (CCI Site Specific = 5% of retail) — fee from the screen's pass
-  if(perm==='yes' || _cciWidePlans()){
+  if(perm==='yes' || _alwaysPlan()){
     planCost=T.planCost;
     if(planType==='No Permit Required'){
       plansHTML='<div class="qplans">No permit required for this county.</div>';
@@ -13429,7 +13486,7 @@ async function printQuote(){
     }
     var slEl=el.querySelector('.rsl');
     if(slEl&&parseInt(slEl.value)>0){
-      var sq=parseInt(slEl.value); var sdw=parseInt((sz||'').split('x')[0])||0; var sp=Math.round(sdw*(window._seal||9.85)); rows+=row('Brush Seal (Tops & Sides)',sq,sp,sq*sp);
+      var sq=parseInt(slEl.value); var sdw=parseInt((sz||'').split('x')[0])||0; var sp=rudSealUnit(sz); rows+=row('Brush Seal (Tops & Sides)',sq,sp,sq*sp);
     }
     var opnPEl=el.querySelector('.rop');
     if(ACTIVE_MFR==='CCI'&&opnPEl&&parseInt(opnPEl.value)>0){
@@ -13523,7 +13580,7 @@ async function printQuote(){
           if(ach>0){var cp=window._chain||325;rows+=row('    Lean-To: Chain Hoist',ach,cp,ach*cp);}
           // Header seal add-on
           var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
-          if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=Math.round(sw*(window._seal||9.85));rows+=row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
+          if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=rudSealUnit(asz);rows+=row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
           // Eave header — always required on the outer wall of an eave-attached lean-to
           var _qhLts=(el.querySelector('.lts')||{}).value||'';
           if((_qhLts==='Left Eave'||_qhLts==='Right Eave')&&aloc==='outer'){
@@ -15017,8 +15074,9 @@ async function printContract(){
   var _planTypeC = G('plans-sel') ? G('plans-sel').value : '';
   var _permSvcC  = G('permit-svc') ? G('permit-svc').value : 'none';
   var _planCostC = 0, _planLabelC = '', _hasPlansC = false;
-  if(permVal !== 'yes' && _cciWidePlans()) _planTypeC = 'Site Specific Plans'; // CCI 62'-100': always (audit W62-1)
-  if((permVal === 'yes' || _cciWidePlans()) && _planTypeC && _planTypeC !== 'No Permit Required'){
+  if(permVal === 'yes' && _caAsBuiltReq()) _planTypeC = 'As Built Plans'; // CA 30'+ wide (book §6)
+  if(permVal !== 'yes' && _alwaysPlan()) _planTypeC = _alwaysPlan(); // CCI 62'-100' (audit W62-1) / CA 30'+ (book §6): always
+  if((permVal === 'yes' || _alwaysPlan()) && _planTypeC && _planTypeC !== 'No Permit Required'){
     _planCostC = plC.planCost;
     var _lblMap = (typeof MFR === 'function' && MFR().planLabels) ? MFR().planLabels : {};
     var _rawLbl2 = _lblMap[_planTypeC] || _planTypeC;
@@ -15231,7 +15289,7 @@ async function printContract(){
     var _showHoist = hoistEl && parseInt(hoistEl.value)>0 && (dtype==='standard' || (dtype==='rollup' && !doorHasChainIncluded(dtype, sz)));
     if(_showHoist){ var hq=parseInt(hoistEl.value); var cp=window._chain||325; row('Chain Hoist',hq,cp,hq*cp); }
     var slEl=el.querySelector('.rsl');
-    if(slEl&&parseInt(slEl.value)>0){ var sq=parseInt(slEl.value); var sdw=parseInt((sz||'').split('x')[0])||0; var sp=Math.round(sdw*(window._seal||9.85)); row('Brush Seal (Tops & Sides)',sq,sp,sq*sp); }
+    if(slEl&&parseInt(slEl.value)>0){ var sq=parseInt(slEl.value); var sdw=parseInt((sz||'').split('x')[0])||0; var sp=rudSealUnit(sz); row('Brush Seal (Tops & Sides)',sq,sp,sq*sp); }
     var opnPEl2=el.querySelector('.rop');
     if(ACTIVE_MFR==='CCI'&&opnPEl2&&parseInt(opnPEl2.value)>0){ var oq2=parseInt(opnPEl2.value); var op2=ropUnit(sz); row('Automatic Door Opener',oq2,op2,oq2*op2); }
     var r45El=el.querySelector('.r45');
@@ -15322,7 +15380,7 @@ async function printContract(){
           if(ach>0){var cp=window._chain||325;row('    Lean-To: Chain Hoist',ach,cp,ach*cp);}
           // Header seal add-on
           var asl=parseInt(ae.querySelector('.lt-acc-sl')&&ae.querySelector('.lt-acc-sl').value)||0;
-          if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=Math.round(sw*(window._seal||9.85));row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
+          if(asl>0){var sw=parseInt(asz.split('x')[0])||0;var su=rudSealUnit(asz);row('    Lean-To: Brush Seal — Tops & Sides ('+sw+"' wide)",asl,su,asl*su);}
           // Eave header — always required on the outer wall of an eave-attached lean-to
           var _qhLts=(el.querySelector('.lts')||{}).value||'';
           if((_qhLts==='Left Eave'||_qhLts==='Right Eave')&&aloc==='outer'){
@@ -18472,7 +18530,7 @@ function textQuote(){
   if(iSel&&iSel.value==='roof')insText='Roof Only';else if(iSel&&iSel.value==='roof-walls')insText='Roof + Walls';
   if(insText!=='None'){ var _isc=insulScope(); if(_isc) insText+=' ('+_isc+')'; } // what is insulated (owner 11/11/26)
   var planLine='';
-  if(G('perm').value==='yes' || _cciWidePlans()){ // CCI 62'-100': always (audit W62-1)
+  if(G('perm').value==='yes' || _alwaysPlan()){ // CCI 62'-100' (audit W62-1) / CA 30'+ (book §6): always
     // Plans fee from the same pass as TOTAL (T.planCost \u2014 the fee the screen's
     // plan note, the PDF and the contract show, priced on T.sub).
     var planType=T.planType;
@@ -18503,7 +18561,7 @@ function textQuote(){
   m+='\u{1F3A8} COLORS\nRoof: '+roofColor+'\nWalls: '+wallColor+'\nTrim: '+trimColor+'\n\n';
   m+='\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n';
   m+='\u{1F4B0} TOTAL:  '+fD(T.adjTot)+'\n';
-  if(T.freightP>0){ m+='Freight (3%, not taxed, due at installation): '+fD(T.freightP)+'\n'; m+='Total with freight: '+fD(T.adjTot+T.freightP)+'\n'; }
+  if(T.freightP>0){ m+=(ACTIVE_MFR==='CA'?cciFreightLabel():'Freight (3%, not taxed, due at installation)')+': '+fD(T.freightP)+'\n'; m+='Total with freight: '+fD(T.adjTot+T.freightP)+'\n'; }
   var _showAD2 = G('add-disc-show') && G('add-disc-show').value === 'show';
   if(_showAD2 && addDA > 0){
     var _adLbl2 = addDT==='pct' ? ('Additional Discount ('+addDV+'% off deposit)') : 'Additional Discount (off deposit)';
