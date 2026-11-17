@@ -4659,6 +4659,8 @@ function cciPBRule(){ return ACTIVE_MFR==='CCI' && ((G('county')||{}).textConten
 // narrower (not wide span; a free-standing lean-to has its own fsAuto rule) needs 4' OC: locked with the Palm Beach lock
 // and its override (_fu14Override / _fu12Reapply). It was printed "Up to 170 MPH" at 5' OC with no 4' OC charge. Palm
 // Beach keeps its own rule (4' OC + 12 GA). Returns 'hw' / 'com' / ''.
+// CA too (11-17a, owner 11/17/26 relaying CA's Christina: "170 MPH Wind Rating ... Does not require 12g, only 4' OC"): the same
+// lock, notes and override; CA never forces 12 GA. CA's 4' OC is charged like CCI's (rc(), owner 11/17/26).
 // CCI 26'-30' wide (triple wide, up to 16' tall) certified up to 170 MPH by PROPERTY TYPE (Commercial / Risk Cat 2 Residential - doPT
 // "Auto: Up to 170 MPH") needs 12-gauge framing (owner 10/15/26, audit F12): CCI's only 170 MPH route on a triple wide is the
 // bundled upgrade "Certified 12 Gauge and 170mph Wind Load" (Price Book 2 p3), priced as the p4 "12G 170mph" row ($410 20' ...
@@ -4672,7 +4674,7 @@ function cciTriple170Com(w, bt){
   var pt=((G('pt')||{}).value)||''; return pt==='com'||pt==='rc2r';
 }
 function cci170OcRule(w, bt){
-  if(ACTIVE_MFR!=='CCI' || !(w>0 && w<=24) || bt==='widespan' || bt==='fslean' || cciPBRule()) return '';
+  if((ACTIVE_MFR!=='CCI' && ACTIVE_MFR!=='CA') || !(w>0 && w<=24) || bt==='widespan' || bt==='fslean' || cciPBRule()) return ''; // + CA (11-17a)
   var pt=((G('pt')||{}).value)||''; if(pt==='com'||pt==='rc2r') return 'com';
   var co=((G('county')||{}).textContent)||'';
   return (typeof HW!=='undefined' && HW.indexOf(co)>=0) ? 'hw' : '';
@@ -4697,7 +4699,7 @@ function _cciPBLock(w, bt){
   var oc=G('oc-spacing');
   var lock=((cciPBRule() && w>0 && w<=24 && bt!=='widespan') || !!cci170OcRule(w, bt)) && !window._fu14Ovr; // + 170 MPH on 24' and narrower (10/14/26)
   if(oc){
-    if(lock){ _ocHold(oc,'pbLock',true); oc.disabled=true; oc.title=cciPBRule()?"4' OC required: Palm Beach County (CCI), every building size":"4' OC required: certified up to 170 MPH (CCI 170 MPH = 4' centers)"; }
+    if(lock){ _ocHold(oc,'pbLock',true); oc.disabled=true; oc.title=cciPBRule()?"4' OC required: Palm Beach County (CCI), every building size":(ACTIVE_MFR==='CA'?"4' OC required: certified up to 170 MPH (CA 170 MPH = 4' centers; 12 gauge not needed)":"4' OC required: certified up to 170 MPH (CCI 170 MPH = 4' centers)"); }
     else if(oc.dataset.pbLock==='1'){ oc.disabled=false; oc.title=''; _ocHold(oc,'pbLock',false,!window._fu14Ovr); }
   }
   if(cciPBRule() && !window._fu14Ovr) _fuHold(G('framing-upgrade'),true);
@@ -9739,8 +9741,8 @@ function rc(){
     } else if(_oc170N){
       var _o170w=(_oc170N==='com')?'Commercial / Risk Cat 2 property: certified up to 170 MPH':'this county certifies up to 170 MPH';
       var _o170A=function(fn,txt){ return ' <a href="#" onclick="'+fn+';return false;" style="color:#b45309;text-decoration:underline;font-weight:800">'+txt+'</a>'; };
-      if(!window._fu14Ovr) _fr12.innerHTML='4&#39; OC framing REQUIRED &amp; auto-applied — '+_o170w+', and CCI&#39;s 170 MPH needs 4&#39; centers on every width (Price Book 2 p1/p2, Dealer Handbook p30; charged upgrade).'+_o170A('_fu14Override()','Override → use 5&#39; OC anyway');
-      else if(window._plGrand && window._plGrand.fu14) _fr12.innerHTML='GRANDFATHERED — sold at 5&#39; OC before the 10/14/26 rule (170 MPH needs 4&#39; OC on 24&#39; wide and narrower).'+_o170A('_fu12Reapply()','Apply 4&#39; OC');
+      if(!window._fu14Ovr) _fr12.innerHTML='4&#39; OC framing REQUIRED &amp; auto-applied — '+_o170w+(ACTIVE_MFR==='CA'?', and CA&#39;s 170 MPH needs 4&#39; centers (CA 11/17/26: 4&#39; OC, no 12 gauge needed; charged like CCI&#39;s 4&#39; OC).':', and CCI&#39;s 170 MPH needs 4&#39; centers on every width (Price Book 2 p1/p2, Dealer Handbook p30; charged upgrade).')+_o170A('_fu14Override()','Override → use 5&#39; OC anyway');
+      else if(window._plGrand && window._plGrand.fu14) _fr12.innerHTML='GRANDFATHERED — sold at 5&#39; OC before the '+(ACTIVE_MFR==='CA'?'11/17/26':'10/14/26')+' rule (170 MPH needs 4&#39; OC on 24&#39; wide and narrower).'+_o170A('_fu12Reapply()','Apply 4&#39; OC');
       else _fr12.innerHTML='⚠ OVERRIDE ACTIVE — 5&#39; OC on a build certified up to 170 MPH (4&#39; OC is normally required here).'+_o170A('_fu12Reapply()','Re-apply 4&#39; OC');
       _fr12.classList.remove('hidden');
     } else { _fr12.classList.add('hidden'); }
@@ -9878,8 +9880,9 @@ function rc(){
   var ocSpacingSel=G('oc-spacing');
   var ocSpacingVal=ocSpacingSel?ocSpacingSel.value:'5oc';
   var ocUpgrade=0, ocLean=0; // ocLean: the attached lean-tos' part of ocUpgrade (published for the price lock)
-  if(ACTIVE_MFR!=='CA' && ocSpacingVal==='4oc' && w<=24 && bt3!=='widespan' && bt3!=='fslean'){
-    // Master Price Book 7/16/26 has NO separate 4'OC option charge for CA.
+  if(ocSpacingVal==='4oc' && w<=24 && bt3!=='widespan' && bt3!=='fslean'){
+    // CA too since 11-17a (owner 11/17/26: "whatever CCI charges for 4' OC its probably the same as CA"; CA 170 MPH = 4' OC).
+    // The Master Price Book 7/16/26 lists no 4' OC charge - CA was $0 from 8/12/26 to 11-17a. Lean-tos too, as CCI.
     var OC4S=[20,25,30,35,40], OC4V=[300,325,350,375,400];
     var oci=0; for(var oi=0;oi<OC4S.length;oi++){if(OC4S[oi]<=l)oci=oi;else break;}
     if(l>40){ ocUpgrade=cciUnitSum(l,OC4V); }
@@ -12115,7 +12118,7 @@ function collectQuoteData(){
   // closed on both the Section-4 row and 4B carried it twice; the price lock names that on reopen ('carport-sides').
   // oc170Rule: saved by a program that HAS the 10/14/26 rule "170 MPH on 24' and narrower needs 4' OC" (F10/F11) - an older
   // save that does not comply is grandfathered on reopen, as pbRule.
-  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, wideLean:1, insulLean:1,
+  data.overrides = { fu14:!!window._fu14Ovr, imp:!!window._impOvr, lap:!!window._lapOvr, ns:!!window._nsOvr, pbRule:1, cpOnce:1, book1012:1, oc170Rule:1, ca170Rule:1, com12Rule:1, orangeLap:1, conn3260:1, lapVert:1, lean12ga:1, frtSep:1, wideLean:1, insulLean:1,
     grand:{ fu14:!!(_gf.fu14&&window._fu14Ovr), imp:!!(_gf.imp&&window._impOvr), lap:!!(_gf.lap&&window._lapOvr), ns:!!(_gf.ns&&window._nsOvr) } };
   data.sessionEdits = (window._sessionEdits||[]).map(function(e){ return {kind:e.kind, tbl:e.tbl, r:e.r, c:e.c, k:e.k, key:e.key, val:e.val}; });
 
@@ -19078,6 +19081,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   var T_HW12         = tms('2026-09-23T15:45:00-04:00'); // 8d0e77f
   var T_UNITS        = tms('2026-09-28T09:40:00-04:00'); // 348a766
   var T_COMBO        = tms('2026-09-28T09:45:00-04:00'); // 6ab9572
+  var T_CA_OC        = tms('2026-11-17T18:30:00-05:00'); // 11-17a: CA 4' OC charged like CCI's
   var T_PERMIT       = tms('2026-09-28T10:42:00-04:00'); // 4930a13
   var T_PB           = tms('2026-10-09T18:00:00-04:00'); // 10-9b: Palm Beach 4' OC + 12GA (rule date only — grandfathering uses the save marker data.overrides.pbRule, audit PB-2)
   var T_ANCHORS      = tms('2026-07-01T17:18:58-04:00'); // f86f4ce (ground anchors at $68)
@@ -19089,6 +19093,8 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     'hw-12ga':     { commit:'8d0e77f', date:'9/23/26', text:"CCI hi-wind county, wider than 24': 12-gauge framing required", flag:'fu14' },
     'pb-framing':  { commit:'10-9b', date:'10/9/26', text:"CCI Palm Beach County: 4' OC + 12-gauge framing required on every building size", flag:'fu14' },
     'cci-170-4oc': { commit:'10-14d', date:'10/14/26', text:"CCI certified up to 170 MPH (hi-wind county / Commercial / Risk Cat 2), 24' wide or less: 4' OC required (Price Book 2 p1/p2, Dealer Handbook p30)", flag:'fu14' },
+    'ca-170-4oc':  { commit:'11-17a', date:'11/17/26', text:"CA certified up to 170 MPH (hi-wind county / Commercial / Risk Cat 2), 24' wide or less: 4' OC required (CA 11/17/26: 170 MPH = 4' OC, 12 gauge not required)", flag:'fu14' },
+    'ca-4oc':      { commit:'11-17a', date:'11/17/26', text:"CA 4' OC framing (24' wide or less) charged like CCI's: $300-$400 for 20'-40', per connected unit past 40' (was $0 from 8/12/26)" },
     'cci-units':   { commit:'348a766', date:'9/28/26', text:"CCI past 40' long: 4' OC and 12-gauge priced per connected unit" },
     'combo-12x4':  { commit:'6ab9572', date:'9/28/26', text:"CCI 24' wide or less with 12-gauge + 4' OC: one combined book row" },
     'impact':      { commit:'4930a13', date:'9/28/26', text:'CCI impact county: Hi-Impact windows and Hi-Wind walk doors required', flag:'imp' },
@@ -19189,6 +19195,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     if(T>=T_COMBO && c.mfr==='CCI' && c.fu==='12' && c.oc==='4oc' && c.w>0 && c.w<=24 && c.bt!=='widespan' && c.bt!=='fslean'){
       var V=[360,480,600,720,840]; fr=(c.l>40)?root.cciUnitSum(c.l,V):V[colIdx(S,c.l)]; oc=0;
+    }
+    if(c.mfr==='CA' && T>=T_CA_OC && c.oc==='4oc' && c.w>0 && c.w<=24 && c.bt!=='widespan' && c.bt!=='fslean'){ // 11-17a: CA = CCI's 4' OC line (rounded up)
+      var V4c=[300,325,350,375,400]; oc=(c.l>40)?root.cciUnitSum(c.l,V4c):V4c[root.cciColUp(c.l)];
     }
     return { fr:fr, oc:oc };
   }
@@ -19344,7 +19353,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       var nowM=frOcAt(8.64e15, c, false);
       if(c.fu===(($('framing-upgrade')||{}).value||'14') && r2(nowM.fr+nowM.oc)===r2(rcl.framingUpgrade+rcl.ocUpgrade-(+rcl.ocLean||0))){
         var crm=(data.source==='3d-builder' && savedT>=T_CRM_FROM && savedT<T_CRM_END);
-        var steps=[[T_CRM_END,'crm-12ga'],[T_OC_WAIVE_END,'oc-waiver'],[T_UNITS,'cci-units'],[T_COMBO,'combo-12x4']];
+        var steps=[[T_CRM_END,'crm-12ga'],[T_OC_WAIVE_END,'oc-waiver'],[T_UNITS,'cci-units'],[T_COMBO,'combo-12x4'],[T_CA_OC,'ca-4oc']];
         steps.sort(function(a,b){ return a[0]-b[0]; });
         var at=savedT||0, cur=frOcAt(at, c, crm), rules=[], frD=0, ocD=0;
         var old=cur;
@@ -19416,13 +19425,13 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   function ruleCtx(){
     var co=(($('county')||{}).textContent)||'', w=parseInt(($('bw')||{}).value)||0, l=parseInt(($('bl')||{}).value)||0;
     var cci=(root.ACTIVE_MFR==='CCI');
-    var oc170=!!(cci && typeof root.cci170OcRule==='function' && root.cci170OcRule(w, (($('btype')||{}).value)||''));
+    var oc170=!!((cci || root.ACTIVE_MFR==='CA') && typeof root.cci170OcRule==='function' && root.cci170OcRule(w, (($('btype')||{}).value)||'')); // + CA (11-17a)
     return {
       co:co, w:w, cci:cci,
       hw12: cci && w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0,
       com12: cci && typeof root.cciTriple170Com==='function' && root.cciTriple170Com(w, (($('btype')||{}).value)||''), // 10/15/26
       req12: cci && ((w>24 && typeof root.HW!=='undefined' && root.HW.indexOf(co)>=0) || co==='Palm Beach' || (typeof root.cciTriple170Com==='function' && root.cciTriple170Com(w, (($('btype')||{}).value)||''))),
-      req4oc: cci && w>0 && w<=24 && ((($('btype')||{}).value)||'')!=='widespan' && (co==='Palm Beach' || oc170),
+      req4oc: (cci && w>0 && w<=24 && ((($('btype')||{}).value)||'')!=='widespan' && co==='Palm Beach') || oc170, // oc170: CCI or CA (11-17a)
       pbN: cci && co==='Palm Beach' && w<=24,
       oc170: oc170, // 10/14/26: 170 MPH on 24' and narrower needs 4' OC (root.cci170OcRule)
       imp: cci && (IMPACT_CO.indexOf(co)>=0 || IMPACT_WIN_CO.indexOf(co)>=0 || ((co==='Okaloosa'||co==='Okeechobee') && w*l>720)),
@@ -19465,7 +19474,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
       if(opts.lock && !ov.fu14 && c.pbN && ((f['framing-upgrade']||'14')!=='12' || (c.req4oc && (f['oc-spacing']||'5oc')!=='4oc')) && !ov.pbRule){ root._fu14Ovr=true; gf.fu14=true; }
       // 170 MPH on 24' and narrower needs 4' OC (10/14/26): a save from before the rule (no oc170Rule marker) at 5' OC is
       // kept as sold (GRANDFATHERED), never silently re-priced.
-      if(opts.lock && !ov.fu14 && c.oc170 && (f['oc-spacing']||'5oc')!=='4oc' && !ov.oc170Rule){ root._fu14Ovr=true; gf.fu14=true; }
+      if(opts.lock && !ov.fu14 && c.oc170 && (f['oc-spacing']||'5oc')!=='4oc' && !(c.cci?ov.oc170Rule:ov.ca170Rule)){ root._fu14Ovr=true; gf.fu14=true; } // CA: its own marker (11-17a)
       // Triple wide Commercial / Risk Cat 2 = 12 GA (10/15/26): a save from before the rule (no com12Rule marker) at 14 GA is kept as sold.
       if(opts.lock && !ov.fu14 && c.com12 && !c.hw12 && !c.pbN && (f['framing-upgrade']||'14')!=='12' && !ov.com12Rule){ root._fu14Ovr=true; gf.fu14=true; }
       // Orange County lap siding: locked 10/15/26 - 10/27/26, now asked (no lock). A saved quote keeps its saved lap field either way.
@@ -19856,7 +19865,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
         eff={ sub:r2(r.sub-base.sub), total:r2(r.adjTot-base.adjTot) };
         setFlags(fl0); PL.reapplySaved(data); setThrState(th0); pass();
       }
-      var _rc=ruleCtx(), id=(k==='fu14' && _rc.pbN)?'pb-framing':((k==='fu14' && _rc.oc170)?'cci-170-4oc':((k==='fu14' && _rc.com12 && !_rc.hw12)?'tw-170-12ga':((k==='lap' && _rc.co==='Orange')?'orange-lap':FLAG_RULE[k]))), R=PL.RULES[id];
+      var _rc=ruleCtx(), id=(k==='fu14' && _rc.pbN)?'pb-framing':((k==='fu14' && _rc.oc170)?(_rc.cci?'cci-170-4oc':'ca-170-4oc'):((k==='fu14' && _rc.com12 && !_rc.hw12)?'tw-170-12ga':((k==='lap' && _rc.co==='Orange')?'orange-lap':FLAG_RULE[k]))), R=PL.RULES[id];
       var d=decisionFor(id);
       st.rules.push({ id:id, flag:k, commit:R.commit, date:R.date, text:R.text, kind:'input', grandfathered:(k==='ns')?((tms(data.savedAt)||0)<T_PERMIT):!!(root._plGrand&&root._plGrand[k]),
         effectSub:eff.sub, effectTotal:eff.total, decision:d?d.choice:null, reason:d?d.reason:null });
@@ -19882,7 +19891,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   PL.decide = function(ruleId, choice, reason){
     var st=PL.st; if(!st || !PL.on) return false;
     var k=null; for(var fk in FLAG_RULE) if(FLAG_RULE[fk]===ruleId) k=fk;
-    if(ruleId==='pb-framing' || ruleId==='cci-170-4oc' || ruleId==='tw-170-12ga') k='fu14';
+    if(ruleId==='pb-framing' || ruleId==='cci-170-4oc' || ruleId==='ca-170-4oc' || ruleId==='tw-170-12ga') k='fu14';
     if(ruleId==='orange-lap') k='lap';
     if(!k) return false;
     if(choice==='keep'){
@@ -19906,7 +19915,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
           var sols=solveHolds(before.sub, function(){ setThrState(th0); });
           if(sols.length){ newH=sols[0].h; sols.forEach(function(s){ if(Math.abs(s.h-(oldH-d))<Math.abs(newH-(oldH-d))) newH=s.h; }); }
           setThrState(th0);
-          var ncLbl=(ruleId==='pb-framing' && ruleCtx().req4oc)?"4' OC + 12-gauge framing (included at no charge)":((ruleId==='cci-170-4oc')?"4' OC framing (included at no charge)":(NC_LABEL[k]||'Included at no charge')); // audit PB-13; 10-14d
+          var ncLbl=(ruleId==='pb-framing' && ruleCtx().req4oc)?"4' OC + 12-gauge framing (included at no charge)":((ruleId==='cci-170-4oc'||ruleId==='ca-170-4oc')?"4' OC framing (included at no charge)":(NC_LABEL[k]||'Included at no charge')); // audit PB-13; 10-14d
           parts.push({ k:'nc-'+k, label:ncLbl, amt:r2(newH-oldH), rules:[ruleId] });
           st.hold=newH; st.parts=parts; setHold(st.hold, parts, src);
         }
