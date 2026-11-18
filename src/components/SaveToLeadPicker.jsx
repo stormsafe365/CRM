@@ -18,6 +18,7 @@ import { harvestAndSaveQuote } from '../lib/builderSave'
 import { toast } from '../lib/uiFx'
 import { findDuplicateClients, dupSummary, othersOnly, othersText } from '../lib/dupCheck'
 import { escHtml } from '../lib/designLinks'
+import { mfrMismatch, switchTarget } from '../lib/mfrGuard'
 
 const FIELD = {
   width: '100%', boxSizing: 'border-box',
@@ -52,7 +53,7 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
     ;(async () => {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, phone, email, status, updated_at')
+        .select('id, name, phone, email, status, updated_at, building_mfr')
         .order('updated_at', { ascending: false })
         .limit(400)
       if (!alive) return
@@ -141,6 +142,13 @@ export default function SaveToLeadPicker({ getProgramWindow, getBuildWin, onClos
         target = data
       }
       if (!target?.id) { toast('Pick a lead (or create one) first.'); setStatus(''); savingRef.current = false; return }
+      // the manufacturer (owner 11/17/26, lib/mfrGuard): an existing lead set to CA / CCI is asked before a quote priced
+      // with the other one is saved to it
+      let mm = []
+      try { mm = mfrMismatch({ programMfr: pg.ACTIVE_MFR, client: target, inputMode: !!pg.INPUT_MODE }) } catch { mm = [] }
+      if (mm.length && !window.confirm(`Manufacturer check:\n${mm.map((m) => m.text).join('\n')}\n\nOK = save it as ${mm[0].have} anyway\nCancel = go back and pick ${switchTarget(mm)} in the program’s manufacturer box first`)) {
+        setStatus(''); savingRef.current = false; return
+      }
 
       setStatus('Reading quote…')
       const { quote_number, pdfWarn, saved } = await harvestAndSaveQuote({

@@ -19699,6 +19699,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(pr && (pr.v===1||pr.v===2) && isFinite(+pr.sub) && pr.money){
       S={ sub:+pr.sub, src:'snapshot', depPct:pr.depPct||17, parts:pr.holdParts||[], freeThresh:pr.freeThresh,
           totals:{ total:+pr.money.adjTot, deposit:+pr.money.dep, balance:+pr.money.bal } };
+      st.savedLines=linesOfSnapshot(pr); // the notice's "saved vs today" rows (11-17b)
       st.pricedAt=pr.pricedAt||null;
     } else if(opts.legacyTotals && isFinite(+opts.legacyTotals.total)){
       var LT={ total:+opts.legacyTotals.total, deposit:+opts.legacyTotals.deposit, balance:+opts.legacyTotals.balance };
@@ -19828,6 +19829,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var suF=$('sheeting-upgrade'); if(suF) delete suF.dataset.restored;
     var cur=screen();
     st.current=cur;
+    st.baseLines=linesOfPass(root._qTotals); // the build as reopened: the notice's "changed since reopening" rows (11-17b)
     st.ok=sameCents(cur.total,st.saved.total) && sameCents(cur.deposit,st.saved.deposit) && sameCents(cur.balance,st.saved.balance);
     if(!st.ok) st.issues.push('Held totals '+money(cur.total)+' / '+money(cur.deposit)+' / '+money(cur.balance)+' do not match the saved '+money(st.saved.total)+' / '+money(st.saved.deposit)+' / '+money(st.saved.balance)+'.');
     // The sheeting / fastener spec must come back as saved (free 26GA and free
@@ -19878,7 +19880,7 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     // build no longer qualifies for switches back off (never turns into a paid pick).
     var fl0=flagsSnapshot(), on0=PL.on, th0=thrState();
     setFlags({}); PL.on=false;
-    var r=pass(), t={ total:r2(r.adjTot), deposit:r2(r.dep), balance:r2(r.bal), sub:r2(r.sub) };
+    var r=pass(), t={ total:r2(r.adjTot), deposit:r2(r.dep), balance:r2(r.bal), sub:r2(r.sub), lines:linesOfPass(r) };
     PL.on=on0; setFlags(fl0); PL.reapplySaved(data); setThrState(th0); pass();
     return t;
   }
@@ -20036,8 +20038,100 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
   };
 
   // ── Notice panel (rep-facing; never printed) ──
-  var BTN='display:inline-block;border:1px solid #b45309;border-radius:5px;padding:3px 8px;margin:4px 4px 0 0;font-size:10.5px;font-weight:700;cursor:pointer;background:#fff;color:#7c4a03';
-  var BTN_ON='display:inline-block;border:1px solid #15803d;border-radius:5px;padding:3px 8px;margin:4px 4px 0 0;font-size:10.5px;font-weight:700;background:#dcfce7;color:#14532d';
+  // Owner 11/17/26 (11-17b): "This warning box should be way more obvious, it should also state the manufacturer & maybe
+  // itemize what it can as far as what the discrepancies are within that specific quote so you dont have to take a bunch
+  // of steps & try & sort through to figure it out". A loud box: a header strip with the manufacturer the program is
+  // pricing with (red when it is not the one the quote was saved with), Saved | Today's pricing | On screen now, and the
+  // price lines that differ, one row each:
+  //   - "Changed since you reopened it": the build as reopened (st.baseLines, finishLock) vs on screen now;
+  //   - "Saved price vs today's pricing": the saved snapshot's lines (st.savedLines) vs today's (st.today.lines).
+  // Each table adds up to its difference (the building lines + discount + sales tax + additional discount; anything the
+  // lines cannot explain is one "Other" row). It pulses 3 times when it first shows (not with reduced motion).
+  var BTN='display:inline-block;border:1.5px solid #b45309;border-radius:6px;padding:5px 11px;margin:6px 6px 0 0;font-size:11.5px;font-weight:800;cursor:pointer;background:#fff;color:#7c4a03';
+  var BTN_ON='display:inline-block;border:1.5px solid #15803d;border-radius:6px;padding:5px 11px;margin:6px 6px 0 0;font-size:11.5px;font-weight:800;background:#dcfce7;color:#14532d';
+  var MFR_NAME={ CA:'Carports Anywhere (CA)', CCI:'Carolina Carports (CCI)' };
+  // [key in a price pass (window._qTotals), key in a snapshot's lines, label]: the Price Breakdown's lines - they add up
+  // to the building price (sub); the held amount is part of it on a reopened quote.
+  var LINE_DEFS=[['base','base','Base building'],['leg','leg','Leg height'],['framingUpgrade','framing','12-gauge framing'],['ocUpgrade','oc',"4' OC framing"],
+    ['pitchUpgrade','pitch','Roof pitch'],['walls','walls','Enclosed walls'],['vertWallUpg','vert','Vertical walls'],['rud','rud','Roll-up doors'],
+    ['wtd','wtd','Walk-through doors'],['win','win','Windows'],['sf','sideFrames','Side frames'],['lapP','lap','Lap siding'],['sheetUpgrade','sheet','26GA sheeting'],
+    ['wainP','wainscot','Wainscot'],['aewP','partition','Storage partition'],['leanToTotal','leanTos','Lean-tos'],['connFeeTotal','connection','Lean-to connection fees'],
+    ['addCompTotal','components','Additional components'],['insulTotal','insulation','Insulation'],['fastenerP','fastener','Color-match fasteners'],
+    ['overhangP','overhang',"1' overhang"],['sidePanelP','sidePanels','Side panels'],['anchorP','anchors','Ground anchors'],['adjP','adjustment','Manufacturer adjustment'],
+    ['holdP','hold','Held at the saved price']];
+  // ...and the money between the building price and the Grand Total: [key, label, sign on the Grand Total]
+  var MONEY_DEFS=[['_disc','Discount',-1],['_tax','Sales tax',1],['_addDisc','Additional discount (off deposit)',-1]];
+  function linesOfPass(r){
+    if(!r || r.manual) return null;
+    var o={}; LINE_DEFS.forEach(function(d){ o[d[1]]=r2(+r[d[0]]||0); });
+    o._disc=r2(+r.da||0); o._tax=r2(+r.ta||0); o._addDisc=r2(+r.addDiscAmount||0); o._total=r2(+r.adjTot||0);
+    return o;
+  }
+  function linesOfSnapshot(pr){
+    if(!pr || !pr.lines || !pr.money) return null;
+    var o={}; LINE_DEFS.forEach(function(d){ o[d[1]]=r2(+(d[1]==='hold'?pr.hold:pr.lines[d[1]])||0); });
+    o._disc=r2(+pr.money.da||0); o._tax=r2(+pr.money.ta||0); o._addDisc=r2(+pr.money.addDisc||0); o._total=r2(+pr.money.adjTot||0);
+    return o;
+  }
+  // The rows that differ between two line sets: [{label, from, to, delta}] (delta = the effect on the Grand Total).
+  function diffRows(a, b){
+    if(!a || !b) return null;
+    var rows=[], sum=0;
+    LINE_DEFS.forEach(function(d){ var k=d[1], x=r2(a[k]), y=r2(b[k]); if(x!==y){ rows.push({ label:d[2], from:x, to:y, delta:r2(y-x) }); sum+=y-x; } });
+    MONEY_DEFS.forEach(function(d){ var x=r2(a[d[0]]), y=r2(b[d[0]]); if(x!==y){ var dl=r2((y-x)*d[2]); rows.push({ label:d[1], from:x, to:y, delta:dl, money:true }); sum+=dl; } });
+    var rest=r2(r2(b._total-a._total)-r2(sum));
+    if(Math.abs(rest)>=0.01) rows.push({ label:'Other (not itemized)', from:null, to:null, delta:rest });
+    return rows;
+  }
+  PL._linesOfPass=linesOfPass; PL._linesOfSnapshot=linesOfSnapshot; PL._diffRows=diffRows; // test hooks
+  function fmtDay(iso){ var d=new Date(iso); return isNaN(d.getTime())?'':((d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2)); }
+  // The manufacturer the program is pricing with, and a warning when it is not the one the quote was saved with.
+  function mfrLine(){
+    var now=root.INPUT_MODE?'INPUT':root.ACTIVE_MFR, saved=(PL._data&&PL._data.mfr)||null;
+    var name=now==='INPUT'?'Manual pricing (Input)':(MFR_NAME[now]||now||'—');
+    var warn=(saved && now!=='INPUT' && MFR_NAME[saved] && saved!==now)?('Saved as '+MFR_NAME[saved]+' — now priced as '+(MFR_NAME[now]||now)+'.'):'';
+    return { name:name, warn:warn };
+  }
+  PL._mfrLine=mfrLine; // test hook
+  function css(){
+    if(!doc || doc.getElementById('pl-notice-css')) return;
+    var s=doc.createElement('style'); s.id='pl-notice-css';
+    s.textContent='@keyframes plPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.8)}70%{box-shadow:0 0 0 14px rgba(245,158,11,0)}100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}}'
+      +'@keyframes plPulseR{0%{box-shadow:0 0 0 0 rgba(220,38,38,.8)}70%{box-shadow:0 0 0 14px rgba(220,38,38,0)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0)}}'
+      +'#pl-notice .pl-box.pl-pulse{animation:plPulse 1.4s ease-out 3}#pl-notice .pl-box.pl-bad.pl-pulse{animation-name:plPulseR}'
+      +'@media (prefers-reduced-motion: reduce){#pl-notice .pl-box.pl-pulse{animation:none}}';
+    (doc.head||doc.documentElement).appendChild(s);
+  }
+  function boxOpen(bad, title, m, pulse){
+    return '<div class="pl-box'+(bad?' pl-bad':'')+(pulse?' pl-pulse':'')+'" style="border:2px solid '+(bad?'#dc2626':'#f59e0b')+';border-left-width:7px;border-radius:9px;overflow:hidden;margin:0 0 12px;background:'+(bad?'#fef2f2':'#fffbeb')+';color:'+(bad?'#7f1d1d':'#422006')+';font-size:12px;line-height:1.45">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:'+(bad?'#dc2626':'#f59e0b')+';color:'+(bad?'#fff':'#1f1300')+';padding:7px 10px;font-weight:900;font-size:12.5px;letter-spacing:.5px;text-transform:uppercase">'
+      +'<span style="flex:1 1 auto">&#9888; '+esc(title)+'</span>'
+      +(m?'<span title="The manufacturer this quote is priced with" style="flex:none;background:#fff;color:#1f2937;border-radius:999px;padding:2px 9px;font-size:11px;letter-spacing:.2px;text-transform:none;font-weight:800">'+esc(m.name)+'</span>':'')
+      +'</div><div style="padding:9px 10px 10px">';
+  }
+  function numCell(label, val, d){
+    var same=(d!=null && Math.abs(d)<0.005);
+    return '<div style="flex:1 1 0;min-width:0;padding:5px 6px;background:rgba(255,255,255,.75);border:1px solid rgba(124,74,3,.22);border-radius:6px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:.2px;text-transform:uppercase;color:#8a6a3a;line-height:1.2">'+label+'</div>'
+      +'<div style="font-size:14px;font-weight:900;color:#1f1300;white-space:nowrap">'+money(val)+'</div>'
+      +(d!=null?'<div style="font-size:10.5px;font-weight:800;white-space:nowrap;color:'+(same?'#6b7280':(d>0?'#b91c1c':'#15803d'))+'">'+(same?'same as saved':signed(d))+'</div>':'')
+      +'</div>';
+  }
+  function section(title, total, rows, emptyNote){
+    var h='<div style="margin-top:8px;padding:6px 8px;background:rgba(255,255,255,.8);border:1px solid rgba(124,74,3,.25);border-radius:7px">';
+    h+='<div style="display:flex;gap:6px;font-weight:900;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px"><span style="flex:1">'+esc(title)+'</span><span style="white-space:nowrap;color:'+(total>0?'#b91c1c':'#15803d')+'">'+signed(total)+'</span></div>';
+    if(rows && rows.length){
+      h+='<table style="width:100%;border-collapse:collapse;margin-top:3px;font-size:11.5px">';
+      rows.slice(0,16).forEach(function(r){
+        h+='<tr style="border-top:1px solid rgba(124,74,3,.18)"><td style="padding:3px 4px 3px 0">'+esc(r.label)+'</td>'
+          +'<td style="padding:3px 4px;white-space:nowrap;text-align:right;color:#8a6a3a">'+(r.from==null?'':money(r.from)+' &rarr; '+money(r.to))+'</td>'
+          +'<td style="padding:3px 0 3px 4px;white-space:nowrap;text-align:right;font-weight:800;color:'+(r.delta>0?'#b91c1c':'#15803d')+'">'+signed(r.delta)+'</td></tr>';
+      });
+      if(rows.length>16) h+='<tr><td colspan="3" style="padding:3px 0;color:#8a6a3a">&hellip; '+(rows.length-16)+' more</td></tr>';
+      h+='</table>';
+    } else h+='<div style="font-size:11px;color:#8a6a3a;margin-top:2px">'+esc(emptyNote||'No price line moved.')+'</div>';
+    return h+'</div>';
+  }
   function paint(){
     var el=$('pl-notice'), st=PL.st; if(!el) return;
     var hon=$('ct-honor-held'); if(hon) hon.classList.toggle('hidden', !(st && PL.on && parseFloat((($('ct-honor')||{}).value)||0)>0));
@@ -20045,16 +20139,16 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     if(st && (st.fresh || st.unpriced)){
       var fn=st.notes||[], fi=st.issues||[];
       if(!fn.length && !fi.length){ el.style.display='none'; el.innerHTML=''; return; }
-      var fh='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:7px;padding:9px 11px;margin:0 0 10px;color:#7c4a03;font-size:11px;line-height:1.45">';
-      if(st.fresh) fh+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">Copy — priced at today’s pricing</div>';
-      fn.forEach(function(n,i){ fh+='<div'+((i||st.fresh)?' style="margin-top:4px"':'')+'>'+esc(n)+'</div>'; });
+      css();
+      var fh=boxOpen(!!fi.length, st.fresh?'Copy — priced at today’s pricing':'No saved price', mfrLine(), !st._pulsed); st._pulsed=true;
+      fn.forEach(function(n,i){ fh+='<div'+(i?' style="margin-top:4px"':'')+'>'+esc(n)+'</div>'; });
       if(fi.length){
         fh+='<div style="margin-top:6px;font-weight:800">Check before sending documents:</div><ul style="margin:2px 0 0 16px;padding:0">';
         fi.slice(0,12).forEach(function(s){ fh+='<li>'+esc(s)+'</li>'; });
         if(fi.length>12) fh+='<li>… '+(fi.length-12)+' more</li>';
         fh+='</ul>';
       }
-      fh+='</div>';
+      fh+='</div></div>';
       el.innerHTML=fh; el.style.display='block';
       return;
     }
@@ -20062,21 +20156,34 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     var cur=screen(), h='';
     var diff=st.saved?r2(cur.total-st.saved.total):0;
     var anyRule=(st.rules||[]).length>0, anyIssue=(st.issues||[]).length>0;
-    if(st.choice!=='today' && PL.on && !r2(st.hold) && !anyRule && !anyIssue && !diff && !(st.notes||[]).length){ el.style.display='none'; el.innerHTML=''; return; }
-    var bad=anyIssue||!st.ok;
-    h+='<div style="background:'+(bad?'#fee2e2':'#fef3c7')+';border:1px solid '+(bad?'#dc2626':'#f59e0b')+';border-radius:7px;padding:9px 11px;margin:0 0 10px;color:'+(bad?'#7f1d1d':'#7c4a03')+';font-size:11px;line-height:1.45">';
+    var m=mfrLine();
+    if(st.choice!=='today' && PL.on && !r2(st.hold) && !anyRule && !anyIssue && !diff && !(st.notes||[]).length && !m.warn){ el.style.display='none'; el.innerHTML=''; return; }
+    var bad=anyIssue||!st.ok||!!m.warn;
+    css();
+    var nowLines=linesOfPass(root._qTotals);
+    var title=st.choice==='today'?'Today’s pricing applied':(PL.on?'Saved price held':'Saved price NOT held');
+    h+=boxOpen(bad, title, m, !st._pulsed); st._pulsed=true;
+    if(m.warn) h+='<div style="margin:0 0 7px;padding:6px 8px;background:#dc2626;color:#fff;border-radius:6px;font-weight:800">&#9888; '+esc(m.warn)+' Check the manufacturer box at the top before saving or sending anything.</div>';
+    if(st.saved){
+      h+='<div style="display:flex;gap:5px">'+numCell('Saved', st.saved.total, null)+(st.today?numCell('Today’s price', st.today.total, r2(st.today.total-st.saved.total)):'')+numCell('On screen', cur.total, diff)+'</div>';
+      var when=st.pricedAt?fmtDay(st.pricedAt):(st.savedAt?fmtDay(st.savedAt):'');
+      h+='<div style="margin-top:3px;font-size:10.5px;color:#8a6a3a">Saved deposit '+money(st.saved.deposit)+' · balance '+money(st.saved.balance)+(when?' · priced '+esc(when):'')+'</div>';
+    }
     if(st.choice==='today'){
-      h+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">Today’s pricing applied</div>';
-      h+='<div>Saved total was <b>'+money(st.saved?st.saved.total:0)+'</b> → now <b>'+money(cur.total)+'</b> ('+signed(diff)+'). To go back, close without saving and reopen.</div>';
+      h+='<div style="margin-top:6px">Saved total was <b>'+money(st.saved?st.saved.total:0)+'</b> → now <b>'+money(cur.total)+'</b> ('+signed(diff)+'). To go back, close without saving and reopen.</div>';
+      if(st.saved && diff) h+=section('What differs from the saved quote', diff, diffRows(st.savedLines, nowLines), 'This quote was saved before line-by-line prices were kept: compare with its saved PDF.');
     } else if(st.saved){
-      h+='<div style="font-weight:800;font-size:10px;letter-spacing:.4px;text-transform:uppercase">'+(PL.on?'Saved price held':'Saved price NOT held')+'</div>';
-      h+='<div>Saved <b>'+money(st.saved.total)+'</b> (deposit '+money(st.saved.deposit)+', balance '+money(st.saved.balance)+')';
-      if(st.today) h+=' · today’s rules <b>'+money(st.today.total)+'</b> ('+signed(r2(st.today.total-st.saved.total))+')';
-      h+='</div>';
-      if(PL.on && diff) h+='<div style="margin-top:3px;font-weight:700">Changes made since reopening: '+signed(diff)+' (now '+money(cur.total)+').</div>';
+      // what the rep changed after reopening (the held quote moved)
+      var since=(st.baseLines && nowLines)?r2(nowLines._total-st.baseLines._total):(PL.on?diff:0);
+      if(PL.on && since) h+=section('Changed since you reopened it', since, diffRows(st.baseLines, nowLines), root.INPUT_MODE?'Manual (Input) prices: compare the Price Breakdown.':'');
+      // what today's pricing would change on this quote (the held difference)
+      if(st.today){
+        var td=r2(st.today.total-st.saved.total);
+        if(td) h+=section('Saved price vs today’s pricing', td, diffRows(st.savedLines, st.today.lines), 'This quote was saved before line-by-line prices were kept: the held rows below say what is known.');
+      }
     }
     if(PL.on && (st.parts||[]).length){
-      h+='<div style="margin-top:5px;font-weight:700">Held at the saved price:</div><ul style="margin:2px 0 0 16px;padding:0">';
+      h+='<div style="margin-top:7px;font-weight:800">Held at the saved price (why):</div><ul style="margin:2px 0 0 16px;padding:0">';
       st.parts.forEach(function(pt){
         var why=(pt.rules||[]).map(function(id){ var R=PL.RULES[id]; return R?(R.text+' ('+R.date+')'):id; }).join('; ');
         h+='<li><b>'+esc(pt.label)+'</b> '+signed(pt.amt)+(why?' — '+esc(why):(pt.k==='orig'?' — no known rule change explains this part':''))+'</li>';
@@ -20085,9 +20192,9 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
     }
     var ins=(st.rules||[]).filter(function(r){ return r.kind==='input'; });
     if(PL.on && ins.length){
-      h+='<div style="margin-top:6px;font-weight:700">Rules that would change this build today'+(st.sold?' (sold order — decide before a new contract)':'')+':</div>';
+      h+='<div style="margin-top:7px;font-weight:800">Rules that would change this build today'+(st.sold?' (sold order — decide before a new contract)':'')+':</div>';
       ins.forEach(function(r){
-        h+='<div style="margin:4px 0 0;padding:5px 7px;background:rgba(255,255,255,.55);border-radius:5px">';
+        h+='<div style="margin:4px 0 0;padding:5px 7px;background:rgba(255,255,255,.7);border-radius:5px">';
         if(r.flag==='ns') h+='<div>'+esc(r.text)+' ('+r.date+'): this order is <b>installed</b>'+(r.grandfathered?' (sold before the rule)':'')+'. Material-only (customer pickup) does not change the price.</div>';
         else h+='<div>'+esc(r.text)+' ('+r.date+') — '+(r.grandfathered?'<b>grandfathered</b> (sold before the rule)':'<b>rep override</b>')+'. Applying it: '+(r.effectTotal?'<b>'+signed(r.effectTotal)+'</b> on the total':'no price change')+'.</div>';
         if(r.decision){
@@ -20096,26 +20203,26 @@ try { if(typeof rebuildColorDropdowns==='function') rebuildColorDropdowns(); } c
           if(r.flag==='ns') h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'material\')">Make material-only (customer pickup)</span>';
           else h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'charge\')">Apply — charge customer</span>';
           if(r.effectSub && r.flag!=='ns') h+='<span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'nocharge\')">Apply — no charge</span>';
-          h+='<span style="white-space:nowrap"><input id="pl-reason-'+r.id+'" placeholder="Reason to keep as sold" style="font-size:10.5px;padding:2px 5px;border:1px solid #d6a756;border-radius:4px;width:150px;margin:4px 4px 0 0;color:#1C3557"><span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'keep\',(document.getElementById(\'pl-reason-'+r.id+'\')||{}).value)">Keep as sold</span></span>';
+          h+='<span style="white-space:nowrap"><input id="pl-reason-'+r.id+'" placeholder="Reason to keep as sold" style="font-size:11px;padding:3px 6px;border:1px solid #d6a756;border-radius:4px;width:150px;margin:6px 6px 0 0;color:#1C3557"><span style="'+BTN+'" onclick="PriceLock.decide(\''+r.id+'\',\'keep\',(document.getElementById(\'pl-reason-'+r.id+'\')||{}).value)">Keep as sold</span></span>';
         }
         h+='</div>';
       });
     }
-    (st.notes||[]).forEach(function(n){ h+='<div style="margin-top:4px">'+esc(n)+'</div>'; });
+    (st.notes||[]).forEach(function(n){ h+='<div style="margin-top:5px">'+esc(n)+'</div>'; });
     if(anyIssue){
-      h+='<div style="margin-top:6px;font-weight:800">Check before sending documents:</div><ul style="margin:2px 0 0 16px;padding:0">';
+      h+='<div style="margin-top:7px;font-weight:800">Check before sending documents:</div><ul style="margin:2px 0 0 16px;padding:0">';
       st.issues.slice(0,12).forEach(function(s){ h+='<li>'+esc(s)+'</li>'; });
       if(st.issues.length>12) h+='<li>… '+(st.issues.length-12)+' more</li>';
       h+='</ul>';
     }
     if(st.choice!=='today' && st.saved){
-      h+='<div style="margin-top:6px">';
+      h+='<div style="margin-top:7px">';
       if(PL.on) h+='<span style="'+BTN_ON+'">✓ Keep saved price</span>';
-      h+=st.sold?'<a href="#" onclick="PriceLock.choose(\'today\');return false;" style="font-size:10.5px;color:inherit;text-decoration:underline;margin-left:4px">Reprice sold order (customer must re-sign)</a>'
+      h+=st.sold?'<a href="#" onclick="PriceLock.choose(\'today\');return false;" style="font-size:11px;color:inherit;text-decoration:underline;margin-left:4px">Reprice sold order (customer must re-sign)</a>'
                 :'<span style="'+BTN+'" onclick="PriceLock.choose(\'today\')">Update to today’s pricing</span>';
       h+='</div>';
     }
-    h+='</div>';
+    h+='</div></div>';
     el.innerHTML=h; el.style.display='block';
   }
   PL.paint=paint;

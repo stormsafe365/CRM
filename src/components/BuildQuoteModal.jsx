@@ -62,6 +62,7 @@ import UseAsRevisionModal from './UseAsRevisionModal'
 import DesignLinkModal from './DesignLinkModal'
 import { designToQuote, applyDesignToProgram, restoreChecks, mergeChecks } from '../lib/designToQuote'
 import { designSeed, seedQuotePayload } from '../lib/designLinks'
+import { MFR_NAME, mfrMismatch, mfrWriteCheck, normMfr, startMfrFor, switchTarget } from '../lib/mfrGuard'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
@@ -155,6 +156,59 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const revisionRows = revisionChanges ? (revisionChanges.rows || revisionChanges) : null
   const hasRevisionRows = !!(revisionRows && revisionRows.length)
 
+  // ── Manufacturer guard (owner 11/17/26, Steve Coldwell: a lead to quote through CA ended up priced as CCI) ──
+  // The program starts every new build on CCI and a customer design is always CCI. The bar shows the manufacturer the
+  // program is pricing with; a NEW quote on a lead set to CA / CCI starts on it; a red bar + a confirm before any write
+  // when it differs from the lead's manufacturer or from the quote that was opened (lib/mfrGuard).
+  const [mfrNow, setMfrNow] = useState({ mfr: null, input: false })
+  const mfrStartRef = useRef(false)
+  function readProgramMfr(pg) {
+    try { return { mfr: normMfr(pg.ACTIVE_MFR), input: !!pg.INPUT_MODE } } catch { return { mfr: null, input: false } }
+  }
+  // the same as picking it in the program's own manufacturer box (#mfr-sel → switchMfr)
+  function switchProgramMfr(pg, m) {
+    try {
+      const sel = pg.document.getElementById('mfr-sel')
+      if (sel) sel.value = m
+      pg.switchMfr(m)
+      return normMfr(pg.ACTIVE_MFR) === m
+    } catch { return false }
+  }
+  function mfrGate(pg, kind) {
+    if (!pg) return null
+    const cur = readProgramMfr(pg)
+    return mfrWriteCheck({ kind: kind === 'apply' ? 'revision' : kind, mismatches: mfrMismatch({ programMfr: cur.mfr, client, quote: quoteRef.current, inputMode: cur.input }) })
+  }
+  function switchToMfr(m) {
+    const pg = getProgramWindow()
+    if (!pg || !m) return
+    if (switchProgramMfr(pg, m)) {
+      setMfrNow(readProgramMfr(pg))
+      toast(`Now pricing as ${escHtml(MFR_NAME[m] || m)} — check doors, windows and colors before saving.`, 'success')
+    } else toast(`Could not switch the program to ${escHtml(m)} — pick it in the program’s manufacturer box.`)
+  }
+  useEffect(() => {
+    const t = setInterval(() => {
+      const pg = getProgramWindow()
+      if (!pg) return
+      const now = readProgramMfr(pg)
+      setMfrNow((prev) => (prev.mfr === now.mfr && prev.input === now.input ? prev : now))
+      // a NEW quote on a lead set to CA / CCI: start on that manufacturer (once, as soon as the program has loaded)
+      if (mfrStartRef.current) return
+      let ready = false
+      try { ready = pg.document.readyState === 'complete' && typeof pg.switchMfr === 'function' } catch { ready = false }
+      if (!ready) return
+      mfrStartRef.current = true
+      const want = startMfrFor({ client, restoring: !!restoreData || !!quoteRef.current?.id, fromDesign: !!fromDesign, programMfr: pg.ACTIVE_MFR })
+      if (want && switchProgramMfr(pg, want)) {
+        setMfrNow(readProgramMfr(pg))
+        toast(`Manufacturer set to ${escHtml(MFR_NAME[want])} — this lead’s manufacturer (Lead › Manufacturer)`, 'success')
+      }
+    }, 700)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client?.id, client?.building_mfr])
+
   // The QTEPRO program lives in build.html's LEFT-pane iframe. Reach it (same-origin).
   function getProgramWindow() {
     try {
@@ -176,8 +230,12 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   // Resolves true when the write may go ahead. Every write to a quote that
   // already has a saved price shows the dialog (saved → new, or "no price
   // change"); only a brand-new quote (nothing saved yet) goes straight through.
-  function confirmWrite(kind, extra = {}) {
+  async function confirmWrite(kind, extra = {}) {
     const pg = getProgramWindow()
+    // the manufacturer first (owner 11/17/26): never write a quote priced with a manufacturer the lead / the opened
+    // quote is not on without asking (lib/mfrGuard)
+    const mc = mfrGate(pg, kind)
+    if (mc && (await askConfirm(mc)) !== true) return false
     const cur = quoteRef.current
     const check = writeCheck({
       kind, saved: savedTotalsOf(cur), next: readScreenTotals(pg), lock: readLockState(pg), status: cur?.status, ...extra,
@@ -230,6 +288,8 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     const why = saveAsNewBlocker({ original, revisionChanges })
     if (why) { toast(escHtml(why)); return }
     if (!client?.id) { toast('Pick a lead first (Save to Lead).'); return }
+    const mc = mfrGate(pg, 'new') // the manufacturer (lib/mfrGuard)
+    if (mc && (await askConfirm(mc)) !== true) { toast('Nothing saved.'); return }
     const origNo = original.quote_number ? `#${original.quote_number}` : 'The original quote'
     savingRef.current = true
     try {
@@ -1226,6 +1286,8 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
   const checkWarn = designChecks ? designChecks.items.filter((c) => c.level === 'warn').length : 0
   const checkInfo = designChecks ? designChecks.items.length - checkWarn : 0
   const barClient = client?.name || savedTo
+  const mfrIssues = mfrMismatch({ programMfr: mfrNow.mfr, client, quote: quoteRef.current, inputMode: mfrNow.input })
+  const mfrWant = switchTarget(mfrIssues)
   return (
     <div className="qb-overlay" role="dialog" aria-modal="true" aria-label="3D Builder">
       <div className="qb-modal">
@@ -1235,6 +1297,11 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
             {barTitle}
             {barClient && <span className="qb-bar-client"> · {barClient}</span>}
           </div>
+          {mfrNow.mfr && !mfrNow.input && (
+            <span className={`qb-mfr-chip${mfrIssues.length ? ' bad' : ''}`} title={`The program is pricing this quote as ${MFR_NAME[mfrNow.mfr]}`}>
+              {mfrIssues.length ? '⚠ ' : ''}{mfrNow.mfr}
+            </span>
+          )}
           {status
             ? <div className="qb-bar-status">{status}</div>
             : <div className="qb-bar-status" style={{ flex: 1, textAlign: 'center', opacity: 0.7 }}>
@@ -1278,6 +1345,15 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
           </button>
         </div>
+        {mfrIssues.length > 0 && (
+          <div className="qb-lock qb-lock-error qb-mfr-bar" role="alert">
+            <span className="qb-lock-dot" aria-hidden="true" />
+            <span className="qb-lock-text">
+              <b>Manufacturer check:</b> {mfrIssues.map((m) => m.text).join(' ')}
+            </span>
+            {mfrWant && <button type="button" className="btn-primary qb-lock-btn" onClick={() => switchToMfr(mfrWant)} disabled={!!status}>Switch to {mfrWant}</button>}
+          </div>
+        )}
         {designChecks && (
           <div className={`qb-lock ${checkWarn ? 'qb-lock-warn' : 'qb-lock-ok'} qb-design-checks`} role="region" aria-label="Check these before quoting">
             <span className="qb-lock-dot" aria-hidden="true" />
