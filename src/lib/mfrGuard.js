@@ -95,3 +95,28 @@ export function mfrWriteCheck({ kind = 'save', mismatches = [] } = {}) {
     okTone: 'danger',
   }
 }
+
+// "Build quote from this design" (owner 11/17/26: Steve Coldwell's website design became a CCI quote for a CA customer -
+// lib/designToQuote always fills in as CCI, the design page's catalog). The rep picks the manufacturer first; the lead's
+// manufacturer is the default (OK), the other one the second button. PriceChangeConfirm resolves true (OK), the other
+// manufacturer ('CA' / 'CCI'), or false (Cancel = nothing filled in).
+export function designMfrCheck({ name = '', leadMfr = null, dflt = 'CCI', other = 'CA' } = {}) {
+  return {
+    title: `Which manufacturer is ${name ? `${name}’s` : 'this'} quote for?`,
+    lines: [],
+    changed: false,
+    notes: [
+      leadMfr ? `This lead is set to ${MFR_NAME[leadMfr]} (Lead › Manufacturer).` : 'This lead has no manufacturer set (Lead › Manufacturer).',
+      'The website design page uses the CCI catalog. Picking CA fills the design in, then switches the program to CA - check every door, window and color in the list that follows before quoting.',
+    ],
+    okLabel: MFR_NAME[dflt],
+    alt: { label: MFR_NAME[other], value: other, title: `Build it as ${MFR_NAME[other]}` },
+    cancelLabel: 'Cancel',
+  }
+}
+// What the rep's answer means: the manufacturer to build with, or null (Cancel).
+export function designMfrPick(answer, { dflt = 'CCI' } = {}) {
+  if (answer === true) return dflt
+  if (answer === false || answer == null) return null
+  return normMfr(answer) || dflt
+}

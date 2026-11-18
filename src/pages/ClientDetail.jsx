@@ -38,7 +38,9 @@ import { useIsAdmin } from '../lib/useIsAdmin'
 import { toast } from '../lib/uiFx'
 import { usd } from '../lib/money'
 
-const MFR_LABEL = { ca: 'Carolina Carports', cci: 'CCI', other: 'Other' }
+// quotes.manufacturer -> the lead page's Manufacturer row. 'ca' is CARPORTS ANYWHERE (it read "Carolina Carports" until
+// 11/17/26 - Steve Coldwell's CA quote showed as Carolina Carports on his lead).
+const MFR_LABEL = { ca: 'Carports Anywhere (CA)', cci: 'Carolina Carports (CCI)', other: 'Other' }
 
 // One-click copy for the contact rows — the phone/email chips are LINKS
 // (RingCentral text / mailto), so their text can't be selected; this puts the

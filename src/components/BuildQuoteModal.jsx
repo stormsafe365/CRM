@@ -62,7 +62,7 @@ import UseAsRevisionModal from './UseAsRevisionModal'
 import DesignLinkModal from './DesignLinkModal'
 import { designToQuote, applyDesignToProgram, restoreChecks, mergeChecks } from '../lib/designToQuote'
 import { designSeed, seedQuotePayload } from '../lib/designLinks'
-import { MFR_NAME, mfrMismatch, mfrWriteCheck, normMfr, startMfrFor, switchTarget } from '../lib/mfrGuard'
+import { MFR_NAME, designMfrCheck, designMfrPick, mfrMismatch, mfrWriteCheck, normMfr, startMfrFor, switchTarget } from '../lib/mfrGuard'
 import RevisionModal from './RevisionModal'
 import { holdBuilderAt, newItemsOf } from '../lib/revisionEngine'
 import { r2, revisionMoney } from '../lib/revisionDiff'
@@ -347,7 +347,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
     const r = askResolveRef.current
     askResolveRef.current = null
     setAsk(null)
-    if (r) r(yes === 'preview' ? 'preview' : !!yes)
+    if (r) r(yes === 'preview' ? 'preview' : (typeof yes === 'string' ? yes : !!yes)) // a string = the dialog's second button (alt.value)
   }
 
   // ── Conditional clause (owner 11/2/26: "once we click generate contract there should be an option to 'add conditional
@@ -586,6 +586,15 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       let seedPayload = null
       try { if (seed.quoteId) seedPayload = await seedQuotePayload(supabase, seed.quoteId) } catch { /* the notes say what to add */ }
       if (!alive) return
+      // The manufacturer (owner 11/17/26, Steve Coldwell: his website design became a CCI quote though he is quoted
+      // through CA): the rep picks it - the lead's manufacturer is the default. The design page uses the CCI catalog, so
+      // the design is filled in as CCI and then switched (the same as picking it in the program's manufacturer box); the
+      // check list below names what moved.
+      const leadM = normMfr(client?.building_mfr)
+      const dfltM = leadM || 'CCI'
+      const wantMfr = designMfrPick(await askConfirm(designMfrCheck({ name: fromDesign.name, leadMfr: leadM, dflt: dfltM, other: dfltM === 'CA' ? 'CCI' : 'CA' })), { dflt: dfltM })
+      if (!alive) return
+      if (!wantMfr) { toast('Not filled in. Close the builder and click Build quote from this design again to start over.'); return }
       const res = designToQuote(fromDesign.design, {
         zip: fromDesign.zip, leadZip: client?.zip, seedNotes: seed.notes, seedQuoteNumber: seed.quoteNumber,
         seedPayload, seedDesign: seed.seed && typeof seed.seed === 'object' ? seed.seed.design : null,
@@ -593,6 +602,12 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       if (!res.ok) { toast(`This design can't fill in the quote program: ${escHtml(res.reason)}`); return }
       let ok = true
       try { applyDesignToProgram(pg, res.payload) } catch (e) { ok = false; console.warn('design fill failed', e) }
+      let switched = true
+      if (ok && wantMfr !== normMfr(res.payload.mfr)) {
+        switched = switchProgramMfr(pg, wantMfr)
+        try { pg.rc() } catch { /* priced on the next change */ }
+        setMfrNow(readProgramMfr(pg))
+      }
       // Client Information: the lead's, else what the customer typed when sending (never over a value already there)
       try {
         const d = pg.document
@@ -613,7 +628,12 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
       const fromProgram = ok ? restoreChecks(res.payload, back, { T: pg._qTotals || null, county: county && county !== '—' ? county : null })
         : [{ level: 'warn', text: 'The quote program could not take the whole design: compare every part of the build with the design (Show the spec) before quoting.' }]
       const items = mergeChecks(res.checks, fromProgram)
-      setDesignChecks({ items, open: true })
+      if (wantMfr !== normMfr(res.payload.mfr)) {
+        items.unshift(switched
+          ? { level: 'warn', text: `Priced as ${MFR_NAME[wantMfr]}: the design was entered on the CCI catalog - check every door, window, color and option against ${wantMfr} before quoting.` }
+          : { level: 'warn', text: `Could not switch the program to ${wantMfr} - pick ${MFR_NAME[wantMfr]} in the program’s manufacturer box, then check the build.` })
+      }
+      setDesignChecks({ items, open: true, mfr: readProgramMfr(pg).mfr || wantMfr })
       const nWarn = items.filter((c) => c.level === 'warn').length
       toast(`Filled in from ${escHtml(fromDesign.name || 'the customer')}'s design${nWarn ? ` — ${nWarn} thing${nWarn === 1 ? '' : 's'} to check before quoting` : ''}`, nWarn ? undefined : 'success')
     }, 500)
@@ -1358,7 +1378,7 @@ export default function BuildQuoteModal({ client: clientProp, initialQuote, onSa
           <div className={`qb-lock ${checkWarn ? 'qb-lock-warn' : 'qb-lock-ok'} qb-design-checks`} role="region" aria-label="Check these before quoting">
             <span className="qb-lock-dot" aria-hidden="true" />
             <span className="qb-lock-text">
-              <b>Check these before quoting</b> — filled in from {fromDesign?.name || 'the customer'}&rsquo;s design (CCI, today&rsquo;s pricing): {checkWarn} to check{checkInfo ? `, ${checkInfo} to know` : ''}. Nothing is saved until you Save to Lead.
+              <b>Check these before quoting</b> — filled in from {fromDesign?.name || 'the customer'}&rsquo;s design ({designChecks.mfr || 'CCI'}, today&rsquo;s pricing): {checkWarn} to check{checkInfo ? `, ${checkInfo} to know` : ''}. Nothing is saved until you Save to Lead.
             </span>
             <button type="button" className="btn-secondary qb-lock-btn" aria-expanded={designChecks.open} onClick={() => setDesignChecks((c) => (c ? { ...c, open: !c.open } : c))}>{designChecks.open ? 'Hide' : 'Show'}</button>
             {designChecks.open && (

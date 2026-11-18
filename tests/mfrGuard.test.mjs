@@ -83,3 +83,28 @@ test('Save to Lead picker (standalone builder tab / Dashboard new quote): an exi
   assert.ok(picker.includes(".select('id, name, phone, email, status, updated_at, building_mfr')"))
   assert.ok(picker.includes('try { mm = mfrMismatch({ programMfr: pg.ACTIVE_MFR, client: target, inputMode: !!pg.INPUT_MODE }) } catch { mm = [] }'))
 })
+
+test('Build quote from this design: the rep picks the manufacturer, the lead\'s is the default (Steve Coldwell 11/17/26)', async () => {
+  const { designMfrCheck, designMfrPick } = await import('../src/lib/mfrGuard.js')
+  const c = designMfrCheck({ name: 'Steve Coldwell', leadMfr: null, dflt: 'CCI', other: 'CA' })
+  assert.equal(c.title, 'Which manufacturer is Steve Coldwell’s quote for?')
+  assert.equal(c.okLabel, 'Carolina Carports (CCI)'); assert.deepEqual([c.alt.label, c.alt.value], ['Carports Anywhere (CA)', 'CA'])
+  assert.equal(c.changed, false) // OK (the default) is focused
+  assert.ok(c.notes[0].includes('no manufacturer set'))
+  const ca = designMfrCheck({ name: 'X', leadMfr: 'CA', dflt: 'CA', other: 'CCI' })
+  assert.equal(ca.okLabel, 'Carports Anywhere (CA)'); assert.ok(ca.notes[0].includes('set to Carports Anywhere (CA)'))
+  assert.equal(designMfrPick(true, { dflt: 'CA' }), 'CA')
+  assert.equal(designMfrPick('CA', { dflt: 'CCI' }), 'CA')
+  assert.equal(designMfrPick('CCI', { dflt: 'CA' }), 'CCI')
+  assert.equal(designMfrPick(false), null)
+  assert.ok(modal.includes("const wantMfr = designMfrPick(await askConfirm(designMfrCheck({ name: fromDesign.name, leadMfr: leadM, dflt: dfltM, other: dfltM === 'CA' ? 'CCI' : 'CA' })), { dflt: dfltM })"))
+  assert.ok(modal.includes('switched = switchProgramMfr(pg, wantMfr)'))
+  assert.ok(modal.includes("({designChecks.mfr || 'CCI'}, today&rsquo;s pricing)"))
+  assert.ok(modal.includes("if (r) r(yes === 'preview' ? 'preview' : (typeof yes === 'string' ? yes : !!yes))"))
+})
+
+test('the lead page names CA as Carports Anywhere (it read "Carolina Carports")', () => {
+  const page = readFileSync(resolve(here, '../src/pages/ClientDetail.jsx'), 'utf8')
+  assert.ok(page.includes("const MFR_LABEL = { ca: 'Carports Anywhere (CA)', cci: 'Carolina Carports (CCI)', other: 'Other' }"))
+  assert.ok(!page.includes("ca: 'Carolina Carports'"))
+})
