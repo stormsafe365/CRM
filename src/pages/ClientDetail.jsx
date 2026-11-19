@@ -196,9 +196,10 @@ export default function ClientDetail() {
       return
     }
     setClient(c => ({ ...c, ...patch }))
-    // Sliding to "Ordered" also needs the order details for the Follow-Up HQ
-    // timeline — open the Mark-as-Ordered box if we don't have them yet.
-    if (mapped === 'ordered' && !client.order_date) setOrdering(true)
+    // Sliding to "Ordered" = contract signed: the Mark-as-Ordered box (order details for the Follow-Up HQ timeline)
+    // waits for the deposit - Mark as Ordered, Deposit Received or the payment-cleared tick open it (owner 11/19/26:
+    // "he signed contract but were still waiting on the payment to clear").
+    if (mapped === 'ordered' && !client.order_date) toast('Contract signed - when the deposit clears, click Mark as Ordered (or Deposit Received).', 'success')
   }
 
   // Quick-reschedule chips on the lead header — bump the legacy Next Follow-Up date.
@@ -393,7 +394,7 @@ export default function ClientDetail() {
         )}
 
         {client.status === 'ordered' && (
-          <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} />
+          <PaymentToggle client={client} onChange={(val) => setClient({ ...client, payment_cleared: val })} onNeedOrder={() => setOrdering(true)} />
         )}
 
         <ActivityProgress
@@ -427,13 +428,15 @@ export default function ClientDetail() {
   )
 }
 
-function PaymentToggle({ client, onChange }) {
+function PaymentToggle({ client, onChange, onNeedOrder }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const cleared = !!client.payment_cleared
 
   async function toggle() {
     const next = !cleared
+    // the deposit cleared on a lead with no order saved yet: the Mark-as-Ordered box (it records the order + payment cleared)
+    if (next && !client.order_date && onNeedOrder) { onNeedOrder(); return }
     setSaving(true); setErr('')
     const { error } = await supabase.from('clients').update({ payment_cleared: next }).eq('id', client.id)
     setSaving(false)

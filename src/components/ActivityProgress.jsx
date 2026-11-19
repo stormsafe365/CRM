@@ -16,7 +16,7 @@ import { agoLabel, fmtLong, fmtTime } from '../lib/followups'
 import { cadenceSeeded, seedPostQuoteCadence, POST_QUOTE_CADENCE } from '../lib/quoteCadence'
 import ActivityComposer from './ActivityComposer'
 import { toast } from '../lib/uiFx'
-import { buildMilestones, STEP_PATCH } from '../lib/progressSteps'
+import { buildMilestones, STEP_PATCH, stepOpensOrderBox } from '../lib/progressSteps'
 
 const TYPE_META = {
   call: { icon: '📞', label: 'Call' },
@@ -70,9 +70,10 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
     if (!patch) return
     // "Deposit Received" (step 5) always opens the Mark-as-Ordered box so you can
     // set the order date + follow-up timeframes before the lead lands in
-    // Follow-Up HQ. Other ordered steps open it too when the order details are
-    // still missing. Same box as the summary "Mark as Ordered" button.
-    if (onMarkOrdered && (i === 5 || (patch.status === 'ordered' && !client.order_date))) {
+    // Follow-Up HQ. A later step opens it too while the order details are missing.
+    // "Contract Signed" never does - the deposit may not have cleared yet (owner 11/19/26).
+    // Same box as the summary "Mark as Ordered" button.
+    if (onMarkOrdered && stepOpensOrderBox(i, client)) {
       onMarkOrdered()
       return
     }
@@ -96,7 +97,9 @@ export default function ActivityProgress({ client, showAudience = false, onMarkO
     // stepper) — the realtime reload is a backstop, not something clicking a
     // stage should have to wait on.
     if (onPatched) onPatched(finalPatch)
-    toast(`Stage updated to "${milestones[i].label}"`, 'success')
+    toast(i === 4 && !client.order_date
+      ? `Stage updated to "Contract Signed" - when the deposit clears, click "Deposit Received" (or Mark as Ordered)`
+      : `Stage updated to "${milestones[i].label}"`, 'success')
 
     // Marking "Quote Sent" offers to kick off the post-quote reminder cadence
     // (team check-ins). Reminders only — nothing auto-sends to the customer.

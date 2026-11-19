@@ -30,3 +30,21 @@ test('clicking "Lead Created" sets the lead back to New Lead / Cold; the other c
   // every click lands on its own step
   STEP_PATCH.forEach((p, i) => { if (i !== 5 && i < 6) assert.equal(reachedRank(p), i) })
 })
+
+test('owner 11/19/26: "Contract Signed" never opens the Mark-as-Ordered box - Deposit Received does', async () => {
+  const { stepOpensOrderBox } = await import('../src/lib/progressSteps.js')
+  const signedNoOrder = { status: 'contract_sent', order_date: null }
+  assert.equal(stepOpensOrderBox(4, signedNoOrder), false) // Contract Signed: waiting on the deposit
+  assert.equal(stepOpensOrderBox(5, signedNoOrder), true) // Deposit Received
+  assert.equal(stepOpensOrderBox(5, { order_date: '2026-11-19' }), true) // always (edit the order details)
+  assert.equal(stepOpensOrderBox(6, signedNoOrder), true) // Engineering with no order saved yet
+  assert.equal(stepOpensOrderBox(6, { order_date: '2026-11-19' }), false)
+  for (const i of [0, 1, 2, 3]) assert.equal(stepOpensOrderBox(i, signedNoOrder), false)
+  // wired in: the stepper asks it; the temperature bar and the payment switch follow the same rule
+  const { readFileSync } = await import('node:fs')
+  const ap = readFileSync(new URL('../src/components/ActivityProgress.jsx', import.meta.url), 'utf8')
+  assert.match(ap, /if \(onMarkOrdered && stepOpensOrderBox\(i, client\)\) \{/)
+  const cd = readFileSync(new URL('../src/pages/ClientDetail.jsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(cd, /if \(mapped === 'ordered' && !client\.order_date\) setOrdering\(true\)/)
+  assert.match(cd, /if \(next && !client\.order_date && onNeedOrder\) \{ onNeedOrder\(\); return \}/)
+})

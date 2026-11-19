@@ -57,3 +57,12 @@ export const STEP_PATCH = [
   { status: 'ordered', project_stage: 'scheduling' },                  // 8 Scheduling
   { status: 'ordered', project_stage: 'installed' },                   // 9 Installed
 ]
+
+// Owner 11/19/26 (Chris Farquharson): "this box shouldnt pop up until i click mark as ordered or click deposit cleared
+// because he signed contract but were still waiting on the payment to clear". "Contract Signed" (step 4) only records the
+// signature; the Mark-as-Ordered box (order date + Follow-Up HQ timeline, payment cleared) opens from "Deposit Received"
+// (step 5 - always), and from a later step (Engineering ... Installed) only while no order details are saved.
+export function stepOpensOrderBox(i, client) {
+  if (i === 5) return true
+  return i >= 6 && i < STEP_PATCH.length && !(client && client.order_date)
+}
