@@ -4862,3 +4862,37 @@ a.brand { text-decoration: none; color: inherit; }
 /* the quote card's design link button: a link icon (owner 11/2/26: "instead of ... 'create link' have the button be a link icon") */
 .qcard-link { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; padding-left: 9px; padding-right: 9px; }
 .qcard-link:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Addition orders (AdditionOrderModal / Doc Hub › Contracts, owner 11/19/26) - orange = the order's own "Addition" box */
+.ctr-agr.add { border-color: rgba(240,136,62,.42); background: rgba(240,136,62,.04); }
+.ctr-sig-ic.add { background: rgba(240,136,62,.16); color: #f0883e; }
+.msign.addo { width: min(640px, calc(100vw - 32px)); }
+.addo-num { margin-left: 6px; font-size: 13px; font-weight: 800; color: #f0883e; border: 1px solid rgba(240,136,62,.55); border-radius: 6px; padding: 1px 7px; vertical-align: 2px; }
+.addo-sub { margin: 0 0 4px; font-size: 13px; color: var(--fg-3, #8598AC); line-height: 1.45; }
+.addo-sub b { color: var(--fg, #e2e8f0); }
+.addo-rule { margin: 0 0 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(240,136,62,.45); background: rgba(240,136,62,.08); color: #f0b37e; font-size: 12.5px; line-height: 1.45; }
+.addo-items { display: grid; gap: 8px; }
+.addo-item { border: 1px solid var(--line, #294059); border-radius: 10px; padding: 8px; background: rgba(255,255,255,.015); }
+.addo-row { display: flex; gap: 6px; align-items: center; }
+.addo-row2 { margin-top: 6px; flex-wrap: wrap; }
+.addo-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--fg-2, #c7d2de); cursor: pointer; }
+.addo-check input { width: 16px; height: 16px; accent-color: #22c4bf; }
+.addo-amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--fg, #e2e8f0); }
+.addo-x { flex: none; width: 32px; height: 34px; border-radius: 8px; border: 1px solid var(--line, #294059); background: transparent; color: var(--fg-3, #8598AC); cursor: pointer; }
+.addo-x:hover:not(:disabled) { color: #f87171; border-color: #f87171; }
+.addo-x:disabled { opacity: .35; cursor: default; }
+.addo-add { margin-top: 8px; border: 1px dashed var(--line-2, #36506c); background: transparent; color: var(--cyan-dim, #22c4bf); border-radius: 8px; padding: 7px 12px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.addo-add:hover { border-color: var(--cyan-dim, #22c4bf); }
+.addo-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.addo-tot { margin-top: 14px; border: 1px solid var(--line, #294059); border-radius: 10px; padding: 8px 12px; display: grid; gap: 3px; font-size: 13px; }
+.addo-tot > div { display: flex; justify-content: space-between; color: var(--fg-3, #8598AC); }
+.addo-tot b { color: var(--fg, #e2e8f0); font-variant-numeric: tabular-nums; }
+.addo-tot b.ok { color: #34d399; }
+.addo-tot .g { border-top: 1px solid var(--line, #294059); margin-top: 4px; padding-top: 5px; font-size: 14.5px; }
+.addo-tot .g span { color: var(--fg, #e2e8f0); font-weight: 700; }
+.addo-why { margin: 10px 0 0; color: #f0883e; font-size: 13px; font-weight: 600; }
+@media (max-width: 560px) {
+  .addo-two { grid-template-columns: 1fr; }
+  .addo-row { flex-wrap: wrap; }
+  .addo-row > .addo-model { flex: 1 1 100% !important; order: 5; }
+}

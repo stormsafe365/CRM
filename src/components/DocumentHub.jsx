@@ -24,11 +24,15 @@ import { openMenu, toast } from '../lib/uiFx'
 import LayoutSheetModal from './LayoutSheetModal'
 import ReceiptModal from './ReceiptModal'
 import MarkSignedModal, { quoteLine } from './MarkSignedModal'
+import AdditionOrderModal from './AdditionOrderModal'
+import AdditionSignedModal from './AdditionSignedModal'
 import {
-  clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, restoreAfterRevisionDeleted, revOf,
+  clearSignedMark, contractRoleOf, currentOrderQuote, executedOf, fmtShortDate, groupByLabel, markExecuted, organizeContracts, parseContractLabel, restoreAfterRevisionDeleted, revOf,
 } from '../lib/contractDocs'
+import { addsInWords, patchAddition, saveAdditionPayload } from '../lib/additionOrder'
 import { isBuilderPayload, isSold } from '../lib/priceLockCrm'
 import { quoteStatusLabel } from '../lib/constants'
+import { usd } from '../lib/money'
 
 const SECTIONS = [
   { key: 'quote',       label: 'Quotes',      accept: 'application/pdf',         hint: 'PDF' },
@@ -86,6 +90,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const [markFor, setMarkFor] = useState(null) // { file, presetQuoteId, justUploaded } — Mark as signed
   const [dateFor, setDateFor] = useState(null) // quote id — change the signed date / contract number
   const [receiptFor, setReceiptFor] = useState(null) // signed quote row — Bill of Sale / receipt straight from the contract
+  const [addFor, setAddFor] = useState(null) // quote row — Make an addition order (owner 11/19/26)
+  const [addSign, setAddSign] = useState(null) // { entry, file } — an addition order marked signed
+  const attachAdd = useRef(null) // "Attach the signed copy" of this addition order (organizeContracts().additions entry)
   const [open, setOpen] = useState(() => new Set()) // folded groups the rep opened
   const [stamping, setStamping] = useState(null)
   const [query, setQuery] = useState('')
@@ -140,8 +147,16 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     }
     // a signed / sold / replaced order's own quote PDF: deleting it would delete that quote card too
     for (const q of quotes) if (q.pdf_snapshot_url && (executedOf(q) || isSold(q.status) || q.status === 'superseded')) m.set(q.pdf_snapshot_url, `the quote PDF of ${quoteLine(q)} (deleting it removes that quote from the lead)`)
+    // an addition order's own file and its signed copy
+    for (const e of org.additions) {
+      if (e.file) m.set(e.file.path, `addition order ${e.number}`)
+      if (e.signedFile) m.set(e.signedFile.path, `the signed copy of addition order ${e.number}`)
+    }
     return m
   }, [org, quotes])
+  // the addition order a contract file is named for (its own number, "…SS-2026-79957-A…"), or null
+  const additionOfLabel = (label) => { const p = parseContractLabel(label); return p && p.add ? org.additions.find((e) => e.number.toLowerCase() === p.number.toLowerCase()) || null : null }
+  const fileLabels = useMemo(() => (filesByCat.contract || []).map((f) => f.label), [filesByCat.contract])
   // quote cards a file stands for (a quote PDF): the confirm says they go too
   const quoteOfPath = (p) => quotes.find((q) => q.pdf_snapshot_url === p) || null
 
@@ -173,11 +188,17 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       const rf = rv ? ((ro && files.find((f) => f.label.toLowerCase().startsWith(ro))) || null) : ((prefix && files.find((f) => f.label.toLowerCase().startsWith(prefix))) || null)
       if (rf) rows.push({ kind: 'revision', key: 'rev:' + rf.path, file: rf })
     }
+    // addition orders (11/19/26): each is its own order on the building
+    for (const e of org.additions) rows.push({ kind: 'addition', key: 'add:' + e.number, e, file: e.signedFile || e.file || null })
     return rows
   }, [org, curQuote, allFiles, filesByCat.revisions])
   const shownPaths = useMemo(() => {
     const s = new Set()
-    for (const r of current) { if (r.file) s.add(r.file.path); if (r.s) { if (r.s.signedFile) s.add(r.s.signedFile.path); if (r.s.stampedFile) s.add(r.s.stampedFile.path) } }
+    for (const r of current) {
+      if (r.file) s.add(r.file.path)
+      if (r.s) { if (r.s.signedFile) s.add(r.s.signedFile.path); if (r.s.stampedFile) s.add(r.s.stampedFile.path) }
+      if (r.e) { if (r.e.file) s.add(r.e.file.path); if (r.e.signedFile) s.add(r.e.signedFile.path) }
+    }
     return s
   }, [current])
   const history = useMemo(() => allFiles.filter((f) => !shownPaths.has(f.path)), [allFiles, shownPaths])
@@ -197,11 +218,15 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const file = e.target.files?.[0]
     const attachTo = attachFor.current
     attachFor.current = null
+    const addTo = attachAdd.current
+    attachAdd.current = null
     if (!file) return
     setBusy(true); setError('')
     try {
       const cat = uploadCat.current
       const path = await uploadClientDoc(clientId, cat, file)
+      // the signed copy of an addition order (its Actions › Attach the signed copy): that order is marked, nothing else
+      if (addTo) { await refresh(); setActive('contract'); setAddSign({ entry: addTo, file: { path, label: labelOfPath(path) } }); return }
       // Uploading a quote PDF should also appear in the Quotes box — create a
       // quote record that points at the uploaded file. Size is parsed from the
       // filename (e.g. "…24x30x14.pdf") when present.
@@ -220,8 +245,16 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         promoteToWorking(clientId, user?.id).catch(() => {})
       }
       await refresh()
-      // a contract upload: is it what the customer signed? (owner 10/19/26)
-      if (cat === 'contract') { setActive('contract'); setMarkFor({ file: { path, label: labelOfPath(path) }, presetQuoteId: attachTo, justUploaded: true }) }
+      // a contract upload: is it what the customer signed? (owner 10/19/26) - a file named for an addition order
+      // ("…SS-2026-79957-A…") is that order's, never the building's
+      if (cat === 'contract') {
+        setActive('contract')
+        const pa = parseContractLabel(labelOfPath(path))
+        if (pa && pa.add) {
+          const ae = additionOfLabel(labelOfPath(path))
+          if (ae && window.confirm(`Is this the signed copy of addition order ${ae.number}?`)) setAddSign({ entry: ae, file: { path, label: labelOfPath(path) } })
+        } else setMarkFor({ file: { path, label: labelOfPath(path) }, presetQuoteId: attachTo, justUploaded: true })
+      }
     }
     catch (err) { setError(err.message) }
     finally { setBusy(false); if (inputRef.current) inputRef.current.value = '' }
@@ -302,6 +335,9 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     })
     if (latest) {
       items.push({ sep: true })
+      // Owner 11/19/26 (Robert Andrews' walk-in door for his installed CCI building): "is there a way to make one of these
+      // for people moving forward through our crm ?" - an order of its own, numbered <agreement>-A, -B...
+      items.push({ id: 'add', label: 'Make an addition order (door, window… for this building)…', onClick: () => setAddFor(q) })
       items.push({
         id: 'rev', label: 'Make a revision of this signed version',
         onClick: () => {
@@ -330,12 +366,71 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const rq = by && quotes.find((x) => x.id === by.id)
     return rq ? quoteLine(rq).replace(/ of SS-[\d-]+$/, '') : `#${(by && by.quote_number) || '—'}`
   }
-  const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : t.startsWith('the quote PDF') ? 'Order quote' : 'Signed copy') : null }
+  const chipOf = (p) => { const t = signedPaths.get(p); return t ? (t.startsWith('the DEPOSIT') ? 'Deposit paid' : t.startsWith('the quote PDF') ? 'Order quote' : t.startsWith('addition order') ? 'Addition' : 'Signed copy') : null }
+
+  // ── addition orders (owner 11/19/26) ──
+  const addsOf = (e) => addsInWords(e.add.items || [])
+  const addSignedOn = (e) => (e.add.signed && e.add.signed.on) || null
+  function additionMenu(ev, e) {
+    const items = []
+    if (e.file) items.push({ id: 'see', label: 'See the addition order', onClick: () => onView(e.file.path) })
+    if (e.signedFile) items.push({ id: 'seesig', label: 'See the signed copy', onClick: () => onView(e.signedFile.path) })
+    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => { attachAdd.current = e; triggerUpload('contract') } })
+    items.push({ id: 'day', label: addSignedOn(e) ? 'Change the signed date…' : 'Mark signed (no file)…', onClick: () => setAddSign({ entry: e, file: null }) })
+    if (e.add.signed) {
+      items.push({ sep: true })
+      items.push({
+        id: 'unmark', label: 'Not signed — take the mark off', cls: 'danger',
+        onClick: async () => {
+          if (!window.confirm(`Take the signed mark off addition order ${e.number}? The files stay.`)) return
+          try { await saveAdditionPayload(supabase, e.quote.id, (p) => patchAddition(p, e.number, { signed: null })); toast(`Addition order ${esc(e.number)} is no longer marked signed`, 'success'); loadQuotes() }
+          catch (err) { setError(err.message || String(err)) }
+        },
+      })
+    }
+    openMenu(ev.currentTarget, esc(`Addition order ${e.number}`), items.map((it) => (it.sep ? it : { ...it, label: esc(it.label) })))
+  }
+  function additionsBlock() {
+    if (!org.additions.length) return null
+    return (
+      <div className="ctr-agr add">
+        <div className="ctr-agr-h">Addition orders <b>· {org.additions.length}</b> · each is its own order on the building</div>
+        {org.additions.map((e) => {
+          const on = addSignedOn(e)
+          return (
+            <div key={e.number} className="ctr-sig now">
+              <div className="ctr-sig-top">
+                <span className={`ctr-sig-ic${on ? '' : ' add'}`}>{on ? CHECK : ICONS.contract}</span>
+                <span className="ctr-sig-main">
+                  <b>Addition order {e.number}</b>
+                  <span className="ctr-sig-sub">
+                    {addsOf(e) ? <>adds {addsOf(e)} · </> : null}to #{e.quote.quote_number || '—'} · {usd(e.add.total) || '—'}{e.add.waived ? ' · deposit waived' : ''} · made {fmtShortDate(e.add.date)}
+                    {on ? <span>signed <b className="ctr-day">{fmtShortDate(on)}</b></span> : <span className="ctr-warn">not signed yet</span>}
+                  </span>
+                </span>
+                <button type="button" className="ctr-menu" data-menu-anchor onClick={(ev) => additionMenu(ev, e)}>Actions {CHEV}</button>
+              </div>
+              <div className="ctr-files">
+                {e.signedFile && fileRow({ f: e.signedFile, cat: 'contract', signed: true, chip: 'Signed copy' })}
+                {e.file
+                  ? fileRow({ f: e.file, cat: 'contract', chip: 'Addition' })
+                  : <div className="ctr-missing">The addition order file is not in Documents any more.</div>}
+                {e.others.map((f) => fileRow({ f, cat: 'contract', sub: true, chip: 'Copy', pick: true }))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   // one file row (the table's 4 columns); `more` = folded older copies of the same file; `pick` = a tick-box
   function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null, pick = false }) {
     const acc = CAT_ACCENT[cat] || '#14A6A0'
     const canMark = cat === 'contract' && !signedPaths.has(f.path)
+    // a file named for an addition order marks THAT order signed (never the building's quote); its own file is not "signed"
+    const addE = canMark ? additionOfLabel(f.label) : null
+    const markIt = () => (addE ? setAddSign({ entry: addE, file: f }) : setMarkFor({ file: f, presetQuoteId: null, justUploaded: false }))
     return (
       <div key={f.path} className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>
         <span className="doc-name" role="button" onClick={() => onView(f.path)} title={f.label}>
@@ -351,7 +446,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
         <span>{signed ? <span className="doc-chip doc-chip-signed">{chip || 'Signed'}</span> : <span className="doc-chip">{chip || CHIP_LABEL[cat] || labelSingular(cat)}</span>}</span>
         <span className="doc-date num">{fmtDate(f.createdAt)}</span>
         <span className="doc-acts">
-          {canMark && <button type="button" className="doc-mark" title="Mark as signed — this is what the customer signed" onClick={() => setMarkFor({ file: f, presetQuoteId: null, justUploaded: false })}>{CHECK}</button>}
+          {canMark && <button type="button" className="doc-mark" title={addE ? `Mark addition order ${addE.number} signed — this is what the customer signed` : 'Mark as signed — this is what the customer signed'} onClick={markIt}>{CHECK}</button>}
           <button type="button" title="View" onClick={() => onView(f.path)}>{EYE}</button>
           <button type="button" title="Delete" className="del" onClick={() => onDelete(f.path)}>{TRASH}</button>
         </span>
@@ -427,6 +522,8 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
           </div>
         ))}
 
+        {additionsBlock()}
+
         {org.unsigned.length > 0 && (
           <>
             <button type="button" className="ctr-h ctr-h-btn" onClick={() => toggle('contract:unsigned')} disabled={!hasSigned}>
@@ -488,6 +585,25 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
           <span className="dh-cur-chip">Current</span>
           <span className="dh-cur-acts">
             {r.file ? <button type="button" onClick={() => onView(r.file.path)}>Quote PDF</button> : <button type="button" onClick={() => selectCat('quote')}>Quotes</button>}
+            {(isSold(qq.status) || executedOf(qq)) && <button type="button" title="Something added to this building after it was ordered (a door, a window…) — its own order" onClick={() => setAddFor(qq)}>Addition order…</button>}
+          </span>
+        </div>
+      )
+    }
+    if (r.kind === 'addition') {
+      const e = r.e
+      const on = addSignedOn(e)
+      return (
+        <div key={r.key} className={`dh-cur-row${on ? ' ok' : ''}`}>
+          <span className="dh-cur-ic">{on ? CHECK : ICONS.contract}</span>
+          <span className="dh-cur-main">
+            <b>Addition order · {e.number}{on ? '' : ' · not signed yet'}</b>
+            <span>{[addsOf(e), usd(e.add.total), e.add.waived ? 'deposit waived' : null, on ? `signed ${fmtShortDate(on)}` : `made ${fmtShortDate(e.add.date)}`].filter(Boolean).join(' · ')}</span>
+          </span>
+          <span className="dh-cur-chip">{on ? 'Signed' : 'Addition'}</span>
+          <span className="dh-cur-acts">
+            {r.file && <button type="button" onClick={() => onView(r.file.path)}>See it</button>}
+            <button type="button" onClick={() => selectCat('contract')}>Contracts</button>
           </span>
         </div>
       )
@@ -611,6 +727,14 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
       {receiptFor && (
         <ReceiptModal key={receiptFor.id} client={client || { id: clientId, name: clientName }} quote={receiptFor} fromContract
           onClose={() => setReceiptFor(null)} />
+      )}
+      {addFor && (
+        <AdditionOrderModal key={addFor.id} client={client || { id: clientId, name: clientName }} quote={addFor} quotes={quotes} fileLabels={fileLabels} userId={user?.id ?? null}
+          onClose={() => setAddFor(null)} onDone={() => { setAddFor(null); setActive('contract'); refresh() }} />
+      )}
+      {addSign && (
+        <AdditionSignedModal entry={addSign.entry} file={addSign.file}
+          onClose={() => setAddSign(null)} onDone={() => { setAddSign(null); refresh() }} />
       )}
     </section>
   )

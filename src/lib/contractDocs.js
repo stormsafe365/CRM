@@ -165,6 +165,10 @@ export function contractNumberFromHtml(html) {
 /** "SS-2026-00144-Rev-1-contract.pdf" → { number:"SS-2026-00144 Rev 1", base, rev } */
 export function parseContractLabel(label) {
   const s = str(label)
+  // an ADDITION ORDER (lib/additionOrder, 11/19/26): "SS-2026-79957-A" is its own order - never a copy of SS-2026-79957's
+  // contract (its file must not fold under the building's signed card, nor mark the building's quote signed)
+  const a = /(SS-\d{4}-\d{5})-([A-Z])(?=[-_.\s(]|$)/.exec(s)
+  if (a) return { base: `${a[1]}-${a[2]}`, rev: null, number: `${a[1]}-${a[2]}`, add: a[2], of: a[1] }
   // uploads are sanitized ("SS-2026-00144 Rev 1 signed.pdf" → "SS-2026-00144_Rev_1_signed.pdf"): "_" separates too
   // the revision is a NUMBER ("Rev 1", "Revision 2"); "…_Revised_…" is not a revision number
   const m = /(SS-\d{4}-\d{5})(?:[-_\s]+Rev(?:ision)?[-_\s]*(\d+))?(?=[-_.\s]|$)/i.exec(s)
@@ -212,7 +216,8 @@ export function executedStatus(status) {
 //   filePath = the signed copy in Documents › Contracts; stampedPath = its DEPOSIT PAID copy;
 //   file = a file NAME (older stamps only stored this).
 // They (and the revision links) ride along on every later builder save.
-export const CRM_PAYLOAD_KEYS = ['contractSent', 'executed', 'revisionOf', 'revisedBy', 'revisions']
+// 'additions' = the addition orders made from this quote (lib/additionOrder, 11/19/26) - kept on a re-save, never copied.
+export const CRM_PAYLOAD_KEYS = ['contractSent', 'executed', 'revisionOf', 'revisedBy', 'revisions', 'additions']
 export function carryCrmMarkers(prevPayload, nextPayload) {
   const out = { ...(nextPayload || {}) }
   for (const k of CRM_PAYLOAD_KEYS) if (prevPayload && prevPayload[k] !== undefined && out[k] === undefined) out[k] = prevPayload[k]
@@ -595,6 +600,8 @@ export async function withLiveExecuted(sb, quoteId, payload) {
   const out = { ...payload }
   if (live.executed && live.executed.at) out.executed = live.executed
   else delete out.executed
+  // addition orders made while the builder was open (Doc Hub) are the row's, not the builder's copy (11/19/26)
+  if (Array.isArray(live.additions)) out.additions = live.additions
   return out
 }
 
@@ -695,6 +702,22 @@ export function organizeContracts(files, quotes) {
       if (f) s.signedFile = take(f)
     }
   }
+  // 3b) ADDITION ORDERS (lib/additionOrder, 11/19/26): each one's own order file and its signed copy; any other file named
+  //     with its number ("…SS-2026-79957-A…") folds under it - never under the building's contract
+  const additions = []
+  for (const q of live) {
+    const list = q.payload_json && Array.isArray(q.payload_json.additions) ? q.payload_json.additions : []
+    for (const add of list) {
+      if (!add || !add.number) continue
+      const e = { quote: q, add, number: add.number, file: null, signedFile: null, others: [] }
+      if (add.filePath) { const f = free((x) => x.path === add.filePath); if (f) e.file = take(f) }
+      if (add.signed && add.signed.filePath) { const f = free((x) => x.path === add.signed.filePath); if (f) e.signedFile = take(f) }
+      additions.push(e)
+    }
+  }
+  additions.sort((a, b) => str(b.add.createdAt).localeCompare(str(a.add.createdAt)))
+  const addByNumber = new Map(additions.map((e) => [low(e.number), e]))
+
   // 4) everything else by the contract number in its name
   // the signed number, and the number(s) this quote's contract was generated under (the copies we made
   // fold under the signed card) — only numbers of the same revision as the mark
@@ -711,6 +734,7 @@ export function organizeContracts(files, quotes) {
     if (used.has(f.path)) continue
     const p = parseContractLabel(f.label)
     if (!p) { uploads.push(f); continue }
+    if (p.add && addByNumber.has(low(p.number))) { addByNumber.get(low(p.number)).others.push(take(f)); continue }
     const s = signedByNumber.get(low(p.number))
     if (s) {
       // a copy of a contract that is signed now: a DEPOSIT PAID copy, else one we generated
@@ -748,7 +772,7 @@ export function organizeContracts(files, quotes) {
     return a
   }).sort((x, y) => String(y.entries[0]?.signedOn || '').localeCompare(String(x.entries[0]?.signedOn || '')))
 
-  return { agreements, signed, unsigned, uploads: newestFirst(uploads) }
+  return { agreements, signed, unsigned, uploads: newestFirst(uploads), additions }
 }
 
 /** The lead's quotes for "Which order did the customer sign?" — the file's own match first, then

@@ -39,6 +39,11 @@ console.log(`▸ Copying ${from}\n       → ${pubBuild}`)
 rmSync(pubBuild, { recursive: true, force: true })
 cpSync(from, pubBuild, { recursive: true })
 
+// 2b. The contract look (CSS, logos, CCI + StormSafe terms) for the CRM's own documents (the Addition Order) is read
+//     out of the program just copied (scripts/gen-contract-parts.mjs → src/lib/contractParts.generated.js)
+console.log('▸ Refreshing the contract parts from the program …')
+execSync('node scripts/gen-contract-parts.mjs', { cwd: crmRoot, stdio: 'inherit' })
+
 // 3. Rebuild the CRM so public/ → dist/ (what the Electron app actually serves)
 console.log('▸ Rebuilding the CRM (public → dist) …')
 execSync('npm run build', { cwd: crmRoot, stdio: 'inherit' })
