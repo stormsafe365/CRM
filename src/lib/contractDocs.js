@@ -705,15 +705,21 @@ export function organizeContracts(files, quotes) {
   // 3b) ADDITION ORDERS (lib/additionOrder, 11/19/26): each one's own order file and its signed copy; any other file named
   //     with its number ("…SS-2026-79957-A…") folds under it - never under the building's contract
   const additions = []
+  // one entry per number: a copy of the record on another quote (made before copies dropped it) never shows twice -
+  // the record whose order file is here wins
+  const recs = []
   for (const q of live) {
     const list = q.payload_json && Array.isArray(q.payload_json.additions) ? q.payload_json.additions : []
-    for (const add of list) {
-      if (!add || !add.number) continue
-      const e = { quote: q, add, number: add.number, file: null, signedFile: null, others: [] }
-      if (add.filePath) { const f = free((x) => x.path === add.filePath); if (f) e.file = take(f) }
-      if (add.signed && add.signed.filePath) { const f = free((x) => x.path === add.signed.filePath); if (f) e.signedFile = take(f) }
-      additions.push(e)
-    }
+    for (const add of list) if (add && add.number) recs.push({ q, add })
+  }
+  const hasFile = (r) => !!(r.add.filePath && all.some((f) => f.path === r.add.filePath))
+  const firstOf = new Map()
+  for (const r of recs) { const k = low(r.add.number), cur = firstOf.get(k); if (!cur || (!hasFile(cur) && hasFile(r))) firstOf.set(k, r) }
+  for (const { q, add } of firstOf.values()) {
+    const e = { quote: q, add, number: add.number, file: null, signedFile: null, others: [] }
+    if (add.filePath) { const f = free((x) => x.path === add.filePath); if (f) e.file = take(f) }
+    if (add.signed && add.signed.filePath) { const f = free((x) => x.path === add.signed.filePath); if (f) e.signedFile = take(f) }
+    additions.push(e)
   }
   additions.sort((a, b) => str(b.add.createdAt).localeCompare(str(a.add.createdAt)))
   const addByNumber = new Map(additions.map((e) => [low(e.number), e]))

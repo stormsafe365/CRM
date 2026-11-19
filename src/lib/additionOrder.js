@@ -107,7 +107,6 @@ export function priceAddition({ items = [], catalog, taxPct = 0, fee = 0, waived
 }
 
 // ── numbering: the agreement's number + "-A", "-B"... ─────────────────────────────────────────────
-export const ADD_RE = /(SS-\d{4}-\d{5})-([A-Z])(?=[-_.\s(]|$)/
 /** The agreement number additions are numbered from: the signed paper's number, else the quote's. */
 export function additionRootOf(q) { return agreementRootOf(q) || str(q && q.quote_number) || null }
 /** Every addition saved on the lead's quotes: [{ quote, add }], oldest first. */
@@ -120,16 +119,42 @@ export function additionsOf(quotes) {
   }
   return out.sort((a, b) => str(a.add.createdAt).localeCompare(str(b.add.createdAt)))
 }
-/** The next free letter for `root` on this lead (its saved additions and any contract file named "<root>-X"). */
+/** The next free letter for `root` on this lead: letters already used by its saved additions ("<root>-X") and by any contract
+ *  file named "<root>-X" (names are stored with every character but letters, digits, . and - turned into _). The root is the
+ *  agreement number as typed - matched as text, so a quote number that is not SS-YYYY-NNNNN numbers on correctly too. */
+const safeName = (x) => str(x).replace(/[^a-zA-Z0-9.-]/g, '_')
 export function nextAdditionNumber(root, quotes, fileLabels = []) {
+  const r = str(root)
+  if (!r) return null
   const used = new Set()
-  for (const { add } of additionsOf(quotes)) { const m = ADD_RE.exec(str(add.number)); if (m && m[1] === root) used.add(m[2]) }
-  for (const l of fileLabels || []) { const m = ADD_RE.exec(str(l)); if (m && m[1] === root) used.add(m[2]) }
+  const pre = r.toLowerCase() + '-'
+  for (const { add } of additionsOf(quotes)) {
+    const n = str(add.number)
+    if (n.toLowerCase().startsWith(pre) && /^[a-z]$/i.test(n.slice(pre.length))) used.add(n.slice(pre.length).toUpperCase())
+  }
+  const fp = safeName(r).toLowerCase() + '-'
+  for (const l of fileLabels || []) {
+    const t = str(l).toLowerCase()
+    for (let k = t.indexOf(fp); k >= 0; k = t.indexOf(fp, k + 1)) {
+      const ch = t.charAt(k + fp.length), nx = t.charAt(k + fp.length + 1)
+      if (/[a-z]/.test(ch) && (nx === '' || /[-_.\s(]/.test(nx))) used.add(ch.toUpperCase())
+    }
+  }
   for (let c = 65; c <= 90; c++) {
     const letter = String.fromCharCode(c)
-    if (!used.has(letter)) return { letter, number: `${root}-${letter}` }
+    if (!used.has(letter)) return { letter, number: `${r}-${letter}` }
   }
   return null
+}
+
+// County names as the program reads them (onCountyEdit): case, extra spaces, a trailing "County", Saint / St / St. - a lead's
+// county is typed freely ("palm beach", "Palm Beach County", "St Lucie") and must still hit the county's rules and tax.
+export function canonCounty(raw, countyTax = null) {
+  const s0 = str(raw)
+  if (!s0 || s0 === '—') return ''
+  const norm = s0.toLowerCase().replace(/\s+/g, ' ').replace(/\s+county$/, '').replace(/^(saint|st|st\.)\s+/, 'st. ')
+  const names = [...new Set([...(countyTax ? Object.keys(countyTax) : []), ...IMPACT_CO, ...IMPACT_WIN_CO, ...IMPACT_SQFT_CO])]
+  return names.find((k) => k.toLowerCase() === norm || k.toLowerCase().replace(/-/g, ' ') === norm.replace(/-/g, ' ')) || s0
 }
 
 // ── what the box starts with ──────────────────────────────────────────────────────────────────────
@@ -166,7 +191,7 @@ const clientAddr = (c) => {
 export function additionDefaults(q, client, { countyTax = null } = {}) {
   const f = (q && q.payload_json && q.payload_json.fields) || {}
   const mfr = MFR_KEY(q, client)
-  const county = str(f.county) && str(f.county) !== '—' ? str(f.county) : str(client && client.county)
+  const county = canonCounty(str(f.county) && str(f.county) !== '—' ? f.county : (client && client.county), countyTax)
   const bill = str(f['ct-billaddr']) || clientAddr(client)
   const site = str(f['ct-siteaddr']) || bill
   const agx = str(f.agx) === 'yes'
@@ -215,8 +240,10 @@ export function additionRecord({ number, date, d, money, items, notes = '', payM
   }
 }
 /** payload_json with `rec` added (or the addition with the same number replaced). */
-export function withAddition(payload, rec) {
+export function withAddition(payload, rec, { create = false } = {}) {
   const p = payload && typeof payload === 'object' ? payload : {}
+  // a NEW addition never replaces one already saved under the same number
+  if (create && Array.isArray(p.additions) && p.additions.some((a) => a && a.number === rec.number)) throw new Error(`Addition order ${rec.number} is already on this quote.`)
   const list = (Array.isArray(p.additions) ? p.additions : []).filter((a) => a && a.number !== rec.number)
   return { ...p, additions: [...list, rec] }
 }

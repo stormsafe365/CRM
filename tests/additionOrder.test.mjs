@@ -272,3 +272,59 @@ test('the document: page 1 order + page 2 terms - CCI\'s for CCI, StormSafe\'s f
   assert.match(h3, /STORM<span>SAFE<\/span> STEEL/)
   assert.doesNotMatch(h3, /Addition (Delivery )?Fee/) // no fee typed
 })
+
+// ── review 11/19/26 ──────────────────────────────────────────────────────────────────────────────
+import { stripForDuplicate } from '../src/lib/priceLockCrm.js'
+import { canonCounty } from '../src/lib/additionOrder.js'
+
+test('review: a Duplicate / "Make a revision" copy never carries the addition orders (builder and hand-added quotes)', () => {
+  const withA = { ...robert.payload_json, additions: [{ number: 'SS-2026-79957-A' }] }
+  assert.equal(stripForDuplicate(withA, { newNumber: 'SS-2026-00001' }).additions, undefined)
+  const tab = readFileSync(resolve(here, '../src/components/QuotesTab.jsx'), 'utf8')
+  assert.match(tab, /!builder && quote\.payload_json && typeof quote\.payload_json === 'object' && quote\.payload_json\.additions !== undefined\s*\n\s*\? \{ payload_json: \(\(\{ additions, \.\.\.p \}\) => p\)\(quote\.payload_json\) \}/)
+  // and if an older copy already has one, Contracts still shows it once - the record whose file is there
+  const F = (label, at) => ({ label, path: `c1/contract/${Date.parse(at)}-${label}`, createdAt: at })
+  const addFile = F('X-StormSafe_Steel_ADDITION_ORDER_SS-2026-79957-A__11.19_.pdf', '2026-11-19T15:00:00Z')
+  const rec = { number: 'SS-2026-79957-A', filePath: addFile.path, createdAt: '2026-11-19T15:00:00Z' }
+  const copy = { id: 'copy', quote_number: 'SS-2026-00001', payload_json: { additions: [{ ...rec, filePath: 'gone' }] } }
+  const orig = { ...robert, payload_json: { ...robert.payload_json, additions: [rec] } }
+  const out = organizeContracts([addFile], [copy, orig])
+  assert.equal(out.additions.length, 1)
+  assert.equal(out.additions[0].quote.id, 'q-robert')
+  assert.equal(out.additions[0].file.path, addFile.path)
+})
+
+test('review: numbering works on any typed quote number; a new addition never replaces a saved one', () => {
+  const q = (nums) => [{ payload_json: { additions: nums.map((number) => ({ number })) } }]
+  assert.equal(nextAdditionNumber('Andrews-1', q(['Andrews-1-A']), []).number, 'Andrews-1-B')
+  assert.equal(nextAdditionNumber('ss-2026-79957', q(['ss-2026-79957-A']), []).number, 'ss-2026-79957-B')
+  assert.equal(nextAdditionNumber('SS-2026-79957', q(['SS-2026-79957-A', 'SS-2026-79957-B']), ['SS-2026-79957-C.pdf']).number, 'SS-2026-79957-D')
+  // a root that is a prefix of another number, and Rev / EXECUTED names, do not use letters
+  assert.equal(nextAdditionNumber('SS-2026-7995', [], ['SS-2026-79957-A.pdf', 'SS-2026-7995-Rev-1.pdf', 'SS-2026-7995-EXECUTED-deposit-paid.pdf']).number, 'SS-2026-7995-A')
+  assert.equal(nextAdditionNumber('', [], []), null)
+  assert.throws(() => withAddition({ additions: [{ number: 'SS-2026-79957-A' }] }, { number: 'SS-2026-79957-A' }, { create: true }), /already on this quote/)
+  assert.equal(withAddition({ additions: [{ number: 'SS-2026-79957-A' }] }, { number: 'SS-2026-79957-B' }, { create: true }).additions.length, 2)
+})
+
+test('review: a typed county ("palm beach county", "St Lucie") reads like the program - same lock and tax', () => {
+  assert.equal(canonCounty('palm beach county', COUNTY_TAX), 'Palm Beach')
+  assert.equal(canonCounty('Palm  Beach', COUNTY_TAX), 'Palm Beach')
+  assert.equal(canonCounty('St Lucie', COUNTY_TAX), 'St. Lucie')
+  assert.equal(canonCounty('saint lucie', COUNTY_TAX), 'St. Lucie')
+  assert.equal(canonCounty('Miami Dade', COUNTY_TAX), 'Miami-Dade')
+  assert.equal(canonCounty('palm beach', null), 'Palm Beach') // before the program's table loads: the impact lists
+  assert.equal(canonCounty('Nowhere', COUNTY_TAX), 'Nowhere')
+  const hand = { quote_number: 'SS-2026-33333', manufacturer: 'cci', payload_json: null }
+  const d = additionDefaults(hand, { county: 'palm beach county' }, { countyTax: COUNTY_TAX })
+  assert.equal(d.county, 'Palm Beach')
+  assert.equal(d.taxPct, 6.5)
+  assert.deepEqual(impactRuleFor(d.mfr, d.county, d.sqft), { doors: true, windows: true })
+  assert.equal(additionDefaults(hand, { county: 'St Lucie' }, { countyTax: COUNTY_TAX }).county, 'St. Lucie')
+})
+
+test('review: Doc Hub - no ✓ on a file named for an addition with no record; a cancelled attach never lingers', () => {
+  const hub = readFileSync(resolve(here, '../src/components/DocumentHub.jsx'), 'utf8')
+  assert.match(hub, /const canMark = cat === 'contract' && !signedPaths\.has\(f\.path\) && !\(pa && pa\.add && !addE\)/)
+  assert.match(hub, /function triggerUpload\(cat, attachTo = null, addTo = null\) \{\n\s*uploadCat\.current = cat\n\s*attachFor\.current = attachTo\n\s*attachAdd\.current = addTo/)
+  assert.doesNotMatch(hub, /attachAdd\.current = e;/)
+})

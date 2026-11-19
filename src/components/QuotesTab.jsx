@@ -137,6 +137,9 @@ export default function QuotesTab({ clientId, client, clientBuildingSize, buildi
         total_amount: null, deposit_amount: null, balance_amount: null,
         payload_json: stripForDuplicate(quote.payload_json, { fromQuote: quote, newNumber: quote_number, now }),
       } : {}),
+      // a hand-added quote's copy: its addition orders stay on the original (11/19/26)
+      ...(!builder && quote.payload_json && typeof quote.payload_json === 'object' && quote.payload_json.additions !== undefined
+        ? { payload_json: (({ additions, ...p }) => p)(quote.payload_json) } : {}), // eslint-disable-line no-unused-vars
     }
     const { data, error } = await supabase.from('quotes').insert(copy).select().single()
     if (error) { setError(error.message); return }

@@ -26,6 +26,7 @@ const FIELD = {
 const LBL = { display: 'block', fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--fg-3, #8598AC)', margin: '12px 0 4px' }
 const NOTE = { margin: '4px 0 0', fontSize: 12, color: 'var(--fg-3, #8598AC)', lineHeight: 1.45 }
 const MFR_LABEL = { CCI: 'CCI', CA: 'CA' }
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) // toast() renders HTML
 
 export default function AdditionOrderModal({ client, quote, quotes = [], fileLabels = [], userId = null, onClose, onDone }) {
   const [pg, setPg] = useState(null)
@@ -96,24 +97,25 @@ export default function AdditionOrderModal({ client, quote, quotes = [], fileLab
       const path = await uploadClientDocBlob(client.id, 'contract', blob, additionFileName(d.name, n.number, today), 'application/pdf')
       const rec = additionRecord({ number: n.number, date: today, d, money, items, notes, payMethod, filePath: path, by: userId })
       let recorded = true
-      try { await saveAdditionPayload(supabase, quote.id, (p) => withAddition(p, rec)) } catch (e) { recorded = false; console.warn('addition not recorded on the quote', e) }
+      try { await saveAdditionPayload(supabase, quote.id, (p) => withAddition(p, rec, { create: true })) } catch (e) { recorded = false; console.warn('addition not recorded on the quote', e) }
       window.dispatchEvent(new CustomEvent('ss:docs-updated', { detail: { clientId: client.id } }))
       try { window.open(URL.createObjectURL(blob), '_blank') } catch { /* ignore */ }
       toast(recorded
-        ? `Addition order ${n.number} saved · Documents › Contracts`
-        : `Addition order ${n.number} saved to Documents › Contracts, but it could not be linked to the quote — tell Claude.`,
+        ? `Addition order ${escHtml(n.number)} saved · Documents › Contracts`
+        : `Addition order ${escHtml(n.number)} saved to Documents › Contracts, but it could not be linked to the quote — tell Claude.`,
       recorded ? 'success' : undefined)
       setBusy('')
       onDone && onDone()
     } catch (e) {
       setBusy('')
-      toast(e.message || 'Could not make the addition order.')
+      toast(escHtml(e.message || 'Could not make the addition order.'))
     }
   }
 
   const ruleNote = rule.doors
     ? `${d.county} (CCI): walk-in doors must be High-Wind rated and windows Hi-Impact — the same lock as the quote program.`
-    : rule.windows ? `${d.county} (CCI): windows must be Hi-Impact — the same lock as the quote program.` : ''
+    : rule.windows ? `${d.county} (CCI): windows must be Hi-Impact — the same lock as the quote program.`
+      : d.mfr === 'CCI' && !d.county ? 'No county on this order — check whether its county needs High-Wind walk-in doors / Hi-Impact windows (CCI impact counties) before you pick.' : ''
   const feeLabel = d.mfr === 'CCI' ? 'Addition delivery fee — not taxed ($)' : 'Addition fee — not taxed ($)'
 
   return createPortal(

@@ -208,9 +208,11 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   const q = query.trim().toLowerCase()
   const matches = (f) => !q || `${f.label} ${CHIP_LABEL[f.cat] || ''} ${fmtDate(f.createdAt)} ${f.cat}`.toLowerCase().includes(q)
 
-  function triggerUpload(cat, attachTo = null) {
+  // addTo = an addition order (its Actions › Attach the signed copy); every upload sets both, so a cancelled pick never lingers
+  function triggerUpload(cat, attachTo = null, addTo = null) {
     uploadCat.current = cat
     attachFor.current = attachTo
+    attachAdd.current = addTo
     const sec = SECTIONS.find(s => s.key === cat)
     if (inputRef.current) { inputRef.current.accept = sec?.accept || ''; inputRef.current.click() }
   }
@@ -375,7 +377,7 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
     const items = []
     if (e.file) items.push({ id: 'see', label: 'See the addition order', onClick: () => onView(e.file.path) })
     if (e.signedFile) items.push({ id: 'seesig', label: 'See the signed copy', onClick: () => onView(e.signedFile.path) })
-    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => { attachAdd.current = e; triggerUpload('contract') } })
+    else items.push({ id: 'attach', label: 'Attach the signed copy (upload)…', onClick: () => triggerUpload('contract', null, e) })
     items.push({ id: 'day', label: addSignedOn(e) ? 'Change the signed date…' : 'Mark signed (no file)…', onClick: () => setAddSign({ entry: e, file: null }) })
     if (e.add.signed) {
       items.push({ sep: true })
@@ -427,9 +429,12 @@ export default function DocumentHub({ clientId, clientName, client, onBuildQuote
   // one file row (the table's 4 columns); `more` = folded older copies of the same file; `pick` = a tick-box
   function fileRow({ f, cat, note = null, more = null, gkey = null, signed = false, sub = false, chip = null, pick = false }) {
     const acc = CAT_ACCENT[cat] || '#14A6A0'
-    const canMark = cat === 'contract' && !signedPaths.has(f.path)
-    // a file named for an addition order marks THAT order signed (never the building's quote); its own file is not "signed"
-    const addE = canMark ? additionOfLabel(f.label) : null
+    // a file named for an addition order marks THAT order signed (never the building's quote); its own file is not "signed".
+    // Named for an addition this lead has no record of (the record failed, its quote was deleted): no ✓ at all - Mark as
+    // signed would let it become the building's signed copy (review 11/19/26).
+    const pa = cat === 'contract' ? parseContractLabel(f.label) : null
+    const addE = pa && pa.add ? additionOfLabel(f.label) : null
+    const canMark = cat === 'contract' && !signedPaths.has(f.path) && !(pa && pa.add && !addE)
     const markIt = () => (addE ? setAddSign({ entry: addE, file: f }) : setMarkFor({ file: f, presetQuoteId: null, justUploaded: false }))
     return (
       <div key={f.path} className={`doc-row${sub ? ' doc-row-sub' : ''}`} style={accentVars(acc)}>

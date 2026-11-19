@@ -8,6 +8,7 @@ import { toast } from '../lib/uiFx'
 import { cleanDay, localDay } from '../lib/contractDocs'
 import { patchAddition, saveAdditionPayload } from '../lib/additionOrder'
 
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) // toast() renders HTML
 const FIELD = {
   width: '100%', boxSizing: 'border-box', background: 'var(--inset, #0B1B32)', color: 'var(--fg, #e2e8f0)',
   border: '1px solid var(--line, #294059)', borderRadius: 8, padding: '9px 11px', fontSize: 13.5,
@@ -26,9 +27,9 @@ export default function AdditionSignedModal({ entry, file = null, onClose, onDon
     try {
       const signed = { on, filePath: (file && file.path) || (prev && prev.filePath) || null, at: new Date().toISOString() }
       await saveAdditionPayload(supabase, entry.quote.id, (p) => patchAddition(p, entry.add.number, { signed }))
-      toast(`Addition order ${entry.add.number} marked signed`, 'success')
+      toast(`Addition order ${escHtml(entry.add.number)} marked signed`, 'success')
       onDone && onDone()
-    } catch (e) { toast(e.message || 'Could not save.') } finally { setBusy(false) }
+    } catch (e) { toast(escHtml(e.message || 'Could not save.')) } finally { setBusy(false) }
   }
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Addition order signed" className="msign-scrim"
