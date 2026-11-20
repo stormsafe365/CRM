@@ -5501,11 +5501,11 @@ function ecLookup(w,h){
   // CCI TALL STANDARD WIDTHS (<32'), 17'+ (CCI walls are vertical there): Sensei (read live 11/20/26) = the normal chart at
   // THIS width and height + the vertical end add: 24x18 $3,350 = EC[24][18] 2,990 + 360 · 26x18 $3,120 = 2,670 + 450 ·
   // 30x17 $3,630 = 3,060 + 570 · 30x18 $3,760 = 3,190 + 570 · 30x20 $4,020 = 3,450 + 570 (the 8/31/26 30-wide readings).
-  // It was a width-blind $3,760 (17'-18') / $4,020 (19'-20') from those 30-wide readings - $410 over on a 24x18 end (11-20c).
-  // The vertical add is INSIDE this price (gVertUpgrade is $0 at 17'+), so every caller stays the same. Odd heights round UP.
+  // 12' wide reads as 18' at 17'+ (12x17 $2,165 = EC[18][17] 1,895 + 270, 12x18 $2,300, 12x20 $2,570; 20x18 $2,650; 24x20 $3,740).
+  // Was a width-blind $3,760 / $4,020 (11-20c). The vertical add is INSIDE this price (gVertUpgrade $0 at 17'+). Odd heights round UP.
   if(ACTIVE_MFR==='CCI' && h>=17 && w<32){
-    var _tRow=EC[eBkt(w)]||EC[30], _tH=Math.min(h,20); while(_tH<20 && _tRow[_tH]===undefined) _tH++;
-    return (_tRow[_tH]||0)+vertEndUpcharge(w);
+    var _tW=Math.max(18,eBkt(w)), _tRow=EC[_tW]||EC[30], _tH=Math.min(h,20); while(_tH<20 && _tRow[_tH]===undefined) _tH++;
+    return (_tRow[_tH]||0)+vertEndUpcharge(_tW);
   }
   // EC: widths 12-30 use bucketed width, widths 32-60 use actual even width
   // Odd widths round UP to next even (CA/CCI only build even widths in wide-span)
