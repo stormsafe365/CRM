@@ -346,7 +346,7 @@ const SIDE_SHORT = { closed: 'closed', open: 'open', '1panel': '1 panel from the
 const HALF_PANEL_NAME = { '1_5panel': '1½ panels (4′6″)', '2_5panel': '2½ panels (7′6″)', '3_5panel': '3½ panels (10′6″)' }
 
 // ── main building ───────────────────────────────────────────────────────────────────────────────────────────
-const END = { Closed: 'closed', Open: 'open', 'Gable Only': 'gableOnly', 'Half Closed': 'halfClosed', '1/4 Closed': 'halfClosed', '3/4 Closed': 'halfClosed' } // 1/4 / 3/4 Closed (program 11-20a): no such end on the page
+const END = { Closed: 'closed', Open: 'open', 'Gable Only': 'gableOnly', 'Half Closed': 'halfClosed', '1/4 Closed': 'halfClosed', '3/4 Closed': 'halfClosed', '1/2 Closed': 'halfClosed', 'Half End': 'halfClosed', 'Extended Gable': 'halfClosed' } // 1/4 / 1/2 / 3/4 Closed, Half End, Extended Gable (program 11-20a / 11-20b): no such end on the page
 const PAGE_SIDE_PICKS = ['1panel', '2panel', '3panel', 'q1', 'q2', 'q3']
 const bandFt = (k, H) => Math.min(k.endsWith('panel') ? parseInt(k, 10) * 3 : ({ q1: 0.25, q2: 0.5, q3: 0.75 })[k] * H, H)
 
@@ -520,7 +520,7 @@ export function quoteToSeed(payload, { layout = null, quote = null, contact = nu
 
   // walls
   // 1/4 / 3/4 Closed ends (program 11-20a): the design page has no such end - it shows them half closed (6′ panel)
-  for (const [k, nm] of [['wfg', 'front'], ['wbg', 'back']]) if (f[k] === '1/4 Closed' || f[k] === '3/4 Closed') notes.add(`The ${nm} end is ${f[k]} on the quote: the page shows it half closed (6′ panel).`)
+  for (const [k, nm] of [['wfg', 'front'], ['wbg', 'back']]) if (f[k] === '1/4 Closed' || f[k] === '3/4 Closed' || f[k] === '1/2 Closed' || f[k] === 'Half End' || f[k] === 'Extended Gable') notes.add(`The ${nm} end is ${f[k]} on the quote: the page shows it half closed (6′ panel).`)
   let walls
   if (type === 'garage') {
     walls = { front: END[f.wfg] ?? 'closed', back: END[f.wbg] ?? 'closed', left: mapSide(f.wle ?? 'Closed', sh, 'left side', notes), right: mapSide(f.wre ?? 'Closed', sh, 'right side', notes) }
