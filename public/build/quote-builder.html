@@ -5435,10 +5435,10 @@ function gableOnlyCost(){
   if(cciWideOn(_gwC)) return _gwC<=70?1050:(_gwC<=80?1200:(_gwC<=90?1350:1500));
   // CCI 12'-30' (Price Book 2 p2 / p4 "Gable End": Certified $225 (12'-24') / $300 (26'-30') per end, "Vertical Gable Add"
   // $50 / $85; Dealer Handbook p14 "Certified Gable $225.00") - owner decision 10/12/26 (Sensei 24x40x12: 2 x $225). The
-  // vertical add replaces the whole vertical END upcharge gVertUpgrade used to charge a gable-only end. 17'+ is priced
-  // orientation-blind (no add).
+  // vertical add replaces the whole vertical END upcharge gVertUpgrade used to charge a gable-only end. 17'+ (CCI walls are
+  // vertical there): the add too - Sensei 11/20/26 24x40x18 gable $275, 30x40x17 / 26x40x18 $385 (it was $225 / $300, 11-20c).
   if(_gwC>0 && _gwC<=30 && ((G('btype')||{}).value)!=='widespan'){
-    var _gvA=(G('ws') && G('ws').value==='Vertical' && (parseInt((G('bh')||{}).value)||0)<17);
+    var _gvA=(G('ws') && G('ws').value==='Vertical') || (parseInt((G('bh')||{}).value)||0)>=17; // + 17'+ (11-20c)
     return (_gwC<=24?225:300)+(_gvA?(_gwC<=24?50:85):0);
   }
   // CCI 32'-60' (10/14/26, audit F16): Price Book 2 p6 "Gable End" 32' to 40' Wide $600 · 42' to 50' Wide $750 · 52' to
@@ -5476,15 +5476,15 @@ function partialEndCost(v){
 // $1,400 = 1/2 Closed (50% of the closed end, endFrac), Extended Gable $600, Gable $300; 26' Extended Gable $600; 24x40x10 Gable $225
 // Extended Gable $450, vertical $275 / $550. CCI Dealer Handbook p14: "A customer will want one panel down on each side and ... the
 // gable to meet those side panels. The charge ... Gable Price + Panel + Frame Charge (12W-24W $80, 26W-30W $150, 32W-60W Double
-// Price of Gable Cost)". CCI 12'-30' = 2 x the gable (its vertical gable add included) = Sensei exactly; CCI 32'+ = the handbook,
-// 3 x the gable + one panel - NOT confirmed. CA (book 4H, same formula, frame 75 / 100 / 200 / 400) - NOT confirmed.
+// Price of Gable Cost)". CCI = 2 x the gable at EVERY width (its vertical gable add included) = Sensei exactly: 12'-30' above, and
+// 36x56x14 commercial $1,200 = 2 x $600 (11-20c; the handbook's 3 x gable + panel read $1,975). CA (book 4H: gable + panel + frame
+// 75 / 100 / 200 / 400) - NOT confirmed.
 function extGableCost(){
   var w=parseInt((G('bw')||{}).value)||0; if(w%2===1) w++; if(!w) return 0;
   var g=gableOnlyCost(), M=(typeof MFR==='function')?MFR():{}, sp=M.sidePanels;
   var pnl=(sp && sp.full && typeof M.panelTier==='function') ? (+sp.full[M.panelTier(w)]||0) : 0; // the panel that covers the end
   if(ACTIVE_MFR==='CA') return g + pnl + (w<=24?75:(w<=30?100:(w<=40?200:400)));
-  if(w<=30) return 2*g;
-  return 3*g + pnl;
+  return 2*g; // every CCI width (Sensei 11/20/26: 24' $450 / $550 V, 26'-30' $600, 36' $1,200)
 }
 function sBkt(l){ return l<=22?20:l<=27?25:l<=32?30:l<=37?35:40; }
 function eBkt(w){ return w<=12?12:w<=18?18:w<=20?20:w<=22?22:w<=24?24:w<=26?26:w<=28?28:30; }
@@ -5498,14 +5498,14 @@ function ecLookup(w,h){
     if(w===70 && h===20) return 6115;
     return 0;
   }
-  // CCI TALL STANDARD WIDTHS (<32'): Sensei now prices these ends ABOVE the
-  // commercial min-32 column that CCI's corrected Tejada quote used (8/17/26,
-  // EC[32]: 18'→3,655 / 20'→3,835). Measured live in Sensei 8/31/26 on 30-wide,
-  // vertical: 18'→$3,760, 20'→$4,020 — identical at 30x40 and 30x50, and at
-  // 2/12, 3/12 and 6/12 pitch (length- and pitch-independent). Owner: match
-  // Sensei (Fraga 30x50x20 quote). Odd heights round UP like the chart.
+  // CCI TALL STANDARD WIDTHS (<32'), 17'+ (CCI walls are vertical there): Sensei (read live 11/20/26) = the normal chart at
+  // THIS width and height + the vertical end add: 24x18 $3,350 = EC[24][18] 2,990 + 360 · 26x18 $3,120 = 2,670 + 450 ·
+  // 30x17 $3,630 = 3,060 + 570 · 30x18 $3,760 = 3,190 + 570 · 30x20 $4,020 = 3,450 + 570 (the 8/31/26 30-wide readings).
+  // It was a width-blind $3,760 (17'-18') / $4,020 (19'-20') from those 30-wide readings - $410 over on a 24x18 end (11-20c).
+  // The vertical add is INSIDE this price (gVertUpgrade is $0 at 17'+), so every caller stays the same. Odd heights round UP.
   if(ACTIVE_MFR==='CCI' && h>=17 && w<32){
-    return h<=18 ? 3760 : 4020;
+    var _tRow=EC[eBkt(w)]||EC[30], _tH=Math.min(h,20); while(_tH<20 && _tRow[_tH]===undefined) _tH++;
+    return (_tRow[_tH]||0)+vertEndUpcharge(w);
   }
   // EC: widths 12-30 use bucketed width, widths 32-60 use actual even width
   // Odd widths round UP to next even (CA/CCI only build even widths in wide-span)
