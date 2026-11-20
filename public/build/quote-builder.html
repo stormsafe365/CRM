@@ -539,6 +539,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="Open">Open</option>
       <option value="Gable Only">Gable Only Sheeting</option>
       <option value="Half Closed">Half Closed (6&prime; Panel)</option>
+      <option value="1/4 Closed">1/4 Closed (top &frac14; + gable)</option>
+      <option value="3/4 Closed">3/4 Closed (top &frac34; + gable)</option>
     </select></div>
   <div class="row"><label>Back Gable</label>
     <select id="wbg" onchange="rc()">
@@ -546,6 +548,8 @@ body{font-family:var(--b),Arial,sans-serif;background:var(--d);font-size:14px;co
       <option value="Open">Open</option>
       <option value="Gable Only">Gable Only Sheeting</option>
       <option value="Half Closed">Half Closed (6&prime; Panel)</option>
+      <option value="1/4 Closed">1/4 Closed (top &frac14; + gable)</option>
+      <option value="3/4 Closed">3/4 Closed (top &frac34; + gable)</option>
     </select></div>
   <div class="row" id="wre-row"><label>Right Eave Side</label>
     <select id="wre" onchange="cpWallChanged('wre','sp-right');rc()">
@@ -5449,6 +5453,18 @@ function halfClosedCost(){
   }
   return MFR().halfGablePrice ? MFR().halfGablePrice : 0;
 }
+// 1/4 Closed / 3/4 Closed ends (owner 11/20/26: "our program wont let us do gable end sheeted 1/4 closed"): the top 1/4 or 3/4
+// of the end wall sheeted down from the eave, open below, + the gable. Priced as that FRACTION of the CLOSED end (ecLookup, cents
+// kept): CCI's Sensei (owner's screenshot 11/20/26) 30' wide x 12' tall: Back Closed $2,315, Front 1/4 Closed $578.75 =
+// 25%, Left 1 Panel (3') $220 (Dealer Handbook p24: a half end = 1/2 the price of an end wall; the program's lean-to ends price
+// the same fractions, Sensei). 3/4 = 75% by the same rule; CA's 1/4 / 3/4 = the same rule - not confirmed. Vertical: CA = the same fraction of
+// its vertical end add (gVertUpgrade, not confirmed); CCI = $0 (Sensei: 1/4-3/4 Closed walls add no vertical). No wainscot (open below).
+function endFrac(v){ return v==='1/4 Closed'?0.25:(v==='3/4 Closed'?0.75:0); }
+function partialEndCost(v){
+  var f=endFrac(v); if(!f) return 0;
+  var w=parseInt((G('bw')||{}).value)||0, h=parseInt((G('bh')||{}).value)||6; if(w%2===1) w++;
+  return w ? Math.round(ecLookup(w,h)*f*100)/100 : 0;
+}
 function sBkt(l){ return l<=22?20:l<=27?25:l<=32?30:l<=37?35:40; }
 function eBkt(w){ return w<=12?12:w<=18?18:w<=20?20:w<=22?22:w<=24?24:w<=26?26:w<=28?28:30; }
 function ecLookup(w,h){
@@ -5745,6 +5761,8 @@ function gVertUpgrade(asLap){
   var _gvC=(ACTIVE_MFR!=='CCI');
   if(fgv==='Closed'||(fgv==='Gable Only'&&_gvC)) t+=vertEndUpcharge(w);
   if(bgv==='Closed'||(bgv==='Gable Only'&&_gvC)) t+=vertEndUpcharge(w);
+  // 1/4 / 3/4 Closed ends (11-20a): CA = that fraction of its vertical end add (like the end price itself); CCI = $0 (Sensei)
+  if(_gvC){ if(endFrac(fgv)) t+=Math.round(vertEndUpcharge(w)*endFrac(fgv)*100)/100; if(endFrac(bgv)) t+=Math.round(vertEndUpcharge(w)*endFrac(bgv)*100)/100; }
   // CCI GCH (Utility Carport): the enclosed room's side walls (at the room length; a side closed full length is counted
   // above) and its divider end get the vertical adds too - Price Book 2 p2/p4 "VERTICAL SIDES (BOTH SIDES)" + "VERTICAL
   // ENDS (PER END)": 24x40x12 with a 20' room = $480 + $360 = $840 = Sensei's horizontal -> vertical Utility Storage step
@@ -6124,9 +6142,11 @@ function gWalls(){
   if(fgv==='Closed') t += ecLookup(w, h);
   else if(fgv==='Gable Only') t += _gablP;
   else if(fgv==='Half Closed') t += _halfP;
+  else if(endFrac(fgv)) t += partialEndCost(fgv); // 1/4 / 3/4 Closed (11-20a)
   if(bgv==='Closed') t += ecLookup(w, h);
   else if(bgv==='Gable Only') t += _gablP;
   else if(bgv==='Half Closed') t += _halfP;
+  else if(endFrac(bgv)) t += partialEndCost(bgv); // 1/4 / 3/4 Closed (11-20a)
   if(bt==='gch'){
     // ── GCH (Utility Carport) ──
     // Match Sensei's pricing model exactly:
@@ -13408,6 +13428,13 @@ async function printQuote(){
   } else if(bHalf){
     rows+=row('Back End Partial Close — 6&prime; Panel ('+wallStyle+')', 1, halfP, halfP);
   }
+  // 1/4 / 3/4 CLOSED ends (11-20a) - the fraction of the closed end, combined when both ends match
+  [['1/4 Closed','1/4'],['3/4 Closed','3/4']].forEach(function(pq){
+    var fq=(wfgv===pq[0]), bq=(wbgv===pq[0]), pp=partialEndCost(pq[0]);
+    if(fq && bq) rows+=row('Each End '+pq[1]+' Closed ('+wallStyle+')', 2, pp, Math.round(pp*200)/100);
+    else if(fq) rows+=row('Front End '+pq[1]+' Closed ('+wallStyle+')', 1, pp, pp);
+    else if(bq) rows+=row('Back End '+pq[1]+' Closed ('+wallStyle+')', 1, pp, pp);
+  });
   // Sides: closed sides charge full-length scLookup. Name the specific side when only
   // one is closed (mirrors the gable-end Front/Back/Each split). Open eave sides are
   // noted as "Open (No Sheeting)" on non-GCH buildings so each side's state is clear.
@@ -15221,6 +15248,13 @@ async function printContract(){
   } else if(bHalf_b){
     row('Back End Partial Close — 6&prime; Panel ('+wallStyle+')', 1, halfP_b, halfP_b);
   }
+  // 1/4 / 3/4 CLOSED ends (11-20a) - as the quote PDF
+  [['1/4 Closed','1/4'],['3/4 Closed','3/4']].forEach(function(pq){
+    var fq=(wfgv===pq[0]), bq=(wbgv===pq[0]), pp=partialEndCost(pq[0]);
+    if(fq && bq) row('Each End '+pq[1]+' Closed ('+wallStyle+')', 2, pp, Math.round(pp*200)/100);
+    else if(fq) row('Front End '+pq[1]+' Closed ('+wallStyle+')', 1, pp, pp);
+    else if(bq) row('Back End '+pq[1]+' Closed ('+wallStyle+')', 1, pp, pp);
+  });
   if(_btQ==='gch'){
     // GCH sides = Left/Right Side Panels (gch-left/gch-right). 'closed' → full-length
     // sheeting; otherwise the open extension is bare ($0) and the enclosed-side
@@ -16810,7 +16844,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
   var isHoriz=(wallStyle==='Horizontal'||wallStyle==='horizontal');
   var origIsOpen=(wallOpen==='Open');           // ORIGINAL state — used for gable triangle rendering
   var origIsGableOnly=(wallOpen==='Gable Only'); // (does NOT get auto-flipped by items)
-  var origIsHalfClosed=(wallOpen==='Half Closed'); // 6' panel band below eave, open below
+  var origIsHalfClosed=(wallOpen==='Half Closed'||wallOpen==='1/4 Closed'||wallOpen==='3/4 Closed'); var _hcBandFt=(wallOpen==='1/4 Closed')?wallH_ft*0.25:((wallOpen==='3/4 Closed')?wallH_ft*0.75:6); // band below eave, open below (6' Half Closed; 1/4 / 3/4 of the wall, 11-20a)
   var isOpen=origIsOpen;
   var isGableOnly=origIsGableOnly;
   var isHalfClosed=origIsHalfClosed;
@@ -16834,7 +16868,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
   // there is no band); null = the face is drawn sheeted (the trimmed box, as before).
   var _foBandFt=(function(){
     if(gchSplit||isGCHFrontInset) return null;
-    if(isHalfClosed) return wallH_ft-Math.min(6,wallH_ft*0.9);
+    if(isHalfClosed) return wallH_ft-Math.min(_hcBandFt,wallH_ft*0.9);
     if(isOpen||isGableOnly){
       if(isSide&&sidePanelCfg&&sidePanelCfg.full) return null;
       if(isSide&&sidePanelCfg&&sidePanelCfg.hasPanels) return wallH_ft-Math.min(sidePanelCfg.ft||0,wallH_ft*0.85);
@@ -17203,7 +17237,7 @@ function drawElev(containerId, faceW, wallH_ft, pitch, roofHex, wallHex, trimHex
   // eave with the lower portion left open (posts only). Gable triangle above is
   // drawn separately in the roof/gable section (same as Gable-Only).
   function _drawHalfWall(x, w_ft, w_px){
-    var panelDropPx=Math.min(6*sc, wallH*0.9); // 6' of paneling down from the eave
+    var panelDropPx=Math.min(_hcBandFt*sc, wallH*0.9); // the band down from the eave (6' Half Closed; 1/4 / 3/4 Closed, 11-20a)
     var openTop=oy-wallH+panelDropPx;
     var openH=wallH-panelDropPx;
     var postW=Math.max(3,sc*0.28);
