@@ -6256,6 +6256,10 @@ function cciCertHoistIncluded(size){
 function cciDoorCertified(type){ return ACTIVE_MFR==='CCI' && type!=='standard'; }
 function cciLatchNote(type){ return cciDoorCertified(type) ? ' \u00B7 Kick Locks Inside (No Outside Locks)' : ''; }
 // Roll-up doors and walk-in doors on the whole quote (main building, lean-tos, partitions).
+// A framed opening a person can walk through is a way in too (owner 11/23/26: "this guy has framed openings for double walk
+// doors.. so he'll have doors just not ours"): walk-through / double-door / garage / side-opening / custom frame-outs count as
+// the walk-in access; a window frame-out, the 45-degree angle cut and the double-tubed end do not (11-23a).
+function cciFoWalkable(name){ name=String(name||''); return name.indexOf('Framed Opening')===0 && !/Window|45|Double-Tubed/i.test(name); }
 function cciDoorCounts(){
   var ru=0, wd=0;
   document.querySelectorAll('.re').forEach(function(el){
@@ -6263,14 +6267,16 @@ function cciDoorCounts(){
     if(z && z.value && cciDoorCertified(t?t.value:'rollup')) ru+=parseInt((el.querySelector('.rqt')||{}).value)||1;
   });
   document.querySelectorAll('.we').forEach(function(el){ wd+=parseInt((el.querySelector('.wqt')||{}).value)||1; });
+  document.querySelectorAll('.ace').forEach(function(el){ if(cciFoWalkable((el.querySelector('.act')||{}).value)) wd+=parseInt((el.querySelector('.acq')||{}).value)||1; }); // walkable framed openings (11-23a)
   document.querySelectorAll('.lt-acc-e').forEach(function(ae){
     var t=(ae.querySelector('.lt-acc-type')||{}).value||'rollup', q=parseInt((ae.querySelector('.lt-acc-qty')||{}).value)||1;
     if(t==='rollup'){ var z=ae.querySelector('.lt-acc-size'); if(z && z.value && cciDoorCertified('rollup')) ru+=q; }
     else if(t==='wtd') wd+=q;
+    else if(t==='frameout' && cciFoWalkable((ae.querySelector('.lt-acc-fo-type')||{}).value)) wd+=q; // 11-23a
   });
   return {rollup:ru, walk:wd};
 }
-var CCI_WALK_MSG='CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so every building with certified roll-up doors must have a walk-in door. Add a walk-through door.';
+var CCI_WALK_MSG='CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so every building with certified roll-up doors must have a walk-in door (or a framed opening for one). Add a walk-through door or a framed opening.';
 function cciWalkMissing(){
   if(ACTIVE_MFR!=='CCI' || (typeof INPUT_MODE!=='undefined' && INPUT_MODE)) return false;
   var c=cciDoorCounts(); return c.rollup>0 && c.walk<1;
@@ -20865,7 +20871,7 @@ function paintWalk(){
   try{ miss=typeof window.cciWalkMissing==='function'&&!!window.cciWalkMissing(); }catch(e){}
   box.hidden=!miss;
   if(!miss) return;
-  var txt='\u26A0 CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so this building needs a walk-in door \u2014 add a Walk-Through Door. Until then the quote PDF / contract / text quote won\u2019t generate.';
+  var txt='\u26A0 CCI: certified roll-up doors have no outside locks (kick locks inside on the bottom), so this building needs a walk-in door (or a framed opening for one) \u2014 add a Walk-Through Door or a framed opening. Until then the quote PDF / contract / text quote won\u2019t generate.';
   var tx=box.querySelector('.s5-gcht'); if(tx.textContent!==txt) tx.textContent=txt;
 }
 function goGchEnc(){
