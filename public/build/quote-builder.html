@@ -3625,29 +3625,30 @@ var MANUFACTURERS = {
     // ── Plan config ──────────────────────────────────────────────────────────
     defaultPlan: 'Generic Plans',
     autoHighPlan: 'Site Specific Plans',
-    autoHighBadge: 'Auto: Site Specific Plans Required (5% of Retail, min. $175)',
+    autoHighBadge: 'Auto: Site Specific Plans Required (5% of Retail, min. $175, max. $6,500)',
     dynamicPlanLabels: false,
     planCostFn: function(planType, sub, isCom) {
       if(planType==='No Permit Required') return 0;
       if(planType==='Site Specific Plans'){
-        var _ssp=Math.max(175, Math.ceil(sub*0.05));
-        // CCI 62'-100' wide: 5% of the full retail price, max $6,500 (CCI letter 4/30/26).
-        return cciWideOn(parseInt((G('bw')||{}).value)||0) ? Math.min(6500,_ssp) : _ssp;
+        // CCI letter 11/24/26 "Engineered Plans Pricing Adjustment": Site Specifics = 5% of full retail cost, maximum $6,500
+        // at every width (62'-100' wide: the same, as since 4/30/26); "There will be a minimum of $175.00 in FL" (owner
+        // 11/24/26: the FL minimum = $175). Before 11-24a there was no maximum below 62' wide.
+        return Math.min(6500, Math.max(175, Math.ceil(sub*0.05)));
       }
-      // CCI Permitting Requirements p1: "Wet Seal Plans or Digitally Signed and Sealed Plans are $175.00 (12' to 30'
-      // wide) ... Wet seal plans or Digitally signed and sealed plans for commercials are $250" = 32'-60' wide
-      // (10/14/26, audit F32; it was $175 at every width).
-      if(planType==='Generic Plans'){ var _gpW=parseInt((G('bw')||{}).value)||0; if(_gpW%2===1) _gpW++; return (_gpW>=32 && _gpW<=60) ? 250 : 175; }
+      // CCI letter 11/24/26: "Raised Seal, Wet Seal, Digital Seal - PDF/Paper as Required: $350.00" in ALL service areas
+      // (owner 11/24/26: our Generic Plans = the stamped / sealed set a Florida permit needs). Was $175 (12'-30') / $250
+      // (32'-60' wide, Permitting Requirements p1, 10/14/26).
+      if(planType==='Generic Plans') return 350;
       return 0; // Master Files = $0
     },
-    plans: {'Generic Plans':175,'Site Specific Plans':0,'Master Files':0,'No Permit Required':0},
+    plans: {'Generic Plans':350,'Site Specific Plans':0,'Master Files':0,'No Permit Required':0},
     planLabels: {
-      'Generic Plans':'Generic Plans (Stamped/Sealed) — $175',
-      'Site Specific Plans':'Site Specific Plans — 5% of Retail (min. $175)',
+      'Generic Plans':'Generic Plans (Stamped/Sealed) — $350',
+      'Site Specific Plans':'Site Specific Plans — 5% of Retail (min. $175, max. $6,500)',
       'Master Files':'Master File Plans — $0',
       'No Permit Required':'No Permit Required — $0'
     },
-    planOptions: '<option value="Site Specific Plans">Site Specific Plans — 5% of Retail (min. $175)</option><option value="Generic Plans">Generic Plans (Stamped/Sealed) — $175</option><option value="Master Files">Master File Plans — $0</option><option value="No Permit Required">No Permit Required — $0</option>',
+    planOptions: '<option value="Site Specific Plans">Site Specific Plans — 5% of Retail (min. $175, max. $6,500)</option><option value="Generic Plans">Generic Plans (Stamped/Sealed) — $350</option><option value="Master Files">Master File Plans — $0</option><option value="No Permit Required">No Permit Required — $0</option>',
     // CCI permitting service — flat $300 service fee (building permit).
     permitSvc: [
       {v:'building', label:'Building — $300', amt:300, lbl:'Building Permit Service'}
@@ -10078,7 +10079,7 @@ function rc(){
   var addDiscVal=M.addDiscVal, addDiscType=M.addDiscType, addDiscAmount=M.addDiscAmount;
   var dep=M.dep, bal=M.bal;
   var pl=qPlan(sub);
-  // CCI: the Generic Plans choice shows the fee for THIS width ($175 12'-30' / $250 32'-60', Permitting Requirements p1; 10/14/26)
+  // CCI: the Generic Plans choice shows its fee from planCostFn ($350 at every width since CCI's letter 11/24/26)
   if(ACTIVE_MFR==='CCI' && G('plans-sel')){ var _gpO=[].filter.call(G('plans-sel').options,function(o){ return o.value==='Generic Plans'; })[0]; if(_gpO){ var _gpT='Generic Plans (Stamped/Sealed) — $'+MFR().planCostFn('Generic Plans',0,false); if(_gpO.text!==_gpT) _gpO.text=_gpT; } }
   // Publish what this pass JUST priced — the single source of truth for the
   // text quote, the PDF quote and the contract (they call rc() and read this;
