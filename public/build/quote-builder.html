@@ -14567,7 +14567,7 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     var lastBelow=[-1e9,-1e9]; // right edge of the last label on each of the two rows under the line
     for(var i=0;i<stops.length-1;i++){
       var a=stops[i], b=stops[i+1], d=b-a; if(d<1/192) continue; // every gap down to 1/8": the chain adds up to the wall (10/6/26)
-      var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d)+(enc?(((a+b)/2<enc.a||(a+b)/2>enc.b)?' open':((Math.abs(a-enc.a)<0.02&&Math.abs(b-enc.b)<0.02)?' enclosed':'')):''), cx=X((a+b)/2), ly=dy-5;
+      var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d)+((enc&&!inside)?(((a+b)/2<enc.a||(a+b)/2>enc.b)?' open':((Math.abs(a-enc.a)<0.02&&Math.abs(b-enc.b)<0.02)?' enclosed':'')):''), cx=X((a+b)/2), ly=dy-5;
       if(wpx<24){ var half=lab.length*2.5+2, row=(cx-half>=lastBelow[0]+3)?0:1; ly=dy+13+row*11; lastBelow[row]=cx+half; } // narrow gaps: labelled below the line, a second row when two would touch
       o+=_dimT(cx, ly, lab, {anchor:'middle',size:wpx<24?8.5:9,weight:inside?500:400,fill:inside?DIM_C.text:DIM_C.dim});
     }
