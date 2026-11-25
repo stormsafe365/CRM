@@ -14348,6 +14348,10 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   var wrapFoot=foot.filter(function(q){ return q.wA>0||q.wB>0; }); // wrap-around lean-tos on this wall: one "wrap length" bar each
   mB+=26*wrapFoot.length;
   var sorted=items.slice().sort(function(a,b){return a.x-b.x;});
+  // GCH eave (owner 11/25/26): x.enc = the enclosed bay {a, b} - its edges join the chain, the open bay reads "open", and it
+  // gets its own "8' enclosed" bar under the overall when openings split it (11-25a).
+  var enc=x.enc||null, encSplit=!!(enc && sorted.some(function(it){ return it.x+it.w>enc.a+0.01 && it.x<enc.b-0.01; }));
+  if(encSplit) mB+=26;
   var extL=0, extR=0;
   sideLeans.forEach(function(q){ if(q.onLeft) extL=Math.max(extL,q.l.w); else extR=Math.max(extR,q.l.w); });
   sorted.forEach(function(it){ extL=Math.max(extL,-it.x); extR=Math.max(extR,it.x+it.w-faceW); }); // a typed spot past a corner still gets drawn
@@ -14555,20 +14559,20 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
   o+=ltLab; // lean-to footprint labels on top of the openings
   // dimension chain: corner → opening edges → corner, then the overall
   var dy=gy+18, stops=[0];
-  sorted.forEach(function(it){ stops.push(it.x); stops.push(it.x+it.w); }); stops.push(faceW);
+  sorted.forEach(function(it){ stops.push(it.x); stops.push(it.x+it.w); }); stops.push(faceW); if(enc){ stops.push(enc.a); stops.push(enc.b); }
   stops=stops.filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
-  if(sorted.length){
+  if(sorted.length||enc){
     o+='<line x1="'+X(stops[0])+'" y1="'+dy.toFixed(1)+'" x2="'+X(stops[stops.length-1])+'" y2="'+dy.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
     stops.forEach(function(t){ o+='<line x1="'+X(t)+'" y1="'+(dy-4).toFixed(1)+'" x2="'+X(t)+'" y2="'+(dy+4).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'; });
     var lastBelow=[-1e9,-1e9]; // right edge of the last label on each of the two rows under the line
     for(var i=0;i<stops.length-1;i++){
       var a=stops[i], b=stops[i+1], d=b-a; if(d<1/192) continue; // every gap down to 1/8": the chain adds up to the wall (10/6/26)
-      var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d), cx=X((a+b)/2), ly=dy-5;
+      var inside=sorted.some(function(it){ return it.x<=a+0.01 && it.x+it.w>=b-0.01; }), wpx=(b-a)*s, lab=_dimFtIn(d)+(enc?(((a+b)/2<enc.a||(a+b)/2>enc.b)?' open':((Math.abs(a-enc.a)<0.02&&Math.abs(b-enc.b)<0.02)?' enclosed':'')):''), cx=X((a+b)/2), ly=dy-5;
       if(wpx<24){ var half=lab.length*2.5+2, row=(cx-half>=lastBelow[0]+3)?0:1; ly=dy+13+row*11; lastBelow[row]=cx+half; } // narrow gaps: labelled below the line, a second row when two would touch
       o+=_dimT(cx, ly, lab, {anchor:'middle',size:wpx<24?8.5:9,weight:inside?500:400,fill:inside?DIM_C.text:DIM_C.dim});
     }
   }
-  var dy2=sorted.length?gy+52:gy+24;
+  var dy2=(sorted.length||enc)?gy+52:gy+24;
   o+='<line x1="'+X(0)+'" y1="'+dy2.toFixed(1)+'" x2="'+X(faceW)+'" y2="'+dy2.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+X(0)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(0)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'+
      '<line x1="'+X(faceW)+'" y1="'+(dy2-5).toFixed(1)+'" x2="'+X(faceW)+'" y2="'+(dy2+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
@@ -14600,6 +14604,11 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     var cw=[q.wA,q.wB].filter(function(v){ return v>0; }), t='LT'+l.n+' wrap length '+_dimFtIn((l.wrap&&l.wrap.len)||(l.ll+(q.wA||0)+(q.wB||0)))+' ('+_dimFtIn(l.ll)+' + '+cw.map(_dimFtIn).join(' + ')+' corner'+(cw.length>1?'s':'')+')', tw=_tw(t,10)+8;
     o+='<rect x="'+(X((a+b)/2)-tw/2).toFixed(1)+'" y="'+(yy-9).toFixed(1)+'" width="'+tw.toFixed(1)+'" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X((a+b)/2), yy+4, t, {anchor:'middle',size:10,weight:600,fill:DIM_K.ltText});
   });
+  if(encSplit){ var yyE=dy2+(sideLeans.length?34:0)+28*(wrapFoot.length+1), tE=_dimFtIn(enc.b-enc.a)+' enclosed', twE=_tw(tE,10)+8;
+    o+='<line x1="'+X(enc.a)+'" y1="'+yyE.toFixed(1)+'" x2="'+X(enc.b)+'" y2="'+yyE.toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>';
+    [enc.a,enc.b].forEach(function(t){ o+='<line x1="'+X(t)+'" y1="'+(yyE-5).toFixed(1)+'" x2="'+X(t)+'" y2="'+(yyE+5).toFixed(1)+'" stroke="'+DIM_C.line+'" stroke-width="1"/>'; });
+    o+='<rect x="'+(X((enc.a+enc.b)/2)-twE/2).toFixed(1)+'" y="'+(yyE-9).toFixed(1)+'" width="'+twE.toFixed(1)+'" height="18" fill="'+DIM_C.panel+'"/>'+_dimT(X((enc.a+enc.b)/2), yyE+4, tE, {anchor:'middle',size:10,weight:600,fill:DIM_C.text});
+  }
   o+=_dimT(X(0), dy2+17, ends[0], {size:8.5,ls:1.2})+_dimT(X(faceW), dy2+17, ends[1], {anchor:'end',size:8.5,ls:1.2});
   o+='</svg>';
   return o;
@@ -14622,6 +14631,7 @@ function dimSpacingPageHTML(theme){
   // Walls drawn dashed in the plan when the quote has them open.
   var open={front:(G('wfg')||{}).value==='Open', back:(G('wbg')||{}).value==='Open', left:eaveVal('wle')==='Open', right:eaveVal('wre')==='Open'};
   if(isGCH){ open.left=false; open.right=false; } // a GCH eave is sheeted on the enclosed bay and open on the carport bay — no whole-wall mark
+  var _gchEnc=isGCH?Math.min(parseInt(G('gch-enc').value)||0,L):0; // the enclosed bay's length on the eave views (11-25a)
   // The interior wall for the plan: the GCH divider (enclosed bay at the BACK,
   // its openings are the "Front" view) or the storage partition (aewSpec) — the
   // same placements the contract floor plan draws.
@@ -14662,10 +14672,10 @@ function dimSpacingPageHTML(theme){
   }
   // Eave views keep getPosItems' convention: Right Eave x runs from the FRONT
   // (front on the left of the drawing), Left Eave x from the BACK.
-  html+=card('Right Eave','right',dimElevSVG(L,H,peakH,false,it.right,false,'left',null,{ends:['FRONT GABLE','BACK GABLE'],open:open.right,truss:trussFront,oc:oc,
+  html+=card('Right Eave','right',dimElevSVG(L,H,peakH,false,it.right,false,'left',null,{ends:['FRONT GABLE','BACK GABLE'],open:open.right,enc:_gchEnc?{a:L-_gchEnc,b:L}:null,truss:trussFront,oc:oc,
     sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Front Gable',closed:l.walls.mode!=='open'};}),
     foot:eaveLTs.filter(function(l){return l.side==='Right Eave';}).map(function(l){return {l:l,x0:l.start,wA:_dimWrapW(l,'FR'),wB:_dimWrapW(l,'BR')};})}));
-  html+=card('Left Eave','left',dimElevSVG(L,H,peakH,false,it.left,false,'right',null,{ends:['BACK GABLE','FRONT GABLE'],open:open.left,truss:trussFront.map(function(t){return L-t;}),oc:oc,
+  html+=card('Left Eave','left',dimElevSVG(L,H,peakH,false,it.left,false,'right',null,{ends:['BACK GABLE','FRONT GABLE'],open:open.left,enc:_gchEnc?{a:0,b:_gchEnc}:null,truss:trussFront.map(function(t){return L-t;}),oc:oc,
     sideLeans:gableLTs.map(function(l){return {l:l,onLeft:l.side==='Back Gable',closed:l.walls.mode!=='open'};}),
     foot:eaveLTs.filter(function(l){return l.side==='Left Eave';}).map(function(l){return {l:l,x0:L-l.start-l.len,wA:_dimWrapW(l,'BL'),wB:_dimWrapW(l,'FL')};})}));
   // Lean-to storage partitions that carry openings: the partition under the
