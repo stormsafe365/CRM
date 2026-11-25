@@ -14170,6 +14170,7 @@ function _dimPeakTxt(clr, peak, pitch){ return (clr?('Peak ≈ '+_dimFtIn(clr.pe
 //    nothing is re-derived in the drawing.
 var DIM_K={rollup:'#22d3c8',wtd:'#f0883e',win:'#7fa6f0',fo:'#e58bb0',lt:'#a78bfa',ltText:'#b8a6fb'};
 var DIM_C={page:'#080f14',panel:'#0d1820',band:'#1C2E3F',edge:'#243c50',line:'rgba(255,255,255,.16)',wall:'#b7c2cd',dim:'#8a97a5',text:'#dfe6ee',teal:'#22d3c8',orange:'#f0883e',font:"'Inter',Arial,sans-serif"};
+var DIM_PART='#a3e635', DIM_PART_TINT='rgba(163,230,53,.09)'; // GCH partition + its enclosed bay on the spacing page (11-25b)
 var _dimSvgN=0;
 function _dimT(x,y,txt,a){
   a=a||{};
@@ -14289,6 +14290,12 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
     var on=(sel==='partition'||(sel==='front'&&part.gch));
     if(part.kind==='y'){
       var yy=py(part.at);
+      if(part.gch){ // GCH (11-25b): the enclosed bay tinted, the partition solid lime (teal on its own card), each bay named
+        o+='<rect x="'+px(0)+'" y="'+py(L)+'" width="'+(W*s).toFixed(1)+'" height="'+(yy-py(L)).toFixed(1)+'" fill="'+DIM_PART_TINT+'"/>';
+        o+='<line x1="'+px(0)+'" y1="'+yy+'" x2="'+px(W)+'" y2="'+yy+'" stroke="'+(on?DIM_C.teal:DIM_PART)+'" stroke-width="'+(on?3:2.4)+'"/>';
+        if(yy-py(L)>14) o+=_dimT(px(W/2), (py(L)+yy)/2+3, 'ENCLOSED', {anchor:'middle',size:7.5,weight:700,fill:DIM_PART,ls:.8});
+        if(py(0)-yy>14) o+=_dimT(px(W/2), (yy+py(0))/2+3, 'OPEN', {anchor:'middle',size:7.5,weight:600,fill:DIM_C.dim,ls:.8});
+      } else
       o+='<line x1="'+px(0)+'" y1="'+yy+'" x2="'+px(W)+'" y2="'+yy+'" stroke="'+(on?DIM_C.teal:'rgba(255,255,255,.35)')+'" stroke-width="'+(on?3:1.4)+'" stroke-dasharray="4 3"/>';
       (part.items||[]).forEach(function(u){ o+='<line x1="'+px(u.x)+'" y1="'+(yy+6)+'" x2="'+px(u.x+u.w)+'" y2="'+(yy+6)+'" stroke="'+(DIM_K[u.type]||DIM_K.fo)+'" stroke-width="3.2"/>'; });
     } else {
@@ -14299,6 +14306,11 @@ function dimPlanSVG(sel, it, lts, W, L, part, open){
   var WL={front:[px(0),py(0),px(W),py(0)],back:[px(0),py(L),px(W),py(L)],left:[px(0),py(0),px(0),py(L)],right:[px(W),py(0),px(W),py(L)]};
   Object.keys(WL).forEach(function(k){
     var ln=WL[k], on=(sel===k);
+    if(part&&part.gch&&part.kind==='y'&&(k==='left'||k==='right')){ // GCH eave (11-25b): solid along the enclosed bay, dashed along the open one
+      var _gx=ln[0], _gc=(on?DIM_C.teal:'rgba(255,255,255,.4)'), _gw=(on?3.2:1.6);
+      o+='<line x1="'+_gx+'" y1="'+py(L)+'" x2="'+_gx+'" y2="'+py(part.at)+'" stroke="'+_gc+'" stroke-width="'+_gw+'" stroke-linecap="square"/>';
+      o+='<line x1="'+_gx+'" y1="'+py(part.at)+'" x2="'+_gx+'" y2="'+py(0)+'" stroke="'+_gc+'" stroke-width="'+_gw+'" stroke-dasharray="4 3"/>';
+    } else
     o+='<line x1="'+ln[0]+'" y1="'+ln[1]+'" x2="'+ln[2]+'" y2="'+ln[3]+'" stroke="'+(on?DIM_C.teal:'rgba(255,255,255,.4)')+'" stroke-width="'+(on?3.2:1.6)+'" stroke-linecap="square"'+((open&&open[k])?' stroke-dasharray="4 3"':'')+'/>';
     if(k==='front'&&part&&part.gch) return; // GCH: the "front" openings sit on the partition line above
     (it[k]||[]).forEach(function(u){
@@ -14556,6 +14568,18 @@ function dimElevSVG(faceW, wallH, peakH, isGable, items, gchFront, frontSide, cl
     o+=_dimT(rx+rw/2, (rh>=26)?ry+13:ry+rh/2+3, _f(it.w)+'×'+_f(it.h), {anchor:'middle',size:(rw<56?8:9.5),weight:500,fill:DIM_C.text});
     if(yo>0.1) o+=_dimT(rx+rw/2, (Y(0)+Y(yo))/2+3, 'sill '+_f(yo), {anchor:'middle',size:8.5});
   });
+  if(enc){ // GCH eave (owner 11/25/26, 11-25b): where the partition stands, which bay is enclosed and which is open
+    var _bx=(enc.a>0.01)?enc.a:((enc.b<faceW-0.01)?enc.b:null), _openLeft=(enc.a>0.01);
+    o+='<rect x="'+X(enc.a)+'" y="'+Y(wallH)+'" width="'+((enc.b-enc.a)*s).toFixed(1)+'" height="'+(wallH*s).toFixed(1)+'" fill="'+DIM_PART_TINT+'"/>';
+    if(_bx!==null){
+      o+='<line x1="'+X(_bx)+'" y1="'+Y(0)+'" x2="'+X(_bx)+'" y2="'+Y(wallH)+'" stroke="'+DIM_PART+'" stroke-width="2.6"/>';
+      var _px=X(_bx)+(_openLeft?-6:13), _py=Y(wallH/2);
+      o+=_dimT(_px, _py, 'PARTITION', {anchor:'middle',size:8.5,weight:700,fill:DIM_PART,ls:1,tr:'rotate(-90 '+_px.toFixed(1)+' '+_py.toFixed(1)+')'});
+    }
+    var _ty=Y(wallH)+15, _oa=_openLeft?0:enc.b, _ob=_openLeft?enc.a:faceW;
+    o+=_dimT(X((enc.a+enc.b)/2), _ty, 'ENCLOSED', {anchor:'middle',size:9,weight:700,fill:DIM_PART,ls:1});
+    if(_ob-_oa>0.5) o+=_dimT(X((_oa+_ob)/2), _ty, 'OPEN (CARPORT)', {anchor:'middle',size:9,weight:600,fill:DIM_C.dim,ls:1});
+  }
   o+=ltLab; // lean-to footprint labels on top of the openings
   // dimension chain: corner → opening edges → corner, then the overall
   var dy=gy+18, stops=[0];
